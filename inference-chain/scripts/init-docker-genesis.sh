@@ -66,10 +66,10 @@ modify_genesis_file() {
 
 
   if [ ! -f "$override_file" ]; then
-    echo "Override file $override_file does not exist. Exiting..."
+    echo "Override file $override_file does not exist. Exiting..."й
     return
   fi
-  echo "Checking if jq is installed"
+  echo "Checking if jq is installed"й
   which jq
   jq ". * input" "$json_file" "$override_file" > "${json_file}.tmp"
   mv "${json_file}.tmp" "$json_file"

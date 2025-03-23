@@ -11,16 +11,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/productscience/inference/api/inference/inference"
-	"github.com/productscience/inference/x/inference/calculations"
-	"github.com/productscience/inference/x/inference/types"
 	"io"
 	"log"
 	"math"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/google/uuid"
+	"github.com/productscience/inference/api/inference/inference"
+	"github.com/productscience/inference/x/inference/calculations"
+	"github.com/productscience/inference/x/inference/types"
 )
 
 func VerifyInvalidation(events map[string][]string, recorder cosmosclient.InferenceCosmosClient, nodeBroker *broker.Broker) {
@@ -382,12 +383,12 @@ func (DifferentTokensValidationResult) IsSuccessful() bool {
 	return false
 }
 
-type CosineSimilarityValidationResult struct {
+type SimilarityValidationResult struct {
 	BaseValidationResult
 	Value float64
 }
 
-func (r CosineSimilarityValidationResult) IsSuccessful() bool {
+func (r SimilarityValidationResult) IsSuccessful() bool {
 	return r.Value > 0.99
 }
 
@@ -414,7 +415,7 @@ func compareLogits(
 
 	cosSimValue := cosineSimilarity(originalLogprobs, validationLogprobs)
 
-	return &CosineSimilarityValidationResult{BaseValidationResult: baseComparisonResult, Value: cosSimValue}
+	return &SimilarityValidationResult{BaseValidationResult: baseComparisonResult, Value: cosSimValue}
 }
 
 func cosineSimilarity(a, b []float64) float64 {
@@ -446,19 +447,19 @@ func (ModelNotSupportedValidationResult) IsSuccessful() bool {
 
 func toMsgValidation(result ValidationResult) (*inference.MsgValidation, error) {
 	// Match type of result from implementations of ValidationResult
-	var cosineSimVal float64
+	var simVal float64
 	switch result.(type) {
 	case *DifferentLengthValidationResult:
 		log.Printf("Different length validation result")
-		cosineSimVal = -1
+		simVal = -1
 	case *DifferentTokensValidationResult:
 		log.Printf("Different tokens validation result")
-		cosineSimVal = -1
-	case *CosineSimilarityValidationResult:
-		cosineSimVal = result.(*CosineSimilarityValidationResult).Value
-		logging.Info("Cosine similarity validation result", types.Validation, "cosineSimValue", cosineSimVal)
+		simVal = -1
+	case *SimilarityValidationResult:
+		simVal = result.(*SimilarityValidationResult).Value
+		logging.Info("Cosine similarity validation result", types.Validation, "cosineSimValue", simVal)
 	case ModelNotSupportedValidationResult:
-		cosineSimVal = 1
+		simVal = 1
 		logging.Info("Model not supported validation result. Assuming is valid", types.Validation, "inference_id", result.GetInferenceId())
 	default:
 		logging.Error("Unknown validation result type", types.Validation, "type", fmt.Sprintf("%T", result), "result", result)
@@ -475,6 +476,6 @@ func toMsgValidation(result ValidationResult) (*inference.MsgValidation, error) 
 		InferenceId:     result.GetInferenceId(),
 		ResponsePayload: string(result.GetValidationResponseBytes()),
 		ResponseHash:    responseHash,
-		Value:           cosineSimVal,
+		Value:           simVal,
 	}, nil
 }
