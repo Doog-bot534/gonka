@@ -63,12 +63,12 @@ class MultiModelTests : TestermintTest() {
         logSection("Setting up invalid inference")
         val oddPair = secondModelPairs.last()
         val badResponse = defaultInferenceResponseObject.withMissingLogit()
-        oddPair.mock?.setInferenceResponse(badResponse, model = newModelName)
+        oddPair.mock?.setInferenceResponse(badResponse, model = defaultModel)
         logSection("Getting invalid inference")
         var newState: InferencePayload
         do {
             logSection("Trying to get invalid inference. Tries left: $tries")
-            newState = getInferenceValidationState(genesis, oddPair, newModelName)
+            newState = getInferenceValidationState(genesis, oddPair, defaultModel)
         } while (newState.statusEnum != InferenceStatus.INVALIDATED && tries-- > 0)
         logSection("Verifying invalidation")
         assertThat(newState.statusEnum).isEqualTo(InferenceStatus.INVALIDATED)
