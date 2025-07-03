@@ -530,7 +530,7 @@ val defaultInferenceResponse = """
         "id": "cmpl-1c7b769de9b0494694eeee854da0a014",
         "object": "chat.completion",
         "created": 1736220740,
-        "model": "Qwen/Qwen2.5-7B-Instruct",
+        "model": "Qwen/Qwen2-72B-Instruct",
         "choices": [
             {
                 "index": 0,
