@@ -6,6 +6,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonPrimitive
 import com.google.gson.JsonSerializationContext
 import com.google.gson.JsonSerializer
+import com.google.gson.reflect.TypeToken
 import java.lang.reflect.Type
 import java.time.Duration
 import java.time.Instant
@@ -113,5 +114,39 @@ class MessageSerializer : JsonSerializer<GovernanceMessage> {
         }
 
         return jsonObject
+    }
+}
+
+class ParticipantStatsResponseDeserializer : JsonDeserializer<ParticipantStatsResponse> {
+    override fun deserialize(
+        json: JsonElement,
+        typeOfT: Type?,
+        context: JsonDeserializationContext?
+    ): ParticipantStatsResponse {
+        val jsonObject = json.asJsonObject
+        
+        // Get participantCurrentStats field, default to empty list if missing
+        val participantCurrentStats = if (jsonObject.has("participant_current_stats")) {
+            context?.deserialize<List<ParticipantStats>>(
+                jsonObject.get("participant_current_stats"),
+                object : TypeToken<List<ParticipantStats>>() {}.type
+            ) ?: listOf()
+        } else {
+            listOf()
+        }
+        
+        // Get other required fields
+        val blockHeight = jsonObject.get("block_height").asLong
+        val epochId = if (jsonObject.has("epoch_id") && !jsonObject.get("epoch_id").isJsonNull) {
+            jsonObject.get("epoch_id").asLong
+        } else {
+            null
+        }
+        
+        return ParticipantStatsResponse(
+            participantCurrentStats = participantCurrentStats,
+            blockHeight = blockHeight,
+            epochId = epochId
+        )
     }
 }

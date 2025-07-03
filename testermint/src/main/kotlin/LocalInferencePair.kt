@@ -9,6 +9,7 @@ import com.github.dockerjava.api.model.Volume
 import com.github.dockerjava.core.DockerClientBuilder
 import com.github.dockerjava.transport.DockerHttpClient
 import com.github.kittinunf.fuel.core.FuelError
+import com.github.tomakehurst.wiremock.common.Json.node
 import com.productscience.data.AppState
 import com.productscience.data.EpochPhase
 import com.productscience.data.EpochResponse
@@ -20,6 +21,7 @@ import com.productscience.data.OpenAIResponse
 import com.productscience.data.PubKey
 import com.productscience.data.Spec
 import com.productscience.data.TxResponse
+import org.apache.commons.compress.harmony.pack200.PackingUtils.config
 import org.tinylog.kotlin.Logger
 import java.io.File
 import java.time.Instant
@@ -293,7 +295,9 @@ data class LocalInferencePair(
         var currentBlock = startBlock
         val targetBlock = startBlock + maxBlocks
         Logger.info("Waiting for block $targetBlock, current block $currentBlock to match condition")
+        Logger.info("Condition: ${condition} ${this} ${this.node.getStatus().syncInfo.latestBlockHeight}")
         while (currentBlock < targetBlock) {
+            Logger.info("Current block: $currentBlock, target block: $targetBlock")
             if (condition(this)) {
                 return
             }
