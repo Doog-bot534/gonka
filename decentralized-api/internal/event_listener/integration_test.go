@@ -169,7 +169,8 @@ func createIntegrationTestSetup(reconcilialtionConfig *MlNodeReconciliationConfi
 		Address: "some-address",
 		PubKey:  "some-pub-key",
 	}
-	nodeBroker := broker.NewBroker(mockChainBridge, phaseTracker, &participantInfo, "http://localhost:8080/poc", mockClientFactory)
+	mockConfigManager := &apiconfig.ConfigManager{}
+	nodeBroker := broker.NewBroker(mockChainBridge, phaseTracker, &participantInfo, "http://localhost:8080/poc", mockClientFactory, mockConfigManager)
 
 	// Create real PoC orchestrator (not mocked - we want to test the real flow)
 	pocOrchestrator := poc.NewNodePoCOrchestrator(
@@ -233,7 +234,6 @@ func createIntegrationTestSetup(reconcilialtionConfig *MlNodeReconciliationConfi
 		finalReconciliationConfig = *reconcilialtionConfig
 	}
 	// Create dispatcher with mocked dependencies
-	mockConfigManager := &apiconfig.ConfigManager{}
 	dispatcher := NewOnNewBlockDispatcher(
 		nodeBroker,
 		pocOrchestrator,
@@ -343,10 +343,16 @@ func (setup *IntegrationTestSetup) simulateBlock(height int64) error {
 func (setup *IntegrationTestSetup) getNodeClient(nodeId string, port int) *mlnodeclient.MockClient {
 	// Construct URLs the same way the broker does
 	pocUrl := fmt.Sprintf("http://localhost:%d/poc", port)
+	inferenceUrl := fmt.Sprintf("http://localhost:8080/inference")
 
 	client := setup.MockClientFactory.GetClientForNode(pocUrl)
 	if client == nil {
-		panic(fmt.Sprintf("Mock client is nil for pocUrl: %s", pocUrl))
+		// Create the client if it doesn't exist (should have been created by node registration)
+		setup.MockClientFactory.CreateClient(pocUrl, inferenceUrl)
+		client = setup.MockClientFactory.GetClientForNode(pocUrl)
+		if client == nil {
+			panic(fmt.Sprintf("Mock client is still nil after creation for pocUrl: %s", pocUrl))
+		}
 	}
 
 	return client

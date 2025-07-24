@@ -197,7 +197,7 @@ func (s *InferenceValidator) ValidateByInferenceId(id string, node *broker.Node)
 }
 
 func (s *InferenceValidator) lockNodeAndValidate(inference types.Inference) (ValidationResult, error) {
-	return broker.LockNode(s.nodeBroker, inference.Model, inference.NodeVersion, func(node *broker.Node) (ValidationResult, error) {
+	return broker.LockNode(s.nodeBroker, inference.Model, func(node *broker.Node) (ValidationResult, error) {
 		return s.Validate(inference, node)
 	})
 }
@@ -237,9 +237,9 @@ func (s *InferenceValidator) Validate(inference types.Inference, inferenceNode *
 		return nil, err
 	}
 
-	completionsUrl, err := url.JoinPath(inferenceNode.InferenceUrl(), "v1/chat/completions")
+	completionsUrl, err := url.JoinPath(inferenceNode.InferenceUrlWithVersion(s.configManager.GetCurrentNodeVersion()), "v1/chat/completions")
 	if err != nil {
-		logging.Error("Failed to join url", types.Validation, "url", inferenceNode.InferenceUrl(), "error", err)
+		logging.Error("Failed to join url", types.Validation, "url", inferenceNode.InferenceUrlWithVersion(s.configManager.GetCurrentNodeVersion()), "error", err)
 		return nil, err
 	}
 
