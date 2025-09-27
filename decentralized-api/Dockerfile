@@ -34,6 +34,7 @@ RUN if [ "$GOARCH" = "arm64" ]; then \
         && rm -f /go/pkg/mod/github.com/\!cosm\!wasm/wasmvm@v1.5.9/internal/api/libwasmvm.x86_64.so; \
     fi
 
+COPY cosmos-sdk/ /app/cosmos-sdk
 COPY inference-chain/ /app/inference-chain
 
 WORKDIR /app/decentralized-api

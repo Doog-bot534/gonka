@@ -9,6 +9,7 @@ import com.productscience.data.TokenomicsParams
 import java.time.Duration
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+// 47560601577475 - 47499998286995 = 60603290480
 
 class StreamVestingTests : TestermintTest() {
 

@@ -33,3 +33,4 @@ prod-local/
 /testermint/downloads/
 /testermint/logs/
 balances-*.json
+cosmos-sdk/

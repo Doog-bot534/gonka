@@ -46,6 +46,7 @@ RUN --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build \
     go mod download
 
 COPY inference-chain/. .
+COPY cosmos-sdk/ /app/cosmos-sdk
 
 ARG LDFLAGS
 ARG TAGS=""
