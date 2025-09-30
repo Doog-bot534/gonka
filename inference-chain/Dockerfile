@@ -40,13 +40,13 @@ RUN wget -O /root/cw20_base.wasm \
 WORKDIR /app/inference-chain
 
 COPY inference-chain/go.mod inference-chain/go.sum ./
+COPY cosmos-sdk/ /app/cosmos-sdk
 
 RUN --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build \
     CGO_ENABLED=1 CC=gcc \
     go mod download
 
 COPY inference-chain/. .
-COPY cosmos-sdk/ /app/cosmos-sdk
 
 ARG LDFLAGS
 ARG TAGS=""

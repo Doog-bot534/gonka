@@ -68,6 +68,7 @@ define DOCKER_BUILD
 	@cp -r * .docker-context/inference-chain/ 2>/dev/null || true
 	@cp -r .[^.]* .docker-context/inference-chain/ 2>/dev/null || true
 	@mkdir -p .docker-context/cosmovisor && cp -r ../cosmovisor/* .docker-context/cosmovisor/
+	@mkdir -p .docker-context/cosmos-sdk && cp -r ../cosmos-sdk/* .docker-context/cosmos-sdk/
 	@DOCKER_BUILDKIT=1 \
 	docker build \
 		--load \
@@ -95,6 +96,7 @@ define DOCKER_BUILD_UPGRADE
 	@cp -r * .docker-context/inference-chain/ 2>/dev/null || true
 	@cp -r .[^.]* .docker-context/inference-chain/ 2>/dev/null || true
 	@mkdir -p .docker-context/cosmovisor && cp -r ../cosmovisor/* .docker-context/cosmovisor/
+	@mkdir -p .docker-context/cosmos-sdk && cp -r ../cosmos-sdk/* .docker-context/cosmos-sdk/
 	@DOCKER_BUILDKIT=1 \
 	docker build \
 		--platform $(PLATFORM) \
