@@ -486,7 +486,7 @@ data class LocalInferencePair(
                 throw e
             }
         }
-        return if (waitForProcessed) {
+        return if (waitForProcessed && submittedTransaction.code == 0) {
             this.node.waitForTxProcessed(submittedTransaction.txhash)
         } else {
             submittedTransaction
@@ -611,11 +611,21 @@ data class LocalInferencePair(
                 if (it.code != 0)
                     throw RuntimeException("Transaction failed: code=${it.code}, txhash=${it.txhash}, rawLog=${it.rawLog}")
             }.getProposalId()!!
-            this.makeGovernanceDeposit(proposalId, minDeposit)
+            val response = this.makeGovernanceDeposit(proposalId, minDeposit)
+            require(response.code == 0) { "Deposit failed: ${response.rawLog}" }
+            val votingPeriodEnd = Instant.now().plus(govParams.votingPeriod)
             logSection("Voting on proposal, no voters: ${noVoters.joinToString(", ")}")
             cluster.allPairs.forEach {
-                it.voteOnProposal(proposalId, if (noVoters.contains(it.name)) "no" else "yes")
+                val voteResponse = it.voteOnProposal(proposalId, if (noVoters.contains(it.name)) "no" else "yes")
+                require(voteResponse.code == 0) { "Vote failed: ${voteResponse.rawLog}" }
             }
+
+            logSection("Waiting for voting period to end")
+            while (Instant.now().isBefore(votingPeriodEnd)) {
+                Thread.sleep(1000)
+            }
+            cluster.allPairs.first().node.waitForNextBlock(2)
+
             proposalId
         }
 
