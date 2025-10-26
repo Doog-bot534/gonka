@@ -45,6 +45,40 @@ class ValidationItem(BaseModel):
     def to_dict(self):
         return self.model_dump()
 
+    def _count_single_choise(self) -> int:
+        inf_single_choise = 0
+        val_single_choise = 0
+        not_valid_single_choise = 0
+        not_valid_top_tokens = 0
+        both_obvious = 0
+        
+        for inf_position, val_position in zip(
+            self.inference_result.results, self.validation_result.results
+        ):
+            inf_logprobs = {k: v for k, v in inf_position.logprobs.items() if v > -9998}
+            val_logprobs = {k: v for k, v in val_position.logprobs.items() if v > -9998}
+
+            if len(inf_logprobs) == 1:
+                inf_single_choise += 1
+            if len(val_logprobs) == 1:
+                val_single_choise += 1
+
+            if len(inf_logprobs) == 1 and len(val_logprobs) != 1:
+                not_valid_single_choise += 1
+
+            if len(inf_logprobs) == 1 and len(val_logprobs) == 1:
+                both_obvious += 1
+
+            top_token_inf = max(inf_logprobs, key=inf_logprobs.get) if inf_logprobs else None
+            top_token_val = max(val_logprobs, key=val_logprobs.get) if val_logprobs else None
+
+            if top_token_inf != top_token_val:
+                not_valid_top_tokens += 1
+
+        return inf_single_choise, val_single_choise, not_valid_single_choise, not_valid_top_tokens, both_obvious
+        
+
+
 
 class ExperimentRequest(BaseModel):
     prompt: str
