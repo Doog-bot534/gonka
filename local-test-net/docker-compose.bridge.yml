@@ -1,7 +1,7 @@
 services:
   bridge:
     container_name: ${KEY_NAME}-bridge
-    image: ghcr.io/product-science/bridge-ethereum:latest
+    image: ghcr.io/product-science/bridge:latest
     build:
       context: ../bridge
       dockerfile: Dockerfile

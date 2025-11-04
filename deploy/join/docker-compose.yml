@@ -73,7 +73,7 @@ services:
   
   bridge:
     container_name: bridge
-    image: ghcr.io/product-science/bridge-ethereum:0.2.5
+    image: ghcr.io/product-science/bridge:0.2.5
     restart: unless-stopped
     environment:
       - GETH_DATA_DIR=/data/geth
