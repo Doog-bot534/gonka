@@ -3,6 +3,7 @@ import pytest
 import requests
 import datetime
 import hashlib
+import time
 from time import sleep
 
 from pow.service.client import PowClient
@@ -149,17 +150,18 @@ def test_generated_proofs(init_generation, server_urls):
 def test_validate_correct_batch(client, server_urls, latest_proof_batch):
     batch_receiver_url, _ = server_urls
     clear_batches(batch_receiver_url)
-    client.start_generation()
-    sleep(20)
     correct_pb = create_correct_batch(latest_proof_batch, n=100)
     client.start_validation()
     client.validate(correct_pb)
-    while True:
+    sleep(5)  # Give time for validation to complete and batch to be sent
+    timeout = 60  # 60 seconds timeout
+    start_time = time.time()
+    while time.time() - start_time < timeout:
         val_proof_batches = get_val_proof_batches(batch_receiver_url)
         if len(val_proof_batches) > 0:
             break
         sleep(1)
-    assert len(val_proof_batches) > 0
+    assert len(val_proof_batches) > 0, f"No validated batches received after {timeout} seconds"
     vpb = ValidatedBatch(**val_proof_batches[-1])
     assert len(vpb) == 100
     assert vpb.n_invalid == 0
@@ -168,17 +170,18 @@ def test_validate_correct_batch(client, server_urls, latest_proof_batch):
 def test_validate_incorrect_batch(client, server_urls, latest_proof_batch):
     batch_receiver_url, _ = server_urls
     clear_batches(batch_receiver_url)
-    client.start_generation()
-    sleep(20)
     incorrect_pb = create_incorrect_batch(latest_proof_batch, n=100, n_invalid=30)
     client.start_validation()
     client.validate(incorrect_pb)
-    while True:
+    sleep(5)  # Give time for validation to complete and batch to be sent
+    timeout = 60  # 60 seconds timeout
+    start_time = time.time()
+    while time.time() - start_time < timeout:
         val_proof_batches = get_val_proof_batches(batch_receiver_url)
         if len(val_proof_batches) > 0:
             break
         sleep(1)
-    assert len(val_proof_batches) > 0
+    assert len(val_proof_batches) > 0, f"No validated batches received after {timeout} seconds"
     vpb = ValidatedBatch(**val_proof_batches[-1])
 
     assert len(vpb) == 100
@@ -186,7 +189,7 @@ def test_validate_incorrect_batch(client, server_urls, latest_proof_batch):
 
 
 @pytest.mark.parametrize("node_id, node_count", [(0, 1), (1, 2), (2, 3)])
-def test_fresh_init(client, server_urls, node_id, node_count):
+def test_fresh_init(client, server_urls, model_params, node_id, node_count):
     batch_receiver_url, _ = server_urls
     client.stop()
     clear_batches(batch_receiver_url)
@@ -200,6 +203,7 @@ def test_fresh_init(client, server_urls, node_id, node_count):
         batch_size=5000,
         r_target=10,
         fraud_threshold=0.01,
+        params=model_params,
     )
     proof_batch = None
     while True:
