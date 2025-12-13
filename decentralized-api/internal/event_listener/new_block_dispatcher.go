@@ -316,9 +316,10 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 	}
 
 	// Check for PoC start for the next epoch. This is the most important transition.
-	if epochContext.IsStartOfPocStage(blockHeight) {
-
-		logging.Info("DapiStage:IsStartOfPocStage: sending StartPoCEvent to the PoC orchestrator", types.Stages, "blockHeight", blockHeight, "blockHash", blockHash)
+	// We wait until the PoC exchange window actually opens (Start + 1) to avoid "window closed" errors
+	// caused by submitting too early (block 40 vs window start 41).
+	if blockHeight == epochContext.PoCExchangeWindow().Start {
+		logging.Info("DapiStage:IsStartOfPocStage (offset +1): sending StartPoCEvent to the PoC orchestrator", types.Stages, "blockHeight", blockHeight, "blockHash", blockHash)
 		d.randomSeedManager.GenerateSeedInfo(epochContext.EpochIndex)
 		return
 	}
@@ -335,7 +336,9 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 		}
 	}
 
-	if epochContext.IsStartOfPoCValidationStage(blockHeight) {
+	// Fix: Trigger at the start of the Exchange Window (Start + 1)
+	// This prevents "Window Closed" errors at the exact start block
+	if blockHeight == epochContext.ValidationExchangeWindow().Start {
 		logging.Info("DapiStage:IsStartOfPoCValidationStage", types.Stages, "blockHeight", blockHeight, "blockHash", blockHash, "pocStartBlockHeight", epochContext.PocStartBlockHeight)
 		go func() {
 			d.nodePocOrchestrator.ValidateReceivedBatches(epochContext.PocStartBlockHeight)
@@ -539,9 +542,17 @@ func getCommandForPhase(phaseInfo chainphase.EpochState) (broker.Command, *chan 
 	// Regular phase commands
 	switch phaseInfo.CurrentPhase {
 	case types.PoCGeneratePhase, types.PoCGenerateWindDownPhase:
+		// Fix: Ensure we don't start before the exchange window opens (Start + 1)
+		if !phaseInfo.LatestEpoch.IsPoCExchangeWindow(phaseInfo.CurrentBlock.Height) {
+			return nil, nil
+		}
 		cmd := broker.NewStartPocCommand()
 		return cmd, &cmd.Response
 	case types.PoCValidatePhase, types.PoCValidateWindDownPhase:
+		// Fix: Ensure we don't start before the validation window opens (Start + 1)
+		if !phaseInfo.LatestEpoch.IsValidationExchangeWindow(phaseInfo.CurrentBlock.Height) {
+			return nil, nil
+		}
 		cmd := broker.NewInitValidateCommand()
 		return cmd, &cmd.Response
 	case types.InferencePhase:

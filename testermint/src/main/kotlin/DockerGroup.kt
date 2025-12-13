@@ -51,6 +51,7 @@ data class DockerGroup(
     val isGenesis: Boolean = false,
     val mockExternalPort: Int,
     val proxyPort: Int,
+    val apiSslPort: Int,
     val rpcPort: Int,
     val p2pPort: Int,
     val workingDirectory: String,
@@ -250,6 +251,7 @@ data class DockerGroup(
             put("IS_GENESIS", isGenesis.toString().lowercase())
             put("WIREMOCK_PORT", mockExternalPort.toString())
             put("PROXY_PORT", proxyPort.toString())
+            put("API_SSL_PORT", apiSslPort.toString())
             put("RPC_PORT", rpcPort.toString())
             put("P2P_PORT", p2pPort.toString())
             put("GENESIS_OVERRIDES_FILE", genesisOverridesFile)
@@ -380,6 +382,7 @@ fun createDockerGroup(
         isGenesis = iteration == 0,
         mockExternalPort = 8090 + iteration,
         proxyPort = 8000 + iteration,
+        apiSslPort = 443 + iteration,
         rpcPort = 26657 + iteration,
         p2pPort = 26656 + iteration,
         workingDirectory = repoRoot,
