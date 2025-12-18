@@ -32,12 +32,13 @@ func TestSeedsAtomicAdvance(t *testing.T) {
 
 	// Read back from DB using getters (hydrated state kept in memory, but we trust flush for DB write)
 	ctx := context.Background()
-	sPrev, ok, err := apiconfig.GetActiveSeed(ctx, mgr.SqlDb().GetDb(), "previous")
+	// Note: We access by epoch index now
+	sPrev, ok, err := apiconfig.GetSeedByEpoch(ctx, mgr.SqlDb().GetDb(), 1)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, int64(1), sPrev.Seed)
 
-	sCur, ok, err := apiconfig.GetActiveSeed(ctx, mgr.SqlDb().GetDb(), "current")
+	sCur, ok, err := apiconfig.GetSeedByEpoch(ctx, mgr.SqlDb().GetDb(), 2)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, int64(2), sCur.Seed)

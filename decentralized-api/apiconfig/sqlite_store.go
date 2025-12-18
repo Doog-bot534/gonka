@@ -72,7 +72,8 @@ func OpenSQLite(cfg SqliteConfig) (*sql.DB, error) {
 
 // EnsureSchema creates the minimal tables for storing dynamic config: inference nodes.
 func EnsureSchema(ctx context.Context, db *sql.DB) error {
-	stmt := `
+	// 1. Create tables first
+	tableDDL := `
 CREATE TABLE IF NOT EXISTS inference_nodes (
   id TEXT PRIMARY KEY,
   host TEXT NOT NULL,
@@ -104,8 +105,34 @@ CREATE TABLE IF NOT EXISTS seed_info (
   is_active BOOLEAN NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f','now'))
 );`
-	_, err := db.ExecContext(ctx, stmt)
-	return err
+	if _, err := db.ExecContext(ctx, tableDDL); err != nil {
+		return err
+	}
+
+	// 2. Check if the unique index exists. If not, perform deduplication before creating it.
+	// This ensures smooth migration for existing databases with duplicate seeds.
+	var indexCount int
+	err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type='index' AND name='idx_seed_info_epoch_index'`).Scan(&indexCount)
+	if err != nil {
+		return err
+	}
+
+	if indexCount == 0 {
+		// Remove duplicates, keeping the latest entry (highest id) for each epoch_index
+		// Note: This cleanup is only run once before index creation.
+		cleanup := `DELETE FROM seed_info WHERE id NOT IN (SELECT MAX(id) FROM seed_info GROUP BY epoch_index)`
+		if _, err := db.ExecContext(ctx, cleanup); err != nil {
+			return fmt.Errorf("failed to cleanup duplicate seeds: %w", err)
+		}
+
+		// Create the unique index
+		createIndex := `CREATE UNIQUE INDEX IF NOT EXISTS idx_seed_info_epoch_index ON seed_info(epoch_index)`
+		if _, err := db.ExecContext(ctx, createIndex); err != nil {
+			return fmt.Errorf("failed to create unique index on seed_info: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // UpsertInferenceNodes replaces or inserts the given nodes by id.
@@ -284,33 +311,54 @@ INSERT INTO inference_nodes (
 
 // SeedInfo typed accessors
 
-// SetActiveSeed deactivates previous active seed of given type and inserts a new active row.
-func SetActiveSeed(ctx context.Context, db *sql.DB, seedType string, info SeedInfo) error {
+// UpsertSeed inserts or updates a seed based on epoch_index.
+// It ignores 'type' and 'is_active' columns (filling them with defaults) as they are obsolete.
+func UpsertSeed(ctx context.Context, db *sql.DB, s SeedInfo) error {
 	if db == nil {
 		return errors.New("db is nil")
 	}
+	// Skip empty seeds
+	if s.Seed == 0 && s.Signature == "" {
+		return nil
+	}
+
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, `UPDATE seed_info SET is_active = 0 WHERE type = ? AND is_active = 1`, seedType); err != nil {
-		return err
-	}
-	q := `INSERT INTO seed_info(type, seed, epoch_index, signature, claimed, is_active) VALUES(?, ?, ?, ?, ?, 1)`
-	if _, err := tx.ExecContext(ctx, q, seedType, info.Seed, info.EpochIndex, info.Signature, info.Claimed); err != nil {
+	if err := upsertSeedTx(ctx, tx, s); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-// GetActiveSeed returns the active seed for type; ok=false if none.
-func GetActiveSeed(ctx context.Context, db *sql.DB, seedType string) (SeedInfo, bool, error) {
+func upsertSeedTx(ctx context.Context, tx *sql.Tx, s SeedInfo) error {
+	// Use a fixed type and is_active=1 since they are required but unused logically
+	const defaultType = "seed"
+	const defaultActive = true
+
+	q := `
+INSERT INTO seed_info (type, seed, epoch_index, signature, claimed, is_active)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT(epoch_index) DO UPDATE SET
+  seed = excluded.seed,
+  signature = excluded.signature,
+  claimed = excluded.claimed,
+  is_active = excluded.is_active,
+  type = excluded.type
+`
+	_, err := tx.ExecContext(ctx, q, defaultType, s.Seed, s.EpochIndex, s.Signature, s.Claimed, defaultActive)
+	return err
+}
+
+// GetSeedByEpoch returns the seed for the given epoch index.
+func GetSeedByEpoch(ctx context.Context, db *sql.DB, epochIndex uint64) (SeedInfo, bool, error) {
 	if db == nil {
 		return SeedInfo{}, false, errors.New("db is nil")
 	}
-	row := db.QueryRowContext(ctx, `SELECT seed, epoch_index, signature, claimed FROM seed_info WHERE type = ? AND is_active = 1 ORDER BY id DESC LIMIT 1`, seedType)
+	row := db.QueryRowContext(ctx, `SELECT seed, epoch_index, signature, claimed FROM seed_info WHERE epoch_index = ?`, epochIndex)
 	var s SeedInfo
 	if err := row.Scan(&s.Seed, &s.EpochIndex, &s.Signature, &s.Claimed); err != nil {
 		if err == sql.ErrNoRows {
@@ -321,12 +369,12 @@ func GetActiveSeed(ctx context.Context, db *sql.DB, seedType string) (SeedInfo, 
 	return s, true, nil
 }
 
-// MarkSeedClaimed sets claimed=true for current active seed of given type. ok=false if none.
-func MarkSeedClaimed(ctx context.Context, db *sql.DB, seedType string) (ok bool, err error) {
+// MarkSeedClaimedByEpoch sets claimed=true for seed of given epoch.
+func MarkSeedClaimedByEpoch(ctx context.Context, db *sql.DB, epochIndex uint64) (ok bool, err error) {
 	if db == nil {
 		return false, errors.New("db is nil")
 	}
-	res, err := db.ExecContext(ctx, `UPDATE seed_info SET claimed = 1 WHERE type = ? AND is_active = 1`, seedType)
+	res, err := db.ExecContext(ctx, `UPDATE seed_info SET claimed = 1 WHERE epoch_index = ?`, epochIndex)
 	if err != nil {
 		return false, err
 	}
@@ -334,12 +382,12 @@ func MarkSeedClaimed(ctx context.Context, db *sql.DB, seedType string) (ok bool,
 	return affected > 0, nil
 }
 
-// IsSeedClaimed reads claimed for active seed of given type. ok=false if none.
-func IsSeedClaimed(ctx context.Context, db *sql.DB, seedType string) (claimed bool, ok bool, err error) {
+// IsSeedClaimedByEpoch reads claimed for seed of given epoch.
+func IsSeedClaimedByEpoch(ctx context.Context, db *sql.DB, epochIndex uint64) (claimed bool, ok bool, err error) {
 	if db == nil {
 		return false, false, errors.New("db is nil")
 	}
-	row := db.QueryRowContext(ctx, `SELECT claimed FROM seed_info WHERE type = ? AND is_active = 1 ORDER BY id DESC LIMIT 1`, seedType)
+	row := db.QueryRowContext(ctx, `SELECT claimed FROM seed_info WHERE epoch_index = ?`, epochIndex)
 	var c bool
 	if err := row.Scan(&c); err != nil {
 		if err == sql.ErrNoRows {

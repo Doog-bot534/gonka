@@ -646,13 +646,16 @@ func (cm *ConfigManager) migrateDynamicDataToDb(ctx context.Context) error {
 
 	// Seeds (migrate once into typed table if not already present)
 	if s := config.CurrentSeed; s.Seed != 0 || s.Signature != "" {
-		_ = SetActiveSeed(ctx, cm.sqlDb.GetDb(), "current", s)
+		_ = UpsertSeed(ctx, cm.sqlDb.GetDb(), s)
 	}
 	if s := config.PreviousSeed; s.Seed != 0 || s.Signature != "" {
-		_ = SetActiveSeed(ctx, cm.sqlDb.GetDb(), "previous", s)
+		_ = UpsertSeed(ctx, cm.sqlDb.GetDb(), s)
 	}
 	if s := config.UpcomingSeed; s.Seed != 0 || s.Signature != "" {
-		_ = SetActiveSeed(ctx, cm.sqlDb.GetDb(), "upcoming", s)
+		_ = UpsertSeed(ctx, cm.sqlDb.GetDb(), s)
+	}
+	if s := config.CurrentSeed; s.EpochIndex > 0 {
+		_ = KVSetInt64(ctx, cm.sqlDb.GetDb(), kvKeyCurrentEpochIndex, int64(s.EpochIndex))
 	}
 
 	// Upgrade plan
@@ -702,23 +705,24 @@ func (cm *ConfigManager) HydrateFromDB(_ context.Context) error {
 			logging.Info("Reading nodes from DB", types.Config, "nodes", nodes)
 			cm.currentConfig.Nodes = nodes
 		}
-		if s, ok, err := GetActiveSeed(ctx, db, "current"); err == nil && ok {
-			cm.currentConfig.CurrentSeed = s
-			sanitizedS := s
-			sanitizedS.Seed = 0
-			logging.Info("Reading active seed from DB", types.Config, "sanitizedSeed", s)
-		}
-		if s, ok, err := GetActiveSeed(ctx, db, "previous"); err == nil && ok {
-			cm.currentConfig.PreviousSeed = s
-			sanitizedS := s
-			sanitizedS.Seed = 0
-			logging.Info("Reading previous seed from DB", types.Config, "sanitizedSeed", s)
-		}
-		if s, ok, err := GetActiveSeed(ctx, db, "upcoming"); err == nil && ok {
-			cm.currentConfig.UpcomingSeed = s
-			sanitizedS := s
-			sanitizedS.Seed = 0
-			logging.Info("Reading upcoming seed from DB", types.Config, "sanitizedSeed", s)
+		// Attempt to read current epoch index
+		currentEpochIdx, okEpoch, _ := KVGetInt64(ctx, db, kvKeyCurrentEpochIndex)
+		if okEpoch && currentEpochIdx > 0 {
+			currIdx := uint64(currentEpochIdx)
+			if s, ok, err := GetSeedByEpoch(ctx, db, currIdx); err == nil && ok {
+				cm.currentConfig.CurrentSeed = s
+				logging.Info("Reading current seed from DB by epoch", types.Config, "epoch", currIdx)
+			}
+			if s, ok, err := GetSeedByEpoch(ctx, db, currIdx-1); err == nil && ok {
+				cm.currentConfig.PreviousSeed = s
+				logging.Info("Reading previous seed from DB by epoch", types.Config, "epoch", currIdx-1)
+			}
+			if s, ok, err := GetSeedByEpoch(ctx, db, currIdx+1); err == nil && ok {
+				cm.currentConfig.UpcomingSeed = s
+				logging.Info("Reading upcoming seed from DB by epoch", types.Config, "epoch", currIdx+1)
+			}
+		} else {
+			logging.Info("No current epoch index found in DB. Skipping seed hydration (seeds will be populated on next chain update).", types.Config)
 		}
 		if v, ok, err := KVGetInt64(ctx, db, kvKeyCurrentHeight); err == nil && ok {
 			logging.Info("Reading current height from DB", types.Config, "height", v)
@@ -846,25 +850,37 @@ func setSeedsAtomic(ctx context.Context, db *sql.DB, cfg Config) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `UPDATE seed_info SET is_active = 0 WHERE is_active = 1 AND type IN ('current','previous','upcoming')`); err != nil {
-		return err
-	}
-	if err := insertSeedTx(ctx, tx, "current", cfg.CurrentSeed); err != nil {
-		return err
-	}
-	if err := insertSeedTx(ctx, tx, "previous", cfg.PreviousSeed); err != nil {
-		return err
-	}
-	if err := insertSeedTx(ctx, tx, "upcoming", cfg.UpcomingSeed); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
 
-func insertSeedTx(ctx context.Context, tx *sql.Tx, seedType string, s SeedInfo) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO seed_info(type, seed, epoch_index, signature, claimed, is_active) VALUES(?, ?, ?, ?, ?, 1)`,
-		seedType, s.Seed, s.EpochIndex, s.Signature, s.Claimed)
-	return err
+	if cfg.CurrentSeed.Seed != 0 || cfg.CurrentSeed.Signature != "" {
+		if err := upsertSeedTx(ctx, tx, cfg.CurrentSeed); err != nil {
+			return err
+		}
+	}
+	if cfg.PreviousSeed.Seed != 0 || cfg.PreviousSeed.Signature != "" {
+		if err := upsertSeedTx(ctx, tx, cfg.PreviousSeed); err != nil {
+			return err
+		}
+	}
+	if cfg.UpcomingSeed.Seed != 0 || cfg.UpcomingSeed.Signature != "" {
+		if err := upsertSeedTx(ctx, tx, cfg.UpcomingSeed); err != nil {
+			return err
+		}
+	}
+
+	// Atomically update current_epoch_index to ensure hydration works if we updated seed types
+	if cfg.CurrentSeed.EpochIndex > 0 {
+		bytes, err := json.Marshal(cfg.CurrentSeed.EpochIndex)
+		if err != nil {
+			return err
+		}
+		q := `INSERT INTO kv_config(key, value_json) VALUES(?, ?)
+ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = (STRFTIME('%Y-%m-%d %H:%M:%f','now'))`
+		if _, err := tx.ExecContext(ctx, q, kvKeyCurrentEpochIndex, string(bytes)); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 // ensureDbReady pings the DB and attempts to reopen if needed
@@ -927,4 +943,5 @@ const (
 	kvKeyMLNodeKeyConfig     = "ml_node_key_config"
 	kvKeyNodeConfigMerged    = "node_config_merged"
 	kvKeyConfigMigrated      = "config_migrated"
+	kvKeyCurrentEpochIndex   = "current_epoch_index"
 )
