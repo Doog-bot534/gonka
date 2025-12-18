@@ -18,8 +18,16 @@ func (k msgServer) SubmitPocBatch(goCtx context.Context, msg *types.MsgSubmitPoc
 		return nil, sdkerrors.Wrap(types.ErrPocNodeIdEmpty, "NodeId is empty")
 	}
 
-	// PoC period validation is performed in the ante handler (PocPeriodValidationDecorator)
-	// No need to duplicate validation here
+	// Defense-in-depth: Validate PoC period even though AnteHandler should catch this
+	// This ensures validation occurs even if the message was nested and bypassed the AnteHandler
+	if err := k.ValidatePocPeriod(ctx, msg.PocStageStartBlockHeight, PocWindowBatch); err != nil {
+		k.LogError(PocFailureTag+"[SubmitPocBatch] PoC period validation failed", types.PoC,
+			"participant", msg.Creator,
+			"pocStageStartBlockHeight", msg.PocStageStartBlockHeight,
+			"error", err)
+		return nil, err
+	}
+
 	currentBlockHeight := ctx.BlockHeight()
 	startBlockHeight := msg.PocStageStartBlockHeight
 

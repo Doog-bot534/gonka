@@ -12,8 +12,17 @@ const PocFailureTag = "[PoC Failure]"
 func (k msgServer) SubmitPocValidation(goCtx context.Context, msg *types.MsgSubmitPocValidation) (*types.MsgSubmitPocValidationResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
-	// PoC period validation is performed in the ante handler (PocPeriodValidationDecorator)
-	// No need to duplicate validation here
+	// Defense-in-depth: Validate PoC period even though AnteHandler should catch this
+	// This ensures validation occurs even if the message was nested and bypassed the AnteHandler
+	if err := k.ValidatePocPeriod(ctx, msg.PocStageStartBlockHeight, PocWindowValidation); err != nil {
+		k.LogError(PocFailureTag+"[SubmitPocValidation] PoC period validation failed", types.PoC,
+			"participant", msg.ParticipantAddress,
+			"validatorParticipant", msg.Creator,
+			"pocStageStartBlockHeight", msg.PocStageStartBlockHeight,
+			"error", err)
+		return nil, err
+	}
+
 	currentBlockHeight := ctx.BlockHeight()
 
 	validation := toPoCValidation(msg, currentBlockHeight)
