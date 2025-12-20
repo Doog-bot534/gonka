@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -72,8 +73,8 @@ func OpenSQLite(cfg SqliteConfig) (*sql.DB, error) {
 
 // EnsureSchema creates the minimal tables for storing dynamic config: inference nodes.
 func EnsureSchema(ctx context.Context, db *sql.DB) error {
-	// 1. Create tables first
-	tableDDL := `
+	// DDL for all tables
+	inferenceNodesDDL := `
 CREATE TABLE IF NOT EXISTS inference_nodes (
   id TEXT PRIMARY KEY,
   host TEXT NOT NULL,
@@ -86,15 +87,15 @@ CREATE TABLE IF NOT EXISTS inference_nodes (
   hardware_json TEXT NOT NULL,
   updated_at DATETIME NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f','now')),
   created_at DATETIME NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f','now'))
-);
-
+);`
+	kvConfigDDL := `
 CREATE TABLE IF NOT EXISTS kv_config (
   key TEXT PRIMARY KEY,
   value_json TEXT NOT NULL,
   updated_at DATETIME NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f','now')),
   created_at DATETIME NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f','now'))
-);
-
+);`
+	seedInfoDDL := `
 CREATE TABLE IF NOT EXISTS seed_info (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   type TEXT NOT NULL, -- 'current', 'previous', 'upcoming'
@@ -105,34 +106,85 @@ CREATE TABLE IF NOT EXISTS seed_info (
   is_active BOOLEAN NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f','now'))
 );`
-	if _, err := db.ExecContext(ctx, tableDDL); err != nil {
+
+	if _, err := db.ExecContext(ctx, inferenceNodesDDL); err != nil {
 		return err
 	}
+	if _, err := db.ExecContext(ctx, kvConfigDDL); err != nil {
+		return err
+	}
+	// Note: We execute seedInfoDDL later conditionally to handle migration safely.
 
-	// 2. Check if the unique index exists. If not, perform deduplication before creating it.
-	// This ensures smooth migration for existing databases with duplicate seeds.
+	// Check if unique index exists. If yes, we are good.
 	var indexCount int
 	err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type='index' AND name='idx_seed_info_epoch_index'`).Scan(&indexCount)
 	if err != nil {
 		return err
 	}
 
-	if indexCount == 0 {
-		// Remove duplicates, keeping the latest entry (highest id) for each epoch_index
-		// Note: This cleanup is only run once before index creation.
-		cleanup := `DELETE FROM seed_info WHERE id NOT IN (SELECT MAX(id) FROM seed_info GROUP BY epoch_index)`
-		if _, err := db.ExecContext(ctx, cleanup); err != nil {
-			return fmt.Errorf("failed to cleanup duplicate seeds: %w", err)
+	if indexCount > 0 {
+		// Index exists, schema is up to date. Ensure table exists (DDL is idempotent)
+		if _, err := db.ExecContext(ctx, seedInfoDDL); err != nil {
+			return err
 		}
-
-		// Create the unique index
-		createIndex := `CREATE UNIQUE INDEX IF NOT EXISTS idx_seed_info_epoch_index ON seed_info(epoch_index)`
-		if _, err := db.ExecContext(ctx, createIndex); err != nil {
-			return fmt.Errorf("failed to create unique index on seed_info: %w", err)
-		}
+		return nil
 	}
 
-	return nil
+	// Index missing. Check if table exists.
+	var tableCount int
+	err = db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type='table' AND name='seed_info'`).Scan(&tableCount)
+	if err != nil {
+		return err
+	}
+
+	if tableCount == 0 {
+		// Table doesn't exist, create it and index.
+		if _, err := db.ExecContext(ctx, seedInfoDDL); err != nil {
+			return err
+		}
+		if _, err := db.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_seed_info_epoch_index ON seed_info(epoch_index)`); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// Table exists but index missing. Perform safe migration (Swap Table).
+	// 1. Rename old table to backup
+	// 2. Create new table
+	// 3. Copy deduplicated data
+	// 4. Create index
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	backupTable := fmt.Sprintf("seed_info_backup_%d", time.Now().Unix())
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("ALTER TABLE seed_info RENAME TO %s", backupTable)); err != nil {
+		return fmt.Errorf("rename old table: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, seedInfoDDL); err != nil {
+		return fmt.Errorf("create new table: %w", err)
+	}
+
+	// Copy latest seed per epoch
+	// Filter out empty seeds (seed=0 and signature is empty) during migration as they are invalid/obsolete
+	copyQuery := fmt.Sprintf(`
+INSERT INTO seed_info (type, seed, epoch_index, signature, claimed, is_active, created_at)
+SELECT type, seed, epoch_index, signature, claimed, is_active, created_at
+FROM %s
+WHERE id IN (SELECT MAX(id) FROM %s GROUP BY epoch_index)
+AND NOT (seed = 0 AND signature = '')`, backupTable, backupTable)
+	if _, err := tx.ExecContext(ctx, copyQuery); err != nil {
+		return fmt.Errorf("copy data: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_seed_info_epoch_index ON seed_info(epoch_index)`); err != nil {
+		return fmt.Errorf("create index: %w", err)
+	}
+
+	return tx.Commit()
 }
 
 // UpsertInferenceNodes replaces or inserts the given nodes by id.
