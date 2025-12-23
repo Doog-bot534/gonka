@@ -76,6 +76,9 @@ func LoadConfigManagerWithPaths(configPath, sqlitePath, nodeConfigPath string) (
 		return nil, err
 	}
 	// TODO: why do we want to write it to the disk in the first place?
+	//  Since every time on startup we will anyway be rewriting it with env vars?
+	//  Maybe remove writing to disk alltogether?
+	//  Or risky?
 	if migrated {
 		log.Printf("Successfully migrated dynamic data to DB. Proceeding to write static config in the DB")
 		if err = manager.Write(); err != nil {
