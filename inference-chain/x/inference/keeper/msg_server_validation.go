@@ -73,14 +73,15 @@ func (k msgServer) Validation(goCtx context.Context, msg *types.MsgValidation) (
 			"error", err)
 		return nil, err
 	}
-	passValue := model.ValidationThreshold.ToFloat()
+	passValue := model.ValidationThreshold.ToDecimal()
+	messageValue := decimal.NewFromFloat(msg.Value)
 
-	passed := msg.Value > passValue
+	passed := messageValue.GreaterThan(passValue)
 	k.LogInfo(
 		"Validation details", types.Validation,
 		"passValue", passValue,
 		"passed", passed,
-		"msgValue", msg.Value,
+		"msgValue", messageValue,
 		"model", inference.Model,
 	)
 	needsRevalidation := false

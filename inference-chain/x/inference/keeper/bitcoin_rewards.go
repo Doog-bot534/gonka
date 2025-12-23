@@ -2,7 +2,6 @@ package keeper
 
 import (
 	"fmt"
-	"math"
 	"math/big"
 
 	"cosmossdk.io/log"
@@ -121,26 +120,23 @@ func CalculateFixedEpochReward(epochsSinceGenesis uint64, initialReward uint64, 
 
 	// Convert inputs to decimal for precise calculation
 	initialRewardDecimal := decimal.NewFromInt(int64(initialReward))
-	epochsDecimal := decimal.NewFromInt(int64(epochsSinceGenesis))
 
 	// Calculate decay exponent: decay_rate × epochs_elapsed
 	// Convert types.Decimal to shopspring decimal for mathematical operations
 	decayRateDecimal := decayRate.ToDecimal()
-	exponent := decayRateDecimal.Mul(epochsDecimal)
-
-	// Calculate exponential decay: exp(decay_rate × epochs_elapsed)
-	// Using math.Exp with float64 conversion for exponential calculation
-	expValue := math.Exp(exponent.InexactFloat64())
-
-	// Handle edge cases for exponential result
-	if math.IsInf(expValue, 0) || math.IsNaN(expValue) {
-		// If result is infinite or NaN, return 0 (complete decay)
+	exponent, err := types.GetExponent(decayRateDecimal)
+	if err != nil {
 		return 0
 	}
 
+	// Calculate exponential decay: exp(decay_rate × epochs_elapsed)
+	// Using math.Exp with float64 conversion for exponential calculation
+	expValue, err := exponent.PowInt32(int32(epochsSinceGenesis))
+	if err != nil {
+		return 0
+	}
 	// Convert back to decimal and multiply with initial reward
-	expDecimal := decimal.NewFromFloat(expValue)
-	currentReward := initialRewardDecimal.Mul(expDecimal)
+	currentReward := initialRewardDecimal.Mul(expValue)
 
 	// Ensure result is non-negative and convert to uint64
 	if currentReward.IsNegative() || currentReward.LessThan(decimal.NewFromInt(1)) {

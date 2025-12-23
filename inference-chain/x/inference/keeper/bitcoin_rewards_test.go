@@ -2,11 +2,13 @@ package keeper
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"testing"
 
 	"cosmossdk.io/log"
 	"github.com/productscience/inference/x/inference/types"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,6 +34,94 @@ func createTestValidationWeight(memberAddress string, weight int64, reputation i
 	}
 }
 
+func TestExponent(t *testing.T) {
+	tests := []struct {
+		name      string
+		decayRate decimal.Decimal
+	}{
+		{
+			name:      "Standard decay rate -0.000475",
+			decayRate: decimal.New(-475, -6),
+		},
+		{
+			name:      "Small positive decay rate",
+			decayRate: decimal.New(1, -4),
+		},
+		{
+			name:      "Very small decay rate",
+			decayRate: decimal.New(-1, -6),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			exponent, err := types.GetExponent(tt.decayRate)
+			require.NoError(t, err)
+			roughExponent := math.Exp(tt.decayRate.InexactFloat64())
+			require.Equal(t, roughExponent, exponent.InexactFloat64())
+		})
+	}
+}
+
+func TestFixedEpochRewardPrecise(t *testing.T) {
+	// Test parameters matching Bitcoin proposal defaults
+	initialReward := uint64(285000000000000)
+	decayRate := types.DecimalFromFloat(-0.000475) // Halving every ~1460 epochs (4 years)
+
+	tests := []struct {
+		name               string
+		epochsSinceGenesis uint64
+		expectedReward     uint64 // Approximate expected values (to be corrected)
+	}{
+		{
+			name:               "Zero epochs",
+			epochsSinceGenesis: 0,
+			expectedReward:     285000000000000, // Initial reward
+		},
+		{
+			name:               "100 epochs",
+			epochsSinceGenesis: 100,
+			expectedReward:     271778984842800, // ~95% of initial (guess)
+		},
+		{
+			name:               "500 epochs",
+			epochsSinceGenesis: 500,
+			expectedReward:     224750113929613, // ~77% of initial (guess)
+		},
+		{
+			name:               "1000 epochs",
+			epochsSinceGenesis: 1000,
+			expectedReward:     177237241092541, // ~63% of initial (guess)
+		},
+		{
+			name:               "1460 epochs (first halving)",
+			epochsSinceGenesis: 1460,
+			expectedReward:     142449732098072, // ~50% of initial (halving)
+		},
+		{
+			name:               "2920 epochs (second halving)",
+			epochsSinceGenesis: 2920,
+			expectedReward:     71199740964254, // ~25% of initial (two halvings)
+		},
+		{
+			name:               "5000 epochs",
+			epochsSinceGenesis: 5000,
+			expectedReward:     26509129425046, // ~10% of initial (guess)
+		},
+		{
+			name:               "10000 epochs",
+			epochsSinceGenesis: 10000,
+			expectedReward:     2465733132890, // ~0.9% of initial (guess)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := CalculateFixedEpochReward(tt.epochsSinceGenesis, initialReward, decayRate)
+			require.Equal(t, tt.expectedReward, result, "Expected reward for %d epochs should be %d but was %d", tt.epochsSinceGenesis, tt.expectedReward, result)
+		})
+	}
+}
 func TestCalculateFixedEpochReward(t *testing.T) {
 	// Test parameters matching Bitcoin proposal defaults
 	initialReward := uint64(285000000000000)
