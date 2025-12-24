@@ -85,7 +85,7 @@ func TestBitcoinRewardIntegration_RewardCalculationFunctions(t *testing.T) {
 	params := types.DefaultParams()
 	params.BitcoinRewardParams.UseBitcoinRewards = true
 	params.BitcoinRewardParams.InitialEpochReward = 100000
-	params.BitcoinRewardParams.DecayRate = types.DecimalFromFloat(-0.001) // 0.1% decay per epoch
+	params.BitcoinRewardParams.DecayRate = types.DecimalFromFloat(-0.000001) // 0.1% decay per epoch
 	params.BitcoinRewardParams.GenesisEpoch = 0
 	require.NoError(t, k.SetParams(ctx, params))
 

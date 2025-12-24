@@ -851,6 +851,8 @@ var (
 	exponentVerySmall  = decimal.New(9999990000005, -13)
 	decayRatePositive  = decimal.New(1, -4)
 	exponentPositive   = decimal.New(10001000050001667, -16)
+	decayRateZero      = decimal.Zero
+	exponentZero       = decimal.NewFromInt(1)
 )
 
 func GetExponent(decayRate decimal.Decimal) (decimal.Decimal, error) {
@@ -863,6 +865,9 @@ func GetExponent(decayRate decimal.Decimal) (decimal.Decimal, error) {
 	}
 	if decayRate.Equal(decayRatePositive) {
 		return exponentPositive, nil
+	}
+	if decayRate.Equal(decayRateZero) {
+		return exponentZero, nil
 	}
 	return decimal.Zero, fmt.Errorf("unsupported decay rate: %s", decayRate.String())
 }
