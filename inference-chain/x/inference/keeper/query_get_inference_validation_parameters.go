@@ -28,7 +28,7 @@ func (k Keeper) GetInferenceValidationParameters(goCtx context.Context, req *typ
 	}
 
 	previousEpochGroup, err := k.GetPreviousEpochGroup(ctx)
-	validatorPowers := make([]*types.ValidatorPower, 1)
+	validatorPowers := make([]*types.ValidatorPower, 0)
 	if err != nil {
 		k.LogWarn("No previous Epoch Group found", types.EpochGroup)
 	}
