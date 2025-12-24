@@ -719,7 +719,7 @@ func validateStabilityZoneBound(i interface{}) error {
 
 	value := bound.ToDecimal()
 	if value.IsNegative() || value.GreaterThan(decimal.NewFromInt(1)) {
-		return fmt.Errorf("stability zone bound must be between 0.0 and 1.0, got: %f", value)
+		return fmt.Errorf("stability zone bound must be between 0.0 and 1.0, got: %s", value.String())
 	}
 	return nil
 }

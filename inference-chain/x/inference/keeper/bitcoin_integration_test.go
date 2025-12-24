@@ -5,6 +5,7 @@ import (
 
 	"cosmossdk.io/log"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 
 	keepertest "github.com/productscience/inference/testutil/keeper"
@@ -337,7 +338,7 @@ func TestBitcoinRewardIntegration_Phase2Stubs(t *testing.T) {
 		bonuses := keeper.CalculateUtilizationBonuses(participants, epochGroupData)
 		require.NotNil(t, bonuses, "Utilization bonuses should not be nil")
 		require.Len(t, bonuses, 1, "Should have bonus entry for participant")
-		require.Equal(t, 1.0, bonuses["participant1"], "Phase 1 stub should return 1.0 multiplier")
+		require.Equal(t, decimal.NewFromInt(1), bonuses["participant1"], "Phase 1 stub should return 1.0 multiplier")
 	})
 
 	t.Run("Test coverage bonus stubs return 1.0", func(t *testing.T) {
@@ -345,7 +346,7 @@ func TestBitcoinRewardIntegration_Phase2Stubs(t *testing.T) {
 		bonuses := keeper.CalculateModelCoverageBonuses(participants, epochGroupData)
 		require.NotNil(t, bonuses, "Coverage bonuses should not be nil")
 		require.Len(t, bonuses, 1, "Should have bonus entry for participant")
-		require.Equal(t, 1.0, bonuses["participant1"], "Phase 1 stub should return 1.0 multiplier")
+		require.Equal(t, decimal.NewFromInt(1), bonuses["participant1"], "Phase 1 stub should return 1.0 multiplier")
 	})
 
 	t.Run("Test MLNode assignment stubs return empty", func(t *testing.T) {
