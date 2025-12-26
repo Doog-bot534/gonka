@@ -828,6 +828,8 @@ func DecimalFromDecimal(d decimal.Decimal) *Decimal {
 	return &Decimal{Value: d.CoefficientInt64(), Exponent: d.Exponent()}
 }
 
+var DecimalZero = Decimal{Value: 0, Exponent: 0}
+
 func DecimalFromFloat32(f float32) *Decimal {
 	d := decimal.NewFromFloat32(f)
 	return &Decimal{Value: d.CoefficientInt64(), Exponent: d.Exponent()}

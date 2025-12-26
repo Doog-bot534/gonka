@@ -74,7 +74,7 @@ func (k msgServer) Validation(goCtx context.Context, msg *types.MsgValidation) (
 		return nil, err
 	}
 	passValue := model.ValidationThreshold.ToDecimal()
-	messageValue := decimal.NewFromFloat(msg.Value)
+	messageValue := msg.Value.ToDecimal()
 
 	passed := messageValue.GreaterThan(passValue)
 	k.LogInfo(

@@ -38,7 +38,7 @@ func setupInferenceInVoting(t *testing.T) (*MockInferenceHelper, *types.Inferenc
 	_, err = inferenceHelper.MessageServer.Validation(ctx, &types.MsgValidation{
 		InferenceId: expected.InferenceId,
 		Creator:     testutil.Validator,
-		Value:       0.80, // below threshold to trigger voting
+		Value:       types.DecimalFromFloat(0.0), // below threshold to trigger voting
 	})
 	require.NoError(t, err)
 

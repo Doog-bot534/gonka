@@ -37,7 +37,7 @@ func TestMsgServer_Validation(t *testing.T) {
 	_, err = inferenceHelper.MessageServer.Validation(ctx, &types.MsgValidation{
 		InferenceId: expected.InferenceId,
 		Creator:     testutil.Validator,
-		Value:       0.9999,
+		Value:       types.DecimalFromFloat(0.9999),
 	})
 	require.NoError(t, err)
 	inference, found := k.GetInference(ctx, expected.InferenceId)
@@ -80,7 +80,7 @@ func TestMsgServer_Validation_Invalidate(t *testing.T) {
 	_, err = ms.Validation(ctx, &types.MsgValidation{
 		InferenceId: expected.InferenceId,
 		Creator:     testutil.Validator,
-		Value:       0.80,
+		Value:       types.DecimalFromFloat(0.80),
 	})
 	require.NoError(t, err)
 	inference, found := k.GetInference(ctx, expected.InferenceId)
@@ -105,7 +105,7 @@ func TestMsgServer_Validation_Invalidate(t *testing.T) {
 	_, err = ms.Validation(ctx, &types.MsgValidation{
 		InferenceId:  expected.InferenceId,
 		Creator:      testutil.Requester,
-		Value:        0.80,
+		Value:        types.DecimalFromFloat(0.80),
 		Revalidation: true,
 	})
 	inference, found = k.GetInference(ctx, expected.InferenceId)
@@ -147,7 +147,7 @@ func TestMsgServer_NoInference(t *testing.T) {
 	_, err := ms.Validation(ctx, &types.MsgValidation{
 		InferenceId: INFERENCE_ID,
 		Creator:     testutil.Validator,
-		Value:       0.9999,
+		Value:       types.DecimalFromFloat(0.9999),
 	})
 	require.Error(t, err)
 }
@@ -160,7 +160,7 @@ func TestMsgServer_NotFinished(t *testing.T) {
 	_, err = inferenceHelper.MessageServer.Validation(ctx, &types.MsgValidation{
 		InferenceId: expected.InferenceId,
 		Creator:     testutil.Validator,
-		Value:       0.9999,
+		Value:       types.DecimalFromFloat(0.9999),
 	})
 	require.Error(t, err)
 }
@@ -172,7 +172,7 @@ func TestMsgServer_InvalidExecutor(t *testing.T) {
 	_, err := ms.Validation(ctx, &types.MsgValidation{
 		InferenceId: INFERENCE_ID,
 		Creator:     testutil.Executor,
-		Value:       0.9999,
+		Value:       types.DecimalFromFloat(0.9999),
 	})
 	require.Error(t, err)
 }
@@ -183,7 +183,7 @@ func TestMsgServer_ValidatorCannotBeExecutor(t *testing.T) {
 	_, err := ms.Validation(ctx, &types.MsgValidation{
 		InferenceId: INFERENCE_ID,
 		Creator:     testutil.Validator,
-		Value:       0.9999,
+		Value:       types.DecimalFromFloat(0.9999),
 	})
 	require.Error(t, err)
 }
@@ -243,7 +243,7 @@ func TestMsgServer_Validation_InvalidationsLimit_NoStatusChange_ButRecordsCredit
 	_, err = inferenceHelper.MessageServer.Validation(ctx, &types.MsgValidation{
 		InferenceId: expected.InferenceId,
 		Creator:     testutil.Validator,
-		Value:       0.10, // below threshold so it would normally trigger invalidation
+		Value:       types.DecimalFromFloat(0.10), // below threshold so it would normally trigger invalidation
 	})
 	require.NoError(t, err)
 
@@ -284,7 +284,7 @@ func TestMsgServer_Validation_DuplicateValidation_ReturnsErrDuplicateValidation(
 	_, err = inferenceHelper.MessageServer.Validation(ctx, &types.MsgValidation{
 		InferenceId: expected.InferenceId,
 		Creator:     testutil.Validator,
-		Value:       0.99,
+		Value:       types.DecimalFromFloat(0.99),
 	})
 	require.NoError(t, err)
 
@@ -292,7 +292,7 @@ func TestMsgServer_Validation_DuplicateValidation_ReturnsErrDuplicateValidation(
 	_, err = inferenceHelper.MessageServer.Validation(ctx, &types.MsgValidation{
 		InferenceId: expected.InferenceId,
 		Creator:     testutil.Validator,
-		Value:       0.99,
+		Value:       types.DecimalFromFloat(0.99),
 	})
 	require.Error(t, err)
 	require.ErrorIs(t, err, types.ErrDuplicateValidation)

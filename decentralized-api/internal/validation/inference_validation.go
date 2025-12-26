@@ -25,6 +25,7 @@ import (
 	"github.com/productscience/inference/api/inference/inference"
 	"github.com/productscience/inference/x/inference/calculations"
 	"github.com/productscience/inference/x/inference/types"
+	"github.com/shopspring/decimal"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -757,8 +758,8 @@ func (s *InferenceValidator) checkAndInvalidateUnavailable(inf types.Inference, 
 	msgValidation := &inference.MsgValidation{
 		Id:           uuid.New().String(),
 		InferenceId:  inf.InferenceId,
-		ResponseHash: "", // No response available
-		Value:        0,  // Invalidation
+		ResponseHash: "",    // No response available
+		Value:        &zero, // Invalidation
 		Revalidation: revalidation,
 	}
 
@@ -801,8 +802,8 @@ func (s *InferenceValidator) submitHashMismatchInvalidation(inf types.Inference,
 	msgValidation := &inference.MsgValidation{
 		Id:           uuid.New().String(),
 		InferenceId:  inf.InferenceId,
-		ResponseHash: "", // Wrong payload - don't use its hash
-		Value:        0,  // Invalidation
+		ResponseHash: "",    // Wrong payload - don't use its hash
+		Value:        &zero, // Invalidation
 		Revalidation: revalidation,
 	}
 
@@ -1122,6 +1123,15 @@ func ToMsgValidation(result ValidationResult) (*inference.MsgValidation, error) 
 		Id:           uuid.New().String(),
 		InferenceId:  result.GetInferenceId(),
 		ResponseHash: responseHash,
-		Value:        simVal,
+		// The conversion may not be deterministic here, but that doesn't matter as the message
+		// itself is what counts, and it WILL be deterministic
+		Value: DecimalFromFloat(simVal),
 	}, nil
+}
+
+var zero = inference.Decimal{Value: 0, Exponent: 0}
+
+func DecimalFromFloat(f float64) *inference.Decimal {
+	d := decimal.NewFromFloat(f)
+	return &inference.Decimal{Value: d.CoefficientInt64(), Exponent: d.Exponent()}
 }
