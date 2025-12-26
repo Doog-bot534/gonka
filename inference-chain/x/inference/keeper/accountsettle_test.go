@@ -162,7 +162,7 @@ func TestActualSettleWithManyParticipants(t *testing.T) {
 	// Create "many" participants to test pagination (>100 default page size)
 	many := 150
 	participants := make([]types.Participant, many)
-	logger.Info("Creating" + strconv.Itoa(many) + "participants to test pagination")
+	logger.Info("Creating " + strconv.Itoa(many) + " participants to test pagination")
 
 	for i := 0; i < many; i++ {
 		address := testutil.Bech32Addr(i)
