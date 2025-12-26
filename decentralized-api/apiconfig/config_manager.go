@@ -359,6 +359,31 @@ func (cm *ConfigManager) GetUpcomingSeed() SeedInfo {
 	return cm.currentConfig.UpcomingSeed
 }
 
+func (cm *ConfigManager) GetSeedForEpoch(epochIndex uint64) (SeedInfo, bool) {
+	switch {
+	case epochIndex == cm.currentConfig.PreviousSeed.EpochIndex && cm.currentConfig.PreviousSeed.EpochIndex != 0:
+		return cm.currentConfig.PreviousSeed, true
+	case epochIndex == cm.currentConfig.CurrentSeed.EpochIndex && cm.currentConfig.PreviousSeed.EpochIndex != 0:
+		return cm.currentConfig.CurrentSeed, true
+	case epochIndex == cm.currentConfig.UpcomingSeed.EpochIndex && cm.currentConfig.PreviousSeed.EpochIndex != 0:
+		return cm.currentConfig.UpcomingSeed, true
+	default:
+		seed, found := cm.getSeedForEpochFromDb(epochIndex)
+		if found {
+			return seed, true
+		}
+		return cm.generateSeedForEpoch(epochIndex)
+	}
+}
+
+func (cm *ConfigManager) getSeedForEpochFromDb(epochIndex uint64) (SeedInfo, bool) {
+
+}
+
+func (cm *ConfigManager) generateSeedForEpoch(epochIndex uint64) (SeedInfo, bool) {
+
+}
+
 // Called from:
 // 1. syncNodesWithConfig periodic routine
 // 2. admin API when nodes are added/removed

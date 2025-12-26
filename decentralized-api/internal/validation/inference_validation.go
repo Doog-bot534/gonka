@@ -493,9 +493,12 @@ func (s *InferenceValidator) SampleInferenceToValidate(ids []string, transaction
 		logging.Warn("Inferences span multiple epochs during sampling", types.Validation, "epochIds", epochIds)
 	}
 
-	epochIdToSeed := make(map[uint64]*apiconfig.SeedInfo)
+	epochIdToSeed := make(map[uint64]apiconfig.SeedInfo)
 	for epochId := range epochIds {
-		epochIdToSeed[epochId] = s.configManager.GetSeedForEpoch(epochId)
+		seedForEpoch, found := s.configManager.GetSeedForEpoch(epochId)
+		if found {
+			epochIdToSeed[epochId] = seedForEpoch
+		}
 	}
 
 	address := transactionRecorder.GetAddress()
