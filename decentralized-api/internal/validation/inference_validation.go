@@ -484,8 +484,21 @@ func (s *InferenceValidator) SampleInferenceToValidate(ids []string, transaction
 
 	logInferencesToSample(r.Details)
 
+	// Choose most prevalent epoch id from epoch
+	epochIds := make(map[uint64]bool)
+	for _, inf := range r.Details {
+		epochIds[inf.EpochId] = true
+	}
+	if len(epochIds) > 1 {
+		logging.Warn("Inferences span multiple epochs during sampling", types.Validation, "epochIds", epochIds)
+	}
+
+	epochIdToSeed := make(map[uint64]*apiconfig.SeedInfo)
+	for epochId := range epochIds {
+		epochIdToSeed[epochId] = s.configManager.GetSeedForEpoch(epochId)
+	}
+
 	address := transactionRecorder.GetAddress()
-	currentSeed := s.configManager.GetCurrentSeed().Seed
 	var toValidateIds []string
 
 	for _, inferenceWithExecutor := range r.Details {
@@ -493,15 +506,20 @@ func (s *InferenceValidator) SampleInferenceToValidate(ids []string, transaction
 			logging.Debug("Skipping inference by not supported model", types.Validation, "inferenceId", inferenceWithExecutor.InferenceId, "model", inferenceWithExecutor.Model)
 			continue
 		}
+		seed, ok := epochIdToSeed[inferenceWithExecutor.EpochId]
+		if !ok {
+			logging.Error("No seed found for inference epoch", types.Validation, "inferenceId", inferenceWithExecutor.InferenceId, "epochId", inferenceWithExecutor.EpochId)
+			continue
+		}
 		// Use the extracted validation decision logic
 		shouldValidate, message := s.shouldValidateInference(
 			inferenceWithExecutor,
-			currentSeed,
+			seed.Seed,
 			r.ValidatorPower,
 			address,
 			params.Params.ValidationParams)
 
-		logging.Info(message, types.Validation, "inferenceId", inferenceWithExecutor.InferenceId, "seed", currentSeed, "validator", address)
+		logging.Info(message, types.Validation, "inferenceId", inferenceWithExecutor.InferenceId, "seed", seed.Seed, "validator", address)
 
 		if shouldValidate {
 			toValidateIds = append(toValidateIds, inferenceWithExecutor.InferenceId)
