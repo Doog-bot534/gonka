@@ -211,22 +211,23 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 		return err
 	}
 
-	requestBlockHeight := status.SyncInfo.LatestBlockHeight
+	// requestBlockHeight := status.SyncInfo.LatestBlockHeight
 
-	isHardcodedExecutor := request.OpenAiRequest.Model == "Qwen/Qwen3-32B-FP8" && os.Getenv("USE_HARDCODED") == "true"
-	if !isHardcodedExecutor {
-		can, estimatedKB := s.bandwidthLimiter.CanAcceptRequest(requestBlockHeight, int(promptTokenCount), int(request.OpenAiRequest.MaxTokens))
-		if !can {
-			logging.Warn("Capacity limit exceeded", types.Inferences, "address", request.RequesterAddress)
-			url := s.configManager.GetApiConfig().PublicUrl
-			return echo.NewHTTPError(http.StatusTooManyRequests, "Transfer Agent capacity reached. Try another TA from "+url+"/v1/epochs/current/participants")
-		}
+	// isHardcodedExecutor := request.OpenAiRequest.Model == "Qwen/Qwen3-32B-FP8" && os.Getenv("USE_HARDCODED") == "true"
+	// if !isHardcodedExecutor {
 
-		s.bandwidthLimiter.RecordRequest(requestBlockHeight, estimatedKB)
-		defer s.bandwidthLimiter.ReleaseRequest(requestBlockHeight, estimatedKB)
-	} else {
-		logging.Info("CAP bypassed for hardcoded executor", types.Inferences)
-	}
+	// can, estimatedKB := s.bandwidthLimiter.CanAcceptRequest(requestBlockHeight, int(promptTokenCount), int(request.OpenAiRequest.MaxTokens))
+	// if !can {
+	// 	logging.Warn("Capacity limit exceeded", types.Inferences, "address", request.RequesterAddress)
+	// 	url := s.configManager.GetApiConfig().PublicUrl
+	// 	return echo.NewHTTPError(http.StatusTooManyRequests, "Transfer Agent capacity reached. Try another TA from "+url+"/v1/epochs/current/participants")
+	// }
+
+	// s.bandwidthLimiter.RecordRequest(requestBlockHeight, estimatedKB)
+	// defer s.bandwidthLimiter.ReleaseRequest(requestBlockHeight, estimatedKB)
+	// } else {
+	// 	logging.Info("CAP bypassed for hardcoded executor", types.Inferences)
+	// }
 
 	executor, err := s.getExecutorForRequest(ctx.Request().Context(), request.OpenAiRequest.Model)
 	if err != nil {
@@ -724,6 +725,11 @@ func (s *Server) sendInferenceTransaction(inferenceId string, response completio
 	}
 
 	if s.recorder != nil {
+		if request.OpenAiRequest.Model == "Qwen/Qwen3-32B-FP8" && os.Getenv("USE_HARDCODED") == "true" {
+			logging.Info("Skipping FinishInference for hardcoded executor", types.Inferences)
+			return nil
+		}
+
 		promptHash := utils.GenerateSHA256HashBytes(promptPayload)
 		originalPromptHash := utils.GenerateSHA256HashBytes(request.Body)
 
@@ -801,12 +807,6 @@ func getModifiedPromptHash(requestBytes []byte) (string, []byte, error) {
 }
 
 func createInferenceStartRequest(s *Server, request *ChatRequest, seed int32, inferenceId string, executor *ExecutorDestination, nodeVersion string, promptTokenCount int) (*inference.MsgStartInference, error) {
-	if request.OpenAiRequest.Model == "Qwen/Qwen3-32B-FP8" && os.Getenv("USE_HARDCODED") == "true" {
-		return &inference.MsgStartInference{
-			InferenceId: inferenceId,
-		}, nil
-	}
-
 	modifiedRequest, err := completionapi.ModifyRequestBody(request.Body, seed)
 	if err != nil {
 		return nil, err

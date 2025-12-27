@@ -430,6 +430,11 @@ service Query {
     option (google.api.http).get = "/productscience/inference/inference/active_confirmation_poc_event";
 
   }
+
+  // Queries all confirmation PoC events for an epoch (0 = current epoch).
+  rpc AllConfirmationPoCEvents (QueryConfirmationPoCEventsRequest) returns (QueryConfirmationPoCEventsResponse) {
+    option (google.api.http).get = "/productscience/inference/inference/confirmation_poc_events/{epoch_index}";
+  }
 }
 // QueryParamsRequest is request type for the Query/Params RPC method.
 message QueryParamsRequest {}
@@ -1095,4 +1100,14 @@ message QueryActiveConfirmationPoCEventRequest {}
 message QueryActiveConfirmationPoCEventResponse {
   bool                 is_active = 1;
   ConfirmationPoCEvent event     = 2;
+}
+
+// QueryConfirmationPoCEventsRequest is request type for the Query/ConfirmationPoCEvents RPC method.
+message QueryConfirmationPoCEventsRequest {
+  uint64 epoch_index = 1;
+}
+
+// QueryConfirmationPoCEventsResponse is response type for the Query/ConfirmationPoCEvents RPC method.
+message QueryConfirmationPoCEventsResponse {
+  repeated ConfirmationPoCEvent events = 1 [(gogoproto.nullable) = false];
 }

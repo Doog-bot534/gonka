@@ -92,3 +92,4 @@ func TestBridgeExchange_DoubleVoteCaseBypass(t *testing.T) {
 		require.Contains(t, err.Error(), "validator has already validated this transaction")
 	}
 }
+
