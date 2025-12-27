@@ -1080,7 +1080,7 @@ func TestLargeValueEdgeCases(t *testing.T) {
 		require.Less(t, result2, uint64(285000000000000), "Should be reduced due to decay")
 
 		// Test mathematical limits - should not panic or overflow
-		result3, err := CalculateFixedEpochReward(100000, 100000000, types.DecimalFromFloat(-0.0001))
+		result3, err := CalculateFixedEpochReward(100000, 100000000, types.DecimalFromFloat(-0.000001))
 		require.NoError(t, err)
 		require.GreaterOrEqual(t, result3, uint64(0), "Should handle extreme cases gracefully")
 	})

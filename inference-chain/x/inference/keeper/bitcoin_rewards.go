@@ -72,15 +72,17 @@ func GetBitcoinSettleAmounts(
 
 		// Proportionally reduce all participant rewards with proper remainder handling
 		if originalAmount > 0 {
-			reductionRatio := decimal.NewFromInt(bitcoinResult.Amount).Div(decimal.NewFromInt(originalAmount))
 			var totalDistributed uint64 = 0
+			originalDecimalAmount := decimal.NewFromInt(originalAmount)
+			remainingSupply := decimal.NewFromInt(bitcoinResult.Amount)
 
 			// Apply proportional reduction to each participant
 			for _, amount := range settleResults {
 				if amount.Settle != nil && amount.Error == nil {
-					reducedReward := reductionRatio.Mul(decimal.NewFromUint64(amount.Settle.RewardCoins)).IntPart()
-					amount.Settle.RewardCoins = uint64(reducedReward)
-					totalDistributed += uint64(reducedReward)
+					// This gives accurate response by not relying on a ratio before we need to
+					reducedReward := uint64(decimal.NewFromUint64(amount.Settle.RewardCoins).Mul(remainingSupply).Div(originalDecimalAmount).IntPart())
+					amount.Settle.RewardCoins = reducedReward
+					totalDistributed += reducedReward
 				}
 			}
 
