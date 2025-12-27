@@ -117,7 +117,8 @@ func TestFixedEpochRewardPrecise(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := CalculateFixedEpochReward(tt.epochsSinceGenesis, initialReward, decayRate)
+			result, err := CalculateFixedEpochReward(tt.epochsSinceGenesis, initialReward, decayRate)
+			require.NoError(t, err)
 			require.Equal(t, tt.expectedReward, result, "Expected reward for %d epochs should be %d but was %d", tt.epochsSinceGenesis, tt.expectedReward, result)
 		})
 	}
@@ -128,14 +129,18 @@ func TestCalculateFixedEpochReward(t *testing.T) {
 	decayRate := types.DecimalFromFloat(-0.000475) // Halving every ~1460 epochs (4 years)
 
 	t.Run("Zero epochs returns initial reward", func(t *testing.T) {
-		result := CalculateFixedEpochReward(0, initialReward, decayRate)
+		result, err := CalculateFixedEpochReward(0, initialReward, decayRate)
+		require.NoError(t, err)
 		require.Equal(t, initialReward, result)
 	})
 
 	t.Run("Reward decreases with positive epochs", func(t *testing.T) {
-		result100 := CalculateFixedEpochReward(100, initialReward, decayRate)
-		result200 := CalculateFixedEpochReward(200, initialReward, decayRate)
-		result500 := CalculateFixedEpochReward(500, initialReward, decayRate)
+		result100, err := CalculateFixedEpochReward(100, initialReward, decayRate)
+		require.NoError(t, err)
+		result200, err := CalculateFixedEpochReward(200, initialReward, decayRate)
+		require.NoError(t, err)
+		result500, err := CalculateFixedEpochReward(500, initialReward, decayRate)
+		require.NoError(t, err)
 
 		// Each subsequent epoch should have lower rewards due to negative decay rate
 		require.Less(t, result100, initialReward, "100 epochs should have lower reward than initial")
@@ -145,7 +150,8 @@ func TestCalculateFixedEpochReward(t *testing.T) {
 
 	t.Run("Approximate halving after 1460 epochs", func(t *testing.T) {
 		// After ~1460 epochs, reward should be approximately half of initial
-		result1460 := CalculateFixedEpochReward(1460, initialReward, decayRate)
+		result1460, err := CalculateFixedEpochReward(1460, initialReward, decayRate)
+		require.NoError(t, err)
 		expectedHalf := initialReward / 2
 
 		// Allow 5% tolerance for exponential calculation precision
@@ -154,18 +160,21 @@ func TestCalculateFixedEpochReward(t *testing.T) {
 	})
 
 	t.Run("Edge case: zero initial reward", func(t *testing.T) {
-		result := CalculateFixedEpochReward(100, 0, decayRate)
+		result, err := CalculateFixedEpochReward(100, 0, decayRate)
+		require.NoError(t, err)
 		require.Equal(t, uint64(0), result)
 	})
 
 	t.Run("Edge case: nil decay rate", func(t *testing.T) {
-		result := CalculateFixedEpochReward(100, initialReward, nil)
+		result, err := CalculateFixedEpochReward(100, initialReward, nil)
+		require.NoError(t, err)
 		require.Equal(t, initialReward, result, "Nil decay rate should return initial reward")
 	})
 
 	t.Run("Edge case: very large epochs", func(t *testing.T) {
 		// After many epochs, reward should approach 0
-		result := CalculateFixedEpochReward(10000, initialReward, decayRate)
+		result, err := CalculateFixedEpochReward(10000, initialReward, decayRate)
+		require.NoError(t, err)
 		// After 10,000 epochs: exp(-0.000475 * 10000) ≈ 0.0086
 		// Expected: 285,000,000,000,000 * 0.0086 ≈ 2,451,000,000,000
 		require.Less(t, result, uint64(3000000000000), "After 10000 epochs, reward should be very small relative to initial")
@@ -174,7 +183,8 @@ func TestCalculateFixedEpochReward(t *testing.T) {
 
 	t.Run("Positive decay rate increases reward", func(t *testing.T) {
 		positiveDecayRate := types.DecimalFromFloat(0.0001) // Small positive rate
-		result := CalculateFixedEpochReward(100, initialReward, positiveDecayRate)
+		result, err := CalculateFixedEpochReward(100, initialReward, positiveDecayRate)
+		require.NoError(t, err)
 		require.Greater(t, result, initialReward, "Positive decay rate should increase reward")
 	})
 }
@@ -360,7 +370,8 @@ func TestCalculateParticipantBitcoinRewards(t *testing.T) {
 			totalPoCWeightAfterCapping += uint64(p.Weight)
 		}
 
-		expectedEpochReward := CalculateFixedEpochReward(99, 285000000000000, bitcoinParams.DecayRate)
+		expectedEpochReward, err := CalculateFixedEpochReward(99, 285000000000000, bitcoinParams.DecayRate)
+		require.NoError(t, err)
 		require.Equal(t, int64(expectedEpochReward), bitcoinResult.Amount)
 
 		// Calculate base rewards using actual capped weights
@@ -862,7 +873,7 @@ func TestGetBitcoinSettleAmounts(t *testing.T) {
 		// Verify participants still received proportional rewards (reduced but fair)
 		require.Greater(t, results[0].Settle.RewardCoins, uint64(0), "Participant 1 should get some rewards")
 		require.Greater(t, results[1].Settle.RewardCoins, uint64(0), "Participant 2 should get some rewards")
-		//require.Equal(t, results[0].Settle.RewardCoins, results[1].Settle.RewardCoins, "Equal weights should get equal rewards (500 each)")
+		require.Equal(t, results[0].Settle.RewardCoins, results[1].Settle.RewardCoins, "Equal weights should get equal rewards (500 each)")
 	})
 
 	t.Run("Supply cap already reached - zero rewards", func(t *testing.T) {
@@ -1057,17 +1068,20 @@ func TestLargeValueEdgeCases(t *testing.T) {
 		decayRate := types.DecimalFromFloat(-0.000001) // Very small decay
 
 		// Should handle large values without overflow
-		result := CalculateFixedEpochReward(1, largeReward, decayRate)
+		result, err := CalculateFixedEpochReward(1, largeReward, decayRate)
+		require.NoError(t, err)
 		require.Less(t, result, largeReward, "Decay should reduce the reward")
 		require.Greater(t, result, largeReward/2, "Result should still be close to original with small decay")
 
 		// Test with very large epochs but reasonable initial reward
-		result2 := CalculateFixedEpochReward(1000000, 285000000000000, decayRate)
+		result2, err := CalculateFixedEpochReward(1000000, 285000000000000, decayRate)
+		require.NoError(t, err)
 		require.Greater(t, result2, uint64(0), "Should not underflow to zero")
 		require.Less(t, result2, uint64(285000000000000), "Should be reduced due to decay")
 
 		// Test mathematical limits - should not panic or overflow
-		result3 := CalculateFixedEpochReward(100000, 100000000, types.DecimalFromFloat(-0.0001))
+		result3, err := CalculateFixedEpochReward(100000, 100000000, types.DecimalFromFloat(-0.0001))
+		require.NoError(t, err)
 		require.GreaterOrEqual(t, result3, uint64(0), "Should handle extreme cases gracefully")
 	})
 
@@ -1219,8 +1233,10 @@ func TestMathematicalPrecision(t *testing.T) {
 		decayRate := types.DecimalFromFloat(-0.000475)
 
 		// Test known values for precision verification
-		result1460 := CalculateFixedEpochReward(1460, initialReward, decayRate)
-		result2920 := CalculateFixedEpochReward(2920, initialReward, decayRate) // Double the epochs
+		result1460, err := CalculateFixedEpochReward(1460, initialReward, decayRate)
+		require.NoError(t, err)
+		result2920, err := CalculateFixedEpochReward(2920, initialReward, decayRate) // Double the epochs
+		require.NoError(t, err)
 
 		// After 2920 epochs, reward should be approximately 1/4 of initial (two halvings)
 		expectedQuarter := initialReward / 4

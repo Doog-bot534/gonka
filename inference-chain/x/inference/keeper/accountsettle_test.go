@@ -20,7 +20,8 @@ func createTestLogger(t *testing.T) log.Logger {
 }
 
 func calcExpectedRewards(epochIndex int64, params types.Params) uint64 {
-	return inference.CalculateFixedEpochReward(uint64(epochIndex-1), params.BitcoinRewardParams.InitialEpochReward, params.BitcoinRewardParams.DecayRate)
+	value, _ := inference.CalculateFixedEpochReward(uint64(epochIndex-1), params.BitcoinRewardParams.InitialEpochReward, params.BitcoinRewardParams.DecayRate)
+	return value
 }
 
 func TestActualSettle(t *testing.T) {

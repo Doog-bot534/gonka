@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 
 	"cosmossdk.io/log"
@@ -104,18 +105,18 @@ func GetBitcoinSettleAmounts(
 
 // CalculateFixedEpochReward implements the exponential decay reward calculation
 // Uses the formula: current_reward = initial_reward × exp(decay_rate × epochs_elapsed)
-func CalculateFixedEpochReward(epochsSinceGenesis uint64, initialReward uint64, decayRate *types.Decimal) uint64 {
+func CalculateFixedEpochReward(epochsSinceGenesis uint64, initialReward uint64, decayRate *types.Decimal) (uint64, error) {
 	// Parameter validation
 	if initialReward == 0 {
-		return 0
+		return 0, nil
 	}
 	if decayRate == nil {
-		return initialReward
+		return initialReward, nil
 	}
 
 	// If no epochs have passed since genesis, return initial reward
 	if epochsSinceGenesis == 0 {
-		return initialReward
+		return initialReward, nil
 	}
 
 	// Convert inputs to decimal for precise calculation
@@ -126,31 +127,28 @@ func CalculateFixedEpochReward(epochsSinceGenesis uint64, initialReward uint64, 
 	decayRateDecimal := decayRate.ToDecimal()
 	exponent, err := types.GetExponent(decayRateDecimal)
 	if err != nil {
-		return 0
+		return 0, err
 	}
 
 	// Actual decay is exp(decay_rate)^epochsSinceGenesis
 	// This is identical to the previous exp(decay_rate*epochsSinceGenesis)
 	// but allows us to use fully safe math
+	if epochsSinceGenesis >= uint64(math.MaxInt32) {
+		// Something obviously very wrong if epochs are this high!
+		return 0, fmt.Errorf("exponent overflow: %d", epochsSinceGenesis)
+	}
 	expValue, err := exponent.PowInt32(int32(epochsSinceGenesis))
 	if err != nil {
-		return 0
+		return 0, err
 	}
 	// Convert back to decimal and multiply with initial reward
 	currentReward := initialRewardDecimal.Mul(expValue)
 
-	// Ensure result is non-negative and convert to uint64
-	if currentReward.IsNegative() || currentReward.LessThan(one) {
-		return 0 // Minimum reward is 0
-	}
-
-	// Round down to nearest integer and return as uint64
 	result := currentReward.IntPart()
 	if result < 0 {
-		return 0
+		return 0, nil
 	}
-
-	return uint64(result)
+	return uint64(result), nil
 }
 
 // GetPreservedWeight calculates the weight of nodes with POC_SLOT=true
@@ -426,7 +424,12 @@ func CalculateParticipantBitcoinRewards(
 	epochsSinceGenesis := currentEpoch - bitcoinParams.GenesisEpoch
 
 	// 1. Calculate fixed epoch reward using exponential decay
-	fixedEpochReward := CalculateFixedEpochReward(epochsSinceGenesis, bitcoinParams.InitialEpochReward, bitcoinParams.DecayRate)
+	fixedEpochReward, err := CalculateFixedEpochReward(epochsSinceGenesis, bitcoinParams.InitialEpochReward, bitcoinParams.DecayRate)
+	if err != nil {
+		// In the event of any error, treat reward as 0 but continue otherwise to avoid chain halt and pay for work
+		logger.Error("failed to calculate fixed epoch reward", "error", err)
+		fixedEpochReward = 0
+	}
 
 	// 2. Calculate effective weights with confirmation capping
 	participantWeights := make(map[string]uint64)

@@ -91,14 +91,14 @@ func TestBitcoinRewardIntegration_RewardCalculationFunctions(t *testing.T) {
 
 	t.Run("Test epoch reward calculation", func(t *testing.T) {
 		// Test the CalculateFixedEpochReward function directly
-		epochReward := keeper.CalculateFixedEpochReward(0, 100000, params.BitcoinRewardParams.DecayRate)
+		epochReward, _ := keeper.CalculateFixedEpochReward(0, 100000, params.BitcoinRewardParams.DecayRate)
 		require.Equal(t, uint64(100000), epochReward, "Epoch 0 should return initial reward")
 
 		// Test decay after some epochs
-		epochReward10 := keeper.CalculateFixedEpochReward(10, 100000, params.BitcoinRewardParams.DecayRate)
+		epochReward10, _ := keeper.CalculateFixedEpochReward(10, 100000, params.BitcoinRewardParams.DecayRate)
 		require.Less(t, epochReward10, uint64(100000), "Epoch 10 should have lower reward due to decay")
 
-		epochReward100 := keeper.CalculateFixedEpochReward(100, 100000, params.BitcoinRewardParams.DecayRate)
+		epochReward100, _ := keeper.CalculateFixedEpochReward(100, 100000, params.BitcoinRewardParams.DecayRate)
 		require.Less(t, epochReward100, epochReward10, "Epoch 100 should have lower reward than epoch 10")
 	})
 
