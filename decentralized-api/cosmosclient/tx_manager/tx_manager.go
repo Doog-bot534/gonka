@@ -178,21 +178,43 @@ func (m *manager) SendTransactionAsyncWithRetry(rawTx sdk.Msg) (*sdk.TxResponse,
 
 	resp, timeout, broadcastErr := m.broadcastMessage(id, rawTx)
 	if broadcastErr != nil {
-		if isTxErrorCritical(broadcastErr) {
-			logging.Error("SendTransactionAsyncWithRetry: critical error sending tx", types.Messages, "tx_id", id, "err", broadcastErr)
-			return nil, broadcastErr
+		// Check if broadcast error is retryable
+		if isRetryableBroadcastError(broadcastErr) {
+			if err := m.putOnRetry(id, "", timeout, rawTx, 1, false); err != nil {
+				logging.Error("tx failed to broadcast, failed to put in queue", types.Messages, "tx_id", id, "broadcast_err", broadcastErr, "resend_err", err)
+			}
+			return nil, ErrTxFailedToBroadcastAndPutOnRetry
 		}
+		// Non-retryable broadcast error - fail immediately
+		logging.Error("SendTransactionAsyncWithRetry: non-retryable broadcast error", types.Messages, "tx_id", id, "err", broadcastErr)
+		return nil, broadcastErr
+	}
 
-		err := m.putOnRetry(id, "", timeout, rawTx, 1, false)
-		if err != nil {
-			logging.Error("tx failed to broadcast, failed to put in queue", types.Messages, "tx_id", id, "broadcast_err", broadcastErr, "resend_err", err)
+	// Classify the response to determine action
+	action := classifyBroadcastResponse(resp)
+	switch action {
+	case TxActionFail:
+		logging.Warn("Non-retryable business error, failing immediately", types.Messages,
+			"tx_id", id, "code", resp.Code, "codespace", resp.Codespace, "rawLog", resp.RawLog)
+		return nil, NewTransactionErrorFromResponse(resp)
+	case TxActionRetry:
+		logging.Warn("Retryable response error, queuing for retry", types.Messages,
+			"tx_id", id, "code", resp.Code, "rawLog", resp.RawLog)
+		if err := m.putOnRetry(id, "", timeout, rawTx, 1, false); err != nil {
+			logging.Error("tx failed, failed to put in queue for retry", types.Messages, "tx_id", id, "err", err)
 		}
 		return nil, ErrTxFailedToBroadcastAndPutOnRetry
+	case TxActionObserve:
+		// Success or tx-in-mempool - queue for observation
+		if err := m.putOnRetry(id, resp.TxHash, timeout, rawTx, 1, true); err != nil {
+			logging.Error("tx broadcast, but failed to put in queue", types.Messages, "tx_id", id, "err", err)
+		}
+		return resp, nil
 	}
-	if err := m.putOnRetry(id, resp.TxHash, timeout, rawTx, 1, true); err != nil {
-		logging.Error("tx broadcast, but failed to put in queue", types.Messages, "tx_id", id, "err", err)
-	}
-	return resp, nil
+
+	// Should never reach here, but fail safe
+	logging.Error("Unexpected classification result", types.Messages, "tx_id", id)
+	return nil, ErrTxFailedToBroadcastAndPutOnRetry
 }
 
 func (m *manager) SendBatchAsyncWithRetry(msgs []sdk.Msg) error {
@@ -219,22 +241,43 @@ func (m *manager) SendBatchAsyncWithRetry(msgs []sdk.Msg) error {
 
 	resp, timeout, broadcastErr := m.BroadcastMessages(id, msgs...)
 	if broadcastErr != nil {
-		if isTxErrorCritical(broadcastErr) {
-			logging.Error("SendBatchAsyncWithRetry: critical error sending batch", types.Messages, "tx_id", id, "err", broadcastErr)
-			return broadcastErr
+		// Check if broadcast error is retryable
+		if isRetryableBroadcastError(broadcastErr) {
+			if err := m.putBatchOnRetry(id, msgs, "", timeout, 1, false); err != nil {
+				logging.Error("batch failed to broadcast, failed to put in queue", types.Messages, "tx_id", id, "broadcast_err", broadcastErr, "resend_err", err)
+			}
+			return ErrTxFailedToBroadcastAndPutOnRetry
 		}
+		// Non-retryable broadcast error - fail immediately
+		logging.Error("SendBatchAsyncWithRetry: non-retryable broadcast error", types.Messages, "tx_id", id, "err", broadcastErr)
+		return broadcastErr
+	}
 
-		err := m.putBatchOnRetry(id, msgs, "", timeout, 1, false)
-		if err != nil {
-			logging.Error("batch failed to broadcast, failed to put in queue", types.Messages, "tx_id", id, "broadcast_err", broadcastErr, "resend_err", err)
+	// Classify the response to determine action
+	action := classifyBroadcastResponse(resp)
+	switch action {
+	case TxActionFail:
+		logging.Warn("Non-retryable business error in batch, failing immediately", types.Messages,
+			"tx_id", id, "code", resp.Code, "codespace", resp.Codespace, "rawLog", resp.RawLog)
+		return NewTransactionErrorFromResponse(resp)
+	case TxActionRetry:
+		logging.Warn("Retryable response error in batch, queuing for retry", types.Messages,
+			"tx_id", id, "code", resp.Code, "rawLog", resp.RawLog)
+		if err := m.putBatchOnRetry(id, msgs, "", timeout, 1, false); err != nil {
+			logging.Error("batch failed, failed to put in queue for retry", types.Messages, "tx_id", id, "err", err)
 		}
 		return ErrTxFailedToBroadcastAndPutOnRetry
+	case TxActionObserve:
+		// Success or tx-in-mempool - queue for observation
+		if err := m.putBatchOnRetry(id, msgs, resp.TxHash, timeout, 1, true); err != nil {
+			logging.Error("batch broadcast, but failed to put in queue", types.Messages, "tx_id", id, "err", err)
+		}
+		return nil
 	}
 
-	if err := m.putBatchOnRetry(id, msgs, resp.TxHash, timeout, 1, true); err != nil {
-		logging.Error("batch broadcast, but failed to put in queue", types.Messages, "tx_id", id, "err", err)
-	}
-	return nil
+	// Should never reach here, but fail safe
+	logging.Error("Unexpected classification result for batch", types.Messages, "tx_id", id)
+	return ErrTxFailedToBroadcastAndPutOnRetry
 }
 
 func (m *manager) SendTransactionAsyncNoRetry(rawTx sdk.Msg) (*sdk.TxResponse, error) {
@@ -435,17 +478,37 @@ func (m *manager) sendTxs() error {
 
 		if !tx.Sent {
 			if broadcastErr != nil {
-				if isTxErrorCritical(broadcastErr) {
-					logging.Error("got critical error sending tx", types.Messages, "id", tx.TxInfo.Id)
-					msg.Term() // invalid tx, drop it
+				// Check if broadcast error is retryable
+				if isRetryableBroadcastError(broadcastErr) {
+					logging.Warn("retryable broadcast error in sendTxs, will retry", types.Messages, "id", tx.TxInfo.Id, "err", broadcastErr)
+					msg.NakWithDelay(defaultSenderNackDelay)
 					return
 				}
-				msg.NakWithDelay(defaultSenderNackDelay)
+				// Non-retryable broadcast error - drop permanently
+				logging.Error("non-retryable broadcast error in sendTxs, dropping", types.Messages, "id", tx.TxInfo.Id, "err", broadcastErr)
+				msg.Term()
 				return
 			}
-			tx.TxInfo.Timeout = timeout
-			tx.TxInfo.TxHash = resp.TxHash
-			tx.Sent = true
+
+			// Classify the response to determine action
+			action := classifyBroadcastResponse(resp)
+			switch action {
+			case TxActionFail:
+				logging.Warn("Non-retryable business error in sendTxs, dropping", types.Messages,
+					"id", tx.TxInfo.Id, "code", resp.Code, "codespace", resp.Codespace, "rawLog", resp.RawLog)
+				msg.Term()
+				return
+			case TxActionRetry:
+				logging.Warn("Retryable response error in sendTxs, will retry", types.Messages,
+					"id", tx.TxInfo.Id, "code", resp.Code, "rawLog", resp.RawLog)
+				msg.NakWithDelay(defaultSenderNackDelay)
+				return
+			case TxActionObserve:
+				// Success or tx-in-mempool - continue to observer
+				tx.TxInfo.Timeout = timeout
+				tx.TxInfo.TxHash = resp.TxHash
+				tx.Sent = true
+			}
 		}
 
 		logging.Debug("tx broadcast, put to observe", types.Messages, "id", tx.TxInfo.Id, "tx_hash", tx.TxInfo.TxHash, "timeout", tx.TxInfo.Timeout.String())
