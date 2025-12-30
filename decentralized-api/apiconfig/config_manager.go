@@ -360,29 +360,49 @@ func (cm *ConfigManager) GetUpcomingSeed() SeedInfo {
 }
 
 func (cm *ConfigManager) GetSeedForEpoch(epochIndex uint64) (SeedInfo, bool) {
-	switch {
-	case epochIndex == cm.currentConfig.PreviousSeed.EpochIndex && cm.currentConfig.PreviousSeed.EpochIndex != 0:
-		return cm.currentConfig.PreviousSeed, true
-	case epochIndex == cm.currentConfig.CurrentSeed.EpochIndex && cm.currentConfig.PreviousSeed.EpochIndex != 0:
-		return cm.currentConfig.CurrentSeed, true
-	case epochIndex == cm.currentConfig.UpcomingSeed.EpochIndex && cm.currentConfig.PreviousSeed.EpochIndex != 0:
-		return cm.currentConfig.UpcomingSeed, true
-	default:
-		seed, found := cm.getSeedForEpochFromDb(epochIndex)
-		if found {
-			return seed, true
-		}
-		return cm.generateSeedForEpoch(epochIndex)
+	seed, found := cm.getSeedFromCache(epochIndex)
+	if found {
+		return seed, true
 	}
-}
 
-func (cm *ConfigManager) getSeedForEpochFromDb(epochIndex uint64) (SeedInfo, bool) {
-	// TODO: is it ok to use background context here and just create a DB? Any concurrency issues?
-	seed, found, err := GetSeedByEpoch(context.Background(), cm.sqlDb.GetDb(), epochIndex)
-	if !found || err != nil {
+	var db *sql.DB
+	if cm.sqlDb != nil {
+		db = cm.sqlDb.GetDb()
+	}
+	cm.mutex.Unlock()
+
+	if db == nil {
 		return SeedInfo{}, false
 	}
+
+	seed, found, err := GetSeedByEpoch(context.Background(), db, epochIndex)
+	if !found || err != nil {
+		return cm.generateSeedForEpoch(epochIndex)
+	}
 	return seed, true
+}
+
+func (cm *ConfigManager) getSeedFromCache(epochIndex uint64) (SeedInfo, bool) {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+
+	if cm.currentConfig.PreviousSeed.EpochIndex == epochIndex && cm.currentConfig.PreviousSeed.EpochIndex != 0 {
+		seed := cm.currentConfig.PreviousSeed
+		logging.Info("Seed found in cache. previous", types.Config, "epochIndex", epochIndex, "seed", seed)
+		return seed, true
+	}
+	if cm.currentConfig.CurrentSeed.EpochIndex == epochIndex && cm.currentConfig.CurrentSeed.EpochIndex != 0 {
+		seed := cm.currentConfig.CurrentSeed
+		logging.Info("Seed found in cache. current", types.Config, "epochIndex", epochIndex, "seed", seed)
+		return seed, true
+	}
+	if cm.currentConfig.UpcomingSeed.EpochIndex == epochIndex && cm.currentConfig.UpcomingSeed.EpochIndex != 0 {
+		seed := cm.currentConfig.UpcomingSeed
+		logging.Info("Seed found in cache. upcoming", types.Config, "epochIndex", epochIndex, "seed", seed)
+		return seed, true
+	}
+
+	return SeedInfo{}, false
 }
 
 func (cm *ConfigManager) generateSeedForEpoch(epochIndex uint64) (SeedInfo, bool) {
