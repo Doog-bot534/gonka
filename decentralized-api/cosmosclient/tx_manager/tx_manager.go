@@ -457,6 +457,16 @@ func (m *manager) putInfoToObserve(info txInfo) error {
 	return err
 }
 
+func (m *manager) republishTxWithDelay(tx txToSend, delay time.Duration) error {
+	time.Sleep(delay)
+	b, err := json.Marshal(&tx)
+	if err != nil {
+		return err
+	}
+	_, err = m.natsJetStream.Publish(server.TxsToSendStream, b)
+	return err
+}
+
 func (m *manager) sendTxs() error {
 	logging.Info("Tx manager: sending txs: run in background", types.Messages)
 
@@ -520,8 +530,17 @@ func (m *manager) sendTxs() error {
 			if broadcastErr != nil {
 				// Check if broadcast error is retryable
 				if isRetryableBroadcastError(broadcastErr) {
-					logging.Warn("retryable broadcast error in sendTxs, will retry", types.Messages, "id", tx.TxInfo.Id, "err", broadcastErr)
-					msg.NakWithDelay(defaultSenderNackDelay)
+					tx.Attempts++
+					if tx.Attempts >= maxAttempts {
+						logging.Warn("tx reached max attempts after broadcast error, dropping", types.Messages, "id", tx.TxInfo.Id, "attempts", tx.Attempts)
+						msg.Term()
+						return
+					}
+					logging.Warn("retryable broadcast error in sendTxs, will retry", types.Messages, "id", tx.TxInfo.Id, "err", broadcastErr, "attempts", tx.Attempts)
+					if err := m.republishTxWithDelay(tx, defaultSenderNackDelay); err != nil {
+						logging.Error("failed to republish tx", types.Messages, "id", tx.TxInfo.Id, "err", err)
+					}
+					msg.Ack()
 					return
 				}
 				// Non-retryable broadcast error - drop permanently
@@ -539,9 +558,18 @@ func (m *manager) sendTxs() error {
 				msg.Term()
 				return
 			case TxActionRetry:
+				tx.Attempts++
+				if tx.Attempts >= maxAttempts {
+					logging.Warn("tx reached max attempts after response error, dropping", types.Messages, "id", tx.TxInfo.Id, "attempts", tx.Attempts)
+					msg.Term()
+					return
+				}
 				logging.Warn("Retryable response error in sendTxs, will retry", types.Messages,
-					"id", tx.TxInfo.Id, "code", resp.Code, "rawLog", resp.RawLog)
-				msg.NakWithDelay(defaultSenderNackDelay)
+					"id", tx.TxInfo.Id, "code", resp.Code, "rawLog", resp.RawLog, "attempts", tx.Attempts)
+				if err := m.republishTxWithDelay(tx, defaultSenderNackDelay); err != nil {
+					logging.Error("failed to republish tx", types.Messages, "id", tx.TxInfo.Id, "err", err)
+				}
+				msg.Ack()
 				return
 			case TxActionObserve:
 				// Success or tx-in-mempool - continue to observer
