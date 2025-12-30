@@ -377,11 +377,17 @@ func (cm *ConfigManager) GetSeedForEpoch(epochIndex uint64) (SeedInfo, bool) {
 }
 
 func (cm *ConfigManager) getSeedForEpochFromDb(epochIndex uint64) (SeedInfo, bool) {
-
+	// TODO: is it ok to use background context here and just create a DB? Any concurrency issues?
+	seed, found, err := GetSeedByEpoch(context.Background(), cm.sqlDb.GetDb(), epochIndex)
+	if !found || err != nil {
+		return SeedInfo{}, false
+	}
+	return seed, true
 }
 
 func (cm *ConfigManager) generateSeedForEpoch(epochIndex uint64) (SeedInfo, bool) {
-
+	// TODO: implement me!
+	return SeedInfo{EpochIndex: epochIndex}, false
 }
 
 // Called from:
