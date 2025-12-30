@@ -130,9 +130,7 @@ func TestIsRetryableRawLog(t *testing.T) {
 		{name: "no such host", rawLog: "dial tcp: no such host", expected: true},
 		{name: "network is unreachable", rawLog: "network is unreachable", expected: true},
 		{name: "no route to host", rawLog: "no route to host", expected: true},
-		{name: "tls error", rawLog: "tls: handshake failure", expected: true},
 		{name: "certificate error", rawLog: "x509: certificate signed by unknown authority", expected: true},
-		{name: "dns error", rawLog: "dns lookup failed", expected: true},
 
 		// HTTP gateway errors - should be retryable
 		{name: "post failed", rawLog: "post failed: connection refused", expected: true},

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"sort"
@@ -710,9 +711,10 @@ func (s *InferenceValidator) retrievePayloadsWithRetry(inf types.Inference) ([]b
 			"maxRetries", maxRetries,
 			"error", err)
 
-		// Wait between retries (skip sleep on final attempt since we're done)
+		// Wait between retries with random jitter (skip sleep on final attempt since we're done)
 		if attempt < maxRetries {
-			time.Sleep(retryInterval)
+			jitter := time.Duration(1+rand.Intn(120)) * time.Second
+			time.Sleep(retryInterval + jitter)
 		}
 	}
 

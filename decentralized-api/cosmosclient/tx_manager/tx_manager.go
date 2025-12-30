@@ -133,7 +133,7 @@ func StartTxManager(
 	return m, nil
 }
 
-const maxAttempts = 100
+const maxAttempts = 3
 
 type txToSend struct {
 	TxInfo   txInfo

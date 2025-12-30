@@ -45,9 +45,7 @@ var retryablePatterns = []string{
 	"no such host",
 	"network is unreachable",
 	"no route to host",
-	"tls:",
 	"certificate",
-	"dns",
 	// HTTP gateway errors
 	"post failed",
 	"bad gateway",
@@ -63,6 +61,9 @@ var retryablePatterns = []string{
 	// Sequence errors (safety net for non-unordered scenarios)
 	"account sequence mismatch",
 	"incorrect account sequence",
+
+	"unordered transaction has a timeout_timestamp that has already passed",
+	"unordered tx ttl exceeds",
 }
 
 // isRetryableRawLog checks if the raw log contains any retryable error patterns
