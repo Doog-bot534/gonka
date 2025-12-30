@@ -365,21 +365,7 @@ func (cm *ConfigManager) GetSeedForEpoch(epochIndex uint64) (SeedInfo, bool) {
 		return seed, true
 	}
 
-	var db *sql.DB
-	if cm.sqlDb != nil {
-		db = cm.sqlDb.GetDb()
-	}
-	cm.mutex.Unlock()
-
-	if db == nil {
-		return SeedInfo{}, false
-	}
-
-	seed, found, err := GetSeedByEpoch(context.Background(), db, epochIndex)
-	if !found || err != nil {
-		return cm.generateSeedForEpoch(epochIndex)
-	}
-	return seed, true
+	return cm.generateSeedForEpoch(epochIndex)
 }
 
 func (cm *ConfigManager) getSeedFromCache(epochIndex uint64) (SeedInfo, bool) {
@@ -811,6 +797,51 @@ func (cm *ConfigManager) HydrateFromDB(_ context.Context) error {
 	return nil
 }
 
+// repairSeedsFromDB syncs seeds from DB to memory if memory is behind or missing seeds.
+func (cm *ConfigManager) repairSeedsFromDB(ctx context.Context) error {
+	db := cm.sqlDb.GetDb()
+	if db == nil {
+		return nil
+	}
+	currentEpochIdx, okEpoch, _ := KVGetInt64(ctx, db, kvKeyCurrentEpochIndex)
+	if !okEpoch || currentEpochIdx <= 0 {
+		return nil
+	}
+	currIdx := uint64(currentEpochIdx)
+
+	// Fetch seeds from DB first (without lock)
+	sCurr, okCurr, _ := GetSeedByEpoch(ctx, db, currIdx)
+	sPrev, okPrev, _ := GetSeedByEpoch(ctx, db, currIdx-1)
+	sNext, okNext, _ := GetSeedByEpoch(ctx, db, currIdx+1)
+
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+
+	// If RAM is ahead of DB (newer epoch), do not regress
+	if cm.currentConfig.CurrentSeed.EpochIndex > currIdx {
+		return nil
+	}
+
+	// Helper to log and update if needed
+	updateIfChanged := func(name string, target *SeedInfo, source SeedInfo) {
+		if source.EpochIndex != 0 && (target.EpochIndex != source.EpochIndex || target.Seed != source.Seed || target.Signature != source.Signature) {
+			logging.Info("Repairing seed from DB", types.Config, "type", name, "epoch", source.EpochIndex)
+			*target = source
+		}
+	}
+
+	if okCurr {
+		updateIfChanged("current", &cm.currentConfig.CurrentSeed, sCurr)
+	}
+	if okPrev {
+		updateIfChanged("previous", &cm.currentConfig.PreviousSeed, sPrev)
+	}
+	if okNext {
+		updateIfChanged("upcoming", &cm.currentConfig.UpcomingSeed, sNext)
+	}
+	return nil
+}
+
 // StartAutoFlush launches a background goroutine that periodically flushes dynamic fields to DB.
 func (cm *ConfigManager) StartAutoFlush(ctx context.Context, interval time.Duration) {
 	t := time.NewTicker(interval)
@@ -821,6 +852,7 @@ func (cm *ConfigManager) StartAutoFlush(ctx context.Context, interval time.Durat
 			case <-ctx.Done():
 				return
 			case <-t.C:
+				_ = cm.repairSeedsFromDB(ctx)
 				_ = cm.flushToDB(ctx)
 			}
 		}
