@@ -103,6 +103,8 @@ func (d ValidationEarlyRejectDecorator) checkValidationMsg(ctx sdk.Context, msg 
 func (d ValidationEarlyRejectDecorator) checkMessage(ctx sdk.Context, msg sdk.Msg) error {
 	switch m := msg.(type) {
 	case *inferencetypes.MsgValidation:
+		// add logs to make sure that the ante handle is being called
+		d.inferenceKeeper.LogInfo("AnteHandle: ValidationEarlyReject - checkMessage called for MsgValidation", inferencetypes.Validation)
 		return d.checkValidationMsg(ctx, m)
 
 	case *authztypes.MsgExec:

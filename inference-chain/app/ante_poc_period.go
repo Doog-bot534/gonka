@@ -21,10 +21,16 @@ func NewPocPeriodValidationDecorator(ik *inferencemodulekeeper.Keeper) PocPeriod
 func (ppd PocPeriodValidationDecorator) checkPocMessageTooLate(ctx sdk.Context, msg sdk.Msg) error {
 	switch m := msg.(type) {
 	case *inferencetypes.MsgSubmitPocBatch:
+		// add logs to make sure that the ante handle is being called
+		ppd.inferenceKeeper.LogInfo("AnteHandle: PocPeriodValidation - checkPocMessageTooLate called for MsgSubmitPocBatch", inferencetypes.PoC)
+
 		if err := ppd.inferenceKeeper.CheckPocMessageTooLate(ctx, m.PocStageStartBlockHeight, inferencemodulekeeper.PocWindowBatch); err != nil {
 			return err
 		}
 	case *inferencetypes.MsgSubmitPocValidation:
+		// add logs to make sure that the ante handle is being called
+		ppd.inferenceKeeper.LogInfo("AnteHandle: PocPeriodValidation - checkPocMessageTooLate called for MsgSubmitPocValidation", inferencetypes.PoC)
+
 		if err := ppd.inferenceKeeper.CheckPocMessageTooLate(ctx, m.PocStageStartBlockHeight, inferencemodulekeeper.PocWindowValidation); err != nil {
 			return err
 		}
