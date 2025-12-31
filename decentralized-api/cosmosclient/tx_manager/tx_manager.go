@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -135,7 +136,12 @@ func StartTxManager(
 	return m, nil
 }
 
-const maxAttempts = 3
+const maxAttempts = 100
+
+func getJitteredDelay(base time.Duration) time.Duration {
+	jitterFactor := 0.7 + rand.Float64()*0.6
+	return time.Duration(float64(base) * jitterFactor)
+}
 
 type txToSend struct {
 	TxInfo      txInfo
@@ -494,7 +500,7 @@ func (m *manager) sendTxs() error {
 		if halt, _ := m.updateChainHalt(); halt {
 			logging.Warn("node paused, delaying tx", types.Messages,
 				"latest_block_timestamp", m.blockTimeTracker.latestBlockTime)
-			msg.NakWithDelay(defaultSenderNackDelay)
+			msg.NakWithDelay(getJitteredDelay(defaultSenderNackDelay))
 			return
 		}
 
@@ -519,8 +525,9 @@ func (m *manager) sendTxs() error {
 
 		if !tx.RequeueTime.IsZero() {
 			elapsed := time.Since(tx.RequeueTime)
-			if elapsed < defaultSenderNackDelay {
-				msg.NakWithDelay(defaultSenderNackDelay - elapsed)
+			jitteredDelay := getJitteredDelay(defaultSenderNackDelay)
+			if elapsed < jitteredDelay {
+				msg.NakWithDelay(jitteredDelay - elapsed)
 				return
 			}
 		}
