@@ -17,36 +17,68 @@ func NewPocPeriodValidationDecorator(ik *inferencemodulekeeper.Keeper) PocPeriod
 	}
 }
 
-// validatePocMessage validates a single PoC message (either direct or nested)
 func (ppd PocPeriodValidationDecorator) checkPocMessageTooLate(ctx sdk.Context, msg sdk.Msg) error {
+	if ppd.inferenceKeeper == nil {
+		return nil
+	}
+
 	switch m := msg.(type) {
 	case *inferencetypes.MsgSubmitPocBatch:
-		// add logs to make sure that the ante handle is being called
-		ppd.inferenceKeeper.LogInfo("AnteHandle: PocPeriodValidation - checkPocMessageTooLate called for MsgSubmitPocBatch", inferencetypes.PoC)
-
 		if err := ppd.inferenceKeeper.CheckPocMessageTooLate(ctx, m.PocStageStartBlockHeight, inferencemodulekeeper.PocWindowBatch); err != nil {
+			ppd.inferenceKeeper.LogError(
+				"AnteHandle: PocPeriodValidation - rejecting MsgSubmitPocBatch as too late",
+				inferencetypes.PoC,
+				"msg_type_url", sdk.MsgTypeURL(msg),
+				"pocStageStartBlockHeight", m.PocStageStartBlockHeight,
+				"currentBlockHeight", ctx.BlockHeight(),
+				"error", err,
+			)
 			return err
 		}
-	case *inferencetypes.MsgSubmitPocValidation:
-		// add logs to make sure that the ante handle is being called
-		ppd.inferenceKeeper.LogInfo("AnteHandle: PocPeriodValidation - checkPocMessageTooLate called for MsgSubmitPocValidation", inferencetypes.PoC)
 
+	case *inferencetypes.MsgSubmitPocValidation:
 		if err := ppd.inferenceKeeper.CheckPocMessageTooLate(ctx, m.PocStageStartBlockHeight, inferencemodulekeeper.PocWindowValidation); err != nil {
+			ppd.inferenceKeeper.LogError(
+				"AnteHandle: PocPeriodValidation - rejecting MsgSubmitPocValidation as too late",
+				inferencetypes.PoC,
+				"msg_type_url", sdk.MsgTypeURL(msg),
+				"pocStageStartBlockHeight", m.PocStageStartBlockHeight,
+				"currentBlockHeight", ctx.BlockHeight(),
+				"error", err,
+			)
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (ppd PocPeriodValidationDecorator) checkMessage(ctx sdk.Context, msg sdk.Msg) error {
+	switch m := msg.(type) {
+	case *inferencetypes.MsgSubmitPocBatch, *inferencetypes.MsgSubmitPocValidation:
+		return ppd.checkPocMessageTooLate(ctx, msg)
+
 	case *authztypes.MsgExec:
 		// Recursively validate messages inside MsgExec
+		if ppd.inferenceKeeper == nil {
+			return nil
+		}
 		for _, innerMsg := range m.Msgs {
 			var unwrapped sdk.Msg
 			if err := ppd.inferenceKeeper.Codec().UnpackAny(innerMsg, &unwrapped); err != nil {
-				// If we can't unpack, skip (but log in production)
+				ppd.inferenceKeeper.LogError(
+					"AnteHandle: PocPeriodValidation - failed to unpack authz MsgExec inner msg",
+					inferencetypes.PoC,
+					"error", err,
+				)
 				continue
 			}
-			if err := ppd.checkPocMessageTooLate(ctx, unwrapped); err != nil {
+			if err := ppd.checkMessage(ctx, unwrapped); err != nil {
 				return err
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -61,7 +93,7 @@ func (ppd PocPeriodValidationDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, s
 	}
 
 	for _, msg := range tx.GetMsgs() {
-		if err := ppd.checkPocMessageTooLate(ctx, msg); err != nil {
+		if err := ppd.checkMessage(ctx, msg); err != nil {
 			return ctx, err
 		}
 	}

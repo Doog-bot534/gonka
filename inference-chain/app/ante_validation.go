@@ -32,14 +32,15 @@ func (d ValidationEarlyRejectDecorator) checkValidationMsg(ctx sdk.Context, msg 
 	inference, found := d.inferenceKeeper.GetInference(ctx, msg.InferenceId)
 	if !found {
 		d.inferenceKeeper.LogInfo(
-			"AnteHandle: ValidationEarlyReject - inference not found (skipping early reject; node may be behind)",
+			"AnteHandle: ValidationEarlyReject - inference not found",
 			inferencetypes.Validation,
 			"creator", msg.Creator,
 			"inferenceId", msg.InferenceId,
 		)
-		// Don't reject in CheckTx if we can't see the inference yet (node lag / state sync).
-		// DeliverTx will enforce correctness once the node has the required state.
-		return nil
+		// It may filter legit transaction if the node is behind (node lag / state sync),
+		// But hope that it will be propogated by other nodes
+		// TODO: In the next release, skip the filter on CheckTx, and enforce only on DeliverTx.
+		return inferencetypes.ErrInferenceNotFound
 	}
 
 	// Validate membership in the *current effective epoch* model subgroup.
@@ -103,8 +104,6 @@ func (d ValidationEarlyRejectDecorator) checkValidationMsg(ctx sdk.Context, msg 
 func (d ValidationEarlyRejectDecorator) checkMessage(ctx sdk.Context, msg sdk.Msg) error {
 	switch m := msg.(type) {
 	case *inferencetypes.MsgValidation:
-		// add logs to make sure that the ante handle is being called
-		d.inferenceKeeper.LogInfo("AnteHandle: ValidationEarlyReject - checkMessage called for MsgValidation", inferencetypes.Validation)
 		return d.checkValidationMsg(ctx, m)
 
 	case *authztypes.MsgExec:
