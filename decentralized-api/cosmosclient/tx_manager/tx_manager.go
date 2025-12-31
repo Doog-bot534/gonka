@@ -45,6 +45,9 @@ const (
 
 	defaultSenderNackDelay   = time.Second * 7
 	defaultObserverNackDelay = time.Second * 5
+
+	hashHeader = "TX_HASH"
+	idHeader   = "TX_ID"
 )
 
 type TxManager interface {
@@ -384,7 +387,10 @@ func (m *manager) putOnRetry(
 	if err != nil {
 		return err
 	}
-	_, err = m.natsJetStream.Publish(server.TxsToSendStream, b)
+	msg := &nats.Msg{Subject: server.TxsToSendStream, Data: b, Header: nats.Header{}}
+	msg.Header.Set(idHeader, id)
+	msg.Header.Set(hashHeader, txHash)
+	_, err = m.natsJetStream.PublishMsg(msg)
 	return err
 }
 
@@ -438,7 +444,10 @@ func (m *manager) putBatchOnRetry(
 	if err != nil {
 		return err
 	}
-	_, err = m.natsJetStream.Publish(server.TxsToSendStream, b)
+	msg := &nats.Msg{Subject: server.TxsToSendStream, Data: b, Header: nats.Header{}}
+	msg.Header.Set(idHeader, id)
+	msg.Header.Set(hashHeader, txHash)
+	_, err = m.natsJetStream.PublishMsg(msg)
 	return err
 }
 
@@ -453,17 +462,10 @@ func (m *manager) putInfoToObserve(info txInfo) error {
 	if err != nil {
 		return err
 	}
-	_, err = m.natsJetStream.Publish(server.TxsToObserveStream, b)
-	return err
-}
-
-func (m *manager) republishTxWithDelay(tx txToSend, delay time.Duration) error {
-	time.Sleep(delay)
-	b, err := json.Marshal(&tx)
-	if err != nil {
-		return err
-	}
-	_, err = m.natsJetStream.Publish(server.TxsToSendStream, b)
+	msg := &nats.Msg{Subject: server.TxsToObserveStream, Data: b, Header: nats.Header{}}
+	msg.Header.Set(idHeader, info.Id)
+	msg.Header.Set(hashHeader, info.TxHash)
+	_, err = m.natsJetStream.PublishMsg(msg)
 	return err
 }
 
@@ -476,10 +478,22 @@ func (m *manager) sendTxs() error {
 			time.Sleep(3 * time.Second)
 			return
 		}
+		txId := msg.Header.Get(idHeader)
+		txHash := msg.Header.Get(hashHeader)
+
+		md, err := msg.Metadata()
+		if err == nil {
+			logging.Info("sendTxs metadata", types.Messages, "delivered", md.NumDelivered, "pending", md.NumPending, "id", txId, "hash", txHash)
+			if md.NumDelivered >= maxAttempts {
+				logging.Warn("tx retry max attempts failed", types.Messages, "delivered", md.NumDelivered, "id", txId, "hash", txHash)
+				msg.Term()
+				return
+			}
+		}
 
 		var tx txToSend
 		if err := json.Unmarshal(msg.Data, &tx); err != nil {
-			logging.Error("error unmarshaling tx_to_send", types.Messages, "err", err)
+			logging.Error("error unmarshaling tx_to_send", types.Messages, "err", err, "id", txId, "hash", txHash)
 			msg.Term() // malformed, drop it
 			return
 		}
@@ -490,6 +504,7 @@ func (m *manager) sendTxs() error {
 		if tx.TxInfo.DeadlineBlock > 0 && currentHeight > tx.TxInfo.DeadlineBlock {
 			logging.Warn("tx expired by block deadline, dropping", types.Messages,
 				"id", tx.TxInfo.Id,
+				"hash", tx.TxInfo.TxHash,
 				"deadline", tx.TxInfo.DeadlineBlock,
 				"currentHeight", currentHeight)
 			msg.Term()
@@ -530,17 +545,8 @@ func (m *manager) sendTxs() error {
 			if broadcastErr != nil {
 				// Check if broadcast error is retryable
 				if isRetryableBroadcastError(broadcastErr) {
-					tx.Attempts++
-					if tx.Attempts >= maxAttempts {
-						logging.Warn("tx reached max attempts after broadcast error, dropping", types.Messages, "id", tx.TxInfo.Id, "attempts", tx.Attempts)
-						msg.Term()
-						return
-					}
-					logging.Warn("retryable broadcast error in sendTxs, will retry", types.Messages, "id", tx.TxInfo.Id, "err", broadcastErr, "attempts", tx.Attempts)
-					if err := m.republishTxWithDelay(tx, defaultSenderNackDelay); err != nil {
-						logging.Error("failed to republish tx", types.Messages, "id", tx.TxInfo.Id, "err", err)
-					}
-					msg.Ack()
+					logging.Warn("retryable broadcast error in sendTxs, will retry", types.Messages, "id", tx.TxInfo.Id, "err", broadcastErr)
+					msg.NakWithDelay(defaultSenderNackDelay)
 					return
 				}
 				// Non-retryable broadcast error - drop permanently
@@ -558,18 +564,9 @@ func (m *manager) sendTxs() error {
 				msg.Term()
 				return
 			case TxActionRetry:
-				tx.Attempts++
-				if tx.Attempts >= maxAttempts {
-					logging.Warn("tx reached max attempts after response error, dropping", types.Messages, "id", tx.TxInfo.Id, "attempts", tx.Attempts)
-					msg.Term()
-					return
-				}
 				logging.Warn("Retryable response error in sendTxs, will retry", types.Messages,
-					"id", tx.TxInfo.Id, "code", resp.Code, "rawLog", resp.RawLog, "attempts", tx.Attempts)
-				if err := m.republishTxWithDelay(tx, defaultSenderNackDelay); err != nil {
-					logging.Error("failed to republish tx", types.Messages, "id", tx.TxInfo.Id, "err", err)
-				}
-				msg.Ack()
+					"id", tx.TxInfo.Id, "code", resp.Code, "rawLog", resp.RawLog)
+				msg.NakWithDelay(defaultSenderNackDelay)
 				return
 			case TxActionObserve:
 				// Success or tx-in-mempool - continue to observer
@@ -684,6 +681,7 @@ func (m *manager) observeTxs() error {
 			}
 		}
 
+		// Likely: The tx is not (yet) found, and the tx hasn't expired
 		msg.NakWithDelay(defaultObserverNackDelay)
 	}, nats.Durable(txObserverConsumer), nats.ManualAck())
 	return err
