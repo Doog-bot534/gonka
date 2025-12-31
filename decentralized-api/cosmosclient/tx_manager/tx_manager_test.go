@@ -230,7 +230,7 @@ func TestRequeue_MaxAttemptsReturnsNil(t *testing.T) {
 		TxInfo: txInfo{
 			Id: "test-tx-max",
 		},
-		Attempts: 2, // Will become 3 after requeue, hitting maxAttempts
+		Attempts: 99, // Will become 100 after requeue, hitting maxAttempts
 	}
 
 	// Get initial stream info
@@ -240,7 +240,7 @@ func TestRequeue_MaxAttemptsReturnsNil(t *testing.T) {
 
 	err = m.requeue(tx)
 	require.NoError(t, err)
-	assert.Equal(t, 3, tx.Attempts, "Attempts should be incremented to 3")
+	assert.Equal(t, 100, tx.Attempts, "Attempts should be incremented to 100")
 
 	// Verify no message was published
 	streamInfo, err = js.StreamInfo(server.TxsToSendStream)
@@ -402,10 +402,10 @@ func TestMaxAttemptsCheck(t *testing.T) {
 		shouldTerminate bool
 	}{
 		{"attempts 0", 0, false},
-		{"attempts 1", 1, false},
-		{"attempts 2", 2, false},
-		{"attempts 3 (max)", 3, true},
-		{"attempts 4 (over max)", 4, true},
+		{"attempts 50", 50, false},
+		{"attempts 99", 99, false},
+		{"attempts 100 (max)", 100, true},
+		{"attempts 101 (over max)", 101, true},
 	}
 
 	for _, tc := range testCases {
@@ -429,26 +429,26 @@ func TestRequeueIntegration_MultipleRequeues(t *testing.T) {
 		TxInfo: txInfo{
 			Id: "multi-requeue-test",
 		},
-		Attempts: 0,
+		Attempts: 97, // Start near max to test boundary
 	}
 
-	// First requeue
+	// First requeue (97 -> 98)
 	err := m.requeue(tx)
 	require.NoError(t, err)
-	assert.Equal(t, 1, tx.Attempts)
+	assert.Equal(t, 98, tx.Attempts)
 	firstRequeueTime := tx.RequeueTime
 
-	// Second requeue
+	// Second requeue (98 -> 99)
 	time.Sleep(10 * time.Millisecond) // Ensure time difference
 	err = m.requeue(tx)
 	require.NoError(t, err)
-	assert.Equal(t, 2, tx.Attempts)
+	assert.Equal(t, 99, tx.Attempts)
 	assert.True(t, tx.RequeueTime.After(firstRequeueTime), "RequeueTime should be updated")
 
-	// Third requeue - should hit max attempts
+	// Third requeue (99 -> 100) - should hit max attempts
 	err = m.requeue(tx)
 	require.NoError(t, err)
-	assert.Equal(t, 3, tx.Attempts)
+	assert.Equal(t, 100, tx.Attempts)
 
 	// Verify 2 messages published (third was at max, not published)
 	streamInfo, err := js.StreamInfo(server.TxsToSendStream)
