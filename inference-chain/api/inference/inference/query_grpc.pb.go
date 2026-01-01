@@ -91,6 +91,7 @@ const (
 	Query_TrainingAllowList_FullMethodName                         = "/inference.inference.Query/TrainingAllowList"
 	Query_ExcludedParticipants_FullMethodName                      = "/inference.inference.Query/ExcludedParticipants"
 	Query_ActiveConfirmationPoCEvent_FullMethodName                = "/inference.inference.Query/ActiveConfirmationPoCEvent"
+	Query_ConfirmationPoCEventsForEpoch_FullMethodName             = "/inference.inference.Query/ConfirmationPoCEventsForEpoch"
 )
 
 // QueryClient is the client API for Query service.
@@ -222,6 +223,8 @@ type QueryClient interface {
 	ExcludedParticipants(ctx context.Context, in *QueryExcludedParticipantsRequest, opts ...grpc.CallOption) (*QueryExcludedParticipantsResponse, error)
 	// Queries the currently active confirmation PoC event.
 	ActiveConfirmationPoCEvent(ctx context.Context, in *QueryActiveConfirmationPoCEventRequest, opts ...grpc.CallOption) (*QueryActiveConfirmationPoCEventResponse, error)
+	// Queries all confirmation PoC events for a given epoch (0 = current effective epoch).
+	ConfirmationPoCEventsForEpoch(ctx context.Context, in *QueryConfirmationPoCEventsForEpochRequest, opts ...grpc.CallOption) (*QueryConfirmationPoCEventsForEpochResponse, error)
 }
 
 type queryClient struct {
@@ -880,6 +883,15 @@ func (c *queryClient) ActiveConfirmationPoCEvent(ctx context.Context, in *QueryA
 	return out, nil
 }
 
+func (c *queryClient) ConfirmationPoCEventsForEpoch(ctx context.Context, in *QueryConfirmationPoCEventsForEpochRequest, opts ...grpc.CallOption) (*QueryConfirmationPoCEventsForEpochResponse, error) {
+	out := new(QueryConfirmationPoCEventsForEpochResponse)
+	err := c.cc.Invoke(ctx, Query_ConfirmationPoCEventsForEpoch_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QueryServer is the server API for Query service.
 // All implementations must embed UnimplementedQueryServer
 // for forward compatibility
@@ -1009,6 +1021,8 @@ type QueryServer interface {
 	ExcludedParticipants(context.Context, *QueryExcludedParticipantsRequest) (*QueryExcludedParticipantsResponse, error)
 	// Queries the currently active confirmation PoC event.
 	ActiveConfirmationPoCEvent(context.Context, *QueryActiveConfirmationPoCEventRequest) (*QueryActiveConfirmationPoCEventResponse, error)
+	// Queries all confirmation PoC events for a given epoch (0 = current effective epoch).
+	ConfirmationPoCEventsForEpoch(context.Context, *QueryConfirmationPoCEventsForEpochRequest) (*QueryConfirmationPoCEventsForEpochResponse, error)
 	mustEmbedUnimplementedQueryServer()
 }
 
@@ -1231,6 +1245,9 @@ func (UnimplementedQueryServer) ExcludedParticipants(context.Context, *QueryExcl
 }
 func (UnimplementedQueryServer) ActiveConfirmationPoCEvent(context.Context, *QueryActiveConfirmationPoCEventRequest) (*QueryActiveConfirmationPoCEventResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ActiveConfirmationPoCEvent not implemented")
+}
+func (UnimplementedQueryServer) ConfirmationPoCEventsForEpoch(context.Context, *QueryConfirmationPoCEventsForEpochRequest) (*QueryConfirmationPoCEventsForEpochResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ConfirmationPoCEventsForEpoch not implemented")
 }
 func (UnimplementedQueryServer) mustEmbedUnimplementedQueryServer() {}
 
@@ -2541,6 +2558,24 @@ func _Query_ActiveConfirmationPoCEvent_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Query_ConfirmationPoCEventsForEpoch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryConfirmationPoCEventsForEpochRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).ConfirmationPoCEventsForEpoch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_ConfirmationPoCEventsForEpoch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).ConfirmationPoCEventsForEpoch(ctx, req.(*QueryConfirmationPoCEventsForEpochRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Query_ServiceDesc is the grpc.ServiceDesc for Query service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -2835,6 +2870,10 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ActiveConfirmationPoCEvent",
 			Handler:    _Query_ActiveConfirmationPoCEvent_Handler,
+		},
+		{
+			MethodName: "ConfirmationPoCEventsForEpoch",
+			Handler:    _Query_ConfirmationPoCEventsForEpoch_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
