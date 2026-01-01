@@ -198,8 +198,6 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 		circuitante.NewCircuitBreakerDecorator(options.CircuitKeeper),
 		ante.NewExtensionOptionsDecorator(options.ExtensionOptionChecker),
 		ante.NewValidateBasicDecorator(),
-		NewPocPeriodValidationDecorator(options.InferenceKeeper),   // Validate PoC period early to reject invalid submissions
-		NewValidationEarlyRejectDecorator(options.InferenceKeeper), // Reject invalid MsgValidation txs early (duplicate / not-in-epoch)
 		ante.NewTxTimeoutHeightDecorator(),
 		ante.NewValidateMemoDecorator(options.AccountKeeper),
 		ante.NewConsumeGasForTxSizeDecorator(options.AccountKeeper),
@@ -210,7 +208,10 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 			Priority:        1_000_000, // optional: ensure zero-fee txs aren't starved
 		},
 		ante.NewDeductFeeDecorator(options.AccountKeeper, options.BankKeeper, options.FeegrantKeeper, options.TxFeeChecker),
-		ante.NewSetPubKeyDecorator(options.AccountKeeper), // SetPubKeyDecorator must be called before all signature verification decorators
+		// Run mempool filters AFTER fee deduction (so invalid txs pay fees), but BEFORE signature verification (to avoid crypto work).
+		NewPocPeriodValidationDecorator(options.InferenceKeeper),   // Reject PoC submissions outside allowed windows
+		NewValidationEarlyRejectDecorator(options.InferenceKeeper), // Reject invalid MsgValidation txs early (duplicate / not-in-epoch)
+		ante.NewSetPubKeyDecorator(options.AccountKeeper),          // SetPubKeyDecorator must be called before all signature verification decorators
 		ante.NewValidateSigCountDecorator(options.AccountKeeper),
 		ante.NewSigGasConsumeDecorator(options.AccountKeeper, options.SigGasConsumer),
 		ante.NewSigVerificationDecorator(options.AccountKeeper, options.SignModeHandler),

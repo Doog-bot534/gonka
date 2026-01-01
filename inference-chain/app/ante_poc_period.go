@@ -24,7 +24,7 @@ func (ppd PocPeriodValidationDecorator) checkPocMessageTooLate(ctx sdk.Context, 
 
 	switch m := msg.(type) {
 	case *inferencetypes.MsgSubmitPocBatch:
-		if err := ppd.inferenceKeeper.CheckPocMessageTooLate(ctx, m.PocStageStartBlockHeight, inferencemodulekeeper.PocWindowBatch); err != nil {
+		if err := ppd.inferenceKeeper.CheckPoCMessageTooLate(ctx, m.PocStageStartBlockHeight, inferencemodulekeeper.PoCWindowBatch); err != nil {
 			ppd.inferenceKeeper.LogError(
 				"AnteHandle: PocPeriodValidation - rejecting MsgSubmitPocBatch as too late",
 				inferencetypes.PoC,
@@ -37,7 +37,7 @@ func (ppd PocPeriodValidationDecorator) checkPocMessageTooLate(ctx sdk.Context, 
 		}
 
 	case *inferencetypes.MsgSubmitPocValidation:
-		if err := ppd.inferenceKeeper.CheckPocMessageTooLate(ctx, m.PocStageStartBlockHeight, inferencemodulekeeper.PocWindowValidation); err != nil {
+		if err := ppd.inferenceKeeper.CheckPoCMessageTooLate(ctx, m.PocStageStartBlockHeight, inferencemodulekeeper.PoCWindowValidation); err != nil {
 			ppd.inferenceKeeper.LogError(
 				"AnteHandle: PocPeriodValidation - rejecting MsgSubmitPocValidation as too late",
 				inferencetypes.PoC,

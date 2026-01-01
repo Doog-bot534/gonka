@@ -8,20 +8,20 @@ import (
 	"github.com/productscience/inference/x/inference/types"
 )
 
-type PocWindowType int
+type PoCWindowType int
 
 const (
-	PocWindowBatch PocWindowType = iota
-	PocWindowValidation
+	PoCWindowBatch PoCWindowType = iota
+	PoCWindowValidation
 )
 
-func (k Keeper) CheckPocMessageTooLate(ctx sdk.Context, startBlockHeight int64, windowType PocWindowType) error {
+func (k Keeper) CheckPoCMessageTooLate(ctx sdk.Context, startBlockHeight int64, windowType PoCWindowType) error {
 	currentBlockHeight := ctx.BlockHeight()
 
 	if startBlockHeight > currentBlockHeight {
 		// It may filter legit transaction if the node is behind (node lag / state sync),
 		// But hope that it will be propogated by other nodes
-		//TODO: In the next release, skip the filter on CheckTx, and enforce only on DeliverTx.
+		// TODO: In the next release, skip the filter on CheckTx, and enforce only on DeliverTx.
 		k.Logger().Error(
 			"[ValidatePocPeriod] POC submission is too early",
 			"startBlockHeight", startBlockHeight,
@@ -40,13 +40,13 @@ func (k Keeper) CheckPocMessageTooLate(ctx sdk.Context, startBlockHeight int64, 
 	}
 
 	if isActive && activeEvent != nil {
-		return k.checkConfirmationPocMessageTooLate(ctx, activeEvent, startBlockHeight, currentBlockHeight, windowType)
+		return k.checkConfirmationPoCMessageTooLate(ctx, activeEvent, startBlockHeight, currentBlockHeight, windowType)
 	}
 
-	return k.checkRegularPocMessageTooLate(ctx, startBlockHeight, currentBlockHeight, windowType)
+	return k.checkRegularPoCMessageTooLate(ctx, startBlockHeight, currentBlockHeight, windowType)
 }
 
-func (k Keeper) checkConfirmationPocMessageTooLate(ctx sdk.Context, event *types.ConfirmationPoCEvent, startBlockHeight, currentBlockHeight int64, windowType PocWindowType) error {
+func (k Keeper) checkConfirmationPoCMessageTooLate(ctx sdk.Context, event *types.ConfirmationPoCEvent, startBlockHeight, currentBlockHeight int64, windowType PoCWindowType) error {
 	if startBlockHeight != event.TriggerHeight {
 		k.Logger().Error(
 			"[ValidatePocPeriod] Confirmation PoC: start block height mismatch",
@@ -64,7 +64,7 @@ func (k Keeper) checkConfirmationPocMessageTooLate(ctx sdk.Context, event *types
 	epochParams := k.GetParams(ctx).EpochParams
 
 	switch windowType {
-	case PocWindowBatch:
+	case PoCWindowBatch:
 		if currentBlockHeight > event.GetExchangeEnd(epochParams) {
 			k.Logger().Error(
 				"[ValidatePocPeriod] Confirmation PoC: outside batch submission window",
@@ -75,7 +75,7 @@ func (k Keeper) checkConfirmationPocMessageTooLate(ctx sdk.Context, event *types
 			return errorsmod.Wrap(types.ErrPocTooLate, "Confirmation PoC is past generation phase")
 		}
 
-	case PocWindowValidation:
+	case PoCWindowValidation:
 		if currentBlockHeight > event.GetValidationEnd(epochParams) {
 			k.Logger().Error(
 				"[ValidatePocPeriod] Confirmation PoC: outside validation window",
@@ -90,7 +90,7 @@ func (k Keeper) checkConfirmationPocMessageTooLate(ctx sdk.Context, event *types
 	return nil
 }
 
-func (k Keeper) checkRegularPocMessageTooLate(ctx sdk.Context, startBlockHeight, currentBlockHeight int64, windowType PocWindowType) error {
+func (k Keeper) checkRegularPoCMessageTooLate(ctx sdk.Context, startBlockHeight, currentBlockHeight int64, windowType PoCWindowType) error {
 	epochParams := k.GetParams(ctx).EpochParams
 	currentEpoch, found := k.GetEffectiveEpoch(ctx)
 	if !found {
@@ -146,7 +146,7 @@ func (k Keeper) checkRegularPocMessageTooLate(ctx sdk.Context, startBlockHeight,
 	}
 
 	switch windowType {
-	case PocWindowBatch:
+	case PoCWindowBatch:
 		if currentBlockHeight > upcomingEpochContext.PoCExchangeDeadline() {
 			k.Logger().Error(
 				"[ValidatePocPeriod] PoC exchange window closed",
@@ -162,7 +162,7 @@ func (k Keeper) checkRegularPocMessageTooLate(ctx sdk.Context, startBlockHeight,
 			)
 		}
 
-	case PocWindowValidation:
+	case PoCWindowValidation:
 		if currentBlockHeight > upcomingEpochContext.EndOfPoCValidation() {
 			k.Logger().Error(
 				"[ValidatePocPeriod] Validation exchange window closed",
