@@ -31,7 +31,7 @@ func (d ValidationEarlyRejectDecorator) checkValidationMsg(ctx sdk.Context, msg 
 
 	inference, found := d.inferenceKeeper.GetInference(ctx, msg.InferenceId)
 	if !found {
-		d.inferenceKeeper.LogInfo(
+		d.inferenceKeeper.LogDebug(
 			"AnteHandle: ValidationEarlyReject - inference not found",
 			inferencetypes.Validation,
 			"creator", msg.Creator,
@@ -46,7 +46,7 @@ func (d ValidationEarlyRejectDecorator) checkValidationMsg(ctx sdk.Context, msg 
 	// Validate membership in the *current effective epoch* model subgroup.
 	effectiveEpochIndex, ok := d.inferenceKeeper.GetEffectiveEpochIndex(ctx)
 	if !ok {
-		d.inferenceKeeper.LogError(
+		d.inferenceKeeper.LogDebug(
 			"AnteHandle: ValidationEarlyReject - no effective epoch index",
 			inferencetypes.Validation,
 			"creator", msg.Creator,
@@ -57,7 +57,7 @@ func (d ValidationEarlyRejectDecorator) checkValidationMsg(ctx sdk.Context, msg 
 
 	groupData, found := d.inferenceKeeper.GetEpochGroupData(ctx, effectiveEpochIndex, inference.Model)
 	if !found {
-		d.inferenceKeeper.LogError(
+		d.inferenceKeeper.LogDebug(
 			"AnteHandle: ValidationEarlyReject - epoch group data not found",
 			inferencetypes.Validation,
 			"creator", msg.Creator,
@@ -69,7 +69,7 @@ func (d ValidationEarlyRejectDecorator) checkValidationMsg(ctx sdk.Context, msg 
 	}
 
 	if groupData.ValidationWeight(msg.Creator) == nil {
-		d.inferenceKeeper.LogInfo(
+		d.inferenceKeeper.LogDebug(
 			"AnteHandle: ValidationEarlyReject - participant not in current epoch group for model",
 			inferencetypes.Validation,
 			"creator", msg.Creator,
@@ -86,7 +86,7 @@ func (d ValidationEarlyRejectDecorator) checkValidationMsg(ctx sdk.Context, msg 
 		if found {
 			// Msg handler maintains this slice sorted, but we intentionally do not rely on that here.
 			if slices.Contains(egv.ValidatedInferences, msg.InferenceId) {
-				d.inferenceKeeper.LogInfo(
+				d.inferenceKeeper.LogDebug(
 					"AnteHandle: ValidationEarlyReject - duplicate validation",
 					inferencetypes.Validation,
 					"creator", msg.Creator,
@@ -113,7 +113,7 @@ func (d ValidationEarlyRejectDecorator) checkMessage(ctx sdk.Context, msg sdk.Ms
 		for _, innerMsg := range m.Msgs {
 			var unwrapped sdk.Msg
 			if err := d.inferenceKeeper.Codec().UnpackAny(innerMsg, &unwrapped); err != nil {
-				d.inferenceKeeper.LogError(
+				d.inferenceKeeper.LogDebug(
 					"AnteHandle: ValidationEarlyReject - failed to unpack authz MsgExec inner msg",
 					inferencetypes.Validation,
 					"error", err,

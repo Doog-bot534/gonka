@@ -22,7 +22,7 @@ func (k Keeper) CheckPoCMessageTooLate(ctx sdk.Context, startBlockHeight int64, 
 		// It may filter legit transaction if the node is behind (node lag / state sync),
 		// But hope that it will be propogated by other nodes
 		// TODO: In the next release, skip the filter on CheckTx, and enforce only on DeliverTx.
-		k.Logger().Error(
+		k.Logger().Debug(
 			"[ValidatePocPeriod] POC submission is too early",
 			"startBlockHeight", startBlockHeight,
 			"currentBlockHeight", currentBlockHeight,
@@ -36,7 +36,7 @@ func (k Keeper) CheckPoCMessageTooLate(ctx sdk.Context, startBlockHeight int64, 
 
 	activeEvent, isActive, err := k.GetActiveConfirmationPoCEvent(ctx)
 	if err != nil {
-		k.Logger().Error("[ValidatePocPeriod] Error checking confirmation PoC event", "error", err)
+		k.Logger().Debug("[ValidatePocPeriod] Error checking confirmation PoC event", "error", err)
 	}
 
 	if isActive && activeEvent != nil {
@@ -48,7 +48,7 @@ func (k Keeper) CheckPoCMessageTooLate(ctx sdk.Context, startBlockHeight int64, 
 
 func (k Keeper) checkConfirmationPoCMessageTooLate(ctx sdk.Context, event *types.ConfirmationPoCEvent, startBlockHeight, currentBlockHeight int64, windowType PoCWindowType) error {
 	if startBlockHeight != event.TriggerHeight {
-		k.Logger().Error(
+		k.Logger().Debug(
 			"[ValidatePocPeriod] Confirmation PoC: start block height mismatch",
 			"startBlockHeight", startBlockHeight,
 			"triggerHeight", event.TriggerHeight,
@@ -66,7 +66,7 @@ func (k Keeper) checkConfirmationPoCMessageTooLate(ctx sdk.Context, event *types
 	switch windowType {
 	case PoCWindowBatch:
 		if currentBlockHeight > event.GetExchangeEnd(epochParams) {
-			k.Logger().Error(
+			k.Logger().Debug(
 				"[ValidatePocPeriod] Confirmation PoC: outside batch submission window",
 				"currentBlockHeight", currentBlockHeight,
 				"generationStartHeight", event.GenerationStartHeight,
@@ -77,7 +77,7 @@ func (k Keeper) checkConfirmationPoCMessageTooLate(ctx sdk.Context, event *types
 
 	case PoCWindowValidation:
 		if currentBlockHeight > event.GetValidationEnd(epochParams) {
-			k.Logger().Error(
+			k.Logger().Debug(
 				"[ValidatePocPeriod] Confirmation PoC: outside validation window",
 				"currentBlockHeight", currentBlockHeight,
 				"validationStartHeight", event.GetValidationStart(epochParams),
@@ -94,7 +94,7 @@ func (k Keeper) checkRegularPoCMessageTooLate(ctx sdk.Context, startBlockHeight,
 	epochParams := k.GetParams(ctx).EpochParams
 	currentEpoch, found := k.GetEffectiveEpoch(ctx)
 	if !found {
-		k.Logger().Error(
+		k.Logger().Debug(
 			"[ValidatePocPeriod] Failed to get effective epoch",
 			"currentBlockHeight", currentBlockHeight,
 		)
@@ -102,7 +102,7 @@ func (k Keeper) checkRegularPoCMessageTooLate(ctx sdk.Context, startBlockHeight,
 	}
 	currentEpochContext := types.NewEpochContext(*currentEpoch, *epochParams)
 	if startBlockHeight <= currentEpochContext.StartOfPoC() {
-		k.Logger().Error(
+		k.Logger().Debug(
 			"[ValidatePocPeriod] Start block height is for PoC stage that already finished",
 			"currentBlockHeight", currentBlockHeight,
 			"startBlockHeight", startBlockHeight,
@@ -117,7 +117,7 @@ func (k Keeper) checkRegularPoCMessageTooLate(ctx sdk.Context, startBlockHeight,
 
 	upcomingEpoch, found := k.GetUpcomingEpoch(ctx)
 	if !found {
-		k.Logger().Error(
+		k.Logger().Debug(
 			"[ValidatePocPeriod] Failed to get upcoming epoch while current block is past startBlock",
 			"currentBlockHeight", currentBlockHeight,
 			"startBlockHeight", startBlockHeight,
@@ -132,7 +132,7 @@ func (k Keeper) checkRegularPoCMessageTooLate(ctx sdk.Context, startBlockHeight,
 	upcomingEpochContext := types.NewEpochContext(*upcomingEpoch, *epochParams)
 
 	if !upcomingEpochContext.IsStartOfPocStage(startBlockHeight) {
-		k.Logger().Error(
+		k.Logger().Debug(
 			"[ValidatePocPeriod] Start block height doesn't match upcoming epoch",
 			"startBlockHeight", startBlockHeight,
 			"expectedStartBlockHeight", upcomingEpochContext.PocStartBlockHeight,
@@ -148,7 +148,7 @@ func (k Keeper) checkRegularPoCMessageTooLate(ctx sdk.Context, startBlockHeight,
 	switch windowType {
 	case PoCWindowBatch:
 		if currentBlockHeight > upcomingEpochContext.PoCExchangeDeadline() {
-			k.Logger().Error(
+			k.Logger().Debug(
 				"[ValidatePocPeriod] PoC exchange window closed",
 				"startBlockHeight", startBlockHeight,
 				"currentBlockHeight", currentBlockHeight,
@@ -164,7 +164,7 @@ func (k Keeper) checkRegularPoCMessageTooLate(ctx sdk.Context, startBlockHeight,
 
 	case PoCWindowValidation:
 		if currentBlockHeight > upcomingEpochContext.EndOfPoCValidation() {
-			k.Logger().Error(
+			k.Logger().Debug(
 				"[ValidatePocPeriod] Validation exchange window closed",
 				"startBlockHeight", startBlockHeight,
 				"currentBlockHeight", currentBlockHeight,

@@ -25,7 +25,7 @@ func (ppd PocPeriodValidationDecorator) checkPocMessageTooLate(ctx sdk.Context, 
 	switch m := msg.(type) {
 	case *inferencetypes.MsgSubmitPocBatch:
 		if err := ppd.inferenceKeeper.CheckPoCMessageTooLate(ctx, m.PocStageStartBlockHeight, inferencemodulekeeper.PoCWindowBatch); err != nil {
-			ppd.inferenceKeeper.LogError(
+			ppd.inferenceKeeper.LogDebug(
 				"AnteHandle: PocPeriodValidation - rejecting MsgSubmitPocBatch as too late",
 				inferencetypes.PoC,
 				"msg_type_url", sdk.MsgTypeURL(msg),
@@ -38,7 +38,7 @@ func (ppd PocPeriodValidationDecorator) checkPocMessageTooLate(ctx sdk.Context, 
 
 	case *inferencetypes.MsgSubmitPocValidation:
 		if err := ppd.inferenceKeeper.CheckPoCMessageTooLate(ctx, m.PocStageStartBlockHeight, inferencemodulekeeper.PoCWindowValidation); err != nil {
-			ppd.inferenceKeeper.LogError(
+			ppd.inferenceKeeper.LogDebug(
 				"AnteHandle: PocPeriodValidation - rejecting MsgSubmitPocValidation as too late",
 				inferencetypes.PoC,
 				"msg_type_url", sdk.MsgTypeURL(msg),
@@ -66,7 +66,7 @@ func (ppd PocPeriodValidationDecorator) checkMessage(ctx sdk.Context, msg sdk.Ms
 		for _, innerMsg := range m.Msgs {
 			var unwrapped sdk.Msg
 			if err := ppd.inferenceKeeper.Codec().UnpackAny(innerMsg, &unwrapped); err != nil {
-				ppd.inferenceKeeper.LogError(
+				ppd.inferenceKeeper.LogDebug(
 					"AnteHandle: PocPeriodValidation - failed to unpack authz MsgExec inner msg",
 					inferencetypes.PoC,
 					"error", err,
