@@ -889,10 +889,28 @@ func (s *InferenceValidator) validateWithPayloads(inference types.Inference, inf
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
 	respBodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
+	}
+
+	// If the validator's inference node rejects the payload (400/422), treat validation as passed.
+	// This can happen when the original inference could not be executed due to upstream payload rejection,
+	// and validators on older versions may still attempt re-execution.
+	if resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnprocessableEntity {
+		logging.Warn("Validator inference node rejected payload; treating validation as passed", types.Validation,
+			"inferenceId", inference.InferenceId,
+			"status", resp.StatusCode,
+			"body", string(respBodyBytes))
+		return &SimilarityValidationResult{
+			BaseValidationResult: BaseValidationResult{
+				InferenceId:   inference.InferenceId,
+				ResponseBytes: []byte{},
+			},
+			Value: 1.0,
+		}, nil
 	}
 
 	logging.Debug("responseValidation", types.Validation, "validation", string(respBodyBytes))
