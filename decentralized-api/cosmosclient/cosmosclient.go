@@ -383,6 +383,9 @@ func (icc *InferenceCosmosClient) SubmitPocBatch(transaction *inference.MsgSubmi
 
 func (icc *InferenceCosmosClient) SubmitPoCValidation(transaction *inference.MsgSubmitPocValidation) error {
 	transaction.Creator = icc.Address
+	if icc.batchingEnabled {
+		return icc.batchConsumer.PublishPocValidation(transaction)
+	}
 	_, err := icc.manager.SendTransactionAsyncWithRetry(transaction)
 	return err
 }

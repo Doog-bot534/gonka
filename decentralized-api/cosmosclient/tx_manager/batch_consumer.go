@@ -23,16 +23,19 @@ type LaneType string
 const (
 	LaneStartInference  LaneType = "start_inference"
 	LaneFinishInference LaneType = "finish_inference"
+	LanePocValidation   LaneType = "poc_validation"
 )
 
 var allowedLanes = []LaneType{
 	LaneStartInference,
 	LaneFinishInference,
+	LanePocValidation,
 }
 
 var laneExpectedTypes = map[LaneType]sdk.Msg{
-	LaneStartInference:  &types.MsgStartInference{},
-	LaneFinishInference: &types.MsgFinishInference{},
+	LaneStartInference:  &inference.MsgStartInference{},
+	LaneFinishInference: &inference.MsgFinishInference{},
+	LanePocValidation:   &inference.MsgSubmitPocValidation{},
 }
 
 func (l LaneType) StreamName() string {
@@ -350,6 +353,10 @@ func (c *BatchConsumer) PublishStartInference(msg *inference.MsgStartInference) 
 
 func (c *BatchConsumer) PublishFinishInference(msg *inference.MsgFinishInference) error {
 	return c.publishMsg(LaneFinishInference, msg)
+}
+
+func (c *BatchConsumer) PublishPocValidation(msg *inference.MsgSubmitPocValidation) error {
+	return c.publishMsg(LanePocValidation, msg)
 }
 
 func (c *BatchConsumer) publishMsg(stream LaneType, msg sdk.Msg) error {
