@@ -173,10 +173,26 @@ func NewInferenceCosmosClient(ctx context.Context, addressPrefix string, config 
 
 	batchingCfg := config.GetTxBatchingConfig()
 	if !batchingCfg.Disabled {
+		lanes := make(map[string]*tx_manager.LaneConfig)
+		for name, l := range batchingCfg.Lanes {
+			lanes[name] = &tx_manager.LaneConfig{
+				FlushSize:    l.FlushSize,
+				FlushTimeout: time.Duration(l.FlushTimeoutSeconds) * time.Second,
+				AckWait:      time.Duration(l.AckWaitSeconds) * time.Second,
+			}
+		}
+
 		batchConfig := tx_manager.BatchConfig{
 			FlushSize:    batchingCfg.FlushSize,
 			FlushTimeout: time.Duration(batchingCfg.FlushTimeoutSeconds) * time.Second,
+			AckWait:      time.Duration(batchingCfg.AckWaitSeconds) * time.Second,
+			Lanes:        lanes,
 		}
+
+		if err := batchConfig.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid batching config: %w", err)
+		}
+
 		batchConsumer := tx_manager.NewBatchConsumer(
 			mn.GetJetStream(),
 			cosmoclient.Context().Codec,

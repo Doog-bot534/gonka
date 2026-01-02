@@ -1,31 +1,222 @@
 package tx_manager
 
 import (
-	"decentralized-api/internal/nats/server"
 	"decentralized-api/logging"
+	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/nats-io/nats.go"
+	"github.com/productscience/inference/api/inference/inference"
 	"github.com/productscience/inference/x/inference/types"
 )
 
 const (
-	batchStartConsumer  = "batch-start-consumer"
-	batchFinishConsumer = "batch-finish-consumer"
-	batchAckWait        = time.Minute // must exceed FlushTimeout to prevent redelivery
+	batchAckWait = time.Minute // must exceed FlushTimeout to prevent redelivery
 )
 
-type BatchConfig struct {
-	FlushSize    int
-	FlushTimeout time.Duration
+type LaneType string
+
+const (
+	LaneStartInference  LaneType = "start_inference"
+	LaneFinishInference LaneType = "finish_inference"
+)
+
+var allowedLanes = []LaneType{
+	LaneStartInference,
+	LaneFinishInference,
 }
+
+var laneExpectedTypes = map[LaneType]sdk.Msg{
+	LaneStartInference:  &types.MsgStartInference{},
+	LaneFinishInference: &types.MsgFinishInference{},
+}
+
+func (l LaneType) StreamName() string {
+	return "txs_batch_" + string(l)
+}
+
+func (l LaneType) ConsumerName() string {
+	return "batch-" + string(l) + "-consumer"
+}
+
+func GetBatchStreams() []string {
+	streams := make([]string, 0, len(allowedLanes))
+	for _, l := range allowedLanes {
+		streams = append(streams, l.StreamName())
+	}
+	return streams
+}
+
+type LaneConfig struct {
+	FlushSize    int           `koanf:"flush_size" json:"flush_size"`
+	FlushTimeout time.Duration `koanf:"flush_timeout_seconds" json:"flush_timeout_seconds"`
+	AckWait      time.Duration `koanf:"ack_wait_seconds" json:"ack_wait_seconds"`
+}
+
+type BatchConfig struct {
+	FlushSize    int                    `koanf:"flush_size" json:"flush_size"`
+	FlushTimeout time.Duration          `koanf:"flush_timeout_seconds" json:"flush_timeout_seconds"`
+	AckWait      time.Duration          `koanf:"ack_wait_seconds" json:"ack_wait_seconds"`
+	Lanes        map[string]*LaneConfig `koanf:"lanes" json:"lanes"`
+}
+
+func (c BatchConfig) Validate() error {
+	for laneStr := range c.Lanes {
+		found := false
+		for _, allowed := range allowedLanes {
+			if string(allowed) == laneStr {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("unknown lane: %s", laneStr)
+		}
+	}
+
+	// Validate global defaults
+	if err := c.validateLaneConfig(c.FlushSize, c.FlushTimeout, c.AckWait); err != nil {
+		return fmt.Errorf("invalid global batch config: %w", err)
+	}
+
+	// Validate per-lane overrides
+	for lane := range c.Lanes {
+		eff := c.EffectiveLaneConfig(LaneType(lane))
+		if err := c.validateLaneConfig(eff.FlushSize, eff.FlushTimeout, eff.AckWait); err != nil {
+			return fmt.Errorf("invalid config for lane %s: %w", lane, err)
+		}
+	}
+
+	return nil
+}
+
+func (c BatchConfig) validateLaneConfig(size int, timeout, ackWait time.Duration) error {
+	if size < 1 {
+		return fmt.Errorf("flush_size must be >= 1")
+	}
+	if timeout <= 0 {
+		return fmt.Errorf("flush_timeout must be > 0")
+	}
+	// Use default ackWait if 0 for validation purposes
+	if ackWait == 0 {
+		ackWait = batchAckWait
+	}
+	if ackWait <= timeout {
+		return fmt.Errorf("ack_wait (%v) must be > flush_timeout (%v)", ackWait, timeout)
+	}
+	return nil
+}
+
+func (c BatchConfig) EffectiveLaneConfig(lane LaneType) LaneConfig {
+	size := c.FlushSize
+	timeout := c.FlushTimeout
+	ackWait := c.AckWait
+
+	if l, ok := c.Lanes[string(lane)]; ok && l != nil {
+		if l.FlushSize > 0 {
+			size = l.FlushSize
+		}
+		if l.FlushTimeout > 0 {
+			timeout = l.FlushTimeout
+		}
+		if l.AckWait > 0 {
+			ackWait = l.AckWait
+		}
+	}
+
+	if ackWait == 0 {
+		ackWait = batchAckWait
+	}
+
+	return LaneConfig{
+		FlushSize:    size,
+		FlushTimeout: timeout,
+		AckWait:      ackWait,
+	}
+}
+
+type natsMessage interface {
+	Ack() error
+	InProgress() error
+	Term() error
+	GetData() []byte
+}
+
+type natsMsgWrapper struct {
+	msg *nats.Msg
+}
+
+func (w *natsMsgWrapper) Ack() error        { return w.msg.Ack() }
+func (w *natsMsgWrapper) InProgress() error { return w.msg.InProgress() }
+func (w *natsMsgWrapper) Term() error       { return w.msg.Term() }
+func (w *natsMsgWrapper) GetData() []byte   { return w.msg.Data }
 
 type pendingMsg struct {
 	msg     sdk.Msg
-	natsMsg *nats.Msg
+	natsMsg natsMessage
+}
+
+type BatchLane struct {
+	laneType  LaneType
+	config    LaneConfig
+	mu        sync.Mutex
+	pending   []pendingMsg
+	createdAt time.Time
+	onFlush   func(lane LaneType, batch []pendingMsg)
+}
+
+func NewBatchLane(laneType LaneType, config LaneConfig, onFlush func(LaneType, []pendingMsg)) *BatchLane {
+	return &BatchLane{
+		laneType: laneType,
+		config:   config,
+		pending:  make([]pendingMsg, 0, config.FlushSize),
+		onFlush:  onFlush,
+	}
+}
+
+func (l *BatchLane) Add(msg pendingMsg) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.pending) == 0 {
+		l.createdAt = time.Now()
+	}
+	l.pending = append(l.pending, msg)
+	return len(l.pending) >= l.config.FlushSize
+}
+
+func (l *BatchLane) FlushIfDue(now time.Time) {
+	l.mu.Lock()
+	shouldFlush := len(l.pending) > 0 && now.Sub(l.createdAt) >= l.config.FlushTimeout
+	l.mu.Unlock()
+	if shouldFlush {
+		l.Flush()
+	}
+}
+
+func (l *BatchLane) Flush() {
+	l.mu.Lock()
+	batch := l.pending
+	if len(batch) == 0 {
+		l.mu.Unlock()
+		return
+	}
+	l.pending = make([]pendingMsg, 0, l.config.FlushSize)
+	l.createdAt = time.Time{}
+	l.mu.Unlock()
+
+	l.onFlush(l.laneType, batch)
+}
+
+func (l *BatchLane) ExtendAckDeadlines() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, p := range l.pending {
+		_ = p.natsMsg.InProgress()
+	}
 }
 
 type BatchConsumer struct {
@@ -33,14 +224,7 @@ type BatchConsumer struct {
 	codec     codec.Codec
 	txManager TxManager
 	config    BatchConfig
-
-	startBatch  []pendingMsg
-	finishBatch []pendingMsg
-	startMu     sync.Mutex
-	finishMu    sync.Mutex
-
-	startCreatedAt  time.Time
-	finishCreatedAt time.Time
+	lanes     map[LaneType]*BatchLane
 }
 
 func NewBatchConsumer(
@@ -49,22 +233,28 @@ func NewBatchConsumer(
 	txManager TxManager,
 	config BatchConfig,
 ) *BatchConsumer {
-	return &BatchConsumer{
-		js:          js,
-		codec:       cdc,
-		txManager:   txManager,
-		config:      config,
-		startBatch:  make([]pendingMsg, 0, config.FlushSize),
-		finishBatch: make([]pendingMsg, 0, config.FlushSize),
+	c := &BatchConsumer{
+		js:        js,
+		codec:     cdc,
+		txManager: txManager,
+		config:    config,
+		lanes:     make(map[LaneType]*BatchLane),
 	}
+
+	for _, laneType := range allowedLanes {
+		eff := config.EffectiveLaneConfig(laneType)
+		c.lanes[laneType] = NewBatchLane(laneType, eff, c.broadcastBatch)
+	}
+
+	return c
 }
 
 func (c *BatchConsumer) Start() error {
-	if err := c.subscribeStream(server.TxsBatchStartStream, batchStartConsumer, c.handleStartMsg); err != nil {
-		return err
-	}
-	if err := c.subscribeStream(server.TxsBatchFinishStream, batchFinishConsumer, c.handleFinishMsg); err != nil {
-		return err
+	for _, laneType := range allowedLanes {
+		expectedType := laneExpectedTypes[laneType]
+		if err := c.subscribeLane(laneType, laneType.StreamName(), laneType.ConsumerName(), expectedType); err != nil {
+			return err
+		}
 	}
 
 	go c.flushLoop()
@@ -74,62 +264,46 @@ func (c *BatchConsumer) Start() error {
 	return nil
 }
 
-func (c *BatchConsumer) subscribeStream(stream, consumer string, handler func(*nats.Msg)) error {
-	_, err := c.js.Subscribe(stream, handler,
+func (c *BatchConsumer) subscribeLane(laneType LaneType, stream, consumer string, expectedType sdk.Msg) error {
+	eff := c.config.EffectiveLaneConfig(laneType)
+	_, err := c.js.Subscribe(stream, func(msg *nats.Msg) {
+		c.handleLaneMsg(laneType, msg, expectedType)
+	},
 		nats.Durable(consumer),
 		nats.ManualAck(),
-		nats.AckWait(batchAckWait),
+		nats.AckWait(eff.AckWait),
 	)
 	return err
 }
 
-func (c *BatchConsumer) handleStartMsg(msg *nats.Msg) {
-	if err := msg.InProgress(); err != nil {
-		logging.Error("Failed to mark start msg in progress", types.Messages, "error", err)
-	}
-	sdkMsg, err := c.unmarshalMsg(msg.Data)
-	if err != nil {
-		logging.Error("Failed to unmarshal start msg", types.Messages, "error", err)
-		msg.Term()
-		return
-	}
-
-	var shouldFlush bool
-	c.startMu.Lock()
-	if len(c.startBatch) == 0 {
-		c.startCreatedAt = time.Now()
-	}
-	c.startBatch = append(c.startBatch, pendingMsg{msg: sdkMsg, natsMsg: msg})
-	shouldFlush = len(c.startBatch) >= c.config.FlushSize
-	c.startMu.Unlock()
-
-	if shouldFlush {
-		c.flushStart()
-	}
+func (c *BatchConsumer) handleLaneMsg(laneType LaneType, msg *nats.Msg, expectedType sdk.Msg) {
+	c.handleLaneMsgInternal(laneType, &natsMsgWrapper{msg: msg}, expectedType)
 }
 
-func (c *BatchConsumer) handleFinishMsg(msg *nats.Msg) {
-	if err := msg.InProgress(); err != nil {
-		logging.Error("Failed to mark finish msg in progress", types.Messages, "error", err)
+func (c *BatchConsumer) handleLaneMsgInternal(laneType LaneType, wrapped natsMessage, expectedType sdk.Msg) {
+	if err := wrapped.InProgress(); err != nil {
+		logging.Error("Failed to mark msg in progress", types.Messages, "lane", laneType, "error", err)
 	}
-	sdkMsg, err := c.unmarshalMsg(msg.Data)
+	sdkMsg, err := c.unmarshalMsg(wrapped.GetData())
 	if err != nil {
-		logging.Error("Failed to unmarshal finish msg", types.Messages, "error", err)
-		msg.Term()
+		logging.Error("Failed to unmarshal msg", types.Messages, "lane", laneType, "error", err)
+		wrapped.Term()
 		return
 	}
 
-	var shouldFlush bool
-	c.finishMu.Lock()
-	if len(c.finishBatch) == 0 {
-		c.finishCreatedAt = time.Now()
+	// Type assertion
+	if reflect.TypeOf(sdkMsg) != reflect.TypeOf(expectedType) {
+		logging.Error("Unexpected message type", types.Messages,
+			"lane", laneType,
+			"expected", reflect.TypeOf(expectedType),
+			"got", reflect.TypeOf(sdkMsg))
+		wrapped.Term()
+		return
 	}
-	c.finishBatch = append(c.finishBatch, pendingMsg{msg: sdkMsg, natsMsg: msg})
-	shouldFlush = len(c.finishBatch) >= c.config.FlushSize
-	c.finishMu.Unlock()
 
-	if shouldFlush {
-		c.flushFinish()
+	lane := c.lanes[laneType]
+	if lane.Add(pendingMsg{msg: sdkMsg, natsMsg: wrapped}) {
+		lane.Flush()
 	}
 }
 
@@ -137,85 +311,24 @@ func (c *BatchConsumer) flushLoop() {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		c.extendAckDeadlines()
-		c.checkAndFlushStart()
-		c.checkAndFlushFinish()
+	for now := range ticker.C {
+		for _, lane := range c.lanes {
+			lane.ExtendAckDeadlines()
+			lane.FlushIfDue(now)
+		}
 	}
 }
 
-func (c *BatchConsumer) extendAckDeadlines() {
-	c.startMu.Lock()
-	for _, p := range c.startBatch {
-		_ = p.natsMsg.InProgress()
-	}
-	c.startMu.Unlock()
-
-	c.finishMu.Lock()
-	for _, p := range c.finishBatch {
-		_ = p.natsMsg.InProgress()
-	}
-	c.finishMu.Unlock()
-}
-
-func (c *BatchConsumer) checkAndFlushStart() {
-	c.startMu.Lock()
-	shouldFlush := len(c.startBatch) > 0 && time.Since(c.startCreatedAt) >= c.config.FlushTimeout
-	c.startMu.Unlock()
-
-	if shouldFlush {
-		c.flushStart()
-	}
-}
-
-func (c *BatchConsumer) checkAndFlushFinish() {
-	c.finishMu.Lock()
-	shouldFlush := len(c.finishBatch) > 0 && time.Since(c.finishCreatedAt) >= c.config.FlushTimeout
-	c.finishMu.Unlock()
-
-	if shouldFlush {
-		c.flushFinish()
-	}
-}
-
-func (c *BatchConsumer) flushStart() {
-	c.startMu.Lock()
-	batch := c.startBatch
-	if len(batch) == 0 {
-		c.startMu.Unlock()
-		return
-	}
-	c.startBatch = make([]pendingMsg, 0, c.config.FlushSize)
-	c.startCreatedAt = time.Time{} // reset timer
-	c.startMu.Unlock()
-
-	c.broadcastBatch("start", batch)
-}
-
-func (c *BatchConsumer) flushFinish() {
-	c.finishMu.Lock()
-	batch := c.finishBatch
-	if len(batch) == 0 {
-		c.finishMu.Unlock()
-		return
-	}
-	c.finishBatch = make([]pendingMsg, 0, c.config.FlushSize)
-	c.finishCreatedAt = time.Time{} // reset timer
-	c.finishMu.Unlock()
-
-	c.broadcastBatch("finish", batch)
-}
-
-func (c *BatchConsumer) broadcastBatch(batchType string, batch []pendingMsg) {
+func (c *BatchConsumer) broadcastBatch(lane LaneType, batch []pendingMsg) {
 	msgs := make([]sdk.Msg, len(batch))
 	for i, p := range batch {
 		msgs[i] = p.msg
 	}
 
-	logging.Info("Broadcasting batch", types.Messages, "type", batchType, "count", len(msgs))
+	logging.Info("Broadcasting batch", types.Messages, "lane", lane, "count", len(msgs))
 
 	if err := c.txManager.SendBatchAsyncWithRetry(msgs); err != nil {
-		logging.Error("Failed to hand off batch to TxManager", types.Messages, "type", batchType, "error", err)
+		logging.Error("Failed to hand off batch to TxManager", types.Messages, "lane", lane, "error", err)
 	}
 
 	for _, p := range batch {
@@ -231,19 +344,19 @@ func (c *BatchConsumer) unmarshalMsg(data []byte) (sdk.Msg, error) {
 	return msg, nil
 }
 
-func (c *BatchConsumer) PublishStartInference(msg sdk.Msg) error {
-	return c.publishMsg(server.TxsBatchStartStream, msg)
+func (c *BatchConsumer) PublishStartInference(msg *inference.MsgStartInference) error {
+	return c.publishMsg(LaneStartInference, msg)
 }
 
-func (c *BatchConsumer) PublishFinishInference(msg sdk.Msg) error {
-	return c.publishMsg(server.TxsBatchFinishStream, msg)
+func (c *BatchConsumer) PublishFinishInference(msg *inference.MsgFinishInference) error {
+	return c.publishMsg(LaneFinishInference, msg)
 }
 
-func (c *BatchConsumer) publishMsg(stream string, msg sdk.Msg) error {
+func (c *BatchConsumer) publishMsg(stream LaneType, msg sdk.Msg) error {
 	data, err := c.codec.MarshalInterfaceJSON(msg)
 	if err != nil {
 		return err
 	}
-	_, err = c.js.Publish(stream, data)
+	_, err = c.js.Publish(stream.StreamName(), data)
 	return err
 }

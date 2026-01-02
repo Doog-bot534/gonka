@@ -12,10 +12,8 @@ import (
 )
 
 const (
-	TxsToSendStream      = "txs_to_send"
-	TxsToObserveStream   = "txs_to_observe"
-	TxsBatchStartStream  = "txs_batch_start"
-	TxsBatchFinishStream = "txs_batch_finish"
+	TxsToSendStream    = "txs_to_send"
+	TxsToObserveStream = "txs_to_observe"
 
 	storageDir    = "/root/.dapi/.nats"
 	defaultMaxAge = 24 * 60 * 60 // 24 hours
@@ -25,7 +23,7 @@ const (
 )
 
 type NatsServer interface {
-	Start() error
+	Start(extraStreams ...string) error
 }
 
 type server struct {
@@ -39,7 +37,7 @@ func NewServer(config apiconfig.NatsServerConfig) NatsServer {
 	}
 }
 
-func (s *server) Start() error {
+func (s *server) Start(extraStreams ...string) error {
 	if s.conf.Host == "" {
 		s.conf.Host = DefaultHost
 	}
@@ -79,7 +77,8 @@ func (s *server) Start() error {
 		}
 	}
 
-	return s.createJetStreamTopics([]string{TxsToSendStream, TxsToObserveStream, TxsBatchStartStream, TxsBatchFinishStream})
+	topics := append([]string{TxsToSendStream, TxsToObserveStream}, extraStreams...)
+	return s.createJetStreamTopics(topics)
 }
 
 func (s *server) createJetStreamTopics(topicNames []string) error {

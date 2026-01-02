@@ -18,6 +18,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/productscience/inference/api/inference/inference"
 	testutil "github.com/productscience/inference/testutil/cosmoclient"
+	"github.com/productscience/inference/x/inference/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -27,13 +28,56 @@ import (
 type mockTxManager struct {
 	sendBatchCalls [][]sdk.Msg
 	mu             sync.Mutex
+	onSendBatch    func()
 }
 
 func (m *mockTxManager) SendBatchAsyncWithRetry(msgs []sdk.Msg) error {
 	m.mu.Lock()
 	m.sendBatchCalls = append(m.sendBatchCalls, msgs)
 	m.mu.Unlock()
+	if m.onSendBatch != nil {
+		m.onSendBatch()
+	}
 	return nil
+}
+
+type mockNatsMsg struct {
+	ackCalled        bool
+	inProgressCalled int
+	termCalled       bool
+	data             []byte
+	mu               sync.Mutex
+}
+
+func (m *mockNatsMsg) Ack() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.ackCalled = true
+	return nil
+}
+
+func (m *mockNatsMsg) InProgress() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.inProgressCalled++
+	return nil
+}
+
+func (m *mockNatsMsg) Term() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.termCalled = true
+	return nil
+}
+
+func (m *mockNatsMsg) GetData() []byte {
+	return m.data
+}
+
+func (m *mockNatsMsg) isAcked() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.ackCalled
 }
 
 func (m *mockTxManager) getBatchCalls() [][]sdk.Msg {
@@ -86,19 +130,14 @@ func startTestNatsServer(t *testing.T) (*server.Server, nats.JetStreamContext) {
 	require.NoError(t, err)
 
 	// Create test streams
-	_, err = js.AddStream(&nats.StreamConfig{
-		Name:     "txs_batch_start",
-		Subjects: []string{"txs_batch_start"},
-		Storage:  nats.MemoryStorage,
-	})
-	require.NoError(t, err)
-
-	_, err = js.AddStream(&nats.StreamConfig{
-		Name:     "txs_batch_finish",
-		Subjects: []string{"txs_batch_finish"},
-		Storage:  nats.MemoryStorage,
-	})
-	require.NoError(t, err)
+	for _, stream := range GetBatchStreams() {
+		_, err = js.AddStream(&nats.StreamConfig{
+			Name:     stream,
+			Subjects: []string{stream},
+			Storage:  nats.MemoryStorage,
+		})
+		require.NoError(t, err)
+	}
 
 	t.Cleanup(func() {
 		nc.Close()
@@ -250,7 +289,7 @@ func TestBatchConsumer_Persistence(t *testing.T) {
 		}
 		data, err := cdc.MarshalInterfaceJSON(msg)
 		require.NoError(t, err)
-		_, err = js.Publish("txs_batch_start", data)
+		_, err = js.Publish(LaneStartInference.StreamName(), data)
 		require.NoError(t, err)
 	}
 
@@ -264,4 +303,242 @@ func TestBatchConsumer_Persistence(t *testing.T) {
 
 	// Messages should be recovered and broadcast
 	assert.Len(t, mockMgr.getBatchCalls(), 1)
+}
+
+func TestBatchConsumer_TimerResets(t *testing.T) {
+	cdc := getTestCodec(t)
+	mockMgr := &mockTxManager{}
+	config := BatchConfig{
+		FlushSize:    10,
+		FlushTimeout: 2 * time.Second,
+	}
+
+	consumer := NewBatchConsumer(nil, cdc, mockMgr, config)
+	lane := consumer.lanes[LaneStartInference]
+
+	// Enqueue first message
+	msg1 := &inference.MsgStartInference{Creator: "c1", InferenceId: "i1"}
+	data1, _ := cdc.MarshalInterfaceJSON(msg1)
+	m1 := &mockNatsMsg{data: data1}
+	consumer.handleLaneMsgInternal(LaneStartInference, m1, &types.MsgStartInference{})
+
+	assert.False(t, lane.createdAt.IsZero())
+	firstCreatedAt := lane.createdAt
+
+	// Flush manually
+	lane.Flush()
+
+	assert.True(t, lane.createdAt.IsZero())
+	assert.Len(t, mockMgr.getBatchCalls(), 1)
+
+	// Enqueue second message
+	msg2 := &inference.MsgStartInference{Creator: "c2", InferenceId: "i2"}
+	data2, _ := cdc.MarshalInterfaceJSON(msg2)
+	m2 := &mockNatsMsg{data: data2}
+	consumer.handleLaneMsgInternal(LaneStartInference, m2, &types.MsgStartInference{})
+
+	assert.False(t, lane.createdAt.IsZero())
+	assert.NotEqual(t, firstCreatedAt, lane.createdAt)
+}
+
+func TestBatchConsumer_AckExtension(t *testing.T) {
+	cdc := getTestCodec(t)
+	mockMgr := &mockTxManager{}
+	config := BatchConfig{
+		FlushSize:    10,
+		FlushTimeout: 10 * time.Second,
+	}
+
+	consumer := NewBatchConsumer(nil, cdc, mockMgr, config)
+	lane := consumer.lanes[LaneStartInference]
+
+	msg := &inference.MsgStartInference{Creator: "c1", InferenceId: "i1"}
+	data, _ := cdc.MarshalInterfaceJSON(msg)
+	m1 := &mockNatsMsg{data: data}
+
+	consumer.handleLaneMsgInternal(LaneStartInference, m1, &types.MsgStartInference{})
+
+	// Initial InProgress call in handleMsg
+	assert.Equal(t, 1, m1.inProgressCalled)
+
+	lane.ExtendAckDeadlines()
+	assert.Equal(t, 2, m1.inProgressCalled)
+}
+
+func TestBatchConsumer_AckAfterHandoff(t *testing.T) {
+	cdc := getTestCodec(t)
+	var ackCalled bool
+	mockMgr := &mockTxManager{}
+	config := BatchConfig{
+		FlushSize: 1,
+	}
+
+	consumer := NewBatchConsumer(nil, cdc, mockMgr, config)
+
+	msg := &inference.MsgStartInference{Creator: "c1", InferenceId: "i1"}
+	data, _ := cdc.MarshalInterfaceJSON(msg)
+	m1 := &mockNatsMsg{data: data}
+
+	mockMgr.onSendBatch = func() {
+		ackCalled = m1.isAcked()
+	}
+
+	consumer.handleLaneMsgInternal(LaneStartInference, m1, &types.MsgStartInference{})
+
+	assert.False(t, ackCalled, "Ack should be called AFTER handoff to TxManager")
+	assert.True(t, m1.isAcked(), "Ack should have been called by now")
+}
+
+func TestBatchConsumer_UnmarshalFailure_Term(t *testing.T) {
+	cdc := getTestCodec(t)
+	consumer := NewBatchConsumer(nil, cdc, nil, BatchConfig{})
+
+	m1 := &mockNatsMsg{data: []byte("invalid json")}
+
+	consumer.handleLaneMsgInternal(LaneStartInference, m1, &types.MsgStartInference{})
+
+	assert.True(t, m1.termCalled)
+	assert.Len(t, consumer.lanes[LaneStartInference].pending, 0)
+}
+
+func TestBatchConsumer_WrongType_Term(t *testing.T) {
+	cdc := getTestCodec(t)
+	consumer := NewBatchConsumer(nil, cdc, nil, BatchConfig{})
+
+	// Message is valid SDK Msg but wrong type for the lane
+	msg := &inference.MsgFinishInference{Creator: "c1", InferenceId: "i1"}
+	data, _ := cdc.MarshalInterfaceJSON(msg)
+	m1 := &mockNatsMsg{data: data}
+
+	consumer.handleLaneMsgInternal(LaneStartInference, m1, &types.MsgStartInference{})
+
+	assert.True(t, m1.termCalled)
+	assert.Len(t, consumer.lanes[LaneStartInference].pending, 0)
+}
+
+func TestBatchConsumer_Lanes(t *testing.T) {
+	assert.Equal(t, 2, len(allowedLanes))
+	assert.Contains(t, allowedLanes, LaneStartInference)
+	assert.Contains(t, allowedLanes, LaneFinishInference)
+}
+
+func TestBatchConfig_EffectiveLaneConfig(t *testing.T) {
+	baseConfig := BatchConfig{
+		FlushSize:    10,
+		FlushTimeout: 5 * time.Second,
+		AckWait:      30 * time.Second,
+	}
+
+	t.Run("defaults when no overrides", func(t *testing.T) {
+		eff := baseConfig.EffectiveLaneConfig(LaneStartInference)
+		assert.Equal(t, 10, eff.FlushSize)
+		assert.Equal(t, 5*time.Second, eff.FlushTimeout)
+		assert.Equal(t, 30*time.Second, eff.AckWait)
+	})
+
+	t.Run("per-lane overrides", func(t *testing.T) {
+		config := baseConfig
+		config.Lanes = map[string]*LaneConfig{
+			string(LaneStartInference): {
+				FlushSize:    20,
+				FlushTimeout: 10 * time.Second,
+				AckWait:      60 * time.Second,
+			},
+		}
+
+		effStart := config.EffectiveLaneConfig(LaneStartInference)
+		assert.Equal(t, 20, effStart.FlushSize)
+		assert.Equal(t, 10*time.Second, effStart.FlushTimeout)
+		assert.Equal(t, 60*time.Second, effStart.AckWait)
+
+		effFinish := config.EffectiveLaneConfig(LaneFinishInference)
+		assert.Equal(t, 10, effFinish.FlushSize)
+		assert.Equal(t, 5*time.Second, effFinish.FlushTimeout)
+		assert.Equal(t, 30*time.Second, effFinish.AckWait)
+	})
+
+	t.Run("partial overrides", func(t *testing.T) {
+		config := baseConfig
+		config.Lanes = map[string]*LaneConfig{
+			string(LaneStartInference): {
+				FlushSize: 20,
+			},
+		}
+
+		eff := config.EffectiveLaneConfig(LaneStartInference)
+		assert.Equal(t, 20, eff.FlushSize)
+		assert.Equal(t, 5*time.Second, eff.FlushTimeout)
+		assert.Equal(t, 30*time.Second, eff.AckWait)
+	})
+
+	t.Run("hard-coded ack-wait default", func(t *testing.T) {
+		config := BatchConfig{
+			FlushSize:    10,
+			FlushTimeout: 5 * time.Second,
+		}
+		eff := config.EffectiveLaneConfig(LaneStartInference)
+		assert.Equal(t, batchAckWait, eff.AckWait)
+	})
+}
+
+func TestBatchConfig_Validate(t *testing.T) {
+	t.Run("valid default", func(t *testing.T) {
+		config := BatchConfig{
+			FlushSize:    10,
+			FlushTimeout: 5 * time.Second,
+			AckWait:      30 * time.Second,
+		}
+		assert.NoError(t, config.Validate())
+	})
+
+	t.Run("invalid size", func(t *testing.T) {
+		config := BatchConfig{
+			FlushSize:    0,
+			FlushTimeout: 5 * time.Second,
+		}
+		assert.Error(t, config.Validate())
+	})
+
+	t.Run("invalid timeout", func(t *testing.T) {
+		config := BatchConfig{
+			FlushSize:    10,
+			FlushTimeout: 0,
+		}
+		assert.Error(t, config.Validate())
+	})
+
+	t.Run("ack_wait <= flush_timeout", func(t *testing.T) {
+		config := BatchConfig{
+			FlushSize:    10,
+			FlushTimeout: 10 * time.Second,
+			AckWait:      10 * time.Second,
+		}
+		assert.Error(t, config.Validate())
+	})
+
+	t.Run("unknown lane", func(t *testing.T) {
+		config := BatchConfig{
+			FlushSize:    10,
+			FlushTimeout: 5 * time.Second,
+			Lanes: map[string]*LaneConfig{
+				"unknown": {FlushSize: 5},
+			},
+		}
+		assert.Error(t, config.Validate())
+	})
+
+	t.Run("invalid lane override", func(t *testing.T) {
+		config := BatchConfig{
+			FlushSize:    10,
+			FlushTimeout: 5 * time.Second,
+			Lanes: map[string]*LaneConfig{
+				string(LaneStartInference): {
+					FlushSize:    5,
+					FlushTimeout: 10 * time.Second,
+					AckWait:      5 * time.Second, // less than timeout
+				},
+			},
+		}
+		assert.Error(t, config.Validate())
+	})
 }

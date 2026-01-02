@@ -6,6 +6,7 @@ import (
 	"decentralized-api/broker"
 	"decentralized-api/chainphase"
 	"decentralized-api/cosmosclient"
+	"decentralized-api/cosmosclient/tx_manager"
 	"decentralized-api/internal/bls"
 	"decentralized-api/internal/event_listener"
 	"decentralized-api/internal/modelmanager"
@@ -65,7 +66,7 @@ func main() {
 	}
 
 	natssrv := server.NewServer(config.GetNatsConfig())
-	if err := natssrv.Start(); err != nil {
+	if err := natssrv.Start(tx_manager.GetBatchStreams()...); err != nil {
 		panic(err)
 	}
 

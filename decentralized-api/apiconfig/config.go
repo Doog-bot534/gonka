@@ -32,9 +32,17 @@ type NatsServerConfig struct {
 }
 
 type TxBatchingConfig struct {
-	Disabled            bool `koanf:"disabled" json:"disabled"`
-	FlushSize           int  `koanf:"flush_size" json:"flush_size"`
-	FlushTimeoutSeconds int  `koanf:"flush_timeout_seconds" json:"flush_timeout_seconds"`
+	Disabled            bool                    `koanf:"disabled" json:"disabled"`
+	FlushSize           int                     `koanf:"flush_size" json:"flush_size"`
+	FlushTimeoutSeconds int                     `koanf:"flush_timeout_seconds" json:"flush_timeout_seconds"`
+	AckWaitSeconds      int                     `koanf:"ack_wait_seconds" json:"ack_wait_seconds"`
+	Lanes               map[string]TxLaneConfig `koanf:"lanes" json:"lanes"`
+}
+
+type TxLaneConfig struct {
+	FlushSize           int `koanf:"flush_size" json:"flush_size"`
+	FlushTimeoutSeconds int `koanf:"flush_timeout_seconds" json:"flush_timeout_seconds"`
+	AckWaitSeconds      int `koanf:"ack_wait_seconds" json:"ack_wait_seconds"`
 }
 
 type UpgradePlan struct {
