@@ -397,12 +397,6 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "poc_stage_start_block_height"}, {ProtoField: "nonces"}, {ProtoField: "dist"}},
 				},
 				{
-					RpcMethod:      "SubmitPocValidation",
-					Use:            "submit-poc-validation [participant-address] [poc-stage-start-block-height] [nonces] [dist] [received-dist] [r-target] [fraud-threshold] [n-invalid] [probability-honest] [fraud-detected]",
-					Short:          "Send a SubmitPocValidation tx",
-					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "participant_address"}, {ProtoField: "poc_stage_start_block_height"}, {ProtoField: "nonces"}, {ProtoField: "dist"}, {ProtoField: "received_dist"}, {ProtoField: "r_target"}, {ProtoField: "fraud_threshold"}, {ProtoField: "n_invalid"}, {ProtoField: "probability_honest"}, {ProtoField: "fraud_detected"}},
-				},
-				{
 					RpcMethod:      "SubmitSeed",
 					Use:            "submit-seed [block-height] [signature]",
 					Short:          "Send a submit-seed tx",
@@ -473,12 +467,6 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 					Use:            "request-bridge-mint [amount] [destination-address] [target-chain-id]",
 					Short:          "Request minting of WGNK tokens on Ethereum by bridging native Gonka",
 					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "amount"}, {ProtoField: "destination_address"}, {ProtoField: "chain_id"}},
-				},
-				{
-					RpcMethod:      "SubmitPocValidationBatch",
-					Use:            "submit-poc-validation-batch",
-					Short:          "Send a submitPocValidationBatch tx",
-					PositionalArgs: []*autocliv1.PositionalArgDescriptor{},
 				},
 				// this line is used by ignite scaffolding # autocli/tx
 			},
