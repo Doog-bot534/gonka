@@ -784,7 +784,7 @@ func createInferenceStartRequest(s *Server, request *ChatRequest, seed int32, in
 
 	originalPromptHash := utils.GenerateSHA256HashBytes(request.Body)
 
-	transaction := &inference.MsgStartInference{
+	transaction := &types.MsgStartInference{
 		InferenceId:        inferenceId,
 		PromptHash:         modifiedPromptHash,
 		RequestedBy:        request.RequesterAddress,

@@ -56,6 +56,7 @@ const (
 	Msg_AddUserToTrainingAllowList_FullMethodName       = "/inference.inference.Msg/AddUserToTrainingAllowList"
 	Msg_RemoveUserFromTrainingAllowList_FullMethodName  = "/inference.inference.Msg/RemoveUserFromTrainingAllowList"
 	Msg_SetTrainingAllowList_FullMethodName             = "/inference.inference.Msg/SetTrainingAllowList"
+	Msg_SubmitPocValidationBatch_FullMethodName         = "/inference.inference.Msg/SubmitPocValidationBatch"
 )
 
 // MsgClient is the client API for Msg service.
@@ -101,6 +102,7 @@ type MsgClient interface {
 	AddUserToTrainingAllowList(ctx context.Context, in *MsgAddUserToTrainingAllowList, opts ...grpc.CallOption) (*MsgAddUserToTrainingAllowListResponse, error)
 	RemoveUserFromTrainingAllowList(ctx context.Context, in *MsgRemoveUserFromTrainingAllowList, opts ...grpc.CallOption) (*MsgRemoveUserFromTrainingAllowListResponse, error)
 	SetTrainingAllowList(ctx context.Context, in *MsgSetTrainingAllowList, opts ...grpc.CallOption) (*MsgSetTrainingAllowListResponse, error)
+	SubmitPocValidationBatch(ctx context.Context, in *MsgSubmitPocValidationBatch, opts ...grpc.CallOption) (*MsgSubmitPocValidationBatchResponse, error)
 }
 
 type msgClient struct {
@@ -444,6 +446,15 @@ func (c *msgClient) SetTrainingAllowList(ctx context.Context, in *MsgSetTraining
 	return out, nil
 }
 
+func (c *msgClient) SubmitPocValidationBatch(ctx context.Context, in *MsgSubmitPocValidationBatch, opts ...grpc.CallOption) (*MsgSubmitPocValidationBatchResponse, error) {
+	out := new(MsgSubmitPocValidationBatchResponse)
+	err := c.cc.Invoke(ctx, Msg_SubmitPocValidationBatch_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MsgServer is the server API for Msg service.
 // All implementations must embed UnimplementedMsgServer
 // for forward compatibility
@@ -487,6 +498,7 @@ type MsgServer interface {
 	AddUserToTrainingAllowList(context.Context, *MsgAddUserToTrainingAllowList) (*MsgAddUserToTrainingAllowListResponse, error)
 	RemoveUserFromTrainingAllowList(context.Context, *MsgRemoveUserFromTrainingAllowList) (*MsgRemoveUserFromTrainingAllowListResponse, error)
 	SetTrainingAllowList(context.Context, *MsgSetTrainingAllowList) (*MsgSetTrainingAllowListResponse, error)
+	SubmitPocValidationBatch(context.Context, *MsgSubmitPocValidationBatch) (*MsgSubmitPocValidationBatchResponse, error)
 	mustEmbedUnimplementedMsgServer()
 }
 
@@ -604,6 +616,9 @@ func (UnimplementedMsgServer) RemoveUserFromTrainingAllowList(context.Context, *
 }
 func (UnimplementedMsgServer) SetTrainingAllowList(context.Context, *MsgSetTrainingAllowList) (*MsgSetTrainingAllowListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetTrainingAllowList not implemented")
+}
+func (UnimplementedMsgServer) SubmitPocValidationBatch(context.Context, *MsgSubmitPocValidationBatch) (*MsgSubmitPocValidationBatchResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SubmitPocValidationBatch not implemented")
 }
 func (UnimplementedMsgServer) mustEmbedUnimplementedMsgServer() {}
 
@@ -1284,6 +1299,24 @@ func _Msg_SetTrainingAllowList_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Msg_SubmitPocValidationBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgSubmitPocValidationBatch)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).SubmitPocValidationBatch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_SubmitPocValidationBatch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).SubmitPocValidationBatch(ctx, req.(*MsgSubmitPocValidationBatch))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Msg_ServiceDesc is the grpc.ServiceDesc for Msg service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1438,6 +1471,10 @@ var Msg_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetTrainingAllowList",
 			Handler:    _Msg_SetTrainingAllowList_Handler,
+		},
+		{
+			MethodName: "SubmitPocValidationBatch",
+			Handler:    _Msg_SubmitPocValidationBatch_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -78,7 +78,7 @@ func (s *Server) postValidatedBatches(ctx echo.Context) error {
 		"ProbabilityHonest", body.ProbabilityHonest,
 		"FraudDetected", body.FraudDetected)
 
-	msg := &inference.MsgSubmitPocValidation{
+	msg := &inference.PocValidationData{
 		ParticipantAddress:       address,
 		PocStageStartBlockHeight: body.BlockHeight,
 		Nonces:                   body.Nonces,
@@ -97,7 +97,7 @@ func (s *Server) postValidatedBatches(ctx echo.Context) error {
 	//  Will be fixed in future versions
 	emptyArrays(msg)
 
-	if err := s.recorder.SubmitPoCValidation(msg); err != nil {
+	if err := s.recorder.SubmitPoCValidation(&inference.MsgSubmitPocValidation{Data: msg}); err != nil {
 		logging.Error("ValidateReceivedBatches-callback. Failed to submit MsgSubmitValidatedPocBatch", types.PoC,
 			"participant", address,
 			"error", err)
@@ -107,7 +107,7 @@ func (s *Server) postValidatedBatches(ctx echo.Context) error {
 	return ctx.NoContent(http.StatusOK)
 }
 
-func emptyArrays(msg *inference.MsgSubmitPocValidation) {
+func emptyArrays(msg *inference.PocValidationData) {
 	msg.Dist = make([]float64, 0)
 	msg.ReceivedDist = make([]float64, 0)
 	msg.Nonces = make([]int64, 0)

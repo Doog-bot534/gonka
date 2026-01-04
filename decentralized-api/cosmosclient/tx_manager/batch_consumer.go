@@ -33,9 +33,12 @@ var allowedLanes = []LaneType{
 }
 
 var laneExpectedTypes = map[LaneType]sdk.Msg{
-	LaneStartInference:  &inference.MsgStartInference{},
-	LaneFinishInference: &inference.MsgFinishInference{},
-	LanePocValidation:   &inference.MsgSubmitPocValidation{},
+	// These have to be `types`, not `inference` like the rest of the API code,
+	// because when we serialize/deserialize using the client Codec, they are converted from
+	// `inference` to `types`
+	LaneStartInference:  &types.MsgStartInference{},
+	LaneFinishInference: &types.MsgFinishInference{},
+	LanePocValidation:   &types.MsgSubmitPocValidation{},
 }
 
 func (l LaneType) StreamName() string {
@@ -52,6 +55,39 @@ func GetBatchStreams() []string {
 		streams = append(streams, l.StreamName())
 	}
 	return streams
+}
+
+func GetConverter(laneType LaneType) func(msgs []sdk.Msg) (sdk.Msg, error) {
+	if laneType == LanePocValidation {
+		return ConvertPocValidationBatch
+	}
+	return nil
+}
+
+func ConvertPocValidationBatch(msgs []sdk.Msg) (sdk.Msg, error) {
+	if len(msgs) == 0 {
+		return nil, fmt.Errorf("zero length list of messages")
+	}
+	data := make([]*types.PocValidationData, len(msgs))
+	creator := ""
+	for i, msg := range msgs {
+		validation, ok := msg.(*types.MsgSubmitPocValidation)
+		if !ok {
+			return nil, fmt.Errorf("unexpected message type: %T", msg)
+		}
+		data[i] = validation.Data
+		if creator == "" {
+			creator = validation.Creator
+		} else {
+			if creator != validation.Creator {
+				return nil, fmt.Errorf("all messages must be from the same creator")
+			}
+		}
+	}
+	return &types.MsgSubmitPocValidationBatch{
+		Creator: creator,
+		Data:    data,
+	}, nil
 }
 
 type LaneConfig struct {
@@ -164,20 +200,22 @@ type pendingMsg struct {
 }
 
 type BatchLane struct {
-	laneType  LaneType
-	config    LaneConfig
-	mu        sync.Mutex
-	pending   []pendingMsg
-	createdAt time.Time
-	onFlush   func(lane LaneType, batch []pendingMsg)
+	laneType       LaneType
+	config         LaneConfig
+	mu             sync.Mutex
+	pending        []pendingMsg
+	createdAt      time.Time
+	onFlush        func(lane *BatchLane, batch []pendingMsg)
+	batchConverter func(msgs []sdk.Msg) (sdk.Msg, error)
 }
 
-func NewBatchLane(laneType LaneType, config LaneConfig, onFlush func(LaneType, []pendingMsg)) *BatchLane {
+func NewBatchLane(laneType LaneType, config LaneConfig, onFlush func(*BatchLane, []pendingMsg)) *BatchLane {
 	return &BatchLane{
-		laneType: laneType,
-		config:   config,
-		pending:  make([]pendingMsg, 0, config.FlushSize),
-		onFlush:  onFlush,
+		laneType:       laneType,
+		config:         config,
+		pending:        make([]pendingMsg, 0, config.FlushSize),
+		onFlush:        onFlush,
+		batchConverter: GetConverter(laneType),
 	}
 }
 
@@ -211,7 +249,7 @@ func (l *BatchLane) Flush() {
 	l.createdAt = time.Time{}
 	l.mu.Unlock()
 
-	l.onFlush(l.laneType, batch)
+	l.onFlush(l, batch)
 }
 
 func (l *BatchLane) ExtendAckDeadlines() {
@@ -245,8 +283,8 @@ func NewBatchConsumer(
 	}
 
 	for _, laneType := range allowedLanes {
-		eff := config.EffectiveLaneConfig(laneType)
-		c.lanes[laneType] = NewBatchLane(laneType, eff, c.broadcastBatch)
+		effectiveConfig := config.EffectiveLaneConfig(laneType)
+		c.lanes[laneType] = NewBatchLane(laneType, effectiveConfig, c.broadcastBatch)
 	}
 
 	return c
@@ -322,21 +360,48 @@ func (c *BatchConsumer) flushLoop() {
 	}
 }
 
-func (c *BatchConsumer) broadcastBatch(lane LaneType, batch []pendingMsg) {
+func (c *BatchConsumer) broadcastBatch(lane *BatchLane, batch []pendingMsg) {
 	msgs := make([]sdk.Msg, len(batch))
 	for i, p := range batch {
 		msgs[i] = p.msg
 	}
 
-	logging.Info("Broadcasting batch", types.Messages, "lane", lane, "count", len(msgs))
-
-	if err := c.txManager.SendBatchAsyncWithRetry(msgs); err != nil {
-		logging.Error("Failed to hand off batch to TxManager", types.Messages, "lane", lane, "error", err)
+	logging.Info("Broadcasting batch", types.Messages, "lane", lane.laneType, "count", len(msgs))
+	if !c.sendBatchMessage(lane, msgs) {
+		c.sendMessagesAsBatch(lane, msgs)
 	}
 
 	for _, p := range batch {
-		p.natsMsg.Ack()
+		err := p.natsMsg.Ack()
+		if err != nil {
+			logging.Error("Failed to ack msg in broadcastBatch", types.Messages, "lane", lane.laneType, "error", err)
+		}
 	}
+}
+
+func (c *BatchConsumer) sendMessagesAsBatch(lane *BatchLane, msgs []sdk.Msg) {
+	if err := c.txManager.SendBatchAsyncWithRetry(msgs); err != nil {
+		logging.Error("Failed to hand off batch to TxManager", types.Messages, "lane", lane.laneType, "error", err)
+	}
+}
+
+func (c *BatchConsumer) sendBatchMessage(lane *BatchLane, msgs []sdk.Msg) bool {
+	if lane.batchConverter == nil {
+		return false
+	}
+	message, err := (lane.batchConverter)(msgs)
+	if err != nil {
+		logging.Error("Failed to convert batch", types.Messages, "lane", lane.laneType, "error", err)
+		return false
+	}
+	if message != nil {
+		_, err = c.txManager.SendTransactionAsyncWithRetry(message)
+		if err != nil {
+			logging.Error("Failed to send converted batch", types.Messages, "lane", lane.laneType, "error", err)
+			return false
+		}
+	}
+	return true
 }
 
 func (c *BatchConsumer) unmarshalMsg(data []byte) (sdk.Msg, error) {

@@ -474,6 +474,12 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 					Short:          "Request minting of WGNK tokens on Ethereum by bridging native Gonka",
 					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "amount"}, {ProtoField: "destination_address"}, {ProtoField: "chain_id"}},
 				},
+				{
+					RpcMethod:      "SubmitPocValidationBatch",
+					Use:            "submit-poc-validation-batch",
+					Short:          "Send a submitPocValidationBatch tx",
+					PositionalArgs: []*autocliv1.PositionalArgDescriptor{},
+				},
 				// this line is used by ignite scaffolding # autocli/tx
 			},
 		},

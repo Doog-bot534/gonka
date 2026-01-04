@@ -135,6 +135,10 @@ const (
 	// TODO: Determine the simulation weight value
 	defaultWeightMsgSetTrainingAllowList int = 100
 
+	opWeightMsgSubmitPocValidationBatch = "op_weight_msg_submit_poc_validation_batch"
+	// TODO: Determine the simulation weight value
+	defaultWeightMsgSubmitPocValidationBatch int = 100
+
 	// this line is used by starport scaffolding # simapp/module/const
 )
 
@@ -455,6 +459,17 @@ func (am AppModule) WeightedOperations(simState module.SimulationState) []simtyp
 		inferencesimulation.SimulateMsgSetTrainingAllowList(am.accountKeeper, am.bankKeeper, am.keeper),
 	))
 
+	var weightMsgSubmitPocValidationBatch int
+	simState.AppParams.GetOrGenerate(opWeightMsgSubmitPocValidationBatch, &weightMsgSubmitPocValidationBatch, nil,
+		func(_ *rand.Rand) {
+			weightMsgSubmitPocValidationBatch = defaultWeightMsgSubmitPocValidationBatch
+		},
+	)
+	operations = append(operations, simulation.NewWeightedOperation(
+		weightMsgSubmitPocValidationBatch,
+		inferencesimulation.SimulateMsgSubmitPocValidationBatch(am.accountKeeper, am.bankKeeper, am.keeper),
+	))
+
 	// this line is used by starport scaffolding # simapp/module/operation
 
 	return operations
@@ -676,6 +691,14 @@ func (am AppModule) ProposalMsgs(simState module.SimulationState) []simtypes.Wei
 			defaultWeightMsgSetTrainingAllowList,
 			func(r *rand.Rand, ctx sdk.Context, accs []simtypes.Account) sdk.Msg {
 				inferencesimulation.SimulateMsgSetTrainingAllowList(am.accountKeeper, am.bankKeeper, am.keeper)
+				return nil
+			},
+		),
+		simulation.NewWeightedProposalMsg(
+			opWeightMsgSubmitPocValidationBatch,
+			defaultWeightMsgSubmitPocValidationBatch,
+			func(r *rand.Rand, ctx sdk.Context, accs []simtypes.Account) sdk.Msg {
+				inferencesimulation.SimulateMsgSubmitPocValidationBatch(am.accountKeeper, am.bankKeeper, am.keeper)
 				return nil
 			},
 		),

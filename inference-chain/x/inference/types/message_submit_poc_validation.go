@@ -22,17 +22,19 @@ func NewMsgSubmitPocValidation(
 	fraudDetected bool,
 ) *MsgSubmitPocValidation {
 	return &MsgSubmitPocValidation{
-		Creator:                  creator,
-		ParticipantAddress:       participantAddr,
-		PocStageStartBlockHeight: pocStageStartBlockHeight,
-		Nonces:                   nonces,
-		Dist:                     dist,
-		ReceivedDist:             receivedDist,
-		RTarget:                  rTarget,
-		FraudThreshold:           fraudThreshold,
-		NInvalid:                 nInvalid,
-		ProbabilityHonest:        probHonest,
-		FraudDetected:            fraudDetected,
+		Creator: creator,
+		Data: &PocValidationData{
+			ParticipantAddress:       participantAddr,
+			PocStageStartBlockHeight: pocStageStartBlockHeight,
+			Nonces:                   nonces,
+			Dist:                     dist,
+			ReceivedDist:             receivedDist,
+			RTarget:                  rTarget,
+			FraudThreshold:           fraudThreshold,
+			NInvalid:                 nInvalid,
+			ProbabilityHonest:        probHonest,
+			FraudDetected:            fraudDetected,
+		},
 	}
 }
 
@@ -41,11 +43,11 @@ func (msg *MsgSubmitPocValidation) ValidateBasic() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Creator); err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid creator address (%s)", err)
 	}
-	if _, err := sdk.AccAddressFromBech32(msg.ParticipantAddress); err != nil {
+	if _, err := sdk.AccAddressFromBech32(msg.Data.ParticipantAddress); err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid participant_address (%s)", err)
 	}
 	// height > 0
-	if msg.PocStageStartBlockHeight <= 0 {
+	if msg.Data.PocStageStartBlockHeight <= 0 {
 		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "poc_stage_start_block_height must be > 0")
 	}
 	// For now, all these lists will be empty! See post_generate_batches_handler.go

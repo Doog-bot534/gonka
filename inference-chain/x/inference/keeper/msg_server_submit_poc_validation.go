@@ -12,6 +12,10 @@ import (
 const PocFailureTag = "[PoC Failure]"
 
 func (k msgServer) SubmitPocValidation(goCtx context.Context, msg *types.MsgSubmitPocValidation) (*types.MsgSubmitPocValidationResponse, error) {
+	return k.ProcessValidation(goCtx, msg.Data, msg.Creator)
+}
+
+func (k msgServer) ProcessValidation(goCtx context.Context, msg *types.PocValidationData, creator string) (*types.MsgSubmitPocValidationResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
 	currentBlockHeight := ctx.BlockHeight()
@@ -30,13 +34,13 @@ func (k msgServer) SubmitPocValidation(goCtx context.Context, msg *types.MsgSubm
 		if startBlockHeight != activeEvent.TriggerHeight {
 			k.LogError(PocFailureTag+"[SubmitPocValidation] Confirmation PoC: start block height mismatch", types.PoC,
 				"participant", msg.ParticipantAddress,
-				"validatorParticipant", msg.Creator,
+				"validatorParticipant", creator,
 				"msg.PocStageStartBlockHeight", startBlockHeight,
 				"event.TriggerHeight", activeEvent.TriggerHeight,
 				"currentBlockHeight", currentBlockHeight)
 			errMsg := fmt.Sprintf("[SubmitPocValidation] Confirmation PoC active but start block height doesn't match. "+
 				"participant = %s. validatorParticipant = %s. msg.PocStageStartBlockHeight = %d. event.TriggerHeight = %d",
-				msg.ParticipantAddress, msg.Creator, startBlockHeight, activeEvent.TriggerHeight)
+				msg.ParticipantAddress, creator, startBlockHeight, activeEvent.TriggerHeight)
 			return nil, sdkerrors.Wrap(types.ErrPocWrongStartBlockHeight, errMsg)
 		}
 
@@ -45,7 +49,7 @@ func (k msgServer) SubmitPocValidation(goCtx context.Context, msg *types.MsgSubm
 		if !activeEvent.IsInValidationWindow(currentBlockHeight, epochParams) {
 			k.LogError(PocFailureTag+"[SubmitPocValidation] Confirmation PoC: outside validation window", types.PoC,
 				"participant", msg.ParticipantAddress,
-				"validatorParticipant", msg.Creator,
+				"validatorParticipant", creator,
 				"currentBlockHeight", currentBlockHeight,
 				"validationStartHeight", activeEvent.GetValidationStart(epochParams),
 				"validationEndHeight", activeEvent.GetValidationEnd(epochParams))
@@ -53,12 +57,12 @@ func (k msgServer) SubmitPocValidation(goCtx context.Context, msg *types.MsgSubm
 		}
 
 		// Store validation using trigger_height as key
-		validation := toPoCValidation(msg, currentBlockHeight)
+		validation := toPoCValidation(msg, creator, currentBlockHeight)
 		validation.PocStageStartBlockHeight = activeEvent.TriggerHeight // Use trigger_height as key
 		k.SetPoCValidation(ctx, *validation)
 		k.LogInfo("[SubmitPocValidation] Confirmation PoC validation stored", types.PoC,
 			"participant", msg.ParticipantAddress,
-			"validatorParticipant", msg.Creator,
+			"validatorParticipant", creator,
 			"triggerHeight", activeEvent.TriggerHeight)
 
 		return &types.MsgSubmitPocValidationResponse{}, nil
@@ -70,7 +74,7 @@ func (k msgServer) SubmitPocValidation(goCtx context.Context, msg *types.MsgSubm
 	if !found {
 		k.LogError(PocFailureTag+"[SubmitPocValidation] Failed to get upcoming epoch", types.PoC,
 			"participant", msg.ParticipantAddress,
-			"validatorParticipant", msg.Creator,
+			"validatorParticipant", creator,
 			"currentBlockHeight", currentBlockHeight)
 		return nil, sdkerrors.Wrap(types.ErrUpcomingEpochNotFound, "[SubmitPocBatch] Failed to get upcoming epoch")
 	}
@@ -79,7 +83,7 @@ func (k msgServer) SubmitPocValidation(goCtx context.Context, msg *types.MsgSubm
 	if !epochContext.IsStartOfPocStage(startBlockHeight) {
 		k.LogError(PocFailureTag+"[SubmitPocValidation] message start block height doesn't match the upcoming epoch", types.PoC,
 			"participant", msg.ParticipantAddress,
-			"validatorParticipant", msg.Creator,
+			"validatorParticipant", creator,
 			"msg.PocStageStartBlockHeight", startBlockHeight,
 			"epochContext.PocStartBlockHeight", epochContext.PocStartBlockHeight,
 			"currentBlockHeight", currentBlockHeight,
@@ -87,14 +91,14 @@ func (k msgServer) SubmitPocValidation(goCtx context.Context, msg *types.MsgSubm
 		errMsg := fmt.Sprintf("[SubmitPocValidation] message start block height doesn't match the upcoming epoch. "+
 			"participant = %s. validatorParticipant = %s"+
 			"msg.PocStageStartBlockHeight = %d. epochContext.PocStartBlockHeight = %d. currentBlockHeight = %d",
-			msg.ParticipantAddress, msg.Creator, startBlockHeight, epochContext.PocStartBlockHeight, currentBlockHeight)
+			msg.ParticipantAddress, creator, startBlockHeight, epochContext.PocStartBlockHeight, currentBlockHeight)
 		return nil, sdkerrors.Wrap(types.ErrPocWrongStartBlockHeight, errMsg)
 	}
 
 	if !epochContext.IsValidationExchangeWindow(currentBlockHeight) {
 		k.LogError(PocFailureTag+"[SubmitPocValidation] PoC validation exchange window is closed.", types.PoC,
 			"participant", msg.ParticipantAddress,
-			"validatorParticipant", msg.Creator,
+			"validatorParticipant", creator,
 			"msg.BlockHeight", startBlockHeight,
 			"epochContext.PocStartBlockHeight", epochContext.PocStartBlockHeight,
 			"currentBlockHeight", currentBlockHeight,
@@ -103,16 +107,16 @@ func (k msgServer) SubmitPocValidation(goCtx context.Context, msg *types.MsgSubm
 		return nil, sdkerrors.Wrap(types.ErrPocTooLate, errMsg)
 	}
 
-	validation := toPoCValidation(msg, currentBlockHeight)
+	validation := toPoCValidation(msg, creator, currentBlockHeight)
 	k.SetPoCValidation(ctx, *validation)
 
 	return &types.MsgSubmitPocValidationResponse{}, nil
 }
 
-func toPoCValidation(msg *types.MsgSubmitPocValidation, currentBlockHeight int64) *types.PoCValidation {
+func toPoCValidation(msg *types.PocValidationData, creator string, currentBlockHeight int64) *types.PoCValidation {
 	return &types.PoCValidation{
 		ParticipantAddress:          msg.ParticipantAddress,
-		ValidatorParticipantAddress: msg.Creator,
+		ValidatorParticipantAddress: creator,
 		PocStageStartBlockHeight:    msg.PocStageStartBlockHeight,
 		ValidatedAtBlockHeight:      currentBlockHeight,
 		Nonces:                      msg.Nonces,

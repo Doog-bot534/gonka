@@ -8,34 +8,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMsgSubmitPocValidation_ValidateBasic(t *testing.T) {
+func TestMsgSubmitPocValidationBatch_ValidateBasic(t *testing.T) {
 	tests := []struct {
 		name string
-		msg  MsgSubmitPocValidation
+		msg  MsgSubmitPocValidationBatch
 		err  error
 	}{
 		{
 			name: "invalid address",
-			msg: MsgSubmitPocValidation{
+			msg: MsgSubmitPocValidationBatch{
 				Creator: "invalid_address",
 			},
 			err: sdkerrors.ErrInvalidAddress,
 		}, {
 			name: "valid address",
-			msg: MsgSubmitPocValidation{
+			msg: MsgSubmitPocValidationBatch{
 				Creator: sample.AccAddress(),
-				Data: &PocValidationData{
-					ParticipantAddress:       sample.AccAddress(),
-					PocStageStartBlockHeight: 1,
-					Nonces:                   []int64{0, 1, 2},
-					Dist:                     []float64{0.2, 0.3, 0.5},
-					ReceivedDist:             []float64{0.2, 0.3, 0.5},
-					RTarget:                  0.5,
-					FraudThreshold:           0.9,
-					NInvalid:                 0,
-					ProbabilityHonest:        0.8,
-					FraudDetected:            false,
-				},
 			},
 		},
 	}
