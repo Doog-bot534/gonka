@@ -187,6 +187,15 @@ func (m *MockQueryClient) Params(ctx context.Context, req *types.QueryParamsRequ
 
 // Test setup helpers
 
+type MockPocFlusher struct {
+	mock.Mock
+}
+
+func (m *MockPocFlusher) FlushPocValidations() error {
+	args := m.Called()
+	return args.Error(0)
+}
+
 type IntegrationTestSetup struct {
 	Dispatcher        *OnNewBlockDispatcher
 	NodeBroker        *broker.Broker
@@ -317,6 +326,8 @@ func createIntegrationTestSetup(reconcilialtionConfig *MlNodeReconciliationConfi
 	}
 	// Create dispatcher with mocked dependencies
 	mockValidator := &validation.InferenceValidator{}
+	mockPocFlusher := &MockPocFlusher{}
+	mockPocFlusher.On("FlushPocValidations").Return(nil)
 	dispatcher := NewOnNewBlockDispatcher(
 		nodeBroker,
 		pocOrchestrator,
@@ -328,6 +339,7 @@ func createIntegrationTestSetup(reconcilialtionConfig *MlNodeReconciliationConfi
 		finalReconciliationConfig,
 		mockConfigManager,
 		mockValidator,
+		mockPocFlusher,
 	)
 
 	return &IntegrationTestSetup{

@@ -46,6 +46,8 @@ func (k Keeper) GetInferencePruner(params types.Params) Pruner[collections.Pair[
 		SetLastPruned: func(state *types.PruningState, epoch int64) {
 			state.InferencePrunedEpoch = epoch
 		},
+		// Just a note: InferencePruner prunes InferencesToPrune and as a side effect prunes the
+		// actual inferences.
 		Remover: func(ctx context.Context, key collections.Pair[int64, string]) error {
 			err := k.Inferences.Remove(ctx, key.K2())
 			if err != nil {

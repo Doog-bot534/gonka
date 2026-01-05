@@ -54,6 +54,11 @@ type MlNodeReconciliationConfig struct {
 	LastTime        time.Time // Track last reconciliation time
 }
 
+// MessageFlusher defines the interface for flushing PoC validations
+type MessageFlusher interface {
+	FlushPocValidations() error
+}
+
 // OnNewBlockDispatcher orchestrates processing of new block events
 type OnNewBlockDispatcher struct {
 	nodeBroker           *broker.Broker
@@ -66,6 +71,7 @@ type OnNewBlockDispatcher struct {
 	randomSeedManager    poc.RandomSeedManager
 	configManager        *apiconfig.ConfigManager
 	validator            *validation.InferenceValidator
+	messageFlusher       MessageFlusher
 }
 
 // StatusResponse matches the structure expected by getStatus function
@@ -102,6 +108,7 @@ func NewOnNewBlockDispatcher(
 	reconciliationConfig MlNodeReconciliationConfig,
 	configManager *apiconfig.ConfigManager,
 	validator *validation.InferenceValidator,
+	pocFlusher MessageFlusher,
 ) *OnNewBlockDispatcher {
 	return &OnNewBlockDispatcher{
 		nodeBroker:           nodeBroker,
@@ -114,6 +121,7 @@ func NewOnNewBlockDispatcher(
 		randomSeedManager:    randomSeedManager,
 		configManager:        configManager,
 		validator:            validator,
+		messageFlusher:       pocFlusher,
 	}
 }
 
@@ -151,6 +159,7 @@ func NewOnNewBlockDispatcherFromCosmosClient(
 		reconciliationConfig,
 		configManager,
 		validator,
+		cosmosClient,
 	)
 }
 
@@ -340,6 +349,15 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 		go func() {
 			d.nodePocOrchestrator.ValidateReceivedBatches(epochContext.PocStartBlockHeight)
 		}()
+	}
+
+	if epochContext.IsEndOfPoCValidationStage(blockHeight+2) || epochContext.IsEndOfPoCValidationStage(blockHeight+1) {
+		logging.Info("DapiStage:IsNearEndOfPocValidationStage. Flushing PoC Validations.", types.Stages, "blockHeight", blockHeight, "blockHash", blockHash)
+		if d.messageFlusher != nil {
+			if err := d.messageFlusher.FlushPocValidations(); err != nil {
+				logging.Error("Failed to flush PoC validations", types.PoC, "error", err)
+			}
+		}
 	}
 
 	if epochContext.IsEndOfPoCValidationStage(blockHeight) {

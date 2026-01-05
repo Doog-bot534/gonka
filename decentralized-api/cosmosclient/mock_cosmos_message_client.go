@@ -29,6 +29,10 @@ func (m *MockCosmosMessageClient) GetApiAccount() apiconfig.ApiAccount {
 	return apiconfig.ApiAccount{}
 }
 
+func (m *MockCosmosMessageClient) FlushPocValidations() error {
+	return nil
+}
+
 func (m *MockCosmosMessageClient) Status(ctx context.Context) (*ctypes.ResultStatus, error) {
 	args := m.Called(ctx)
 	return args.Get(0).(*ctypes.ResultStatus), args.Error(1)

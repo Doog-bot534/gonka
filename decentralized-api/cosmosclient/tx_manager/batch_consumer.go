@@ -424,6 +424,12 @@ func (c *BatchConsumer) PublishPocValidation(msg *inference.MsgSubmitPocValidati
 	return c.publishMsg(LanePocValidation, msg)
 }
 
+func (c *BatchConsumer) FlushPocValidations() error {
+	lane := c.lanes[LanePocValidation]
+	lane.Flush()
+	return nil
+}
+
 func (c *BatchConsumer) publishMsg(stream LaneType, msg sdk.Msg) error {
 	data, err := c.codec.MarshalInterfaceJSON(msg)
 	if err != nil {

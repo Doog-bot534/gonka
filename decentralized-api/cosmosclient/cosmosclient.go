@@ -252,6 +252,7 @@ type CosmosMessageClient interface {
 	NewRestrictionsQueryClient() restrictionstypes.QueryClient
 	GetAddress() string
 	GetApiAccount() apiconfig.ApiAccount
+	FlushPocValidations() error
 }
 
 func (icc *InferenceCosmosClient) GetApiAccount() apiconfig.ApiAccount {
@@ -285,6 +286,13 @@ func (icc *InferenceCosmosClient) GetAccountAddress() string {
 		return ""
 	}
 	return address
+}
+
+func (icc *InferenceCosmosClient) FlushPocValidations() error {
+	if !icc.batchingEnabled || icc.batchConsumer == nil {
+		return nil
+	}
+	return icc.batchConsumer.FlushPocValidations()
 }
 
 func (icc *InferenceCosmosClient) GetAccountPubKey() cryptotypes.PubKey {
