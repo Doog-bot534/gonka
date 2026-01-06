@@ -3245,11 +3245,6 @@ var (
 
 	// Bounty Program
 	bountyProgramRewards = []BountyReward{
-		// Bug Bounty: PoC Validation Sampling Predictability
-		{
-			Address: "TMP",
-			Amount:  10_000_000_000,
-		},
 		// Bug Bounty: Non Determinism in denom
 		{
 			Address: "gonka1z0phwa33ggyzs4djmntsahcjjrjqjyyjsg8f86",
@@ -3257,8 +3252,13 @@ var (
 		},
 		// Bug Bounty: CICD Vulnerability
 		{
-			Address: "gonka1wpan224906ant68frjd8vqreaxr87hudy2wvd9",
+			Address: "gonka1z0phwa33ggyzs4djmntsahcjjrjqjyyjsg8f86",
 			Amount:  2_500_000_000,
+		},
+		// Bug Bounty: Low-VRAM GPUs
+		{
+			Address: "gonka1wpan224906ant68frjd8vqreaxr87hudy2wvd9",
+			Amount:  3_500_000_000,
 		},
 	}
 )
