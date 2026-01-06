@@ -90,11 +90,13 @@ func DefaultParams() Params {
 		GenesisGuardianParams: &GenesisGuardianParams{
 			NetworkMaturityThreshold: 2_000_000,
 			NetworkMaturityMinHeight: 0,
-			GuardianAddresses:        []string{},
+			// Note: proto encoding does not preserve empty-vs-nil for repeated fields; keep nil to match round-trips.
+			GuardianAddresses: nil,
 		},
 		DeveloperAccessParams: &DeveloperAccessParams{
 			UntilBlockHeight:          0, // disabled by default
-			AllowedDeveloperAddresses: []string{},
+			// Note: proto encoding does not preserve empty-vs-nil for repeated fields; keep nil to match round-trips.
+			AllowedDeveloperAddresses: nil,
 		},
 	}
 }

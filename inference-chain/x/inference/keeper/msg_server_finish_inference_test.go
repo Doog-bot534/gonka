@@ -73,6 +73,11 @@ func TestMsgServer_FinishInference(t *testing.T) {
 
 	// Developer access gating should apply to FinishInference as well (gated by RequestedBy).
 	t.Run("DeveloperAccessRestricted", func(t *testing.T) {
+		originalParams := k.GetParams(ctx)
+		t.Cleanup(func() {
+			_ = k.SetParams(ctx, originalParams)
+		})
+
 		params := k.GetParams(ctx)
 		params.DeveloperAccessParams = &types.DeveloperAccessParams{
 			UntilBlockHeight:          9999999,
