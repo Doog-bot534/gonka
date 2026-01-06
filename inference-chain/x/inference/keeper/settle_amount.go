@@ -81,8 +81,8 @@ func (k Keeper) transferUnclaimedSettleAmountToGovernance(ctx context.Context, s
 	return nil
 }
 
-// SetSettleAmountWithBurn sets a settle amount, transferring any existing unclaimed amount to governance first.
-func (k Keeper) SetSettleAmountWithBurn(ctx context.Context, settleAmount types.SettleAmount) error {
+// SetSettleAmountWithGovernanceTransfer sets a settle amount, transferring any existing unclaimed amount to governance first.
+func (k Keeper) SetSettleAmountWithGovernanceTransfer(ctx context.Context, settleAmount types.SettleAmount) error {
 	// Transfer existing settle amount if it exists
 	existingSettle, found := k.GetSettleAmount(ctx, settleAmount.Participant)
 	if found {
@@ -99,8 +99,8 @@ func (k Keeper) SetSettleAmountWithBurn(ctx context.Context, settleAmount types.
 	return nil
 }
 
-// BurnOldSettleAmounts transfers and removes all settle amounts older than the specified epoch.
-func (k Keeper) BurnOldSettleAmounts(ctx context.Context, beforeEpochIndex uint64) error {
+// TransferOldSettleAmountsToGovernance transfers and removes all settle amounts older than the specified epoch.
+func (k Keeper) TransferOldSettleAmountsToGovernance(ctx context.Context, beforeEpochIndex uint64) error {
 	allSettleAmounts := k.GetAllSettleAmount(ctx)
 	for _, settleAmount := range allSettleAmounts {
 		if settleAmount.EpochIndex < beforeEpochIndex {
