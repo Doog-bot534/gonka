@@ -99,10 +99,8 @@ func DefaultParams() Params {
 			AllowedDeveloperAddresses: nil,
 		},
 		ParticipantAccessParams: &ParticipantAccessParams{
-			NewParticipantRegistrationStartHeight:  0,     // disabled by default
-			BlockedParticipantAddresses:            nil,   // keep nil to match proto round-trips
-			UseParticipantAllowlist:                false, // disabled by default
-			ParticipantAllowlistUntilBlockHeight:   0,     // no cutoff
+			NewParticipantRegistrationStartHeight: 0,   // disabled by default
+			BlockedParticipantAddresses:           nil, // keep nil to match proto round-trips
 		},
 	}
 }
@@ -389,9 +387,6 @@ func (p Params) Validate() error {
 	if p.ParticipantAccessParams != nil {
 		if p.ParticipantAccessParams.NewParticipantRegistrationStartHeight < 0 {
 			return fmt.Errorf("new participant registration start height cannot be negative")
-		}
-		if p.ParticipantAccessParams.ParticipantAllowlistUntilBlockHeight < 0 {
-			return fmt.Errorf("participant allowlist until block height cannot be negative")
 		}
 	}
 	return nil
