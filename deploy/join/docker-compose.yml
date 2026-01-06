@@ -10,7 +10,7 @@ services:
 
   node:
     container_name: node
-    image: ghcr.io/product-science/inferenced:0.2.6-post2
+    image: ghcr.io/product-science/inferenced:0.2.7-alpha4
     command: ["sh", "./init-docker.sh"]
     volumes:
       - .inference:/root/.inference
@@ -45,7 +45,7 @@ services:
 
   api:
     container_name: api
-    image: ghcr.io/product-science/api:0.2.6-post2
+    image: ghcr.io/product-science/api:0.2.7-alpha4
     volumes:
       - .inference:/root/.inference
       - .dapi:/root/.dapi
