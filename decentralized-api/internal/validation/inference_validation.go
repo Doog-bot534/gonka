@@ -336,8 +336,12 @@ func (s *InferenceValidator) DetectMissedValidations(epochIndex uint64, seed int
 						logging.Error("Failed to get validator power", types.ValidationRecovery, "error", err)
 						return nil, fmt.Errorf("failed to get validator power: %w", err)
 					}
-					validatorPower = powerResp.ValidatorPower
-					validatorPowerFetched = true
+					for _, power := range powerResp.ValidatorPowers {
+						if power.EpochIndex == epochIndex {
+							validatorPower = power.Power
+							validatorPowerFetched = true
+						}
+					}
 					logging.Debug("Fetched validator power", types.ValidationRecovery, "validatorPower", validatorPower)
 					break
 				}
@@ -501,11 +505,20 @@ func (s *InferenceValidator) SampleInferenceToValidate(ids []string, transaction
 			logging.Debug("Skipping inference by not supported model", types.Validation, "inferenceId", inferenceWithExecutor.InferenceId, "model", inferenceWithExecutor.Model)
 			continue
 		}
+		var validatorPower uint64
+		for _, power := range r.ValidatorPowers {
+			// Note that we assign and break if it matches.
+			// If we don't get a power at all, we're better off trying SOMETHING
+			validatorPower = power.Power
+			if power.EpochIndex == inferenceWithExecutor.EpochId {
+				break
+			}
+		}
 		// Use the extracted validation decision logic
 		shouldValidate, message := s.shouldValidateInference(
 			inferenceWithExecutor,
 			currentSeed,
-			r.ValidatorPower,
+			validatorPower,
 			address,
 			params.Params.ValidationParams)
 

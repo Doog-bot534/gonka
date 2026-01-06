@@ -678,12 +678,15 @@ message QueryGetInferenceValidationParametersRequest {
 }
 
 message QueryGetInferenceValidationParametersResponse {
-           uint64                     validator_power = 1;
-           uint64                     current_height  = 2;
-  repeated InferenceValidationDetails details         = 3;
-           ValidationParams           parameters      = 4;
+  repeated ValidatorPower             validator_powers = 1;
+           uint64                     current_height   = 2;
+  repeated InferenceValidationDetails details          = 3;
+           ValidationParams           parameters       = 4;
 }
-
+message ValidatorPower {
+  uint64 power          = 1;
+  uint64 epoch_index    = 2;
+}
 message QueryEpochPerformanceSummaryByEpochRequest {
   uint64 epoch_index = 1;
 }
