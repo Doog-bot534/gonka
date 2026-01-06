@@ -3,6 +3,13 @@ events {
 }
 
 http {
+    ${LIMIT_REQ_ZONE_GLOBAL}
+    ${LIMIT_REQ_ZONE_EXEMPT}
+    ${LIMIT_REQ_ZONE_GONKA_API}
+    ${LIMIT_REQ_ZONE_CHAIN_RPC}
+    ${LIMIT_REQ_ZONE_CHAIN_API}
+    ${LIMIT_REQ_ZONE_CHAIN_GRPC}
+    
     ${RESOLVER_DIRECTIVE}
     upstream api_backend {
         zone api_backend 64k;
@@ -42,6 +49,9 @@ http {
         server_name ${SERVER_NAME};
         ${SSL_CONFIG}
 
+        # Global Rate Limiting
+        ${LIMIT_REQ_RULE_GLOBAL}
+
         # Increase client body size for large requests
         client_max_body_size 10M;
 
@@ -52,14 +62,21 @@ http {
             add_header Content-Type text/plain;
         }
 
+        # Exempt Routes (High Performance)
+        ${EXEMPT_ROUTES_CONFIG}
+
         # API routes - restricted to v1 only
         location /api/v1/ {
+            ${LIMIT_REQ_RULE_GONKA_API}
+            ${API_STATUS}
             proxy_pass http://api_backend/v1/;
             proxy_set_header Host $$host;
             proxy_set_header X-Real-IP $$remote_addr;
             proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $$scheme;
             proxy_set_header Authorization $$http_authorization;
+
+            ${CORS_CONFIG}
 
             # Handle WebSocket connections if needed
             proxy_http_version 1.1;
@@ -74,12 +91,16 @@ http {
 
         # Direct API v1 routes - bypasses /api/ prefix
         location /v1/ {
+            ${LIMIT_REQ_RULE_GONKA_API}
+            ${API_STATUS}
             proxy_pass http://api_backend/v1/;
             proxy_set_header Host $$host;
             proxy_set_header X-Real-IP $$remote_addr;
             proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $$scheme;
             proxy_set_header Authorization $$http_authorization;
+
+            ${CORS_CONFIG}
 
             # Handle WebSocket connections if needed
             proxy_http_version 1.1;
@@ -94,11 +115,15 @@ http {
 
         # Chain RPC endpoint
         location /chain-rpc/ {
+            ${LIMIT_REQ_RULE_CHAIN_RPC}
+            ${CHAIN_RPC_STATUS}
             proxy_pass http://chain_rpc_backend/;
             proxy_set_header Host $$host;
             proxy_set_header X-Real-IP $$remote_addr;
             proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $$scheme;
+
+            ${CORS_CONFIG}
 
             # WebSocket support for RPC connections
             proxy_http_version 1.1;
@@ -113,12 +138,16 @@ http {
 
         # Chain API endpoint (REST API)
         location /chain-api/ {
+            ${LIMIT_REQ_RULE_CHAIN_API}
+            ${CHAIN_API_STATUS}
             proxy_pass http://chain_api_backend/;
             proxy_set_header Host $$host;
             proxy_set_header X-Real-IP $$remote_addr;
             proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $$scheme;
             proxy_set_header Authorization $$http_authorization;
+
+            ${CORS_CONFIG}
 
             # Standard timeouts for chain API (2 minutes)
             proxy_connect_timeout 30s;
@@ -128,6 +157,8 @@ http {
 
         # Chain gRPC endpoint (if needed)
         location /chain-grpc/ {
+            ${LIMIT_REQ_RULE_CHAIN_GRPC}
+            ${CHAIN_GRPC_STATUS}
             grpc_pass grpc://chain_grpc_backend;
             grpc_set_header Host $$host;
             grpc_set_header X-Real-IP $$remote_addr;

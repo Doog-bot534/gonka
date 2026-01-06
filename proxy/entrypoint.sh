@@ -209,6 +209,54 @@ else
     export SSL_CONFIG="# SSL disabled"
 fi
 
+# Route Disabling Logic
+# If DISABLE_* env vars are set to true, inject a "return 404" into the location block
+
+if [ "${DISABLE_GONKA_API}" = "true" ]; then
+    export API_STATUS="return 404 'App API Disabled';"
+    echo "   🚫 App API: Disabled"
+else
+    export API_STATUS=""
+fi
+
+if [ "${DISABLE_CHAIN_RPC}" = "true" ]; then
+    export CHAIN_RPC_STATUS="return 404 'Chain RPC Disabled';"
+    echo "   🚫 Chain RPC: Disabled"
+else
+    export CHAIN_RPC_STATUS=""
+fi
+
+if [ "${DISABLE_CHAIN_API}" = "true" ]; then
+    export CHAIN_API_STATUS="return 404 'Chain API Disabled';"
+    echo "   🚫 Chain API: Disabled"
+else
+    export CHAIN_API_STATUS=""
+fi
+
+if [ "${DISABLE_CHAIN_GRPC}" = "true" ]; then
+    export CHAIN_GRPC_STATUS="return 404 'Chain gRPC Disabled';"
+    echo "   🚫 Chain gRPC: Disabled"
+else
+    export CHAIN_GRPC_STATUS=""
+fi
+
+# CORS Configuration - Single source of truth for all location blocks
+export CORS_CONFIG="
+            # CORS setup
+            if (\$\$request_method = 'OPTIONS') {
+                add_header 'Access-Control-Allow-Origin' '*';
+                add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE';
+                add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization';
+                add_header 'Access-Control-Max-Age' 1728000;
+                add_header 'Content-Type' 'text/plain; charset=utf-8';
+                add_header 'Content-Length' 0;
+                return 204;
+            }
+            add_header 'Access-Control-Allow-Origin' '*' always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE' always;
+            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+            add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;"
+
 # Configure DNS resolver for dynamic upstream re-resolution
 if [ -n "${RESOLVER:-}" ]; then
     export RESOLVER_DIRECTIVE="resolver ${RESOLVER} valid=10s ipv6=off;"
@@ -217,8 +265,131 @@ else
     export RESOLVER_DIRECTIVE="resolver 127.0.0.11 valid=10s ipv6=off;"
 fi
 
+# Rate Limiting Logic (Granular)
+# Default values
+
+# 1. Global (Safety Net - Ceiling for everything)
+# Default: 1000r/s to ensure it doesn't throttle Exempt routes (500r/s)
+GLOBAL_RATE_LIMIT_VAL=${GLOBAL_RATE_LIMIT_RPS:-1000}
+GLOBAL_RATE_UNIT=${GLOBAL_RATE_UNIT:-s}
+GLOBAL_BURST=${GLOBAL_BURST:-5000}
+
+# 2. Gonka API (Standard/Punisher)
+# Default: 10r/m + 600 burst = 1 hr recovery
+GONKA_API_RATE_LIMIT_VAL=${GONKA_API_RATE_LIMIT_RPS:-10}
+GONKA_API_RATE_UNIT=${GONKA_API_RATE_UNIT:-m}
+GONKA_API_BURST=${GONKA_API_BURST:-600}
+
+# 3. Gonka API Exemptions (High Performance)
+# Routes: chat, inference, training (partial matching)
+GONKA_API_EXEMPT_ROUTES=${GONKA_API_EXEMPT_ROUTES:-"chat inference training"}
+EXEMPT_RATE_LIMIT_VAL=${EXEMPT_RATE_LIMIT_RPS:-500}
+EXEMPT_RATE_UNIT=${EXEMPT_RATE_UNIT:-s}
+EXEMPT_BURST=${EXEMPT_BURST:-2000}
+
+# 4. Chain API
+CHAIN_API_RATE_LIMIT_VAL=${CHAIN_API_RATE_LIMIT_RPS:-20}
+CHAIN_API_RATE_UNIT=${CHAIN_API_RATE_UNIT:-m}
+CHAIN_API_BURST=${CHAIN_API_BURST:-200}
+
+# 5. Chain RPC (Strict)
+CHAIN_RPC_RATE_LIMIT_VAL=${CHAIN_RPC_RATE_LIMIT_RPS:-20}
+CHAIN_RPC_RATE_UNIT=${CHAIN_RPC_RATE_UNIT:-m}
+CHAIN_RPC_BURST=${CHAIN_RPC_BURST:-200}
+
+# 6. Chain gRPC
+CHAIN_GRPC_RATE_LIMIT_VAL=${CHAIN_GRPC_RATE_LIMIT_RPS:-20}
+CHAIN_GRPC_RATE_UNIT=${CHAIN_GRPC_RATE_UNIT:-m}
+CHAIN_GRPC_BURST=${CHAIN_GRPC_BURST:-200}
+
+echo "   🛡️ Rate Limits:"
+echo "      Global: ${GLOBAL_RATE_LIMIT_VAL}r/${GLOBAL_RATE_UNIT} (burst=${GLOBAL_BURST})"
+echo "      App API (Standard): ${GONKA_API_RATE_LIMIT_VAL}r/${GONKA_API_RATE_UNIT} (burst=${GONKA_API_BURST})"
+echo "      App API (Exempt): ${EXEMPT_RATE_LIMIT_VAL}r/${EXEMPT_RATE_UNIT} (burst=${EXEMPT_BURST}) -> [${GONKA_API_EXEMPT_ROUTES}]"
+echo "      Chain API: ${CHAIN_API_RATE_LIMIT_VAL}r/${CHAIN_API_RATE_UNIT} (burst=${CHAIN_API_BURST})"
+echo "      Chain RPC: ${CHAIN_RPC_RATE_LIMIT_VAL}r/${CHAIN_RPC_RATE_UNIT} (burst=${CHAIN_RPC_BURST})"
+echo "      Chain gRPC: ${CHAIN_GRPC_RATE_LIMIT_VAL}r/${CHAIN_GRPC_RATE_UNIT} (burst=${CHAIN_GRPC_BURST})"
+
+# Define Zones
+# Use $$binary_remote_addr so it persists after first envsubst
+export LIMIT_REQ_ZONE_GLOBAL="limit_req_zone \$\$binary_remote_addr zone=global_zone:10m rate=${GLOBAL_RATE_LIMIT_VAL}r/${GLOBAL_RATE_UNIT};"
+export LIMIT_REQ_ZONE_GONKA_API="limit_req_zone \$\$binary_remote_addr zone=api_zone:10m rate=${GONKA_API_RATE_LIMIT_VAL}r/${GONKA_API_RATE_UNIT};"
+export LIMIT_REQ_ZONE_EXEMPT="limit_req_zone \$\$binary_remote_addr zone=exempt_zone:10m rate=${EXEMPT_RATE_LIMIT_VAL}r/${EXEMPT_RATE_UNIT};"
+export LIMIT_REQ_ZONE_CHAIN_API="limit_req_zone \$\$binary_remote_addr zone=chain_api_zone:10m rate=${CHAIN_API_RATE_LIMIT_VAL}r/${CHAIN_API_RATE_UNIT};"
+export LIMIT_REQ_ZONE_CHAIN_RPC="limit_req_zone \$\$binary_remote_addr zone=rpc_zone:10m rate=${CHAIN_RPC_RATE_LIMIT_VAL}r/${CHAIN_RPC_RATE_UNIT};"
+export LIMIT_REQ_ZONE_CHAIN_GRPC="limit_req_zone \$\$binary_remote_addr zone=grpc_zone:10m rate=${CHAIN_GRPC_RATE_LIMIT_VAL}r/${CHAIN_GRPC_RATE_UNIT};"
+
+# Define Rules
+export LIMIT_REQ_RULE_GLOBAL="limit_req zone=global_zone burst=${GLOBAL_BURST} nodelay;"
+export LIMIT_REQ_RULE_GONKA_API="limit_req zone=api_zone burst=${GONKA_API_BURST} nodelay;"
+export LIMIT_REQ_RULE_CHAIN_API="limit_req zone=chain_api_zone burst=${CHAIN_API_BURST} nodelay;"
+export LIMIT_REQ_RULE_CHAIN_RPC="limit_req zone=rpc_zone burst=${CHAIN_RPC_BURST} nodelay;"
+export LIMIT_REQ_RULE_CHAIN_GRPC="limit_req zone=grpc_zone burst=${CHAIN_GRPC_BURST} nodelay;"
+
+# Generate Exempt Routes Configuration
+EXEMPT_ROUTES_CONFIG=""
+for route in $GONKA_API_EXEMPT_ROUTES; do
+    # Ensure route doesn't start with / to avoid double slashes
+    clean_route=$(echo "$route" | sed 's|^/||')
+    
+    # Generate block for /api/v1/ prefix
+    EXEMPT_ROUTES_CONFIG="${EXEMPT_ROUTES_CONFIG}
+    location /api/v1/${clean_route} {
+        limit_req zone=exempt_zone burst=${EXEMPT_BURST} nodelay;
+        ${API_STATUS}
+        proxy_pass http://api_backend/v1/${clean_route};
+        proxy_set_header Host \$\$host;
+        proxy_set_header X-Real-IP \$\$remote_addr;
+        proxy_set_header X-Forwarded-For \$\$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$\$scheme;
+        proxy_set_header Authorization \$\$http_authorization;
+        ${CORS_CONFIG}
+    }
+    "
+
+    # Generate block for /v1/ prefix
+    EXEMPT_ROUTES_CONFIG="${EXEMPT_ROUTES_CONFIG}
+    location /v1/${clean_route} {
+        limit_req zone=exempt_zone burst=${EXEMPT_BURST} nodelay;
+        ${API_STATUS}
+        proxy_pass http://api_backend/v1/${clean_route};
+        proxy_set_header Host \$\$host;
+        proxy_set_header X-Real-IP \$\$remote_addr;
+        proxy_set_header X-Forwarded-For \$\$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$\$scheme;
+        proxy_set_header Authorization \$\$http_authorization;
+        ${CORS_CONFIG}
+    }
+    "
+done
+export EXEMPT_ROUTES_CONFIG
+
+# Construct envsubst variable list for readability
+# Group 1: Core Configuration & Naming
+ENVSUBST_VARS='$KEY_NAME,$KEY_NAME_PREFIX,$SERVER_NAME,$DOMAIN_NAME,$RESOLVER_DIRECTIVE,$CORS_CONFIG'
+
+# Group 2: Ports & Services
+ENVSUBST_VARS="${ENVSUBST_VARS},\$GONKA_API_PORT,\$CHAIN_RPC_PORT,\$CHAIN_API_PORT,\$CHAIN_GRPC_PORT"
+ENVSUBST_VARS="${ENVSUBST_VARS},\$FINAL_API_SERVICE,\$FINAL_NODE_SERVICE,\$FINAL_EXPLORER_SERVICE"
+
+# Group 3: HTTP/SSL & Status
+ENVSUBST_VARS="${ENVSUBST_VARS},\$LISTEN_HTTP,\$LISTEN_HTTPS,\$SSL_CONFIG"
+ENVSUBST_VARS="${ENVSUBST_VARS},\$API_STATUS,\$CHAIN_RPC_STATUS,\$CHAIN_API_STATUS,\$CHAIN_GRPC_STATUS"
+
+# Group 4: Dashboard
+ENVSUBST_VARS="${ENVSUBST_VARS},\$DASHBOARD_PORT,\$DASHBOARD_UPSTREAM,\$ROOT_LOCATION"
+
+# Group 5: Rate Limiting Zones
+ENVSUBST_VARS="${ENVSUBST_VARS},\$LIMIT_REQ_ZONE_GLOBAL,\$LIMIT_REQ_ZONE_GONKA_API,\$LIMIT_REQ_ZONE_EXEMPT"
+ENVSUBST_VARS="${ENVSUBST_VARS},\$LIMIT_REQ_ZONE_CHAIN_RPC,\$LIMIT_REQ_ZONE_CHAIN_API,\$LIMIT_REQ_ZONE_CHAIN_GRPC"
+
+# Group 6: Rate Limiting Rules
+ENVSUBST_VARS="${ENVSUBST_VARS},\$LIMIT_REQ_RULE_GLOBAL,\$LIMIT_REQ_RULE_GONKA_API"
+ENVSUBST_VARS="${ENVSUBST_VARS},\$LIMIT_REQ_RULE_CHAIN_RPC,\$LIMIT_REQ_RULE_CHAIN_API,\$LIMIT_REQ_RULE_CHAIN_GRPC"
+ENVSUBST_VARS="${ENVSUBST_VARS},\$EXEMPT_ROUTES_CONFIG"
+
 echo "Rendering unified nginx configuration (mode: $NGINX_MODE, server_name: $SERVER_NAME)"
-envsubst '$KEY_NAME,$KEY_NAME_PREFIX,$GONKA_API_PORT,$CHAIN_RPC_PORT,$CHAIN_API_PORT,$CHAIN_GRPC_PORT,$DASHBOARD_PORT,$DASHBOARD_UPSTREAM,$ROOT_LOCATION,$FINAL_API_SERVICE,$FINAL_NODE_SERVICE,$FINAL_EXPLORER_SERVICE,$DOMAIN_NAME,$LISTEN_HTTP,$LISTEN_HTTPS,$SSL_CONFIG,$SERVER_NAME,$RESOLVER_DIRECTIVE' < /etc/nginx/nginx.unified.conf.template | sed 's/\$\$/$/g' > /etc/nginx/nginx.conf
+envsubst "$ENVSUBST_VARS" < /etc/nginx/nginx.unified.conf.template | sed 's/\$\$/$/g' > /etc/nginx/nginx.conf
 
 # Validate nginx configuration (with fallback if SSL config fails)
 if nginx -t; then
@@ -230,7 +401,10 @@ else
         ENABLE_HTTPS="false"
         export LISTEN_HTTPS="# HTTPS disabled"
         export SSL_CONFIG="# SSL disabled"
-        envsubst '$KEY_NAME,$KEY_NAME_PREFIX,$GONKA_API_PORT,$CHAIN_RPC_PORT,$CHAIN_API_PORT,$CHAIN_GRPC_PORT,$DASHBOARD_PORT,$DASHBOARD_UPSTREAM,$ROOT_LOCATION,$FINAL_API_SERVICE,$FINAL_NODE_SERVICE,$FINAL_EXPLORER_SERVICE,$DOMAIN_NAME,$LISTEN_HTTP,$LISTEN_HTTPS,$SSL_CONFIG,$SERVER_NAME,$RESOLVER_DIRECTIVE' < /etc/nginx/nginx.unified.conf.template | sed 's/\$\$/$/g' > /etc/nginx/nginx.conf
+        
+        # Retry rendering with HTTP-only settings
+        envsubst "$ENVSUBST_VARS" < /etc/nginx/nginx.unified.conf.template | sed 's/\$\$/$/g' > /etc/nginx/nginx.conf
+        
         if nginx -t; then
             echo "SUCCESS: Nginx configuration is valid (HTTP-only fallback)"
         else

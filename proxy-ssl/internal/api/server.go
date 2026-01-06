@@ -79,10 +79,22 @@ func (s *Server) Router() *gin.Engine {
 
 // healthHandler handles health check requests
 func (s *Server) healthHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
+	status := gin.H{
 		"status": "healthy",
 		"time":   time.Now().UTC(),
-	})
+	}
+
+	if latestOrder := s.issuer.GetLatestOrder(); latestOrder != nil {
+		status["latest_order"] = gin.H{
+			"status":       latestOrder.Status,
+			"issued_at":    latestOrder.CreatedAt,
+			"next_renewal": latestOrder.ExpiresAt.AddDate(0, 0, -30), // 30 days before expiry
+			"last_updated": latestOrder.LastUpdated,
+			"last_error":   latestOrder.LastError,
+		}
+	}
+
+	c.JSON(http.StatusOK, status)
 }
 
 // createAutoCertificate handles automatic certificate creation (one-call solution)
@@ -237,7 +249,11 @@ func (s *Server) renewCertificate(c *gin.Context) {
 	err := s.issuer.RenewCertificate(c.Request.Context(), nodeID, orderID)
 	if err != nil {
 		s.logger.Error("Failed to renew certificate", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to renew certificate"})
+		if strings.Contains(err.Error(), "order not found") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to renew certificate"})
+		}
 		return
 	}
 
