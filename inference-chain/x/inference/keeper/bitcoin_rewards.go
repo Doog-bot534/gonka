@@ -92,12 +92,27 @@ func GetBitcoinSettleAmounts(
 			// Any remainder due to integer division truncation (or downtime punishments already
 			// baked into settleResults) should go to governance.
 			remainder := uint64(bitcoinResult.Amount) - totalDistributed
-			bitcoinResult.GovernanceAmount = int64(remainder)
+			if uint64(bitcoinResult.Amount) < totalDistributed {
+				remainder = 0
+			}
+
+			bitcoinResult.GovernanceAmount = saturatingAddUint64Max(bitcoinResult.GovernanceAmount, remainder)
 		}
 	}
 	// If under cap, no adjustment needed - use full amount
 
 	return settleResults, bitcoinResult, err
+}
+
+func saturatingAddUint64Max(a int64, b uint64) int64 {
+	if a >= math.MaxInt64 {
+		return math.MaxInt64
+	}
+	headroom := uint64(math.MaxInt64 - a) // safe because a >= 0
+	if b >= headroom {
+		return math.MaxInt64
+	}
+	return a + int64(b) // safe because b < headroom <= MaxInt64
 }
 
 // CalculateFixedEpochReward implements the exponential decay reward calculation
@@ -569,6 +584,12 @@ func CalculateParticipantBitcoinRewards(
 	// 6. Any remainder (downtime punishment and/or integer division truncation) is undistributed
 	// and should be transferred to governance.
 	remainder := fixedEpochReward - totalDistributed
+	if fixedEpochReward < totalDistributed {
+		remainder = 0
+	}
+	if remainder > math.MaxInt64 {
+		remainder = math.MaxInt64
+	}
 
 	// 7. Create BitcoinResult (similar to SubsidyResult)
 	bitcoinResult := BitcoinResult{

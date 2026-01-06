@@ -320,15 +320,15 @@ func (k *Keeper) SettleAccounts(ctx context.Context, currentEpochIndex uint64, p
 
 		amount.Settle.EpochIndex = currentEpochIndex
 		k.LogInfo("Settle for participant", types.Settle, "rewardCoins", amount.Settle.RewardCoins, "workCoins", amount.Settle.WorkCoins, "address", amount.Settle.Participant)
-		k.SetSettleAmountWithBurn(ctx, *amount.Settle)
+		k.SetSettleAmountWithGovernanceTransfer(ctx, *amount.Settle)
 	}
 
 	if previousEpochIndex == 0 {
 		return nil
 	}
 
-	k.LogInfo("Burning old settle amounts", types.Settle, "previousEpochIndex", previousEpochIndex)
-	err = k.BurnOldSettleAmounts(ctx, previousEpochIndex)
+	k.LogInfo("Transferring old settle amounts", types.Settle, "previousEpochIndex", previousEpochIndex)
+	err = k.TransferOldSettleAmountsToGovernance(ctx, previousEpochIndex)
 	if err != nil {
 		k.LogError("Error burning old settle amounts", types.Settle, "error", err)
 	}
