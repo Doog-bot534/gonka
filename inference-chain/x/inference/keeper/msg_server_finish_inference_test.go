@@ -70,6 +70,25 @@ func TestMsgServer_FinishInference(t *testing.T) {
 	)
 
 	inferenceHelper, k, ctx := NewMockInferenceHelper(t)
+
+	// Developer access gating should apply to FinishInference as well (gated by RequestedBy).
+	t.Run("DeveloperAccessRestricted", func(t *testing.T) {
+		params := k.GetParams(ctx)
+		params.DeveloperAccessParams = &types.DeveloperAccessParams{
+			UntilBlockHeight:          9999999,
+			AllowedDeveloperAddresses: []string{"gonka1someotherxxxxxxxxxxxxxxxxxxxxxx"},
+		}
+		k.SetParams(ctx, params)
+
+		resp, err := inferenceHelper.MessageServer.FinishInference(ctx, &types.MsgFinishInference{
+			InferenceId: "dummy",
+			RequestedBy: testutil.Requester,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Contains(t, resp.ErrorMessage, types.ErrDeveloperNotAllowlisted.Error())
+	})
+
 	requestTimestamp := inferenceHelper.context.BlockTime().UnixNano()
 	initialBlockTime := ctx.BlockTime().UnixMilli()
 	initialBlockHeight := int64(10)
