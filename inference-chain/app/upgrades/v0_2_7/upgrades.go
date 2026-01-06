@@ -84,8 +84,14 @@ func setV0_2_7Params(ctx context.Context, k keeper.Keeper) error {
 	// Developer access gating: restrict inference requests to a developer allowlist until a fixed cutoff height.
 	// NOTE: 2,222,222 is roughly ~2 weeks after the upgrade at typical block times.
 	params.DeveloperAccessParams = &types.DeveloperAccessParams{
-		UntilBlockHeight:          2_222_222,
-		AllowedDeveloperAddresses: []string{"gonka1ktl3kkn9l68c9amanu8u4868mcjmtsr5tgzmjk"}, // placeholder; update before the upgrade
+		UntilBlockHeight: 2_222_222,
+		AllowedDeveloperAddresses: []string{
+			"gonka10fynmy2npvdvew0vj2288gz8ljfvmjs35lat8n",
+			"gonka1v8gk5z7gcv72447yfcd2y8g78qk05yc4f3nk4w",
+			"gonka1gndhek2h2y5849wf6tmw6gnw9qn4vysgljed0u",
+			"gonka1z66ec2zedwpapp6jrj9raxgl93e5ec9z5my52h",
+			"gonka1jw6xg0wun3g8m2fjm8lula82dw5p6jl8yp28mn",
+		},
 	}
 
 	return k.SetParams(ctx, params)
