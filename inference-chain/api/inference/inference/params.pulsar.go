@@ -13711,6 +13711,8 @@ var (
 	md_ParticipantAccessParams                                           protoreflect.MessageDescriptor
 	fd_ParticipantAccessParams_new_participant_registration_start_height protoreflect.FieldDescriptor
 	fd_ParticipantAccessParams_blocked_participant_addresses             protoreflect.FieldDescriptor
+	fd_ParticipantAccessParams_use_participant_allowlist                 protoreflect.FieldDescriptor
+	fd_ParticipantAccessParams_participant_allowlist_until_block_height  protoreflect.FieldDescriptor
 )
 
 func init() {
@@ -13718,6 +13720,8 @@ func init() {
 	md_ParticipantAccessParams = File_inference_inference_params_proto.Messages().ByName("ParticipantAccessParams")
 	fd_ParticipantAccessParams_new_participant_registration_start_height = md_ParticipantAccessParams.Fields().ByName("new_participant_registration_start_height")
 	fd_ParticipantAccessParams_blocked_participant_addresses = md_ParticipantAccessParams.Fields().ByName("blocked_participant_addresses")
+	fd_ParticipantAccessParams_use_participant_allowlist = md_ParticipantAccessParams.Fields().ByName("use_participant_allowlist")
+	fd_ParticipantAccessParams_participant_allowlist_until_block_height = md_ParticipantAccessParams.Fields().ByName("participant_allowlist_until_block_height")
 }
 
 var _ protoreflect.Message = (*fastReflection_ParticipantAccessParams)(nil)
@@ -13797,6 +13801,18 @@ func (x *fastReflection_ParticipantAccessParams) Range(f func(protoreflect.Field
 			return
 		}
 	}
+	if x.UseParticipantAllowlist != false {
+		value := protoreflect.ValueOfBool(x.UseParticipantAllowlist)
+		if !f(fd_ParticipantAccessParams_use_participant_allowlist, value) {
+			return
+		}
+	}
+	if x.ParticipantAllowlistUntilBlockHeight != int64(0) {
+		value := protoreflect.ValueOfInt64(x.ParticipantAllowlistUntilBlockHeight)
+		if !f(fd_ParticipantAccessParams_participant_allowlist_until_block_height, value) {
+			return
+		}
+	}
 }
 
 // Has reports whether a field is populated.
@@ -13816,6 +13832,10 @@ func (x *fastReflection_ParticipantAccessParams) Has(fd protoreflect.FieldDescri
 		return x.NewParticipantRegistrationStartHeight != int64(0)
 	case "inference.inference.ParticipantAccessParams.blocked_participant_addresses":
 		return len(x.BlockedParticipantAddresses) != 0
+	case "inference.inference.ParticipantAccessParams.use_participant_allowlist":
+		return x.UseParticipantAllowlist != false
+	case "inference.inference.ParticipantAccessParams.participant_allowlist_until_block_height":
+		return x.ParticipantAllowlistUntilBlockHeight != int64(0)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.ParticipantAccessParams"))
@@ -13836,6 +13856,10 @@ func (x *fastReflection_ParticipantAccessParams) Clear(fd protoreflect.FieldDesc
 		x.NewParticipantRegistrationStartHeight = int64(0)
 	case "inference.inference.ParticipantAccessParams.blocked_participant_addresses":
 		x.BlockedParticipantAddresses = nil
+	case "inference.inference.ParticipantAccessParams.use_participant_allowlist":
+		x.UseParticipantAllowlist = false
+	case "inference.inference.ParticipantAccessParams.participant_allowlist_until_block_height":
+		x.ParticipantAllowlistUntilBlockHeight = int64(0)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.ParticipantAccessParams"))
@@ -13861,6 +13885,12 @@ func (x *fastReflection_ParticipantAccessParams) Get(descriptor protoreflect.Fie
 		}
 		listValue := &_ParticipantAccessParams_2_list{list: &x.BlockedParticipantAddresses}
 		return protoreflect.ValueOfList(listValue)
+	case "inference.inference.ParticipantAccessParams.use_participant_allowlist":
+		value := x.UseParticipantAllowlist
+		return protoreflect.ValueOfBool(value)
+	case "inference.inference.ParticipantAccessParams.participant_allowlist_until_block_height":
+		value := x.ParticipantAllowlistUntilBlockHeight
+		return protoreflect.ValueOfInt64(value)
 	default:
 		if descriptor.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.ParticipantAccessParams"))
@@ -13887,6 +13917,10 @@ func (x *fastReflection_ParticipantAccessParams) Set(fd protoreflect.FieldDescri
 		lv := value.List()
 		clv := lv.(*_ParticipantAccessParams_2_list)
 		x.BlockedParticipantAddresses = *clv.list
+	case "inference.inference.ParticipantAccessParams.use_participant_allowlist":
+		x.UseParticipantAllowlist = value.Bool()
+	case "inference.inference.ParticipantAccessParams.participant_allowlist_until_block_height":
+		x.ParticipantAllowlistUntilBlockHeight = value.Int()
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.ParticipantAccessParams"))
@@ -13915,6 +13949,10 @@ func (x *fastReflection_ParticipantAccessParams) Mutable(fd protoreflect.FieldDe
 		return protoreflect.ValueOfList(value)
 	case "inference.inference.ParticipantAccessParams.new_participant_registration_start_height":
 		panic(fmt.Errorf("field new_participant_registration_start_height of message inference.inference.ParticipantAccessParams is not mutable"))
+	case "inference.inference.ParticipantAccessParams.use_participant_allowlist":
+		panic(fmt.Errorf("field use_participant_allowlist of message inference.inference.ParticipantAccessParams is not mutable"))
+	case "inference.inference.ParticipantAccessParams.participant_allowlist_until_block_height":
+		panic(fmt.Errorf("field participant_allowlist_until_block_height of message inference.inference.ParticipantAccessParams is not mutable"))
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.ParticipantAccessParams"))
@@ -13933,6 +13971,10 @@ func (x *fastReflection_ParticipantAccessParams) NewField(fd protoreflect.FieldD
 	case "inference.inference.ParticipantAccessParams.blocked_participant_addresses":
 		list := []string{}
 		return protoreflect.ValueOfList(&_ParticipantAccessParams_2_list{list: &list})
+	case "inference.inference.ParticipantAccessParams.use_participant_allowlist":
+		return protoreflect.ValueOfBool(false)
+	case "inference.inference.ParticipantAccessParams.participant_allowlist_until_block_height":
+		return protoreflect.ValueOfInt64(int64(0))
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.ParticipantAccessParams"))
@@ -14011,6 +14053,12 @@ func (x *fastReflection_ParticipantAccessParams) ProtoMethods() *protoiface.Meth
 				n += 1 + l + runtime.Sov(uint64(l))
 			}
 		}
+		if x.UseParticipantAllowlist {
+			n += 2
+		}
+		if x.ParticipantAllowlistUntilBlockHeight != 0 {
+			n += 1 + runtime.Sov(uint64(x.ParticipantAllowlistUntilBlockHeight))
+		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
 		}
@@ -14039,6 +14087,21 @@ func (x *fastReflection_ParticipantAccessParams) ProtoMethods() *protoiface.Meth
 		if x.unknownFields != nil {
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
+		}
+		if x.ParticipantAllowlistUntilBlockHeight != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.ParticipantAllowlistUntilBlockHeight))
+			i--
+			dAtA[i] = 0x20
+		}
+		if x.UseParticipantAllowlist {
+			i--
+			if x.UseParticipantAllowlist {
+				dAtA[i] = 1
+			} else {
+				dAtA[i] = 0
+			}
+			i--
+			dAtA[i] = 0x18
 		}
 		if len(x.BlockedParticipantAddresses) > 0 {
 			for iNdEx := len(x.BlockedParticipantAddresses) - 1; iNdEx >= 0; iNdEx-- {
@@ -14154,6 +14217,45 @@ func (x *fastReflection_ParticipantAccessParams) ProtoMethods() *protoiface.Meth
 				}
 				x.BlockedParticipantAddresses = append(x.BlockedParticipantAddresses, string(dAtA[iNdEx:postIndex]))
 				iNdEx = postIndex
+			case 3:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field UseParticipantAllowlist", wireType)
+				}
+				var v int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				x.UseParticipantAllowlist = bool(v != 0)
+			case 4:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field ParticipantAllowlistUntilBlockHeight", wireType)
+				}
+				x.ParticipantAllowlistUntilBlockHeight = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.ParticipantAllowlistUntilBlockHeight |= int64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
 			default:
 				iNdEx = preIndex
 				skippy, err := runtime.Skip(dAtA[iNdEx:])
@@ -15700,6 +15802,15 @@ func (x *DeveloperAccessParams) GetAllowedDeveloperAddresses() []string {
 	return nil
 }
 
+// ParticipantAccessParams controls participant access via blocklist and allowlist mechanisms.
+//
+// Blocklist vs Allowlist interaction:
+// - Blocklist (blocked_participant_addresses): tx-level rejection; checked on every PoC tx submission.
+// - Allowlist (use_participant_allowlist + KVStore set): epoch-level filtering; checked during epoch formation.
+// - When both are active, blocklist wins: a blocklisted address is rejected at tx time regardless of allowlist.
+//
+// The allowlist is stored in KVStore (not in params) and managed via MsgAddParticipantsToAllowList/MsgRemoveParticipantsFromAllowList.
+// Max recommended addresses per Add/Remove message: 500 (to stay within tx size limits).
 type ParticipantAccessParams struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -15709,8 +15820,14 @@ type ParticipantAccessParams struct {
 	// (i.e. registration opens at new_participant_registration_start_height). Set to 0 to disable.
 	NewParticipantRegistrationStartHeight int64 `protobuf:"varint,1,opt,name=new_participant_registration_start_height,json=newParticipantRegistrationStartHeight,proto3" json:"new_participant_registration_start_height,omitempty"`
 	// blocked_participant_addresses are bech32 account addresses that are not allowed to participate in PoC
-	// (submit PoC batches or validations).
+	// (submit PoC batches or validations). Checked at tx submission time.
 	BlockedParticipantAddresses []string `protobuf:"bytes,2,rep,name=blocked_participant_addresses,json=blockedParticipantAddresses,proto3" json:"blocked_participant_addresses,omitempty"`
+	// use_participant_allowlist enables epoch-formation filtering by allowlist. Default false.
+	// When true, only addresses in the KVStore allowlist are included in epoch formation.
+	UseParticipantAllowlist bool `protobuf:"varint,3,opt,name=use_participant_allowlist,json=useParticipantAllowlist,proto3" json:"use_participant_allowlist,omitempty"`
+	// participant_allowlist_until_block_height: allowlist is enforced while current_height < this value.
+	// Set to 0 to disable cutoff (allowlist stays active as long as use_participant_allowlist=true).
+	ParticipantAllowlistUntilBlockHeight int64 `protobuf:"varint,4,opt,name=participant_allowlist_until_block_height,json=participantAllowlistUntilBlockHeight,proto3" json:"participant_allowlist_until_block_height,omitempty"`
 }
 
 func (x *ParticipantAccessParams) Reset() {
@@ -15745,6 +15862,20 @@ func (x *ParticipantAccessParams) GetBlockedParticipantAddresses() []string {
 		return x.BlockedParticipantAddresses
 	}
 	return nil
+}
+
+func (x *ParticipantAccessParams) GetUseParticipantAllowlist() bool {
+	if x != nil {
+		return x.UseParticipantAllowlist
+	}
+	return false
+}
+
+func (x *ParticipantAccessParams) GetParticipantAllowlistUntilBlockHeight() int64 {
+	if x != nil {
+		return x.ParticipantAllowlistUntilBlockHeight
+	}
+	return 0
 }
 
 var File_inference_inference_params_proto protoreflect.FileDescriptor
@@ -16316,8 +16447,8 @@ var file_inference_inference_params_proto_rawDesc = []byte{
 	0x77, 0x65, 0x64, 0x5f, 0x64, 0x65, 0x76, 0x65, 0x6c, 0x6f, 0x70, 0x65, 0x72, 0x5f, 0x61, 0x64,
 	0x64, 0x72, 0x65, 0x73, 0x73, 0x65, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x09, 0x52, 0x19, 0x61,
 	0x6c, 0x6c, 0x6f, 0x77, 0x65, 0x64, 0x44, 0x65, 0x76, 0x65, 0x6c, 0x6f, 0x70, 0x65, 0x72, 0x41,
-	0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x65, 0x73, 0x3a, 0x04, 0xe8, 0xa0, 0x1f, 0x01, 0x22, 0xbd,
-	0x01, 0x0a, 0x17, 0x50, 0x61, 0x72, 0x74, 0x69, 0x63, 0x69, 0x70, 0x61, 0x6e, 0x74, 0x41, 0x63,
+	0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x65, 0x73, 0x3a, 0x04, 0xe8, 0xa0, 0x1f, 0x01, 0x22, 0xd1,
+	0x02, 0x0a, 0x17, 0x50, 0x61, 0x72, 0x74, 0x69, 0x63, 0x69, 0x70, 0x61, 0x6e, 0x74, 0x41, 0x63,
 	0x63, 0x65, 0x73, 0x73, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x58, 0x0a, 0x29, 0x6e, 0x65,
 	0x77, 0x5f, 0x70, 0x61, 0x72, 0x74, 0x69, 0x63, 0x69, 0x70, 0x61, 0x6e, 0x74, 0x5f, 0x72, 0x65,
 	0x67, 0x69, 0x73, 0x74, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x73, 0x74, 0x61, 0x72, 0x74,
@@ -16328,20 +16459,29 @@ var file_inference_inference_params_proto_rawDesc = []byte{
 	0x70, 0x61, 0x72, 0x74, 0x69, 0x63, 0x69, 0x70, 0x61, 0x6e, 0x74, 0x5f, 0x61, 0x64, 0x64, 0x72,
 	0x65, 0x73, 0x73, 0x65, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x09, 0x52, 0x1b, 0x62, 0x6c, 0x6f,
 	0x63, 0x6b, 0x65, 0x64, 0x50, 0x61, 0x72, 0x74, 0x69, 0x63, 0x69, 0x70, 0x61, 0x6e, 0x74, 0x41,
-	0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x65, 0x73, 0x3a, 0x04, 0xe8, 0xa0, 0x1f, 0x01, 0x42, 0xb9,
-	0x01, 0x0a, 0x17, 0x63, 0x6f, 0x6d, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65,
-	0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x42, 0x0b, 0x50, 0x61, 0x72, 0x61,
-	0x6d, 0x73, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x24, 0x63, 0x6f, 0x73, 0x6d, 0x6f,
-	0x73, 0x73, 0x64, 0x6b, 0x2e, 0x69, 0x6f, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x69, 0x6e, 0x66, 0x65,
-	0x72, 0x65, 0x6e, 0x63, 0x65, 0x2f, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0xa2,
-	0x02, 0x03, 0x49, 0x49, 0x58, 0xaa, 0x02, 0x13, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63,
-	0x65, 0x2e, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0xca, 0x02, 0x13, 0x49, 0x6e,
-	0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63,
-	0x65, 0xe2, 0x02, 0x1f, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c, 0x49, 0x6e,
-	0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64,
-	0x61, 0x74, 0x61, 0xea, 0x02, 0x14, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x3a,
-	0x3a, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74,
-	0x6f, 0x33,
+	0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x65, 0x73, 0x12, 0x3a, 0x0a, 0x19, 0x75, 0x73, 0x65, 0x5f,
+	0x70, 0x61, 0x72, 0x74, 0x69, 0x63, 0x69, 0x70, 0x61, 0x6e, 0x74, 0x5f, 0x61, 0x6c, 0x6c, 0x6f,
+	0x77, 0x6c, 0x69, 0x73, 0x74, 0x18, 0x03, 0x20, 0x01, 0x28, 0x08, 0x52, 0x17, 0x75, 0x73, 0x65,
+	0x50, 0x61, 0x72, 0x74, 0x69, 0x63, 0x69, 0x70, 0x61, 0x6e, 0x74, 0x41, 0x6c, 0x6c, 0x6f, 0x77,
+	0x6c, 0x69, 0x73, 0x74, 0x12, 0x56, 0x0a, 0x28, 0x70, 0x61, 0x72, 0x74, 0x69, 0x63, 0x69, 0x70,
+	0x61, 0x6e, 0x74, 0x5f, 0x61, 0x6c, 0x6c, 0x6f, 0x77, 0x6c, 0x69, 0x73, 0x74, 0x5f, 0x75, 0x6e,
+	0x74, 0x69, 0x6c, 0x5f, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x5f, 0x68, 0x65, 0x69, 0x67, 0x68, 0x74,
+	0x18, 0x04, 0x20, 0x01, 0x28, 0x03, 0x52, 0x24, 0x70, 0x61, 0x72, 0x74, 0x69, 0x63, 0x69, 0x70,
+	0x61, 0x6e, 0x74, 0x41, 0x6c, 0x6c, 0x6f, 0x77, 0x6c, 0x69, 0x73, 0x74, 0x55, 0x6e, 0x74, 0x69,
+	0x6c, 0x42, 0x6c, 0x6f, 0x63, 0x6b, 0x48, 0x65, 0x69, 0x67, 0x68, 0x74, 0x3a, 0x04, 0xe8, 0xa0,
+	0x1f, 0x01, 0x42, 0xb9, 0x01, 0x0a, 0x17, 0x63, 0x6f, 0x6d, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72,
+	0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x42, 0x0b,
+	0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x24, 0x63,
+	0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x73, 0x64, 0x6b, 0x2e, 0x69, 0x6f, 0x2f, 0x61, 0x70, 0x69, 0x2f,
+	0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2f, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65,
+	0x6e, 0x63, 0x65, 0xa2, 0x02, 0x03, 0x49, 0x49, 0x58, 0xaa, 0x02, 0x13, 0x49, 0x6e, 0x66, 0x65,
+	0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0xca,
+	0x02, 0x13, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c, 0x49, 0x6e, 0x66, 0x65,
+	0x72, 0x65, 0x6e, 0x63, 0x65, 0xe2, 0x02, 0x1f, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63,
+	0x65, 0x5c, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c, 0x47, 0x50, 0x42, 0x4d,
+	0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x14, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65,
+	0x6e, 0x63, 0x65, 0x3a, 0x3a, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x62, 0x06,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (

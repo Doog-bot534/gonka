@@ -3334,10 +3334,13 @@ func setV0_2_7Params(ctx context.Context, k keeper.Keeper) error {
 	// Participant access gating:
 	// - Block NEW participant registrations until this height (registration opens at this height).
 	// - Blocklisted accounts cannot participate in PoC submissions.
+	// - Allowlist is disabled by default; can be enabled via governance later.
 	// NOTE: 2,222,222 is roughly ~2 weeks after the upgrade at typical block times.
 	params.ParticipantAccessParams = &types.ParticipantAccessParams{
 		NewParticipantRegistrationStartHeight: 2_222_222,
 		BlockedParticipantAddresses:           []string{"gonka1blockedxxxxxxxxxxxxxxxxxxxxxx"}, // placeholder; update before the upgrade
+		UseParticipantAllowlist:               false,                                           // disabled by default
+		ParticipantAllowlistUntilBlockHeight:  0,                                               // no cutoff (stays inactive)
 	}
 
 	return k.SetParams(ctx, params)
