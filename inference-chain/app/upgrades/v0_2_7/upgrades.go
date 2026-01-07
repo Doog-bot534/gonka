@@ -3328,6 +3328,11 @@ func setV0_2_7Params(ctx context.Context, k keeper.Keeper) error {
 			"gonka1gndhek2h2y5849wf6tmw6gnw9qn4vysgljed0u",
 			"gonka1z66ec2zedwpapp6jrj9raxgl93e5ec9z5my52h",
 			"gonka1jw6xg0wun3g8m2fjm8lula82dw5p6jl8yp28mn",
+			"gonka15sjedpgseutpnrjx2ge3mgau3s8ft5qzym9waa",
+			"gonka1l4a2wtls9rgd2mnnj6mheml5xlq3kknngj4p7h",
+			"gonka1f3yg5385n3f9pdw2g3dcjcnfqyej67hcu9vfet",
+			"gonka15g5pu70k7l6hvdt8xl80h4mxe332762csupaeg",
+			"gonka1uyqp5z3dveamfw4pmw7p7rfvwdvgzewnqrzhsu",
 		},
 	}
 
