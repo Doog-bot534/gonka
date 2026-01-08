@@ -241,10 +241,12 @@ else
 fi
 
 # CORS Configuration - Single source of truth for all location blocks
+CORS_ALLOW_ORIGIN=${CORS_ALLOW_ORIGIN:-"*"}
+
 export CORS_CONFIG="
             # CORS setup
             if (\$\$request_method = 'OPTIONS') {
-                add_header 'Access-Control-Allow-Origin' '*';
+                add_header 'Access-Control-Allow-Origin' '${CORS_ALLOW_ORIGIN}';
                 add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE';
                 add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization';
                 add_header 'Access-Control-Max-Age' 1728000;
@@ -252,7 +254,7 @@ export CORS_CONFIG="
                 add_header 'Content-Length' 0;
                 return 204;
             }
-            add_header 'Access-Control-Allow-Origin' '*' always;
+            add_header 'Access-Control-Allow-Origin' '${CORS_ALLOW_ORIGIN}' always;
             add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE' always;
             add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
             add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;"
@@ -268,39 +270,48 @@ fi
 # Rate Limiting Logic (Granular)
 # Default values
 
-# 1. Global (Safety Net - Ceiling for everything)
+# Global (Safety Net - Ceiling for everything)
 # Default: 1000r/s to ensure it doesn't throttle Exempt routes (500r/s)
 GLOBAL_RATE_LIMIT_VAL=${GLOBAL_RATE_LIMIT_RPS:-1000}
 GLOBAL_RATE_UNIT=${GLOBAL_RATE_UNIT:-s}
 GLOBAL_BURST=${GLOBAL_BURST:-5000}
 
-# 2. Gonka API (Standard/Punisher)
+# Gonka API (Standard/Punisher)
 # Default: 10r/m + 600 burst = 1 hr recovery
 GONKA_API_RATE_LIMIT_VAL=${GONKA_API_RATE_LIMIT_RPS:-10}
 GONKA_API_RATE_UNIT=${GONKA_API_RATE_UNIT:-m}
 GONKA_API_BURST=${GONKA_API_BURST:-600}
 
-# 3. Gonka API Exemptions (High Performance)
+# Gonka API Exemptions (High Performance)
 # Routes: chat, inference, training (partial matching)
-GONKA_API_EXEMPT_ROUTES=${GONKA_API_EXEMPT_ROUTES:-"chat inference training"}
 EXEMPT_RATE_LIMIT_VAL=${EXEMPT_RATE_LIMIT_RPS:-500}
 EXEMPT_RATE_UNIT=${EXEMPT_RATE_UNIT:-s}
 EXEMPT_BURST=${EXEMPT_BURST:-2000}
+GONKA_API_EXEMPT_ROUTES=${GONKA_API_EXEMPT_ROUTES:-"chat inference training"}
+CHAIN_API_EXEMPT_ROUTES=${CHAIN_API_EXEMPT_ROUTES:-""}
+CHAIN_RPC_EXEMPT_ROUTES=${CHAIN_RPC_EXEMPT_ROUTES:-""}
+CHAIN_GRPC_EXEMPT_ROUTES=${CHAIN_GRPC_EXEMPT_ROUTES:-""}
 
-# 4. Chain API
+# Chain API
 CHAIN_API_RATE_LIMIT_VAL=${CHAIN_API_RATE_LIMIT_RPS:-20}
 CHAIN_API_RATE_UNIT=${CHAIN_API_RATE_UNIT:-m}
 CHAIN_API_BURST=${CHAIN_API_BURST:-200}
 
-# 5. Chain RPC (Strict)
+# Chain RPC
 CHAIN_RPC_RATE_LIMIT_VAL=${CHAIN_RPC_RATE_LIMIT_RPS:-20}
 CHAIN_RPC_RATE_UNIT=${CHAIN_RPC_RATE_UNIT:-m}
 CHAIN_RPC_BURST=${CHAIN_RPC_BURST:-200}
 
-# 6. Chain gRPC
+# Chain gRPC
 CHAIN_GRPC_RATE_LIMIT_VAL=${CHAIN_GRPC_RATE_LIMIT_RPS:-20}
 CHAIN_GRPC_RATE_UNIT=${CHAIN_GRPC_RATE_UNIT:-m}
 CHAIN_GRPC_BURST=${CHAIN_GRPC_BURST:-200}
+
+# Route Blocking Configuration
+GONKA_API_BLOCKED_ROUTES=${GONKA_API_BLOCKED_ROUTES:-"poc-batches"}
+CHAIN_API_BLOCKED_ROUTES=${CHAIN_API_BLOCKED_ROUTES:-""}
+CHAIN_RPC_BLOCKED_ROUTES=${CHAIN_RPC_BLOCKED_ROUTES:-""}
+CHAIN_GRPC_BLOCKED_ROUTES=${CHAIN_GRPC_BLOCKED_ROUTES:-""}
 
 echo "   🛡️ Rate Limits:"
 echo "      Global: ${GLOBAL_RATE_LIMIT_VAL}r/${GLOBAL_RATE_UNIT} (burst=${GLOBAL_BURST})"
@@ -309,6 +320,11 @@ echo "      App API (Exempt): ${EXEMPT_RATE_LIMIT_VAL}r/${EXEMPT_RATE_UNIT} (bur
 echo "      Chain API: ${CHAIN_API_RATE_LIMIT_VAL}r/${CHAIN_API_RATE_UNIT} (burst=${CHAIN_API_BURST})"
 echo "      Chain RPC: ${CHAIN_RPC_RATE_LIMIT_VAL}r/${CHAIN_RPC_RATE_UNIT} (burst=${CHAIN_RPC_BURST})"
 echo "      Chain gRPC: ${CHAIN_GRPC_RATE_LIMIT_VAL}r/${CHAIN_GRPC_RATE_UNIT} (burst=${CHAIN_GRPC_BURST})"
+echo "   ⛔ Blocked Routes:"
+echo "      App API: [${GONKA_API_BLOCKED_ROUTES}]"
+echo "      Chain API: [${CHAIN_API_BLOCKED_ROUTES}]"
+echo "      Chain RPC: [${CHAIN_RPC_BLOCKED_ROUTES}]"
+echo "      Chain gRPC: [${CHAIN_GRPC_BLOCKED_ROUTES}]"
 
 # Define Zones
 # Use $$binary_remote_addr so it persists after first envsubst
@@ -326,42 +342,129 @@ export LIMIT_REQ_RULE_CHAIN_API="limit_req zone=chain_api_zone burst=${CHAIN_API
 export LIMIT_REQ_RULE_CHAIN_RPC="limit_req zone=rpc_zone burst=${CHAIN_RPC_BURST} nodelay;"
 export LIMIT_REQ_RULE_CHAIN_GRPC="limit_req zone=grpc_zone burst=${CHAIN_GRPC_BURST} nodelay;"
 
-# Generate Exempt Routes Configuration
-EXEMPT_ROUTES_CONFIG=""
-for route in $GONKA_API_EXEMPT_ROUTES; do
-    # Ensure route doesn't start with / to avoid double slashes
-    clean_route=$(echo "$route" | sed 's|^/||')
-    
-    # Generate block for /api/v1/ prefix
-    EXEMPT_ROUTES_CONFIG="${EXEMPT_ROUTES_CONFIG}
-    location /api/v1/${clean_route} {
-        limit_req zone=exempt_zone burst=${EXEMPT_BURST} nodelay;
-        ${API_STATUS}
-        proxy_pass http://api_backend/v1/${clean_route};
-        proxy_set_header Host \$\$host;
-        proxy_set_header X-Real-IP \$\$remote_addr;
-        proxy_set_header X-Forwarded-For \$\$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$\$scheme;
-        proxy_set_header Authorization \$\$http_authorization;
-        ${CORS_CONFIG}
-    }
-    "
+# --------------------------------------------------------------------------------
+# Helper Functions for Route Generation
+# --------------------------------------------------------------------------------
 
-    # Generate block for /v1/ prefix
-    EXEMPT_ROUTES_CONFIG="${EXEMPT_ROUTES_CONFIG}
-    location /v1/${clean_route} {
+append_blocked_location() {
+    # Usage: append_blocked_location "routes" "prefix1 prefix2 ..."
+    local routes="$1"
+    local prefixes="$2"
+
+    for route in $routes; do
+        clean_route=$(echo "$route" | sed 's|^/||')
+        for prefix in $prefixes; do
+            BLOCKED_ROUTES_CONFIG="${BLOCKED_ROUTES_CONFIG}
+    location ${prefix}${clean_route} {
+        return 403 '{\"error\": \"Access Denied\", \"message\": \"This route is currently blocked.\"}';
+        add_header Content-Type application/json;
+    }
+    "
+        done
+    done
+}
+
+append_exempt_location() {
+    # Usage: append_exempt_location "routes" "prefix" "upstream_base" "status_check" "type" "extra_config"
+    local routes="$1"
+    local prefix="$2"
+    local upstream_base="$3"
+    local status_check="$4"
+    local type="$5" # "http" or "grpc"
+    local extra_config="$6"
+
+    for route in $routes; do
+        clean_route=$(echo "$route" | sed 's|^/||')
+        
+        EXEMPT_ROUTES_CONFIG="${EXEMPT_ROUTES_CONFIG}
+    location ${prefix}${clean_route} {
         limit_req zone=exempt_zone burst=${EXEMPT_BURST} nodelay;
-        ${API_STATUS}
-        proxy_pass http://api_backend/v1/${clean_route};
+        ${status_check}
+        "
+
+        if [ "$type" = "grpc" ]; then
+            # gRPC Proxy Configuration
+            EXEMPT_ROUTES_CONFIG="${EXEMPT_ROUTES_CONFIG}
+        grpc_pass ${upstream_base};
+        grpc_set_header Host \$\$host;
+        grpc_set_header X-Real-IP \$\$remote_addr;
+        grpc_set_header X-Forwarded-For \$\$proxy_add_x_forwarded_for;
+        grpc_set_header X-Forwarded-Proto \$\$scheme;
+        grpc_set_header Authorization \$\$http_authorization;
+
+        # Standard timeouts for chain gRPC (2 minutes)
+        grpc_connect_timeout 30s;
+        grpc_send_timeout 120s;
+        grpc_read_timeout 120s;
+        "
+        else
+            # HTTP Proxy Configuration
+            EXEMPT_ROUTES_CONFIG="${EXEMPT_ROUTES_CONFIG}
+        proxy_pass ${upstream_base}${clean_route};
         proxy_set_header Host \$\$host;
         proxy_set_header X-Real-IP \$\$remote_addr;
         proxy_set_header X-Forwarded-For \$\$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$\$scheme;
         proxy_set_header Authorization \$\$http_authorization;
         ${CORS_CONFIG}
+        "
+        fi
+
+        # Append extra config (e.g., websocket headers)
+        if [ -n "$extra_config" ]; then
+            EXEMPT_ROUTES_CONFIG="${EXEMPT_ROUTES_CONFIG}
+        ${extra_config}
+        "
+        fi
+
+        EXEMPT_ROUTES_CONFIG="${EXEMPT_ROUTES_CONFIG}
     }
     "
-done
+    done
+}
+
+# --------------------------------------------------------------------------------
+# Generate Blocked Routes Configuration
+# --------------------------------------------------------------------------------
+BLOCKED_ROUTES_CONFIG=""
+
+# 1. Gonka API (Two prefixes)
+append_blocked_location "$GONKA_API_BLOCKED_ROUTES" "/api/v1/ /v1/"
+
+# 2. Chain API
+append_blocked_location "$CHAIN_API_BLOCKED_ROUTES" "/chain-api/"
+
+# 3. Chain RPC
+append_blocked_location "$CHAIN_RPC_BLOCKED_ROUTES" "/chain-rpc/"
+
+# 4. Chain gRPC
+append_blocked_location "$CHAIN_GRPC_BLOCKED_ROUTES" "/chain-grpc/"
+
+export BLOCKED_ROUTES_CONFIG
+
+# --------------------------------------------------------------------------------
+# Generate Exempt Routes Configuration
+# --------------------------------------------------------------------------------
+EXEMPT_ROUTES_CONFIG=""
+
+# 1. Gonka API Exempt Routes (Chat, Inference, etc)
+# Covers /api/v1/ and /v1/ - need to call twice or handle in function? 
+# The function takes single prefix. Let's call twice.
+append_exempt_location "$GONKA_API_EXEMPT_ROUTES" "/api/v1/" "http://api_backend/v1/" "${API_STATUS}" "http" ""
+append_exempt_location "$GONKA_API_EXEMPT_ROUTES" "/v1/" "http://api_backend/v1/" "${API_STATUS}" "http" ""
+
+# 2. Chain API Exempt Routes
+append_exempt_location "$CHAIN_API_EXEMPT_ROUTES" "/chain-api/" "http://chain_api_backend/" "${CHAIN_API_STATUS}" "http" ""
+
+# 3. Chain RPC Exempt Routes (Needs WebSocket support)
+WS_CONFIG="proxy_http_version 1.1;
+        proxy_set_header Upgrade \$\$http_upgrade;
+        proxy_set_header Connection \"upgrade\";"
+append_exempt_location "$CHAIN_RPC_EXEMPT_ROUTES" "/chain-rpc/" "http://chain_rpc_backend/" "${CHAIN_RPC_STATUS}" "http" "$WS_CONFIG"
+
+# 4. Chain gRPC Exempt Routes
+append_exempt_location "$CHAIN_GRPC_EXEMPT_ROUTES" "/chain-grpc/" "grpc://chain_grpc_backend" "${CHAIN_GRPC_STATUS}" "grpc" ""
+
 export EXEMPT_ROUTES_CONFIG
 
 # Construct envsubst variable list for readability
@@ -386,7 +489,7 @@ ENVSUBST_VARS="${ENVSUBST_VARS},\$LIMIT_REQ_ZONE_CHAIN_RPC,\$LIMIT_REQ_ZONE_CHAI
 # Group 6: Rate Limiting Rules
 ENVSUBST_VARS="${ENVSUBST_VARS},\$LIMIT_REQ_RULE_GLOBAL,\$LIMIT_REQ_RULE_GONKA_API"
 ENVSUBST_VARS="${ENVSUBST_VARS},\$LIMIT_REQ_RULE_CHAIN_RPC,\$LIMIT_REQ_RULE_CHAIN_API,\$LIMIT_REQ_RULE_CHAIN_GRPC"
-ENVSUBST_VARS="${ENVSUBST_VARS},\$EXEMPT_ROUTES_CONFIG"
+ENVSUBST_VARS="${ENVSUBST_VARS},\$BLOCKED_ROUTES_CONFIG,\$EXEMPT_ROUTES_CONFIG"
 
 echo "Rendering unified nginx configuration (mode: $NGINX_MODE, server_name: $SERVER_NAME)"
 envsubst "$ENVSUBST_VARS" < /etc/nginx/nginx.unified.conf.template | sed 's/\$\$/$/g' > /etc/nginx/nginx.conf

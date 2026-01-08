@@ -61,6 +61,7 @@ Key runtime environment variables:
 | `DISABLE_CHAIN_RPC` | false | Set to `true` to disable `/chain-rpc/` routes |
 | `DISABLE_CHAIN_API` | false | Set to `true` to disable `/chain-api/` routes |
 | `DISABLE_CHAIN_GRPC` | false | Set to `true` to disable `/chain-grpc/` routes |
+| `CORS_ALLOW_ORIGIN` | * | Allowed Origin for CORS headers. Defaults to wildcard `*`. |
 | `GLOBAL_RATE_LIMIT_RPS` | 1000 | Global "safety net" rate limit (default: 1000). |
 | `GLOBAL_RATE_UNIT` | s | Unit for global limit (`s` or `m`). |
 | `GLOBAL_BURST` | 5000 | Burst for global limit. |
@@ -68,6 +69,13 @@ Key runtime environment variables:
 | `GONKA_API_RATE_UNIT` | m | Rate unit (`s` or `m`). Default `m` for slow recovery. |
 | `GONKA_API_BURST` | 600 | High burst capacity allow spikes but penalize sustained spam. |
 | `GONKA_API_EXEMPT_ROUTES` | `chat inference training` | List of route prefixes to exempt. Matches prefix (e.g. `chat` matches `/chat`, `/chat/`, `/chat/123`). |
+| `GONKA_API_BLOCKED_ROUTES` | `poc-batches` | List of route prefixes to BLOCK. Returns 403 Forbidden. |
+| `CHAIN_API_EXEMPT_ROUTES` | - | List of Chain API route prefixes to exempt from standard limits. |
+| `CHAIN_API_BLOCKED_ROUTES` | - | List of Chain API route prefixes to BLOCK. |
+| `CHAIN_RPC_EXEMPT_ROUTES` | - | List of Chain RPC route prefixes to exempt from standard limits. |
+| `CHAIN_RPC_BLOCKED_ROUTES` | - | List of Chain RPC route prefixes to BLOCK. |
+| `CHAIN_GRPC_EXEMPT_ROUTES` | - | List of Chain gRPC route prefixes to exempt from standard limits. |
+| `CHAIN_GRPC_BLOCKED_ROUTES` | - | List of Chain gRPC route prefixes to BLOCK. |
 | `EXEMPT_RATE_LIMIT_RPS` | 500 | Rate limit for exempt routes. |
 | `EXEMPT_RATE_UNIT` | s | Unit for exempt routes (`s` or `m`). |
 | `EXEMPT_BURST` | 2000 | Burst for exempt routes. |
