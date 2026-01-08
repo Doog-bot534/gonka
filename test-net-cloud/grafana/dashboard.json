@@ -1220,7 +1220,7 @@
           "datasource": {
             "uid": "$DS"
           },
-          "expr": "cometbft_mempool_failed_txs{chain_id=\"$chain_id\", instance=~\"$instance\"}",
+          "expr": "increase(cometbft_mempool_failed_txs{chain_id=\"$chain_id\", instance=~\"$instance\"}[$__range])",
           "format": "time_series",
           "instant": true,
           "interval": "30s",
@@ -1228,7 +1228,7 @@
           "refId": "A"
         }
       ],
-      "title": "Failed Transactions",
+      "title": "Failed Transactions (Period)",
       "type": "stat"
     },
     {
