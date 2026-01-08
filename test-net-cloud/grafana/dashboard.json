@@ -1635,6 +1635,155 @@
       ],
       "title": "Failed Transactions (Rate)",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 47
+      },
+      "id": 67,
+      "panels": [],
+      "title": "ABCI App Performance (Load vs Latency)",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "uid": "$DS"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never"
+          },
+          "min": 0,
+          "unit": "rps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 48
+      },
+      "id": 68,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "uid": "$DS"
+          },
+          "expr": "rate(cometbft_abci_connection_method_timing_seconds_count{chain_id=\"$chain_id\", instance=~\"$instance\"}[$__rate_interval])",
+          "format": "time_series",
+          "legendFormat": "{{method}}",
+          "refId": "A"
+        }
+      ],
+      "title": "ABCI Calls per Second (Throughput)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "uid": "$DS"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "scaleDistribution": {
+              "type": "log",
+              "log": 2
+            }
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 48
+      },
+      "id": 69,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "uid": "$DS"
+          },
+          "expr": "rate(cometbft_abci_connection_method_timing_seconds_sum{chain_id=\"$chain_id\", instance=~\"$instance\"}[$__rate_interval]) / rate(cometbft_abci_connection_method_timing_seconds_count{chain_id=\"$chain_id\", instance=~\"$instance\"}[$__rate_interval])",
+          "format": "time_series",
+          "legendFormat": "{{method}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Avg ABCI Method Latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "uid": "$DS"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 48
+      },
+      "id": 70,
+      "dataFormat": "tsbuckets",
+      "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "color": {
+          "mode": "scheme",
+          "scheme": "Spectral",
+          "steps": 128
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "scaleDistribution": {
+            "type": "log",
+            "log": 2
+          }
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "uid": "$DS"
+          },
+          "expr": "sum(rate(cometbft_abci_connection_method_timing_seconds_bucket{chain_id=\"$chain_id\", instance=~\"$instance\", method=\"finalize_block\"}[$__rate_interval])) by (le)",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ],
+      "title": "Block Processing Heatmap (finalize_block)",
+      "type": "heatmap"
     }
   ],
   "preload": false,
