@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'cosmos-node'
+    metrics_path: /metrics
+    static_configs:
+      # Since we are composing files, they share the same network.
+      # We can reference the service name "node" directly.
+      - targets: ['node:26660']
