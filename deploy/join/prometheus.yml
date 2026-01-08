@@ -1,3 +1,8 @@
+# For the setup to work you need to enable prometheus in config.toml:
+# prometheus = true
+# prometheus_listen_addr = ":26660"
+# Optionally you can enable profiler (not currently required for the setup):
+# pprof_laddr = "0.0.0.0:6060"
 global:
   scrape_interval: 15s
 
