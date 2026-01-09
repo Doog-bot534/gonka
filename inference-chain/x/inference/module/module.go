@@ -100,6 +100,7 @@ func (AppModuleBasic) ValidateGenesis(cdc codec.JSONCodec, config client.TxEncod
 // RegisterGRPCGatewayRoutes registers the gRPC Gateway routes for the module.
 func (AppModuleBasic) RegisterGRPCGatewayRoutes(clientCtx client.Context, mux *runtime.ServeMux) {
 	if err := types.RegisterQueryHandlerClient(context.Background(), mux, types.NewQueryClient(clientCtx)); err != nil {
+		//nolint:forbidigo // init code
 		panic(err)
 	}
 }
@@ -312,7 +313,9 @@ func (am AppModule) EndBlock(ctx context.Context) error {
 	if epochContext.IsSetNewValidatorsStage(blockHeight) {
 		am.LogInfo("StartStage:onSetNewValidatorsStage", types.Stages, "blockHeight", blockHeight)
 		am.onSetNewValidatorsStage(ctx, blockHeight, blockTime)
-		am.keeper.SetEffectiveEpochIndex(ctx, getNextEpochIndex(*currentEpoch))
+		if err := am.keeper.SetEffectiveEpochIndex(ctx, getNextEpochIndex(*currentEpoch)); err != nil {
+			return err
+		}
 	}
 
 	if epochContext.IsStartOfPocStage(blockHeight) {
