@@ -254,6 +254,7 @@ func ExportGenesis(ctx sdk.Context, k keeper.Keeper) *types.GenesisState {
 	genesis := &types.GenesisState{}
 	params, err := k.GetParams(ctx)
 	if err != nil {
+		//nolint:forbidigo // genesis code
 		panic(err)
 	}
 	genesis.Params = params
