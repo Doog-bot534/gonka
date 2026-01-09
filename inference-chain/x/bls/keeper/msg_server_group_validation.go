@@ -131,7 +131,11 @@ func (ms msgServer) SubmitGroupKeyValidationSignature(goCtx context.Context, msg
 	} else {
 		// Existing validation state
 		validationState = &types.GroupKeyValidationState{}
-		ms.cdc.MustUnmarshal(bz, validationState)
+		err = ms.cdc.Unmarshal(bz, validationState)
+		if err != nil {
+			ms.Keeper.LogError("Failed to unmarshal validation state", "error", err.Error())
+			return nil, fmt.Errorf("failed to unmarshal validation state: %w", err)
+		}
 	}
 
 	// Reject duplicate slots (already covered)
@@ -256,7 +260,10 @@ func (ms msgServer) SubmitGroupKeyValidationSignature(goCtx context.Context, msg
 	}
 
 	// Store updated validation state
-	bz = ms.cdc.MustMarshal(validationState)
+	bz, err = ms.cdc.Marshal(validationState)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal validation state: %w", err)
+	}
 	err = store.Set([]byte(validationStateKey), bz)
 	if err != nil {
 		return nil, fmt.Errorf("failed to store validation state: %w", err)
