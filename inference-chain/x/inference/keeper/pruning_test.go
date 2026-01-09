@@ -21,7 +21,10 @@ type PruningSettings struct {
 }
 
 func setPruningConfig(ctx context.Context, k keeper.Keeper, settings PruningSettings) {
-	params := k.GetParams(ctx)
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		panic(err)
+	}
 	if settings.InferenceThreshold > 0 {
 		params.EpochParams.InferencePruningEpochThreshold = uint64(settings.InferenceThreshold)
 	}

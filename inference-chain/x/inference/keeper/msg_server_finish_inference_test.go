@@ -73,12 +73,14 @@ func TestMsgServer_FinishInference(t *testing.T) {
 
 	// Developer access gating should apply to FinishInference as well (gated by RequestedBy).
 	t.Run("DeveloperAccessRestricted", func(t *testing.T) {
-		originalParams := k.GetParams(ctx)
+		originalParams, err := k.GetParams(ctx)
+		require.NoError(t, err)
 		t.Cleanup(func() {
 			_ = k.SetParams(ctx, originalParams)
 		})
 
-		params := k.GetParams(ctx)
+		params, err := k.GetParams(ctx)
+		require.NoError(t, err)
 		params.DeveloperAccessParams = &types.DeveloperAccessParams{
 			UntilBlockHeight:          9999999,
 			AllowedDeveloperAddresses: []string{"gonka1someotherxxxxxxxxxxxxxxxxxxxxxx"},
@@ -229,7 +231,8 @@ func NewMockInferenceHelper(t *testing.T) (*MockInferenceHelper, keeper.Keeper, 
 	inference.InitGenesis(ctx, k, mocks.StubGenesisState())
 
 	// Disable grace period for tests so we get actual pricing instead of 0
-	params := k.GetParams(ctx)
+	params, err := k.GetParams(ctx)
+	require.NoError(t, err)
 	params.DynamicPricingParams.GracePeriodEndEpoch = 0
 	k.SetParams(ctx, params)
 

@@ -685,7 +685,7 @@ func (am AppModule) moveUpcomingToEffectiveGroup(ctx context.Context, blockHeigh
 	}
 
 	// At this point, clear all active invalidations in case of any hanging invalidations
-	err := am.keeper.ActiveInvalidations.Clear(ctx, nil)
+	err = am.keeper.ActiveInvalidations.Clear(ctx, nil)
 	if err != nil {
 		am.LogError("Unable to clear active invalidations", types.EpochGroup, "error", err.Error())
 	}

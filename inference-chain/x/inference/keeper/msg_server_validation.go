@@ -181,7 +181,7 @@ func (k msgServer) MaximumInvalidationsReached(ctx sdk.Context, creator sdk.AccA
 		return false
 	}
 
-	params, err := k.GetParamsSafe(ctx)
+	params, err := k.GetParams(ctx)
 	if err != nil {
 		k.LogError("Failed to get params", types.Validation, "error", err)
 		return false
