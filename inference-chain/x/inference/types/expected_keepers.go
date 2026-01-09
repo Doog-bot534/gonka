@@ -129,7 +129,7 @@ type AuthzKeeper interface {
 type BlsKeeper interface {
 	// DKG methods
 	InitiateKeyGenerationForEpoch(ctx sdk.Context, epochID uint64, finalizedParticipants []blstypes.ParticipantWithWeightAndKey) error
-	GetEpochBLSData(ctx sdk.Context, epochID uint64) (blstypes.EpochBLSData, bool)
+	GetEpochBLSData(ctx sdk.Context, epochID uint64) (blstypes.EpochBLSData, error)
 	SetActiveEpochID(ctx sdk.Context, epochID uint64)
 	GetActiveEpochID(ctx sdk.Context) (uint64, bool)
 
