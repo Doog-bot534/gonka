@@ -164,7 +164,12 @@ func (k msgServer) validateRequest(ctx sdk.Context, msg *types.MsgClaimRewards) 
 		}
 	}
 	settleAmount.LastClaimAttempt = ctx.BlockHeight()
-	k.SetSettleAmount(ctx, settleAmount)
+	if err := k.SetSettleAmount(ctx, settleAmount); err != nil {
+		return nil, &types.MsgClaimRewardsResponse{
+			Amount: 0,
+			Result: "Internal error updating settle amount",
+		}
+	}
 	if settleAmount.GetTotalCoins() == 0 {
 		k.LogInfo("SettleAmount had zero coins", types.Claims, "address", msg.Creator)
 		return nil, &types.MsgClaimRewardsResponse{
