@@ -21,7 +21,11 @@ func (k Keeper) GetParams(ctx context.Context) (params types.Params) {
 		return params
 	}
 
-	k.cdc.MustUnmarshal(bz, &params)
+	err := k.cdc.Unmarshal(bz, &params)
+	if err != nil {
+		k.LogError("Unable to get Params", types.System, "error", err)
+		return types.Params{}
+	}
 	return params
 }
 

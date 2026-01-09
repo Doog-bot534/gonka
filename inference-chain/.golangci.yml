@@ -14,10 +14,10 @@ linters:
   settings:
     forbidigo:
       forbid:
-        - pattern: ^panic$
-          msg: "panic forbidden in consensus code"
-#        - pattern: Must
-#          msg: "Must* helpers forbidden in consensus code"
+#        - pattern: ^panic$
+#          msg: "panic forbidden in consensus code"
+        - pattern: Must
+          msg: "Must* helpers forbidden in consensus code"
   exclusions:
     paths:
       - "^testutil/"

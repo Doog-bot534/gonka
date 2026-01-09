@@ -41,6 +41,8 @@ type Marketing struct {
 }
 
 // Precompiled regex for Ethereum addresses: 0x + 40 hex chars (case-insensitive)
+//
+//nolint:forbidigo // init code
 var eth40HexRegex = regexp.MustCompile(`^(?i)0x[0-9a-f]{40}$`)
 
 // TokenMetadata represents additional token metadata that can be stored in chain state
@@ -445,10 +447,22 @@ func (k Keeper) MigrateAllWrappedTokenContracts(ctx sdk.Context, newCodeID uint6
 	var firstErr error
 	for _, contract := range contracts {
 		wrappedAddr := contract.WrappedContractAddress
+		addr, err := sdk.AccAddressFromBech32(wrappedAddr)
+		if err != nil {
+			k.LogError("Bridge exchange: Invalid wrapped address stored in state",
+				types.Messages,
+				"wrappedContract", wrappedAddr,
+				"error", err,
+			)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("invalid address %s: %w", wrappedAddr, err)
+			}
+			continue
+		}
 		// Execute migrate on the contract
-		_, err := permissionedKeeper.Migrate(
+		_, err = permissionedKeeper.Migrate(
 			ctx,
-			sdk.MustAccAddressFromBech32(wrappedAddr),
+			addr,
 			adminAddr,
 			newCodeID,
 			migrateMsg,
@@ -509,12 +523,17 @@ func (k Keeper) GetOrCreateWrappedTokenContract(ctx sdk.Context, chainId, contra
 		return "", err
 	}
 
+	govAddr, err := sdk.AccAddressFromBech32(governanceAddr)
+	if err != nil {
+		return "", fmt.Errorf("invalid governance address: %w", err)
+	}
+
 	// Instantiate the CW20 contract
 	contractAddr, _, err := wasmKeeper.Instantiate(
 		ctx,
 		codeID,
 		k.AccountKeeper.GetModuleAddress(types.ModuleName), // Instantiator: inference module
-		sdk.MustAccAddressFromBech32(governanceAddr),       // Admin: governance module (for contract upgrades)
+		govAddr, // Admin: governance module (for contract upgrades)
 		msgBz,
 		fmt.Sprintf("Bridged Token %s:%s", chainId, contractAddress),
 		sdk.NewCoins(),
@@ -588,11 +607,16 @@ func (k Keeper) updateWrappedTokenContractMetadata(ctx sdk.Context, wrappedContr
 		return fmt.Errorf("failed to marshal update metadata message: %w", err)
 	}
 
+	contractAddr, err := sdk.AccAddressFromBech32(wrappedContractAddr)
+	if err != nil {
+		return fmt.Errorf("invalid wrapped contract address: %w", err)
+	}
+
 	// Execute update metadata message using PermissionedKeeper
 	permissionedKeeper := wasmkeeper.NewDefaultPermissionKeeper(wasmKeeper)
 	_, err = permissionedKeeper.Execute(
 		ctx,
-		sdk.MustAccAddressFromBech32(wrappedContractAddr),
+		contractAddr,
 		k.AccountKeeper.GetModuleAddress(types.ModuleName),
 		msgBz,
 		sdk.NewCoins(),
@@ -638,10 +662,15 @@ func (k Keeper) MintTokens(ctx sdk.Context, contractAddr string, recipient strin
 		return err
 	}
 
+	contractAccAddr, err := sdk.AccAddressFromBech32(normalizedContractAddr)
+	if err != nil {
+		return fmt.Errorf("invalid contract address: %w", err)
+	}
+
 	// Execute mint message
 	_, err = wasmKeeper.Execute(
 		ctx,
-		sdk.MustAccAddressFromBech32(normalizedContractAddr),
+		contractAccAddr,
 		k.AccountKeeper.GetModuleAddress(types.ModuleName),
 		msgBz,
 		sdk.NewCoins(),
