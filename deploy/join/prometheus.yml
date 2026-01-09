@@ -13,3 +13,9 @@ scrape_configs:
       # Since we are composing files, they share the same network.
       # We can reference the service name "node" directly.
       - targets: ['node:26660']
+  - job_name: 'cosmos-application'
+    metrics_path: /metrics
+    params:
+      format: ['prometheus']
+    static_configs:
+      - targets: ['node:1317']
