@@ -390,7 +390,9 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 	// This will trigger its internal unbonding queue processing.
 	if am.keeper.GetCollateralKeeper() != nil {
 		am.LogInfo("onEndOfPoCValidationStage: Advancing collateral epoch", types.Tokenomics, "effectiveEpoch.Index", effectiveEpoch.Index)
-		am.keeper.GetCollateralKeeper().AdvanceEpoch(ctx, effectiveEpoch.Index)
+		if err := am.keeper.GetCollateralKeeper().AdvanceEpoch(ctx, effectiveEpoch.Index); err != nil {
+			am.LogError("onEndOfPoCValidationStage: Unable to advance collateral epoch", types.Tokenomics, "error", err.Error())
+		}
 	} else {
 		am.LogError("collateral keeper is null", types.Tokenomics)
 	}
@@ -398,8 +400,7 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 	// Signal to the streamvesting module that the epoch has advanced.
 	// This will trigger vested token unlocking for the completed epoch.
 	if am.keeper.GetStreamVestingKeeper() != nil {
-		err := am.keeper.GetStreamVestingKeeper().AdvanceEpoch(ctx, effectiveEpoch.Index)
-		if err != nil {
+		if err := am.keeper.GetStreamVestingKeeper().AdvanceEpoch(ctx, effectiveEpoch.Index); err != nil {
 			am.LogError("onSetNewValidatorsStage: Unable to advance streamvesting epoch", types.Tokenomics, "error", err.Error())
 		}
 	}
