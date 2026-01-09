@@ -1,6 +1,9 @@
 name: dont_panic
 on:
   push:
+    branches:
+      - main
+      - upgrade-v**
   pull_request:
 
 permissions:
