@@ -1,10 +1,12 @@
-name: dont_panic
+name: Check for panic or Must
 on:
   push:
     branches:
       - main
       - upgrade-v**
   pull_request:
+    paths:
+      - "inference-chain/**"
 
 permissions:
   contents: read
