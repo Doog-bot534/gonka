@@ -51,7 +51,10 @@ func (ms msgServer) payoutClaim(ctx sdk.Context, msg *types.MsgClaimRewards, set
 
 	// Pay for work from escrow
 	escrowPayment := settleAmount.GetWorkCoins()
-	params := ms.GetParams(ctx)
+	params, err := ms.GetParams(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get params: %w", err)
+	}
 	workVestingPeriod := &params.TokenomicsParams.WorkVestingPeriod
 	if err := ms.PayParticipantFromEscrow(ctx, msg.Creator, int64(escrowPayment), "work_coins:"+settleAmount.Participant, workVestingPeriod); err != nil {
 		if sdkerrors.ErrInsufficientFunds.Is(err) {
@@ -227,7 +230,10 @@ func (k msgServer) hasSignificantMissedValidations(ctx sdk.Context, msg *types.M
 			missed++
 		}
 	}
-	params := k.GetParams(ctx)
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get params: %w", err)
+	}
 	p0 := decimal.NewFromFloat(0.10)
 	if params.ValidationParams != nil && params.ValidationParams.BinomTestP0 != nil {
 		p0 = params.ValidationParams.BinomTestP0.ToDecimal()
@@ -356,8 +362,11 @@ func (k msgServer) getMustBeValidatedInferences(ctx sdk.Context, msg *types.MsgC
 		return nil, types.ErrIllegalState.Wrapf("epoch.PocStartHeight = %d, msg.EpochIndex = %d, mainEpochData.EpochIndex = %d", epoch.Index, msg.EpochIndex, mainEpochData.EpochIndex)
 	}
 
-	params := k.Keeper.GetParams(ctx).EpochParams
-	epochContext := types.NewEpochContext(*epoch, *params)
+	params, err := k.Keeper.GetParams(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get params: %w", err)
+	}
+	epochContext := types.NewEpochContext(*epoch, *params.EpochParams)
 
 	// Create a map to store weight maps for each model
 	modelWeightMaps := make(map[string]map[string]types.ValidationWeight)
@@ -455,7 +464,7 @@ func (k msgServer) getMustBeValidatedInferences(ctx sdk.Context, msg *types.MsgC
 
 		k.LogDebug("Getting validation", types.Claims, "seed", msg.Seed, "totalWeight", totalWeight, "executorPower", executorPower, "validatorPower", validatorPowerForModel)
 		shouldValidate, s := calculations.ShouldValidate(msg.Seed, &inference, uint32(totalWeight), uint32(validatorPowerForModel.Weight), uint32(executorPower.Weight),
-			k.Keeper.GetParams(ctx).ValidationParams, false)
+			params.ValidationParams, false)
 		k.LogDebug(s, types.Claims, "inference", inference.InferenceId, "seed", msg.Seed, "model", modelId, "validator", msg.Creator)
 		if shouldValidate {
 			mustBeValidated = append(mustBeValidated, inference.InferenceId)

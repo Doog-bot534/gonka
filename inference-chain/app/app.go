@@ -179,8 +179,6 @@ type App struct {
 func init() {
 	userHomeDir, err := os.UserHomeDir()
 	if err != nil {
-		//nolint:forbidigo
-		//init code:
 		panic(err)
 	}
 

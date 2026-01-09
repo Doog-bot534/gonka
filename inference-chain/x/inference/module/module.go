@@ -232,7 +232,7 @@ func (am AppModule) EndBlock(ctx context.Context) error {
 		// Don't return error - allow block processing to continue
 	}
 
-	params, err := am.keeper.GetParamsSafe(ctx)
+	params, err := am.keeper.GetParams(ctx)
 	if err != nil {
 		am.LogError("Unable to get parameters", types.Settle, "error", err.Error())
 		return err
@@ -532,7 +532,12 @@ func (am AppModule) onSetNewValidatorsStage(ctx context.Context, blockHeight int
 }
 
 func (am AppModule) addEpochMembers(ctx context.Context, upcomingEg *epochgroup.EpochGroup, activeParticipants []*types.ActiveParticipant) {
-	validationParams := am.keeper.GetParams(ctx).ValidationParams
+	params, err := am.keeper.GetParams(ctx)
+	if err != nil {
+		am.LogError("addEpochMembers: Unable to get params", types.EpochGroup, "error", err.Error())
+		return
+	}
+	validationParams := params.ValidationParams
 
 	for _, p := range activeParticipants {
 		reputation, err := am.calculateParticipantReputation(ctx, p, validationParams)
@@ -565,7 +570,12 @@ func (am AppModule) computePrice(ctx context.Context, upcomingEpoch types.Epoch,
 		}
 		defaultPrice = currentEg.GroupData.UnitOfComputePrice
 	} else {
-		defaultPrice = am.keeper.GetParams(ctx).EpochParams.DefaultUnitOfComputePrice
+		params, err := am.keeper.GetParams(ctx)
+		if err != nil {
+			am.LogError("computePrice: Unable to get params", types.Pricing, "error", err.Error())
+			return 0, err
+		}
+		defaultPrice = params.EpochParams.DefaultUnitOfComputePrice
 	}
 
 	proposals, err := am.keeper.AllUnitOfComputePriceProposals(ctx)
@@ -637,7 +647,11 @@ func (am AppModule) moveUpcomingToEffectiveGroup(ctx context.Context, blockHeigh
 		am.LogWarn("PreviousEpochGroupDataNotFound", types.EpochGroup, "blockHeight", blockHeight, "previousEpochIndex", previousEpochIndex)
 		return
 	}
-	params := am.keeper.GetParams(ctx)
+	params, err := am.keeper.GetParams(ctx)
+	if err != nil {
+		am.LogError("MoveUpcomingToEffectiveGroup: Unable to get params", types.EpochGroup, "blockHeight", blockHeight, "error", err.Error())
+		return
+	}
 	newGroupData.EffectiveBlockHeight = blockHeight
 	newGroupData.UnitOfComputePrice = int64(unitOfComputePrice)
 	newGroupData.PreviousEpochRequests = previousGroupData.NumberOfRequests
