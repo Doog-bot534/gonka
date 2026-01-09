@@ -335,7 +335,7 @@ func (k msgServer) getEpochGroupWeightData(ctx sdk.Context, pocStartHeight uint6
 	return &epochData, weightMap, totalWeight, true
 }
 
-//nolint:forbidgo // different use of "Must"
+//nolint:forbidigo // different use of "Must"
 func (k msgServer) getMustBeValidatedInferences(ctx sdk.Context, msg *types.MsgClaimRewards) ([]string, error) {
 	// Get the main epoch data
 	mainEpochData, mainWeightMap, mainTotalWeight, found := k.getEpochGroupWeightData(ctx, msg.EpochIndex, "")
