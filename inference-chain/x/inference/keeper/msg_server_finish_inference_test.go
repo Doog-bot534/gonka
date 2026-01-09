@@ -40,7 +40,7 @@ func advanceEpoch(ctx sdk.Context, k *keeper.Keeper, mocks *keeper2.InferenceMoc
 	// The genesis groups have already been created
 	newEpoch := types.Epoch{Index: epochIndex + 1, PocStartBlockHeight: blockHeight}
 	k.SetEpoch(ctx, &newEpoch)
-	k.SetEffectiveEpochIndex(ctx, newEpoch.Index)
+	_ = k.SetEffectiveEpochIndex(ctx, newEpoch.Index)
 	mocks.ExpectCreateGroupWithPolicyCall(ctx, epochGroupId)
 
 	eg, err := k.CreateEpochGroup(ctx, uint64(newEpoch.PocStartBlockHeight), epochIndex+1)

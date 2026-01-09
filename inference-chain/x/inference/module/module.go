@@ -85,6 +85,7 @@ func (a AppModuleBasic) RegisterInterfaces(reg cdctypes.InterfaceRegistry) {
 // DefaultGenesis returns a default GenesisState for the module, marshalled to json.RawMessage.
 // The default GenesisState need to be defined by the module developer and is primarily used for testing.
 func (AppModuleBasic) DefaultGenesis(cdc codec.JSONCodec) json.RawMessage {
+	//nolint:forbidigo // Genesis code
 	return cdc.MustMarshalJSON(types.DefaultGenesis())
 }
 
@@ -100,6 +101,7 @@ func (AppModuleBasic) ValidateGenesis(cdc codec.JSONCodec, config client.TxEncod
 // RegisterGRPCGatewayRoutes registers the gRPC Gateway routes for the module.
 func (AppModuleBasic) RegisterGRPCGatewayRoutes(clientCtx client.Context, mux *runtime.ServeMux) {
 	if err := types.RegisterQueryHandlerClient(context.Background(), mux, types.NewQueryClient(clientCtx)); err != nil {
+		//nolint:forbidigo // init code
 		panic(err)
 	}
 }
@@ -150,6 +152,7 @@ func (am AppModule) RegisterInvariants(_ sdk.InvariantRegistry) {}
 func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, gs json.RawMessage) {
 	var genState types.GenesisState
 	// Initialize global index to index in genesis state
+	//nolint:forbidigo // Genesis code
 	cdc.MustUnmarshalJSON(gs, &genState)
 
 	InitGenesis(ctx, am.keeper, genState)
@@ -158,6 +161,7 @@ func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, gs json.Ra
 // ExportGenesis returns the module's exported genesis state as raw JSON bytes.
 func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.RawMessage {
 	genState := ExportGenesis(ctx, am.keeper)
+	//nolint:forbidigo // Genesis code
 	return cdc.MustMarshalJSON(genState)
 }
 
@@ -312,7 +316,9 @@ func (am AppModule) EndBlock(ctx context.Context) error {
 	if epochContext.IsSetNewValidatorsStage(blockHeight) {
 		am.LogInfo("StartStage:onSetNewValidatorsStage", types.Stages, "blockHeight", blockHeight)
 		am.onSetNewValidatorsStage(ctx, blockHeight, blockTime)
-		am.keeper.SetEffectiveEpochIndex(ctx, getNextEpochIndex(*currentEpoch))
+		if err := am.keeper.SetEffectiveEpochIndex(ctx, getNextEpochIndex(*currentEpoch)); err != nil {
+			return err
+		}
 	}
 
 	if epochContext.IsStartOfPocStage(blockHeight) {
@@ -390,7 +396,9 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 	// This will trigger its internal unbonding queue processing.
 	if am.keeper.GetCollateralKeeper() != nil {
 		am.LogInfo("onEndOfPoCValidationStage: Advancing collateral epoch", types.Tokenomics, "effectiveEpoch.Index", effectiveEpoch.Index)
-		am.keeper.GetCollateralKeeper().AdvanceEpoch(ctx, effectiveEpoch.Index)
+		if err := am.keeper.GetCollateralKeeper().AdvanceEpoch(ctx, effectiveEpoch.Index); err != nil {
+			am.LogError("onEndOfPoCValidationStage: Unable to advance collateral epoch", types.Tokenomics, "error", err.Error())
+		}
 	} else {
 		am.LogError("collateral keeper is null", types.Tokenomics)
 	}
@@ -398,8 +406,7 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 	// Signal to the streamvesting module that the epoch has advanced.
 	// This will trigger vested token unlocking for the completed epoch.
 	if am.keeper.GetStreamVestingKeeper() != nil {
-		err := am.keeper.GetStreamVestingKeeper().AdvanceEpoch(ctx, effectiveEpoch.Index)
-		if err != nil {
+		if err := am.keeper.GetStreamVestingKeeper().AdvanceEpoch(ctx, effectiveEpoch.Index); err != nil {
 			am.LogError("onSetNewValidatorsStage: Unable to advance streamvesting epoch", types.Tokenomics, "error", err.Error())
 		}
 	}

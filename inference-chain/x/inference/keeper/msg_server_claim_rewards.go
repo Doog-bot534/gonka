@@ -164,7 +164,12 @@ func (k msgServer) validateRequest(ctx sdk.Context, msg *types.MsgClaimRewards) 
 		}
 	}
 	settleAmount.LastClaimAttempt = ctx.BlockHeight()
-	k.SetSettleAmount(ctx, settleAmount)
+	if err := k.SetSettleAmount(ctx, settleAmount); err != nil {
+		return nil, &types.MsgClaimRewardsResponse{
+			Amount: 0,
+			Result: "Internal error updating settle amount",
+		}
+	}
 	if settleAmount.GetTotalCoins() == 0 {
 		k.LogInfo("SettleAmount had zero coins", types.Claims, "address", msg.Creator)
 		return nil, &types.MsgClaimRewardsResponse{
@@ -208,6 +213,7 @@ func (k msgServer) validateClaim(ctx sdk.Context, msg *types.MsgClaimRewards, se
 }
 
 func (k msgServer) hasSignificantMissedValidations(ctx sdk.Context, msg *types.MsgClaimRewards) (bool, error) {
+	//nolint:forbidigo // Must in different context
 	mustBeValidated, err := k.getMustBeValidatedInferences(ctx, msg)
 	if err != nil {
 		return false, err
@@ -329,6 +335,7 @@ func (k msgServer) getEpochGroupWeightData(ctx sdk.Context, pocStartHeight uint6
 	return &epochData, weightMap, totalWeight, true
 }
 
+//nolint:forbidigo // different use of "Must"
 func (k msgServer) getMustBeValidatedInferences(ctx sdk.Context, msg *types.MsgClaimRewards) ([]string, error) {
 	// Get the main epoch data
 	mainEpochData, mainWeightMap, mainTotalWeight, found := k.getEpochGroupWeightData(ctx, msg.EpochIndex, "")
