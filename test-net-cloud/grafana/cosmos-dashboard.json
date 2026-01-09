@@ -39,10 +39,6 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
               }
             ]
           }
@@ -329,12 +325,12 @@
       "pluginVersion": "10.0.0",
       "targets": [
         {
-          "expr": "rate(chain_node_tx_successful[1m])",
+          "expr": "rate(chain_node_tx_successful[5m])",
           "legendFormat": "Success TPS",
           "refId": "A"
         },
         {
-          "expr": "rate(chain_node_tx_failed[1m])",
+          "expr": "rate(chain_node_tx_failed[5m])",
           "legendFormat": "Failed TPS",
           "refId": "B"
         }
@@ -393,7 +389,36 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Block Time (s)"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU Usage (%)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
@@ -417,7 +442,7 @@
       "pluginVersion": "10.0.0",
       "targets": [
         {
-          "expr": "rate(process_cpu_seconds_total[1m]) * 100",
+          "expr": "rate(process_cpu_seconds_total[5m]) * 100",
           "legendFormat": "CPU Usage (%)",
           "refId": "A"
         },
