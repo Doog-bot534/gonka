@@ -7,6 +7,7 @@ import (
 	cosmos_client "decentralized-api/cosmosclient"
 	"decentralized-api/logging"
 	"decentralized-api/mlnodeclient"
+	"errors"
 	"time"
 
 	"github.com/productscience/inference/x/inference/types"
@@ -310,7 +311,7 @@ func (o *NodePoCOrchestratorImpl) getNodesForPocValidationWithConfig(
 	}
 
 	logging.Error("ValidateReceivedBatches. Failed to get nodes after all retry attempts", types.PoC, "pocStageStartBlockHeight", pocStageStartBlockHeight, "numAttempts", retries)
-	return nil, nil
+	return nil, errors.New("no nodes available for PoC validation after retries")
 }
 
 func filterNodes(nodes []broker.NodeResponse) []broker.NodeResponse {
