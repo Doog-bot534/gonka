@@ -7,13 +7,16 @@ import (
 	cosmos_client "decentralized-api/cosmosclient"
 	"decentralized-api/logging"
 	"decentralized-api/mlnodeclient"
+	"time"
 
 	"github.com/productscience/inference/x/inference/types"
 )
 
 const (
-	POC_VALIDATE_BATCH_RETRIES     = 5
-	POC_VALIDATE_SAMPLES_PER_BATCH = 200
+	POC_VALIDATE_BATCH_RETRIES         = 5
+	POC_VALIDATE_SAMPLES_PER_BATCH     = 200
+	POC_VALIDATE_GET_NODES_RETRIES     = 10
+	POC_VALIDATE_GET_NODES_RETRY_DELAY = 1 * time.Second
 )
 
 type NodePoCOrchestrator interface {
@@ -152,14 +155,11 @@ func (o *NodePoCOrchestratorImpl) ValidateReceivedBatches(pocStageStartBlockHeig
 		"numParticipants", len(participants),
 		"participants", participants)
 
-	nodes, err := o.nodeBroker.GetNodes()
+	nodes, err := o.getNodesForPocValidation(pocStageStartBlockHeight)
 	if err != nil {
-		logging.Error("ValidateReceivedBatches. Failed to get nodes", types.PoC, "pocStageStartBlockHeight", pocStageStartBlockHeight, "error", err)
+		logging.Error("ValidateReceivedBatches. Failed to get nodes for PoC validation", types.PoC, "pocStageStartBlockHeight", pocStageStartBlockHeight, "error", err)
 		return
 	}
-	logging.Info("ValidateReceivedBatches. Got nodes.", types.PoC, "pocStageStartBlockHeight", pocStageStartBlockHeight, "numNodes", len(nodes))
-	nodes = filterNodes(nodes)
-	logging.Info("ValidateReceivedBatches. Filtered nodes available for PoC validation.", types.PoC, "numNodes", len(nodes))
 
 	if len(nodes) == 0 {
 		logging.Error("ValidateReceivedBatches. No nodes available to validate PoC batches", types.PoC, "pocStageStartBlockHeight", pocStageStartBlockHeight)
@@ -263,6 +263,28 @@ func (o *NodePoCOrchestratorImpl) ValidateReceivedBatches(pocStageStartBlockHeig
 		"totalBatches", len(allParticipantsBatches.PocBatch),
 		"successfulValidations", successfulValidations,
 		"failedValidations", failedValidations)
+}
+
+func (o *NodePoCOrchestratorImpl) getNodesForPocValidation(pocStageStartBlockHeight int64) ([]broker.NodeResponse, error) {
+	for attempt := range POC_VALIDATE_GET_NODES_RETRIES {
+		nodes, err := o.nodeBroker.GetNodes()
+		if err != nil {
+			logging.Error("ValidateReceivedBatches. Failed to get nodes", types.PoC, "pocStageStartBlockHeight", pocStageStartBlockHeight, "error", err, "attempt", attempt)
+			return nil, err
+		}
+		logging.Info("ValidateReceivedBatches. Got nodes.", types.PoC, "pocStageStartBlockHeight", pocStageStartBlockHeight, "numNodes", len(nodes), "attempt", attempt)
+		nodes = filterNodes(nodes)
+		logging.Info("ValidateReceivedBatches. Filtered nodes available for PoC validation.", types.PoC, "numNodes", len(nodes), "attempt", attempt)
+		if len(nodes) != 0 {
+			logging.Info("ValidateReceivedBatches. Returning filtered nodes.", types.PoC, "numNodes", len(nodes), "attempt", attempt)
+			return nodes, nil
+		}
+
+		time.Sleep(POC_VALIDATE_GET_NODES_RETRY_DELAY)
+	}
+
+	logging.Error("ValidateReceivedBatches. Failed to get nodes after all retry attempts", types.PoC, "pocStageStartBlockHeight", pocStageStartBlockHeight, "numAttempts", POC_VALIDATE_GET_NODES_RETRIES)
+	return nil, nil
 }
 
 func filterNodes(nodes []broker.NodeResponse) []broker.NodeResponse {
