@@ -1,6 +1,7 @@
 package calculations
 
 import (
+	"math"
 	"testing"
 
 	"github.com/productscience/inference/x/inference/types"
@@ -334,6 +335,28 @@ func TestProcessStartInference(t *testing.T) {
 			expectError:    false,
 			expectedStatus: types.InferenceStatus_STARTED,
 		},
+		{
+			name: "New inference with out of range tokens",
+			currentInference: &types.Inference{
+				PerTokenPrice: PerTokenCost,
+			},
+			startMessage: &types.MsgStartInference{
+				InferenceId:      "test-id",
+				PromptHash:       "hash",
+				PromptTokenCount: 10,
+				RequestedBy:      "requester",
+				Model:            "model",
+				MaxTokens:        math.MaxInt64 / 900, // Out of range
+				AssignedTo:       "assignee",
+				NodeVersion:      "1.0",
+			},
+			blockContext: BlockContext{
+				BlockHeight:    100,
+				BlockTimestamp: 1000,
+			},
+			expectError:    true,
+			expectedStatus: types.InferenceStatus_STARTED,
+		},
 	}
 
 	for _, tt := range tests {
@@ -474,4 +497,11 @@ func TestProcessFinishInference(t *testing.T) {
 			assert.Equal(t, expectedCost, inference.ActualCost)
 		})
 	}
+}
+
+func TestOverflow(t *testing.T) {
+	var total = uint64(math.MaxInt64) / 900
+	result := total * 1000
+	println(result)
+	println(int64(result))
 }

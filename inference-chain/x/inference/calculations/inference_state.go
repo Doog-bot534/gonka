@@ -93,7 +93,6 @@ func ProcessStartInference(
 			payments.EscrowAmount = escrowAmount
 		}
 	}
-
 	return currentInference, payments, nil
 }
 
@@ -196,5 +195,9 @@ func CalculateEscrow(inference *types.Inference, promptTokens uint64) int64 {
 	// RecordInferencePrice ensures this is always set to the correct value:
 	// - Dynamic price from BeginBlocker (including 0 for grace period)
 	// - Legacy fallback price (1000) if dynamic pricing unavailable
-	return int64((inference.MaxTokens + promptTokens) * inference.PerTokenPrice)
+
+	var totalTokens uint64 = inference.MaxTokens + promptTokens
+	escrow := totalTokens * inference.PerTokenPrice
+	int64Escrow := int64(escrow)
+	return int64Escrow
 }
