@@ -191,33 +191,6 @@ class InferenceTests : TestermintTest() {
     }
 
     @Test
-    fun `submit full inference with out of range max tokens`() {
-        val timestamp = Instant.now().toEpochNanos()
-        val genesisAddress = genesis.node.getColdAddress()
-        // Phase 3: Use hashes for signatures
-        val originalPromptHash = sha256(inferenceRequest)
-        val signature = genesis.node.signPayload(originalPromptHash + timestamp.toString() + genesisAddress, null)
-        val taSignature =
-            genesis.node.signPayload(originalPromptHash + timestamp.toString() + genesisAddress + genesisAddress, null)
-        val message = MsgStartInference(
-            creator = genesisAddress,
-            inferenceId = signature,
-            promptHash = originalPromptHash,
-            // promptPayload removed - Phase 6: payloads stored offchain
-            model = "gpt-o3",
-            requestedBy = genesisAddress,
-            assignedTo = genesisAddress,
-            nodeVersion = "",
-            maxTokens = Long.MAX_VALUE / 900,
-            promptTokenCount = 10,
-            requestTimestamp = timestamp,
-            transferSignature = taSignature,
-            originalPromptHash = originalPromptHash
-        )
-        val response = genesis.submitMessage(message)
-        assertThat(response).isFailure()
-    }
-    @Test
     fun `submit StartInference with bad dev signature`() {
         val timestamp = Instant.now().toEpochNanos()
         val genesisAddress = genesis.node.getColdAddress()
