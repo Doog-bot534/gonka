@@ -25,10 +25,16 @@ type NodePoCOrchestrator interface {
 
 type NodePoCOrchestratorImpl struct {
 	pubKey       string
-	nodeBroker   *broker.Broker
+	nodeBroker   NodeBroker
 	callbackUrl  string
 	chainBridge  OrchestratorChainBridge
 	phaseTracker *chainphase.ChainPhaseTracker
+}
+
+// NodeBroker defines the subset of broker methods the orchestrator relies on.
+type NodeBroker interface {
+	GetNodes() ([]broker.NodeResponse, error)
+	NewNodeClient(node *broker.Node) mlnodeclient.MLNodeClient
 }
 
 type OrchestratorChainBridge interface {
@@ -266,7 +272,24 @@ func (o *NodePoCOrchestratorImpl) ValidateReceivedBatches(pocStageStartBlockHeig
 }
 
 func (o *NodePoCOrchestratorImpl) getNodesForPocValidation(pocStageStartBlockHeight int64) ([]broker.NodeResponse, error) {
-	for attempt := range POC_VALIDATE_GET_NODES_RETRIES {
+	return o.getNodesForPocValidationWithConfig(
+		pocStageStartBlockHeight,
+		POC_VALIDATE_GET_NODES_RETRIES,
+		POC_VALIDATE_GET_NODES_RETRY_DELAY,
+	)
+}
+
+// getNodesForPocValidationWithConfig allows tests to supply custom retry settings.
+func (o *NodePoCOrchestratorImpl) getNodesForPocValidationWithConfig(
+	pocStageStartBlockHeight int64,
+	retries int,
+	delay time.Duration,
+) ([]broker.NodeResponse, error) {
+	if retries <= 0 {
+		retries = 1
+	}
+
+	for attempt := 0; attempt < retries; attempt++ {
 		nodes, err := o.nodeBroker.GetNodes()
 		if err != nil {
 			logging.Error("ValidateReceivedBatches. Failed to get nodes", types.PoC, "pocStageStartBlockHeight", pocStageStartBlockHeight, "error", err, "attempt", attempt)
@@ -280,13 +303,13 @@ func (o *NodePoCOrchestratorImpl) getNodesForPocValidation(pocStageStartBlockHei
 			return nodes, nil
 		}
 
-		if attempt == POC_VALIDATE_GET_NODES_RETRIES-1 {
+		if attempt == retries-1 {
 			break
 		}
-		time.Sleep(POC_VALIDATE_GET_NODES_RETRY_DELAY)
+		time.Sleep(delay)
 	}
 
-	logging.Error("ValidateReceivedBatches. Failed to get nodes after all retry attempts", types.PoC, "pocStageStartBlockHeight", pocStageStartBlockHeight, "numAttempts", POC_VALIDATE_GET_NODES_RETRIES)
+	logging.Error("ValidateReceivedBatches. Failed to get nodes after all retry attempts", types.PoC, "pocStageStartBlockHeight", pocStageStartBlockHeight, "numAttempts", retries)
 	return nil, nil
 }
 
