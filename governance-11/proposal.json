@@ -305,12 +305,12 @@
                         "gonka1blockedxxxxxxxxxxxxxxxxxxxxxx"
                     ],
                     "use_participant_allowlist": true,
-                    "participant_allowlist_until_block_height": "0"
+                    "participant_allowlist_until_block_height": "2222222"
                 }
             }
         }
     ],
     "deposit": "25000000ngonka",
     "title": "Fix mistakes in allowlist",
-    "summary": "https://github.com/product-science/filter/tree/ae59d27f04a70039bcfca94ae656e723982150cd"
+    "summary": "https://github.com/product-science/filter/tree/0354c37eb6c827f00c1e889a2b7de9952a9b84ba"
 }
