@@ -71,6 +71,21 @@ func (bl *BandwidthLimiter) CanAcceptRequest(blockHeight int64, promptTokens, ma
 		}
 		avgInferences := float64(totalInferences) / float64(windowSize)
 
+		logging.Info("Request bandwidth and inference stats", types.Config,
+			"blockHeight", blockHeight,
+			"windowSize", windowSize,
+			"promptTokens", promptTokens,
+			"maxTokens", maxTokens,
+			"estimatedKB", estimatedKB,
+			"estimatedKBPerBlock", estimatedKBPerBlock,
+			"totalUsage", totalUsage,
+			"avgUsage", avgUsage,
+			"limitsPerBlockKB", bl.limitsPerBlockKB,
+			"totalInferences", totalInferences,
+			"avgInferences", avgInferences,
+			"maxInferencesPerBlock", bl.maxInferencesPerBlock,
+			"requestLifespanBlocks", bl.requestLifespanBlocks)
+
 		if avgInferences+1.0/float64(windowSize) > float64(bl.maxInferencesPerBlock) {
 			logging.Info("Inference count limit exceeded", types.Config,
 				"avgInferences", avgInferences, "limit", bl.maxInferencesPerBlock)

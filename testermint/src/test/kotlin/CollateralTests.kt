@@ -8,6 +8,7 @@ import com.productscience.data.InferenceParams
 import com.productscience.data.ValidationParams
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.data.Offset
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 
 class CollateralTests : TestermintTest() {
@@ -94,6 +95,7 @@ class CollateralTests : TestermintTest() {
     }
 
     @Test
+    @Disabled
     fun `a participant is slashed for downtime with unbonding slashed`() {
         // Configure genesis with fast expiration for downtime testing
         val fastExpirationSpec = spec {

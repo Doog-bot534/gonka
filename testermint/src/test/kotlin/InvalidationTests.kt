@@ -101,19 +101,9 @@ class InvalidationTests : TestermintTest() {
 
     @Test
     fun `test invalid gets marked invalid`() {
-        var tries = 3
         val (cluster, genesis) = initCluster(reboot = true)
-        val oddPair = cluster.joinPairs.last()
-        val badResponse = defaultInferenceResponseObject.withMissingLogit()
-        oddPair.mock?.setInferenceResponse(badResponse)
-        var newState: InferencePayload
-        do {
-            logSection("Trying to get invalid inference. Tries left: $tries")
-            genesis.waitForNextInferenceWindow()
-            newState = getInferenceValidationState(genesis, oddPair)
-        } while (newState.statusEnum != InferenceStatus.INVALIDATED && tries-- > 0)
-        logSection("Verifying invalidation")
-        assertThat(newState.statusEnum).isEqualTo(InferenceStatus.INVALIDATED)
+        val inference = InferenceTestHelper(cluster, genesis, inferenceRequest, responsePayload = "Invalid JSON!!").runFullInference()
+        assertThat(inference.statusEnum).isEqualTo(InferenceStatus.INVALIDATED)
     }
 
     @Test
