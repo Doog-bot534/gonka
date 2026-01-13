@@ -147,8 +147,9 @@ message MsgValidation {
   string inference_id = 3;
   string response_payload = 4 [deprecated = true];
   string response_hash = 5;
-  Decimal value = 6;
+  double value = 6 [deprecated = true];
   bool   revalidation = 7;
+  Decimal value_decimal = 8;
 }
 
 message MsgValidationResponse {}

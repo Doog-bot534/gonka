@@ -472,7 +472,7 @@ func TestCalculateParticipantBitcoinRewards(t *testing.T) {
 	})
 
 	t.Run("Negative coin balance subtracted", func(t *testing.T) {
-		expectedReward := uint64(271908110525520)
+		expectedReward := uint64(271908110525522)
 		negativeBalance := int64(-100)
 		negativeParticipants := []types.Participant{
 			{

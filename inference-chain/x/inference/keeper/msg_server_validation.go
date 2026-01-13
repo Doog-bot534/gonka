@@ -74,7 +74,7 @@ func (k msgServer) Validation(goCtx context.Context, msg *types.MsgValidation) (
 		return nil, err
 	}
 	passValue := model.ValidationThreshold.ToDecimal()
-	messageValue := msg.Value.ToDecimal()
+	messageValue := getValidationValue(msg)
 
 	passed := messageValue.GreaterThan(passValue)
 	k.LogInfo(
@@ -169,6 +169,16 @@ func (k msgServer) Validation(goCtx context.Context, msg *types.MsgValidation) (
 			sdk.NewAttribute("passed", strconv.FormatBool(passed)),
 		))
 	return &types.MsgValidationResponse{}, nil
+}
+
+func getValidationValue(msg *types.MsgValidation) decimal.Decimal {
+	if msg.Value == 0 && msg.ValueDecimal.Value == 0 {
+		return decimal.NewFromInt(0)
+	}
+	if msg.ValueDecimal.Value != 0 {
+		return msg.ValueDecimal.ToDecimal()
+	}
+	return decimal.NewFromFloat(msg.Value)
 }
 
 func (k msgServer) MaximumInvalidationsReached(ctx sdk.Context, creator sdk.AccAddress, data types.EpochGroupData) bool {

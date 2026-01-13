@@ -796,7 +796,7 @@ func (s *InferenceValidator) checkAndInvalidateUnavailable(inf types.Inference, 
 		Id:           uuid.New().String(),
 		InferenceId:  inf.InferenceId,
 		ResponseHash: "",    // No response available
-		Value:        &zero, // Invalidation
+		ValueDecimal: &zero, // Invalidation
 		Revalidation: revalidation,
 	}
 
@@ -840,7 +840,7 @@ func (s *InferenceValidator) submitHashMismatchInvalidation(inf types.Inference,
 		Id:           uuid.New().String(),
 		InferenceId:  inf.InferenceId,
 		ResponseHash: "",    // Wrong payload - don't use its hash
-		Value:        &zero, // Invalidation
+		ValueDecimal: &zero, // Invalidation
 		Revalidation: revalidation,
 	}
 
@@ -1180,7 +1180,7 @@ func ToMsgValidation(result ValidationResult) (*inference.MsgValidation, error) 
 		ResponseHash: responseHash,
 		// The conversion may not be deterministic here, but that doesn't matter as the message
 		// itself is what counts, and it WILL be deterministic
-		Value: DecimalFromFloat(simVal),
+		ValueDecimal: DecimalFromFloat(simVal),
 	}, nil
 }
 

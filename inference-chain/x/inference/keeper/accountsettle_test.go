@@ -123,6 +123,10 @@ func TestActualSettle(t *testing.T) {
 
 	mocks.BankKeeper.EXPECT().MintCoins(gomock.Any(), types.ModuleName, coins, gomock.Any()).Return(nil)
 	mocks.BankKeeper.EXPECT().LogSubAccountTransaction(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	if expectedRewardRemainder != 0 {
+		remainderCoins, _ := types.GetCoins(int64(expectedRewardRemainder))
+		mocks.BankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), "inference", "gov", remainderCoins, gomock.Any()).Return(nil)
+	}
 
 	err = keeper.SettleAccounts(ctx, 10, 0)
 	require.NoError(t, err, "SettleAccounts should complete successfully")
@@ -141,8 +145,8 @@ func TestActualSettle(t *testing.T) {
 	settleAmount1, found := keeper.GetSettleAmount(ctx, participant1.Address)
 	require.True(t, found, "Settle amount for participant 1 should be found")
 	require.Equal(t, uint64(1000), settleAmount1.WorkCoins, "Participant 1 work coins should be 1000")
-	// remainder should go to first settle amount
-	require.Equal(t, expectedRewardHalf+expectedRewardRemainder, settleAmount1.RewardCoins, "Participant 1 reward coins should be half of total")
+	// remainder goes to `gov`, not to a participant
+	require.Equal(t, expectedRewardHalf, settleAmount1.RewardCoins, "Participant 1 reward coins should be half of total")
 	require.Equal(t, uint64(10), settleAmount1.EpochIndex, "Epoch index should be 10")
 	logger.Info("Verified participant 1 settle amount", "workCoins", settleAmount1.WorkCoins, "rewardCoins", settleAmount1.RewardCoins)
 
@@ -225,6 +229,10 @@ func TestActualSettleWithManyParticipants(t *testing.T) {
 	require.NoError(t, err2, "Should be able to create coins from reward amount")
 	mocks.BankKeeper.EXPECT().MintCoins(gomock.Any(), types.ModuleName, coins, gomock.Any()).Return(nil)
 	mocks.BankKeeper.EXPECT().LogSubAccountTransaction(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	if dividedRewardsRemainder != 0 {
+		remainderCoins, _ := types.GetCoins(int64(dividedRewardsRemainder))
+		mocks.BankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), "inference", "gov", remainderCoins, gomock.Any()).Return(nil)
+	}
 
 	// This should work with pagination and process all 150 participants
 	logger.Info("Starting SettleAccounts for 150 participants")
@@ -244,11 +252,7 @@ func TestActualSettleWithManyParticipants(t *testing.T) {
 		settleAmount, found := keeper.GetSettleAmount(ctx, address)
 		require.True(t, found, "Settle amount for participant %d should be found", i)
 		require.Equal(t, uint64(1000), settleAmount.WorkCoins, "Participant %d work coins", i)
-		if i == 0 {
-			require.Equal(t, dividedRewards+dividedRewardsRemainder, settleAmount.RewardCoins, "Participant %d reward coins remainder", i)
-		} else {
-			require.Equal(t, dividedRewards, settleAmount.RewardCoins, "Participant %d reward coins", i)
-		}
+		require.Equal(t, dividedRewards, settleAmount.RewardCoins, "Participant %d reward coins", i)
 		require.Equal(t, uint64(10), settleAmount.EpochIndex, "Participant %d epoch index", i)
 
 		if i%50 == 49 {

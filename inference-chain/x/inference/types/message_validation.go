@@ -18,7 +18,7 @@ func NewMsgValidation(creator string, id string, inferenceId string, responsePay
 		InferenceId:     inferenceId,
 		ResponsePayload: responsePayload,
 		ResponseHash:    responseHash,
-		Value:           value,
+		ValueDecimal:    value,
 	}
 }
 
@@ -41,7 +41,8 @@ func (msg *MsgValidation) ValidateBasic() error {
 	if msg.ResponseHash != "" && strings.TrimSpace(msg.ResponseHash) == "" {
 		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "response_hash cannot be only whitespace")
 	}
-	decimalValue := msg.Value.ToDecimal()
+
+	decimalValue := msg.ValueDecimal.ToDecimal()
 	// value in [0,1]
 	if decimalValue.IsNegative() || decimalValue.GreaterThan(shopspring.NewFromInt(1)) {
 		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "value must be in [0,1]")
