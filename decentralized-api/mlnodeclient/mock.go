@@ -29,6 +29,7 @@ type MockClient struct {
 
 	// Error injection
 	StopError             error
+	StopPowV2Error        error
 	NodeStateError        error
 	GetPowStatusError     error
 	InitGenerateError     error
@@ -48,6 +49,7 @@ type MockClient struct {
 
 	// Call tracking
 	StopCalled             int
+	StopPowV2Called        int
 	NodeStateCalled        int
 	GetPowStatusCalled     int
 	InitGenerateCalled     int
@@ -83,6 +85,10 @@ type MockClient struct {
 	LastModelStatusCheck *Model
 	LastModelDownload    *Model
 	LastModelDelete      *Model
+
+	// Optional mocked responses for PoC v2 operations
+	InitGenerateV2Resp *PoCInitGenerateResponseV2
+	StopPowV2Resp      *PoCStopResponseV2
 }
 
 // NewMockClient creates a new mock client with default values
@@ -120,6 +126,21 @@ func (m *MockClient) Stop(ctx context.Context) error {
 	m.PowStatus = POW_STOPPED
 	m.InferenceIsHealthy = false
 	return nil
+}
+
+func (m *MockClient) StopPowV2(ctx context.Context) (*PoCStopResponseV2, error) {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	logging.Info("MockClient. StopPowV2: called", types.Testing)
+	m.StopPowV2Called++
+	if m.StopPowV2Error != nil {
+		return nil, m.StopPowV2Error
+	}
+	// Keep the v2 stop side-effect free with respect to legacy state machine.
+	if m.StopPowV2Resp != nil {
+		return m.StopPowV2Resp, nil
+	}
+	return &PoCStopResponseV2{}, nil
 }
 
 func (m *MockClient) NodeState(ctx context.Context) (*StateResponse, error) {
@@ -164,7 +185,7 @@ func (m *MockClient) InitGenerate(ctx context.Context, dto InitDto) error {
 	return nil
 }
 
-func (m *MockClient) InitGenerateV2(ctx context.Context, req PoCInitGenerateRequestV2) error {
+func (m *MockClient) InitGenerateV2(ctx context.Context, req PoCInitGenerateRequestV2) (*PoCInitGenerateResponseV2, error) {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 
@@ -172,11 +193,14 @@ func (m *MockClient) InitGenerateV2(ctx context.Context, req PoCInitGenerateRequ
 	m.InitGenerateV2Called++
 	m.LastInitDtoV2 = &req
 	if m.InitGenerateV2Error != nil {
-		return m.InitGenerateV2Error
+		return nil, m.InitGenerateV2Error
 	}
 
 	// Keep the v2 path side-effect free with respect to legacy state machine.
-	return nil
+	if m.InitGenerateV2Resp != nil {
+		return m.InitGenerateV2Resp, nil
+	}
+	return &PoCInitGenerateResponseV2{}, nil
 }
 
 func (m *MockClient) InitValidate(ctx context.Context, dto InitDto) error {

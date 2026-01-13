@@ -11,11 +11,11 @@ import (
 
 var ErrNotFound = errors.New("poc record not found")
 
-// PoCParamsModel is the v2 PoC params model (mirrors the mlnode /init/generate schema).
-type PoCParamsModel struct {
+// PoCParamsV2 is the v2 PoC params model (mirrors the mlnode /init/generate schema).
+type PoCParamsV2 struct {
 	Model  string `json:"model"`
 	SeqLen int    `json:"seq_len"`
-	KDim   int    `json:"k_dim"`
+	// KDim   int    `json:"k_dim"`
 }
 
 // ArtifactV2 is the v2 artifact element, matching the mlnodeclient callback format:
@@ -48,16 +48,16 @@ func (a *ArtifactV2) UnmarshalJSON(data []byte) error {
 
 // PoCRun represents a PoC run anchored at a specific block height.
 type PoCRun struct {
-	BlockHeight      int64          `json:"block_height"`
-	EpochLength      int64          `json:"epoch_length"`
-	BlockHash        string         `json:"block_hash"`
-	BlockTime        time.Time      `json:"block_time"`
-	DurationSeconds  int64          `json:"duration"`
-	FrequencySeconds int64          `json:"frequency"`
-	BatchSize        int            `json:"batch_size"`
-	Params           PoCParamsModel `json:"params"`
-	InterruptedTime  *time.Time     `json:"interrupted_time,omitempty"`
-	CreatedAt        time.Time      `json:"created_at"`
+	BlockHeight      int64       `json:"block_height"`
+	EpochLength      int64       `json:"epoch_length"`
+	BlockHash        string      `json:"block_hash"`
+	BlockTime        time.Time   `json:"block_time"`
+	DurationSeconds  int64       `json:"duration"`
+	FrequencySeconds int64       `json:"frequency"`
+	BatchSize        int         `json:"batch_size"`
+	Params           PoCParamsV2 `json:"params"`
+	InterruptedTime  *time.Time  `json:"interrupted_time,omitempty"`
+	CreatedAt        time.Time   `json:"created_at"`
 }
 
 // PoCBatchesGeneratedRecord is a single received mlnode emission for a PoC run.

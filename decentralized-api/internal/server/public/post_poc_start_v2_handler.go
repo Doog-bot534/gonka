@@ -142,7 +142,7 @@ func (s *Server) postPoCStartV2(c echo.Context) error {
 		DurationSeconds:  req.Duration,
 		FrequencySeconds: req.Frequency,
 		BatchSize:        req.BatchSize,
-		Params:           pocstorage.PoCParamsModel{Model: req.Params.Model, SeqLen: req.Params.SeqLen, KDim: req.Params.KDim},
+		Params:           pocstorage.PoCParamsV2{Model: req.Params.Model, SeqLen: req.Params.SeqLen},
 		InterruptedTime:  interruptedAt,
 		CreatedAt:        now,
 	}
@@ -165,6 +165,8 @@ func (s *Server) postPoCStartV2(c echo.Context) error {
 				"error", err)
 			return echo.NewHTTPError(http.StatusBadGateway, err.Error())
 		}
+
+		s.schedulePoCV2Stop(run)
 	}
 
 	return c.JSON(http.StatusOK, pocStartV2Response{
@@ -172,6 +174,16 @@ func (s *Server) postPoCStartV2(c echo.Context) error {
 		Run:                 run,
 		InterruptedPrevious: interruptedPrev,
 	})
+}
+
+const (
+	PoCv2ArtifactsBasePath = "/v2/poc-artifacts"
+)
+
+// GetPocArtifactsV2GeneratedCallbackUrl returns the base callback URL for v2 artifact generation.
+// MLNode will append /generated to this URL when calling back.
+func GetPocArtifactsV2GeneratedCallbackUrl(callbackUrl string) string {
+	return fmt.Sprintf("%s%s", callbackUrl, PoCv2ArtifactsBasePath)
 }
 
 func (s *Server) triggerPoCV2InitGenerate(ctx context.Context, run pocstorage.PoCRun) error {
@@ -187,6 +199,23 @@ func (s *Server) triggerPoCV2InitGenerate(ctx context.Context, run pocstorage.Po
 		return fmt.Errorf("no nodes configured")
 	}
 
+	eligible := make([]broker.NodeResponse, 0, len(nodes))
+	for _, nr := range nodes {
+		if nr.Node.PoCPort == 0 {
+			continue
+		}
+		if !s.nodeSupportsModelForPoCV2(nr, run.Params.Model) {
+			logging.Info("Skipping PoC v2 init generation for node: model not supported", types.PoC,
+				"node_id", nr.Node.Id,
+				"model", run.Params.Model)
+			continue
+		}
+		eligible = append(eligible, nr)
+	}
+	if len(eligible) == 0 {
+		return fmt.Errorf("no eligible nodes for model %q", run.Params.Model)
+	}
+
 	pubKey := s.nodeBroker.GetParticipantPubKey()
 	if pubKey == "" {
 		return fmt.Errorf("participant pubkey not available")
@@ -197,12 +226,8 @@ func (s *Server) triggerPoCV2InitGenerate(ctx context.Context, run pocstorage.Po
 	var mu sync.Mutex
 	var failed []string
 
-	for _, nr := range nodes {
+	for _, nr := range eligible {
 		nr := nr
-		if nr.Node.PoCPort == 0 {
-			continue
-		}
-
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -213,23 +238,20 @@ func (s *Server) triggerPoCV2InitGenerate(ctx context.Context, run pocstorage.Po
 				BlockHash:   run.BlockHash,
 				BlockHeight: run.BlockHeight,
 				PublicKey:   pubKey,
-				NodeID:      nr.Node.NodeNum,
-				NodeCount:   len(nodes),
-				GroupID:     0,
-				NGroups:     1,
-				BatchSize:   run.BatchSize,
-				Params: mlnodeclient.PoCParamsModelV2{
+				NodeID:      int(nr.Node.NodeNum),
+				NodeCount:   len(eligible),
+				Params: mlnodeclient.PoCParamsV2{
 					Model:  run.Params.Model,
 					SeqLen: run.Params.SeqLen,
-					KDim:   run.Params.KDim,
 				},
-				URL: "",
+				URL: GetPocArtifactsV2GeneratedCallbackUrl(s.nodeBroker.GetCallbackUrl()),
 			}
 
 			// Don't let a single node hang the whole request for minutes.
 			callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
-			if err := client.InitGenerateV2(callCtx, req); err != nil {
+			_, err := client.InitGenerateV2(callCtx, req)
+			if err != nil {
 				mu.Lock()
 				failed = append(failed, nr.Node.Id)
 				mu.Unlock()
@@ -246,6 +268,134 @@ func (s *Server) triggerPoCV2InitGenerate(ctx context.Context, run pocstorage.Po
 		return fmt.Errorf("init generation failed on %d node(s): %v", len(failed), failed)
 	}
 	return nil
+}
+
+func (s *Server) schedulePoCV2Stop(run pocstorage.PoCRun) {
+	if s.pocStorage == nil || s.nodeBroker == nil {
+		return
+	}
+	if run.DurationSeconds <= 0 {
+		return
+	}
+
+	delay := time.Duration(run.DurationSeconds) * time.Second
+	go func(blockHeight int64) {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		<-timer.C
+
+		ctx := context.Background()
+
+		// Safety checks: only stop if this is still the latest run and it's not interrupted.
+		latest, err := s.pocStorage.GetLatestRun(ctx)
+		if err != nil {
+			return
+		}
+		if latest.BlockHeight != blockHeight {
+			return
+		}
+		if latest.InterruptedTime != nil {
+			return
+		}
+
+		if err := s.stopPoCV2OnAllNodes(ctx, latest); err != nil {
+			logging.Warn("PoC v2 stop fanout finished with errors", types.PoC,
+				"blockHeight", latest.BlockHeight,
+				"error", err)
+		} else {
+			logging.Info("PoC v2 stop fanout finished", types.PoC, "blockHeight", latest.BlockHeight)
+		}
+	}(run.BlockHeight)
+}
+
+func (s *Server) stopPoCV2OnAllNodes(ctx context.Context, run pocstorage.PoCRun) error {
+	nodes, err := s.nodeBroker.GetNodes()
+	if err != nil {
+		return fmt.Errorf("get nodes: %w", err)
+	}
+	if len(nodes) == 0 {
+		return fmt.Errorf("no nodes configured")
+	}
+
+	eligible := make([]broker.NodeResponse, 0, len(nodes))
+	for _, nr := range nodes {
+		if nr.Node.PoCPort == 0 {
+			continue
+		}
+		if !s.nodeSupportsModelForPoCV2(nr, run.Params.Model) {
+			continue
+		}
+		eligible = append(eligible, nr)
+	}
+	if len(eligible) == 0 {
+		// Nothing to stop for this model.
+		return nil
+	}
+
+	var wg sync.WaitGroup
+
+	var mu sync.Mutex
+	var failed []string
+
+	for _, nr := range eligible {
+		nr := nr
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			client := s.nodeBroker.NewNodeClient(&nr.Node)
+
+			callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			_, err := client.StopPowV2(callCtx)
+			if err != nil {
+				mu.Lock()
+				failed = append(failed, nr.Node.Id)
+				mu.Unlock()
+				logging.Warn("PoC v2 stop failed for node", types.PoC,
+					"blockHeight", run.BlockHeight,
+					"node_id", nr.Node.Id,
+					"error", err)
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	if len(failed) > 0 {
+		return fmt.Errorf("stop failed on %d node(s): %v", len(failed), failed)
+	}
+	return nil
+}
+
+func (s *Server) nodeSupportsModelForPoCV2(nr broker.NodeResponse, modelID string) bool {
+	if modelID == "" {
+		return false
+	}
+
+	// For PoC v2 we only run on nodes currently in INFERENCE, and only if the model matches
+	// the same model-selection logic used when the broker switches nodes to INFERENCE.
+	if nr.State.CurrentStatus != types.HardwareNodeStatus_INFERENCE {
+		return false
+	}
+	if nr.Node.Id == "" {
+		return false
+	}
+	if s.nodeBroker == nil {
+		return false
+	}
+	// Best-effort: compute selected model ID without mutating broker/node state.
+	// If we can't determine it, treat the node as ineligible.
+	//
+	// Note: `SelectedInferenceModelIDForNode` may query governance models from chain when
+	// epoch models are not populated.
+	selected, err := s.nodeBroker.SelectedInferenceModelIDForNode(nr)
+	if err != nil {
+		logging.Warn("PoC v2: failed to determine selected inference model for node", types.PoC,
+			"node_id", nr.Node.Id,
+			"error", err)
+		return false
+	}
+	return selected == modelID
 }
 
 func (s *Server) isLegacyPoCActive(ctx context.Context) (bool, error) {

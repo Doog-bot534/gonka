@@ -125,6 +125,25 @@ type Broker struct {
 	configManager        *apiconfig.ConfigManager
 }
 
+// SelectedInferenceModelIDForNode calculates which model the broker would load when switching the given node to INFERENCE.
+//
+// This mirrors the selection logic in `InferenceUpNodeCommand.Execute`:
+// - If `nr.State.EpochModels` is non-empty: pick one model from epoch models (the current implementation picks the first encountered).
+// - If `nr.State.EpochModels` is empty: return an error
+//
+// NOTE: This function does not change any node state.
+func (b *Broker) SelectedInferenceModelIDForNode(nr NodeResponse) (string, error) {
+	if len(nr.State.EpochModels) > 0 {
+		for _, m := range nr.State.EpochModels {
+			if m.Id != "" {
+				return m.Id, nil
+			}
+		}
+		return "", errors.New("epoch models present but no model id found")
+	}
+	return "", errors.New("epoch models not present")
+}
+
 // GetParticipantAddress returns the current participant's address if available.
 func (b *Broker) GetParticipantAddress() string {
 	if b == nil || b.participantInfo == nil {
@@ -139,6 +158,14 @@ func (b *Broker) GetParticipantPubKey() string {
 		return ""
 	}
 	return b.participantInfo.GetPubKey()
+}
+
+// GetCallbackUrl returns the current callback URL if available.
+func (b *Broker) GetCallbackUrl() string {
+	if b == nil || b.callbackUrl == "" {
+		return ""
+	}
+	return b.callbackUrl
 }
 
 const (

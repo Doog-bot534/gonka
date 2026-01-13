@@ -184,7 +184,7 @@ Each task includes:
 - **Similar to**:
   - `decentralized-api/mlnodeclient/poc.go` (`InitDto`, `Client.InitGenerate`, `BuildInitDto`)
 - **Result**:
-  - Added `PoCInitGenerateRequestV2` + `PoCParamsModelV2` and `(*mlnodeclient.Client).InitGenerateV2(...)` in `decentralized-api/mlnodeclient/poc_v2.go` (POSTs to `/init/generate`).
+  - Added `PoCInitGenerateRequestV2` + `PoCParamsV2` and `(*mlnodeclient.Client).InitGenerateV2(...)` in `decentralized-api/mlnodeclient/poc_v2.go` (POSTs to `/init/generate`).
   - Extended `decentralized-api/mlnodeclient/interface.go` with `InitGenerateV2(...)` and updated `decentralized-api/mlnodeclient/mock.go` to support v2 calls (`InitGenerateV2Called`, `LastInitDtoV2`).
 
 #### 4.2 Wire ML node triggering from `POST /v2/poc/start`
@@ -206,6 +206,68 @@ Each task includes:
 - **Result**:
   - Added read-only participant pubkey accessor `(*broker.Broker).GetParticipantPubKey()` in `decentralized-api/broker/broker.go`.
   - Wired PoC v2 start to trigger v2 mlnode init generation (bounded parallelism + per-node timeout) in `decentralized-api/internal/server/public/post_poc_start_v2_handler.go` via `(*Server).triggerPoCV2InitGenerate(...)`, without using `nodeBroker.QueueMessage(...)` and without touching broker node state.
+
+#### 4.3 Add `StopPowV2` and stop generation on all ML nodes after `duration` seconds
+
+- **Task**: [x] Add ML node v2 “stop generation” call and schedule it from `/v2/poc/start`
+- **What**:
+  - Add an ML node client method `StopPowV2(ctx)` that calls the mlnode v2 stop-generation endpoint (exact path should match mlnode implementation / the upstream pattern).
+  - In `POST /v2/poc/start`, after successfully launching v2 generation on ML nodes, schedule a best-effort stop fanout to **all** local ML nodes after `duration` seconds.
+    - This should be **independent of broker state** (read-only node enumeration only; do not enqueue broker commands; do not mutate broker node state).
+    - The stop fanout should be concurrent with bounded parallelism and per-node timeouts (same pattern as `triggerPoCV2InitGenerate`).
+    - When the timer fires, re-check storage to avoid stopping an already-ended or interrupted run:
+      - If the stored run for that `block_height` is already interrupted or already “past end time”, do nothing.
+      - If a newer v2 run exists, do nothing (avoid stopping the wrong run).
+    - Log per-node failures, but do not fail the original `/v2/poc/start` request (this is a background best-effort cleanup).
+- **Where**:
+  - ML node client interface: `decentralized-api/mlnodeclient/interface.go` (add `StopPowV2`)
+  - ML node client impl: `decentralized-api/mlnodeclient/client.go` (implement `StopPowV2`, define the endpoint path constant similar to `PoCV2InitGeneratePath`)
+  - ML node client mock: `decentralized-api/mlnodeclient/mock.go` (support `StopPowV2` for tests)
+  - Scheduler/wiring: `decentralized-api/internal/server/public/post_poc_start_v2_handler.go`
+    - likely add helper like `(*Server).schedulePoCV2Stop(...)` and call it only when `started == true`
+  - Optional: if needed for clean shutdown, store timer handles on `public.Server` and cancel them on server stop (future-proofing; can be skipped for 2.0.1).
+- **Why**:
+  - Keeps ML nodes from running v2 generation indefinitely if there is no later stage transition yet (2.0.1 is API-triggered and offchain).
+  - Matches the intent of the upstream v2 flow where generation is explicitly stopped before/at validation transitions.
+- **Similar to**:
+  - Upstream v2 orchestrator “stop all nodes” helper: `decentralized-api/internal/pocv2/node_orchestrator_v2.go` (`(*NodePoCOrchestratorV2Impl).stopGenerationOnAllNodes`, which calls `nodeClient.StopPowV2(ctx)` for each node)
+- **Result**:
+  - Added `StopPowV2(ctx)` to `decentralized-api/mlnodeclient/interface.go` and implemented it in `decentralized-api/mlnodeclient/poc_init_v2.go` (POST `"/api/v1/inference/pow/stop"`).
+  - Updated `decentralized-api/mlnodeclient/mock.go` with `StopPowV2` support (`StopPowV2Called`, `StopPowV2Error`).
+  - Wired a background timer from `decentralized-api/internal/server/public/post_poc_start_v2_handler.go` to fan out `StopPowV2` to all local ML nodes after `run.DurationSeconds`, with safety checks against `pocstorage.GetLatestRun()` to avoid stopping a newer or interrupted run.
+
+#### 4.4 Trigger PoC v2 only on ML nodes that support the requested model
+
+- **Task**: [x] Filter ML nodes by `run.params.model` before triggering PoC v2 start/stop
+- **What**:
+  - Only start PoC v2 on ML nodes that are configured to support the requested model (per-node `models` configuration and/or broker epoch model data).
+  - Ensure `node_count` in the v2 init request reflects **only the eligible nodes** (not all nodes).
+  - Apply the same eligibility filter to the scheduled `StopPowV2` fanout (stop only nodes that could have been started for that model).
+- **Where**:
+  - Triggering: `decentralized-api/internal/server/public/post_poc_start_v2_handler.go` (`(*Server).triggerPoCV2InitGenerate`)
+  - Stop fanout: `decentralized-api/internal/server/public/post_poc_start_v2_handler.go` (`(*Server).stopPoCV2OnAllNodes`)
+  - Node model source:
+    - Local config: `decentralized-api/broker/broker.go` (`type Node struct { Models map[string]... }`)
+    - Epoch models (optional signal): broker `NodeState.EpochModels`
+- **Why**: Different ML nodes can host different models; a PoC run for `model=X` must only involve ML nodes that can run `model=X`.
+- **Result**: Added `nodeSupportsModel(...)` helper and filtered both start and stop fanouts by `run.Params.Model` (checks `Node.Models` and `NodeState.EpochModels`). Updated `node_count` to use the eligible-node count.
+
+#### 4.5 Trigger PoC v2 only on ML nodes that have the requested model *loaded* (INFERENCE model)
+
+- **Task**: [x] Restrict PoC v2 to nodes where the requested model matches the broker’s INFERENCE model selection for that node
+- **What**:
+  - Compute which model the broker would load when switching a node to INFERENCE using the same selection logic as `InferenceUpNodeCommand`.
+  - Use that computed model id to decide PoC v2 eligibility: PoC v2 for `model=X` only runs on nodes where:
+    - `CurrentStatus == INFERENCE`, and
+    - `SelectedInferenceModelIDForNode(node) == X` (mirrors inference-up selection)
+- **Where**:
+  - Model-selection helper:
+    - `decentralized-api/broker/broker.go` (`(*Broker).SelectedInferenceModelIDForNode`)
+  - Consume it for PoC v2 filtering:
+    - `decentralized-api/internal/server/public/post_poc_start_v2_handler.go` (`(*Server).nodeSupportsModelForPoCV2`)
+- **Why**: PoC v2 should only run for models that are already loaded and active on the node (the same model that inference-up chose/loaded).
+- **Result**: Removed stateful `InferenceModelID` tracking and instead implemented `(*Broker).SelectedInferenceModelIDForNode(...)` (mirrors `InferenceUpNodeCommand` selection logic). Updated PoC v2 eligibility to require `CurrentStatus == INFERENCE` and `SelectedInferenceModelIDForNode(node) == run.Params.Model`.
+  - **Note**: As currently implemented, `SelectedInferenceModelIDForNode(...)` uses **only** `NodeState.EpochModels`. If `EpochModels` are missing/empty for a node, the node is treated as ineligible for PoC v2 (no governance-model fallback in this selection helper).
 
 ### Section 5: ML Node → API Callback (New Nonce Format)
 
