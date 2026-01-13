@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	mathsdk "cosmossdk.io/math"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/productscience/inference/x/inference/types"
 )
 
@@ -299,9 +300,10 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 		"len(validations)", len(validations),
 		"validators", validators)
 
-	// Collect all participants and seeds
+	// Collect all participants, seeds, and filter batches by allowlist
 	participants := make(map[string]types.Participant)
 	seeds := make(map[string]types.RandomSeed)
+	allowedBatches := make(map[string][]types.PoCBatch)
 
 	var sortedBatchKeys []string
 	for key := range originalBatches {
@@ -309,7 +311,32 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 	}
 	sort.Strings(sortedBatchKeys)
 
+	currentHeight := sdk.UnwrapSDKContext(ctx).BlockHeight()
+	allowlistActive := am.keeper.IsParticipantAllowlistActive(ctx, currentHeight)
+
+	isAllowed := func(addr, label string) bool {
+		if !allowlistActive {
+			return true
+		}
+		allowed, err := am.keeper.IsAllowlistedParticipant(ctx, addr)
+		if err != nil {
+			am.LogError("ComputeNewWeights: Invalid "+label+" address format", types.PoC,
+				"address", addr, "error", err)
+			return false
+		}
+		if !allowed {
+			am.LogInfo("ComputeNewWeights: Skipping non-allowlisted "+label, types.PoC,
+				"address", addr)
+			return false
+		}
+		return true
+	}
+
 	for _, participantAddress := range sortedBatchKeys {
+		if !isAllowed(participantAddress, "participant") {
+			continue
+		}
+
 		participant, ok := am.keeper.GetParticipant(ctx, participantAddress)
 		if !ok {
 			am.LogError("ComputeNewWeights: Error getting participant", types.PoC,
@@ -329,6 +356,7 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 			continue
 		}
 		seeds[participantAddress] = seed
+		allowedBatches[participantAddress] = originalBatches[participantAddress]
 	}
 
 	// STEP 3: Add seeds for preserved participants if they have submitted seeds
@@ -346,11 +374,18 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 	}
 
 	// STEP 4: Create WeightCalculator and calculate PoC mining participants (excluding inference-serving nodes)
-	params := am.keeper.GetParams(ctx)
+	params, err := am.keeper.GetParams(ctx)
+	if err != nil {
+		am.LogError("ComputeNewWeights: Error getting params", types.PoC,
+			"upcomingEpoch.Index", upcomingEpoch.Index,
+			"upcomingEpoch.PocStartBlockHeight", upcomingEpoch.PocStartBlockHeight,
+			"error", err)
+		return nil
+	}
 	weightScaleFactor := params.PocParams.GetWeightScaleFactorDec()
 	calculator := NewWeightCalculator(
 		currentValidatorWeights,
-		originalBatches,
+		allowedBatches,
 		validations,
 		participants,
 		seeds,
@@ -366,6 +401,11 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 	// Add preserved participants first
 	for _, preservedParticipant := range preservedParticipants {
 		participantAddress := preservedParticipant.Index
+
+		if !isAllowed(participantAddress, "preserved participant") {
+			continue
+		}
+
 		// Check if this participant also has PoC mining activity
 		if pocParticipant := findParticipantByAddress(pocMiningParticipants, participantAddress); pocParticipant != nil {
 			// Merge: combine weights and MLNodes from both sources
@@ -410,13 +450,18 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 
 	// Add remaining PoC mining participants that weren't already merged
 	for _, pocParticipant := range pocMiningParticipants {
-		if _, alreadyPreserved := preservedParticipantsSet[pocParticipant.Index]; !alreadyPreserved {
-			allActiveParticipants = append(allActiveParticipants, pocParticipant)
-
-			am.LogInfo("ComputeNewWeights: Added PoC-only participant", types.PoC,
-				"participantAddress", pocParticipant.Index,
-				"pocWeight", pocParticipant.Weight)
+		if _, alreadyPreserved := preservedParticipantsSet[pocParticipant.Index]; alreadyPreserved {
+			continue
 		}
+		// Defensive allowlist check (should already be filtered via allowedBatches, but explicit is safer)
+		if !isAllowed(pocParticipant.Index, "PoC-only participant") {
+			continue
+		}
+		allActiveParticipants = append(allActiveParticipants, pocParticipant)
+
+		am.LogInfo("ComputeNewWeights: Added PoC-only participant", types.PoC,
+			"participantAddress", pocParticipant.Index,
+			"pocWeight", pocParticipant.Weight)
 	}
 
 	am.LogInfo("ComputeNewWeights: Final summary", types.PoC,

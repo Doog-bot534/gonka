@@ -53,7 +53,8 @@ func TestActualSettle(t *testing.T) {
 	keeper, ctx, mocks := keeper2.InferenceKeeperReturningMocks(t)
 
 	// Configure to use legacy reward system for this test
-	params := keeper.GetParams(ctx)
+	params, err := keeper.GetParams(ctx)
+	require.NoError(t, err)
 
 	keeper.SetParticipant(ctx, participant1)
 	keeper.SetParticipant(ctx, participant2)
@@ -123,7 +124,7 @@ func TestActualSettle(t *testing.T) {
 	mocks.BankKeeper.EXPECT().MintCoins(gomock.Any(), types.ModuleName, coins, gomock.Any()).Return(nil)
 	mocks.BankKeeper.EXPECT().LogSubAccountTransaction(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
-	err := keeper.SettleAccounts(ctx, 10, 0)
+	err = keeper.SettleAccounts(ctx, 10, 0)
 	require.NoError(t, err, "SettleAccounts should complete successfully")
 	logger.Info("SettleAccounts completed successfully")
 	updated1, found := keeper.GetParticipant(ctx, participant1.Address)
@@ -212,7 +213,8 @@ func TestActualSettleWithManyParticipants(t *testing.T) {
 	})
 	logger.Info("Set epoch data", "epochIndex", 10)
 
-	params := keeper.GetParams(ctx)
+	params, err := keeper.GetParams(ctx)
+	require.NoError(t, err)
 
 	expectedRewardCoin := calcExpectedRewards(10, params)
 	dividedRewards := expectedRewardCoin / uint64(many)
@@ -226,7 +228,7 @@ func TestActualSettleWithManyParticipants(t *testing.T) {
 
 	// This should work with pagination and process all 150 participants
 	logger.Info("Starting SettleAccounts for 150 participants")
-	err := keeper.SettleAccounts(ctx, 10, 0)
+	err = keeper.SettleAccounts(ctx, 10, 0)
 	require.NoError(t, err, "SettleAccounts should complete successfully with 150 participants")
 	logger.Info("SettleAccounts completed successfully")
 
