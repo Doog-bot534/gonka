@@ -104,6 +104,15 @@ func DefaultParams() Params {
 			UseParticipantAllowlist:                false, // disabled by default
 			ParticipantAllowlistUntilBlockHeight:   0,     // no cutoff
 		},
+		PocV2Params: DefaultPocV2Params(),
+	}
+}
+
+func DefaultPocV2Params() *PoCv2Params {
+	return &PoCv2Params{
+		Enabled: false, // v2 disabled by default; enabled via governance after upgrade
+		ModelId: "",    // must be set when enabled
+		SeqLen:  256,   // reasonable default
 	}
 }
 
@@ -392,6 +401,27 @@ func (p Params) Validate() error {
 		}
 		if p.ParticipantAccessParams.ParticipantAllowlistUntilBlockHeight < 0 {
 			return fmt.Errorf("participant allowlist until block height cannot be negative")
+		}
+	}
+
+	if p.PocV2Params != nil {
+		if err := p.PocV2Params.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *PoCv2Params) Validate() error {
+	if p == nil {
+		return nil // nil is valid (use defaults)
+	}
+	if p.Enabled {
+		if p.ModelId == "" {
+			return fmt.Errorf("poc_v2_params.model_id must be set when poc_v2 is enabled")
+		}
+		if p.SeqLen <= 0 {
+			return fmt.Errorf("poc_v2_params.seq_len must be positive when poc_v2 is enabled")
 		}
 	}
 	return nil

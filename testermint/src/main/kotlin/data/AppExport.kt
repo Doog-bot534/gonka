@@ -74,6 +74,8 @@ data class InferenceParams(
     val bandwidthLimitsParams: BandwidthLimitsParams? = null,
     @SerializedName("confirmation_poc_params")
     val confirmationPocParams: ConfirmationPoCParams? = null,
+    @SerializedName("poc_v2_params")
+    val pocV2Params: PocV2Params? = null,
 )
 
 data class TokenomicsParams(
@@ -274,6 +276,18 @@ data class PoCModelParams(
     val seqLen: Int,
     @SerializedName("r_target")
     val rTarget: Decimal,
+)
+
+/**
+ * PocV2Params defines the parameters for PoC v2 (artifact-based proof of compute).
+ * When enabled, the network uses artifact+validation v2 messages for epoch weight calculation.
+ */
+data class PocV2Params(
+    val enabled: Boolean = false,
+    @SerializedName("model_id")
+    val modelId: String = "",
+    @SerializedName("seq_len")
+    val seqLen: Long = 0,
 )
 
 data class GovState(

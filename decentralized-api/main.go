@@ -11,6 +11,7 @@ import (
 	"decentralized-api/internal/modelmanager"
 	"decentralized-api/internal/nats/server"
 	"decentralized-api/internal/poc"
+	"decentralized-api/internal/pocv2"
 	adminserver "decentralized-api/internal/server/admin"
 	mlserver "decentralized-api/internal/server/mlnode"
 	pserver "decentralized-api/internal/server/public"
@@ -135,6 +136,17 @@ func main() {
 	)
 	logging.Info("node PocOrchestrator orchestrator initialized", types.PoC, "nodePocOrchestrator", nodePocOrchestrator)
 
+	// Create v2 orchestrator for artifact-based PoC
+	nodePocOrchestratorV2 := pocv2.NewNodePoCOrchestratorV2ForCosmosChain(
+		participantInfo.GetPubKey(),
+		nodeBroker,
+		config.GetApiConfig().PoCCallbackUrl,
+		config.GetChainNodeConfig().Url,
+		recorder,
+		chainPhaseTracker,
+	)
+	logging.Info("node PocOrchestratorV2 orchestrator initialized", types.PoC)
+
 	tendermintClient := cosmosclient.TendermintClient{
 		ChainNodeUrl: config.GetChainNodeConfig().Url,
 	}
@@ -150,7 +162,7 @@ func main() {
 
 	validator := validation.NewInferenceValidator(nodeBroker, config, recorder, chainPhaseTracker)
 	blsManager := bls.NewBlsManager(*recorder)
-	listener := event_listener.NewEventListener(config, nodePocOrchestrator, nodeBroker, validator, *recorder, trainingExecutor, chainPhaseTracker, cancel, blsManager)
+	listener := event_listener.NewEventListener(config, nodePocOrchestrator, nodePocOrchestratorV2, nodeBroker, validator, *recorder, trainingExecutor, chainPhaseTracker, cancel, blsManager)
 	// TODO: propagate trainingExecutor
 	go listener.Start(ctx)
 

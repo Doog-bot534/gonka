@@ -17,6 +17,7 @@ import (
 	"decentralized-api/internal"
 	"decentralized-api/internal/event_listener/chainevents"
 	"decentralized-api/internal/poc"
+	"decentralized-api/internal/pocv2"
 	"decentralized-api/internal/validation"
 	"decentralized-api/logging"
 
@@ -57,17 +58,20 @@ type MlNodeReconciliationConfig struct {
 
 // OnNewBlockDispatcher orchestrates processing of new block events
 type OnNewBlockDispatcher struct {
-	nodeBroker           *broker.Broker
-	nodePocOrchestrator  poc.NodePoCOrchestrator
-	queryClient          ChainStateClient
-	phaseTracker         *chainphase.ChainPhaseTracker
-	reconciliationConfig MlNodeReconciliationConfig
-	getStatusFunc        StatusFunc
-	setHeightFunc        SetHeightFunc
-	randomSeedManager    poc.RandomSeedManager
-	configManager        *apiconfig.ConfigManager
-	validator            *validation.InferenceValidator
-	epochGroupDataCache  *internal.EpochGroupDataCache
+	nodeBroker             *broker.Broker
+	nodePocOrchestrator    poc.NodePoCOrchestrator
+	nodePocOrchestratorV2  pocv2.NodePoCOrchestratorV2
+	queryClient            ChainStateClient
+	phaseTracker           *chainphase.ChainPhaseTracker
+	reconciliationConfig   MlNodeReconciliationConfig
+	getStatusFunc          StatusFunc
+	setHeightFunc          SetHeightFunc
+	randomSeedManager      poc.RandomSeedManager
+	configManager          *apiconfig.ConfigManager
+	validator              *validation.InferenceValidator
+	epochGroupDataCache    *internal.EpochGroupDataCache
+	cachedPocV2ParamsBlock int64            // Block height at which v2 params were last cached
+	cachedPocV2Enabled     bool             // Cached value of poc_v2_params.enabled
 }
 
 // StatusResponse matches the structure expected by getStatus function
@@ -96,6 +100,7 @@ var DefaultReconciliationConfig = MlNodeReconciliationConfig{
 func NewOnNewBlockDispatcher(
 	nodeBroker *broker.Broker,
 	nodePocOrchestrator poc.NodePoCOrchestrator,
+	nodePocOrchestratorV2 pocv2.NodePoCOrchestratorV2,
 	queryClient ChainStateClient,
 	phaseTracker *chainphase.ChainPhaseTracker,
 	getStatusFunc StatusFunc,
@@ -106,16 +111,17 @@ func NewOnNewBlockDispatcher(
 	validator *validation.InferenceValidator,
 ) *OnNewBlockDispatcher {
 	return &OnNewBlockDispatcher{
-		nodeBroker:           nodeBroker,
-		nodePocOrchestrator:  nodePocOrchestrator,
-		queryClient:          queryClient,
-		phaseTracker:         phaseTracker,
-		reconciliationConfig: reconciliationConfig,
-		getStatusFunc:        getStatusFunc,
-		setHeightFunc:        setHeightFunc,
-		randomSeedManager:    randomSeedManager,
-		configManager:        configManager,
-		validator:            validator,
+		nodeBroker:            nodeBroker,
+		nodePocOrchestrator:   nodePocOrchestrator,
+		nodePocOrchestratorV2: nodePocOrchestratorV2,
+		queryClient:           queryClient,
+		phaseTracker:          phaseTracker,
+		reconciliationConfig:  reconciliationConfig,
+		getStatusFunc:         getStatusFunc,
+		setHeightFunc:         setHeightFunc,
+		randomSeedManager:     randomSeedManager,
+		configManager:         configManager,
+		validator:             validator,
 	}
 }
 
@@ -125,6 +131,7 @@ func NewOnNewBlockDispatcherFromCosmosClient(
 	nodeBroker *broker.Broker,
 	configManager *apiconfig.ConfigManager,
 	nodePocOrchestrator poc.NodePoCOrchestrator,
+	nodePocOrchestratorV2 pocv2.NodePoCOrchestratorV2,
 	cosmosClient cosmosclient.CosmosMessageClient,
 	phaseTracker *chainphase.ChainPhaseTracker,
 	reconciliationConfig MlNodeReconciliationConfig,
@@ -146,6 +153,7 @@ func NewOnNewBlockDispatcherFromCosmosClient(
 	dispatcher := NewOnNewBlockDispatcher(
 		nodeBroker,
 		nodePocOrchestrator,
+		nodePocOrchestratorV2,
 		queryClient,
 		phaseTracker,
 		getStatusFunc,
@@ -308,6 +316,27 @@ func (d *OnNewBlockDispatcher) queryNetworkInfo(ctx context.Context) (NetworkInf
 	}, nil
 }
 
+// isPocV2Enabled checks if PoC v2 is enabled based on cached or freshly fetched params.
+// It caches the result per block height to avoid repeated chain queries.
+func (d *OnNewBlockDispatcher) isPocV2Enabled(ctx context.Context, blockHeight int64) bool {
+	// Use cached value if we already checked this block
+	if d.cachedPocV2ParamsBlock == blockHeight {
+		return d.cachedPocV2Enabled
+	}
+
+	// Fetch params and cache the result
+	params, err := d.queryClient.Params(ctx, &types.QueryParamsRequest{})
+	if err != nil {
+		logging.Warn("Failed to query params for v2 check, defaulting to v1", types.PoC, "error", err)
+		return false
+	}
+
+	enabled := params.Params.PocV2Params != nil && params.Params.PocV2Params.Enabled
+	d.cachedPocV2ParamsBlock = blockHeight
+	d.cachedPocV2Enabled = enabled
+	return enabled
+}
+
 // handlePhaseTransitions checks for and handles phase transitions and stage events
 func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.EpochState) {
 	epochContext := epochState.LatestEpoch
@@ -343,7 +372,12 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 	if epochContext.IsStartOfPoCValidationStage(blockHeight) {
 		logging.Info("DapiStage:IsStartOfPoCValidationStage", types.Stages, "blockHeight", blockHeight, "blockHash", blockHash, "pocStartBlockHeight", epochContext.PocStartBlockHeight)
 		go func() {
-			d.nodePocOrchestrator.ValidateReceivedBatches(epochContext.PocStartBlockHeight)
+			if d.isPocV2Enabled(context.Background(), blockHeight) && d.nodePocOrchestratorV2 != nil {
+				logging.Info("Routing to PoC v2 validation orchestrator", types.PoC, "blockHeight", blockHeight)
+				d.nodePocOrchestratorV2.ValidateReceivedArtifacts(epochContext.PocStartBlockHeight)
+			} else {
+				d.nodePocOrchestrator.ValidateReceivedBatches(epochContext.PocStartBlockHeight)
+			}
 		}()
 	}
 
@@ -456,7 +490,12 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 				"trigger_height", event.TriggerHeight)
 
 			go func() {
-				d.nodePocOrchestrator.ValidateReceivedBatches(event.TriggerHeight)
+				if d.isPocV2Enabled(context.Background(), blockHeight) && d.nodePocOrchestratorV2 != nil {
+					logging.Info("Routing confirmation PoC to v2 validation orchestrator", types.PoC, "triggerHeight", event.TriggerHeight)
+					d.nodePocOrchestratorV2.ValidateReceivedArtifacts(event.TriggerHeight)
+				} else {
+					d.nodePocOrchestrator.ValidateReceivedBatches(event.TriggerHeight)
+				}
 			}()
 		}
 

@@ -12,11 +12,17 @@ type MLNodeClient interface {
 	Stop(ctx context.Context) error
 	NodeState(ctx context.Context) (*StateResponse, error)
 
-	// PoC operations
+	// PoC v1 operations
 	GetPowStatus(ctx context.Context) (*PowStatusResponse, error)
 	InitGenerate(ctx context.Context, dto InitDto) error
 	InitValidate(ctx context.Context, dto InitDto) error
 	ValidateBatch(ctx context.Context, batch ProofBatch) error
+
+	// PoC v2 operations
+	InitGenerateV2(ctx context.Context, req PoCInitGenerateRequestV2) (*PoCInitGenerateResponseV2, error)
+	GenerateV2(ctx context.Context, req PoCGenerateRequestV2) (*PoCGenerateResponseV2, error)
+	GetPowStatusV2(ctx context.Context) (*PoCStatusResponseV2, error)
+	StopPowV2(ctx context.Context) (*PoCStopResponseV2, error)
 
 	// Inference operations
 	InferenceHealth(ctx context.Context) (bool, error)

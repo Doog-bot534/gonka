@@ -63,6 +63,15 @@ type MockClient struct {
 	ListModelsCalled       int
 	GetDiskSpaceCalled     int
 
+	// PoC v2 call tracking
+	InitGenerateV2Called int
+	GenerateV2Called     int
+	GetPowStatusV2Called int
+	StopPowV2Called      int
+
+	// PoC v2 state
+	PowStatusV2 string // "IDLE", "GENERATING", etc.
+
 	// Capture parameters
 	LastInitDto         *InitDto
 	LastInitValidateDto *InitDto
@@ -411,6 +420,76 @@ func getModelKey(model Model) string {
 		return model.HfRepo + ":" + *model.HfCommit
 	}
 	return model.HfRepo + ":latest"
+}
+
+// PoC v2 mock methods
+
+func (m *MockClient) InitGenerateV2(ctx context.Context, req PoCInitGenerateRequestV2) (*PoCInitGenerateResponseV2, error) {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+
+	m.InitGenerateV2Called++
+
+	// Default success response
+	return &PoCInitGenerateResponseV2{
+		Status:   "OK",
+		Backends: 1,
+		NGroups:  1,
+	}, nil
+}
+
+func (m *MockClient) GenerateV2(ctx context.Context, req PoCGenerateRequestV2) (*PoCGenerateResponseV2, error) {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+
+	m.GenerateV2Called++
+
+	// Default success response
+	return &PoCGenerateResponseV2{
+		Status:    "queued",
+		RequestId: "mock-request-id",
+	}, nil
+}
+
+func (m *MockClient) GetPowStatusV2(ctx context.Context) (*PoCStatusResponseV2, error) {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+
+	m.GetPowStatusV2Called++
+
+	// Use configured status or default to IDLE
+	status := m.PowStatusV2
+	if status == "" {
+		status = "IDLE"
+	}
+	return &PoCStatusResponseV2{
+		Status: status,
+		Backends: []BackendStatusV2{
+			{Port: 8000, Status: status},
+		},
+	}, nil
+}
+
+func (m *MockClient) StopPowV2(ctx context.Context) (*PoCStopResponseV2, error) {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+
+	m.StopPowV2Called++
+
+	// Default success response
+	return &PoCStopResponseV2{
+		Status: "OK",
+		Results: []BackendResult{
+			{Port: 8000, Status: "stopped"},
+		},
+	}, nil
+}
+
+// SetV2Status sets the v2 status for testing
+func (m *MockClient) SetV2Status(status string) {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	m.PowStatusV2 = status
 }
 
 // Ensure MockClient implements MLNodeClient

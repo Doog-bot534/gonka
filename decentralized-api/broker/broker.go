@@ -135,6 +135,9 @@ func (b *Broker) GetParticipantAddress() string {
 
 const (
 	PoCBatchesPath = "/v1/poc-batches"
+	// v2 base path for artifact-based PoC
+	// Note: MLNode appends /generated or /validated to this base path
+	PoCv2ArtifactsBasePath = "/v2/poc-artifacts"
 )
 
 func GetPocBatchesCallbackUrl(callbackUrl string) string {
@@ -145,6 +148,18 @@ func GetPocValidateCallbackUrl(callbackUrl string) string {
 	// For now the URl is the same, the node inference server appends "/validated" to the URL
 	//  or "/generated" (in case of init-generate)
 	return fmt.Sprintf("%s"+PoCBatchesPath, callbackUrl)
+}
+
+// GetPocArtifactsV2GeneratedCallbackUrl returns the base callback URL for v2 artifact generation.
+// MLNode will append /generated to this URL when calling back.
+func GetPocArtifactsV2GeneratedCallbackUrl(callbackUrl string) string {
+	return fmt.Sprintf("%s%s", callbackUrl, PoCv2ArtifactsBasePath)
+}
+
+// GetPocArtifactsV2ValidatedCallbackUrl returns the base callback URL for v2 artifact validation.
+// MLNode will append /validated to this URL when calling back.
+func GetPocArtifactsV2ValidatedCallbackUrl(callbackUrl string) string {
+	return fmt.Sprintf("%s%s", callbackUrl, PoCv2ArtifactsBasePath)
 }
 
 type ModelArgs struct {
@@ -805,6 +820,10 @@ type pocParams struct {
 	startPoCBlockHeight int64
 	startPoCBlockHash   string
 	modelParams         *types.PoCModelParams
+	// v2 params - set when poc_v2_params.enabled is true
+	v2Enabled bool
+	v2ModelId string
+	v2SeqLen  int64
 }
 
 const reconciliationInterval = 30 * time.Second
@@ -1081,10 +1100,13 @@ func (b *Broker) prefetchPocParams(epochState chainphase.EpochState, nodesToDisp
 		// CONFIRMATION PoC - use hash from event (populated by chain at generation_start_height)
 		if epochState.CurrentPhase == types.InferencePhase && epochState.ActiveConfirmationPoCEvent != nil {
 			event := epochState.ActiveConfirmationPoCEvent
-			return &pocParams{
+			params := &pocParams{
 				startPoCBlockHeight: event.TriggerHeight,
 				startPoCBlockHash:   event.PocSeedBlockHash,
-			}, nil
+			}
+			// Fetch v2 params if enabled
+			b.enrichWithV2Params(params)
+			return params, nil
 		}
 
 		// REGULAR PoC - query hash as usual
@@ -1098,6 +1120,23 @@ func (b *Broker) prefetchPocParams(epochState chainphase.EpochState, nodesToDisp
 	}
 }
 
+// enrichWithV2Params fetches PoCv2Params from chain and enriches pocParams if v2 is enabled.
+func (b *Broker) enrichWithV2Params(params *pocParams) {
+	paramsResp, err := b.chainBridge.GetParams()
+	if err != nil {
+		logging.Warn("Failed to query chain params for v2 check", types.Nodes, "error", err)
+		return
+	}
+
+	if paramsResp.Params.PocV2Params != nil && paramsResp.Params.PocV2Params.Enabled {
+		params.v2Enabled = true
+		params.v2ModelId = paramsResp.Params.PocV2Params.ModelId
+		params.v2SeqLen = paramsResp.Params.PocV2Params.SeqLen
+		logging.Info("PoC v2 is enabled, using v2 params", types.PoC,
+			"model_id", params.v2ModelId, "seq_len", params.v2SeqLen)
+	}
+}
+
 func (b *Broker) getCommandForState(nodeState *NodeState, pocGenParams *pocParams, pocGenErr error, totalNodes int) NodeWorkerCommand {
 	switch nodeState.IntendedStatus {
 	case types.HardwareNodeStatus_INFERENCE:
@@ -1106,6 +1145,19 @@ func (b *Broker) getCommandForState(nodeState *NodeState, pocGenParams *pocParam
 		switch nodeState.PocIntendedStatus {
 		case PocStatusGenerating:
 			if pocGenParams != nil && pocGenParams.startPoCBlockHeight > 0 {
+				// Use v2 command if v2 is enabled
+				if pocGenParams.v2Enabled {
+					return StartPoCNodeCommandV2{
+						BlockHeight: pocGenParams.startPoCBlockHeight,
+						BlockHash:   pocGenParams.startPoCBlockHash,
+						PubKey:      b.participantInfo.GetPubKey(),
+						CallbackUrl: GetPocArtifactsV2GeneratedCallbackUrl(b.callbackUrl),
+						TotalNodes:  totalNodes,
+						Model:       pocGenParams.v2ModelId,
+						SeqLen:      pocGenParams.v2SeqLen,
+					}
+				}
+				// Fallback to v1 command
 				return StartPoCNodeCommand{
 					BlockHeight: pocGenParams.startPoCBlockHeight,
 					BlockHash:   pocGenParams.startPoCBlockHash,
@@ -1119,6 +1171,17 @@ func (b *Broker) getCommandForState(nodeState *NodeState, pocGenParams *pocParam
 			return nil
 		case PocStatusValidating:
 			if pocGenParams != nil && pocGenParams.startPoCBlockHeight > 0 {
+				// Use v2 command if v2 is enabled
+				// Note: For v2 validation, the actual validation request with artifacts
+				// is sent by the v2 orchestrator, not through broker reconciliation.
+				// The broker just needs to transition the node state.
+				if pocGenParams.v2Enabled {
+					// For v2, use a no-network command that only transitions broker state.
+					// The v2 orchestrator handles StopPowV2 and GenerateV2 validation requests.
+					// This ensures no v1 PoW API calls are made when v2 is enabled.
+					return TransitionPoCToValidatingV2Command{}
+				}
+				// Fallback to v1 command
 				return InitValidateNodeCommand{
 					BlockHeight: pocGenParams.startPoCBlockHeight,
 					BlockHash:   pocGenParams.startPoCBlockHash,
@@ -1169,11 +1232,22 @@ func (b *Broker) queryCurrentPoCParams(epochPoCStartHeight int64) (*pocParams, e
 		modelParams = paramsResp.Params.PocParams.ModelParams
 	}
 
-	return &pocParams{
+	params := &pocParams{
 		startPoCBlockHeight: epochPoCStartHeight,
 		startPoCBlockHash:   hash,
 		modelParams:         modelParams,
-	}, nil
+	}
+
+	// Check and enrich with v2 params if enabled
+	if paramsResp != nil && paramsResp.Params.PocV2Params != nil && paramsResp.Params.PocV2Params.Enabled {
+		params.v2Enabled = true
+		params.v2ModelId = paramsResp.Params.PocV2Params.ModelId
+		params.v2SeqLen = paramsResp.Params.PocV2Params.SeqLen
+		logging.Info("PoC v2 is enabled, using v2 params", types.PoC,
+			"model_id", params.v2ModelId, "seq_len", params.v2SeqLen)
+	}
+
+	return params, nil
 }
 
 func nodeStatusQueryWorker(broker *Broker) {

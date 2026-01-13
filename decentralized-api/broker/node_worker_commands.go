@@ -356,3 +356,159 @@ func (c *NoOpNodeCommand) Execute(ctx context.Context, worker *NodeWorker) NodeR
 		OriginalTarget: worker.node.State.CurrentStatus,
 	}
 }
+
+// StartPoCNodeCommandV2 starts PoC v2 generation on a single node without calling Stop().
+type StartPoCNodeCommandV2 struct {
+	BlockHeight int64
+	BlockHash   string
+	PubKey      string
+	CallbackUrl string
+	TotalNodes  int
+	Model       string // model_id from chain params
+	SeqLen      int64  // seq_len from chain params
+}
+
+func (c StartPoCNodeCommandV2) Execute(ctx context.Context, worker *NodeWorker) NodeResult {
+	result := NodeResult{
+		OriginalTarget:    types.HardwareNodeStatus_POC,
+		OriginalPocTarget: PocStatusGenerating,
+	}
+
+	if ctx.Err() != nil {
+		result.Succeeded = false
+		result.Error = ctx.Err().Error()
+		result.FinalStatus = worker.node.State.CurrentStatus
+		result.FinalPocStatus = worker.node.State.PocCurrentStatus
+		return result
+	}
+
+	// Check status for idempotency - use v2 status endpoint
+	statusV2, err := worker.GetClient().GetPowStatusV2(ctx)
+	if err == nil && statusV2.Status == "GENERATING" {
+		logging.Info("[StartPoCNodeCommandV2] Node already in PoC v2 generating state", types.PoC, "node_id", worker.nodeId)
+		result.Succeeded = true
+		result.FinalStatus = types.HardwareNodeStatus_POC
+		result.FinalPocStatus = PocStatusGenerating
+		return result
+	}
+
+	// Start PoC v2 - NO Stop() call per plan
+	req := mlnodeclient.PoCInitGenerateRequestV2{
+		BlockHash:   c.BlockHash,
+		BlockHeight: c.BlockHeight,
+		PublicKey:   c.PubKey,
+		NodeId:      int(worker.node.Node.NodeNum),
+		NodeCount:   c.TotalNodes,
+		Params: mlnodeclient.PoCParamsV2{
+			Model:  c.Model,
+			SeqLen: c.SeqLen,
+		},
+		URL: c.CallbackUrl,
+	}
+
+	if _, err := worker.GetClient().InitGenerateV2(ctx, req); err != nil {
+		logging.Error("[StartPoCNodeCommandV2] Failed to start PoC v2", types.PoC, "node_id", worker.nodeId, "error", err)
+		result.Succeeded = false
+		result.Error = err.Error()
+		result.FinalStatus = types.HardwareNodeStatus_FAILED
+	} else {
+		result.Succeeded = true
+		result.FinalStatus = types.HardwareNodeStatus_POC
+		result.FinalPocStatus = PocStatusGenerating
+		logging.Info("[StartPoCNodeCommandV2] Successfully started PoC v2 on node", types.PoC, "node_id", worker.nodeId)
+	}
+	return result
+}
+
+// ValidatePoCNodeCommandV2 initiates PoC v2 validation for specific artifacts.
+// Unlike v1, v2 validation uses /generate with validation.artifacts instead of InitValidate+ValidateBatch.
+type ValidatePoCNodeCommandV2 struct {
+	BlockHeight int64
+	BlockHash   string
+	PubKey      string
+	CallbackUrl string
+	TotalNodes  int
+	Model       string
+	SeqLen      int64
+	Nonces      []int64
+	Artifacts   []mlnodeclient.ArtifactV2
+}
+
+func (c ValidatePoCNodeCommandV2) Execute(ctx context.Context, worker *NodeWorker) NodeResult {
+	result := NodeResult{
+		OriginalTarget:    types.HardwareNodeStatus_POC,
+		OriginalPocTarget: PocStatusValidating,
+	}
+
+	if ctx.Err() != nil {
+		result.Succeeded = false
+		result.Error = ctx.Err().Error()
+		result.FinalStatus = worker.node.State.CurrentStatus
+		result.FinalPocStatus = worker.node.State.PocCurrentStatus
+		return result
+	}
+
+	// Build validation request
+	req := mlnodeclient.PoCGenerateRequestV2{
+		BlockHash:   c.BlockHash,
+		BlockHeight: c.BlockHeight,
+		PublicKey:   c.PubKey,
+		NodeId:      int(worker.node.Node.NodeNum),
+		NodeCount:   c.TotalNodes,
+		Nonces:      c.Nonces,
+		Params: mlnodeclient.PoCParamsV2{
+			Model:  c.Model,
+			SeqLen: c.SeqLen,
+		},
+		URL: c.CallbackUrl,
+		Validation: &mlnodeclient.ValidationV2{
+			Artifacts: c.Artifacts,
+		},
+	}
+
+	// Send validation request - NO Stop() call per plan
+	if _, err := worker.GetClient().GenerateV2(ctx, req); err != nil {
+		logging.Error("[ValidatePoCNodeCommandV2] Failed to start PoC v2 validation", types.PoC, "node_id", worker.nodeId, "error", err)
+		result.Succeeded = false
+		result.Error = err.Error()
+		result.FinalStatus = types.HardwareNodeStatus_FAILED
+	} else {
+		result.Succeeded = true
+		result.FinalStatus = types.HardwareNodeStatus_POC
+		result.FinalPocStatus = PocStatusValidating
+		logging.Info("[ValidatePoCNodeCommandV2] Successfully started PoC v2 validation on node", types.PoC,
+			"node_id", worker.nodeId, "nonces_count", len(c.Nonces))
+	}
+	return result
+}
+
+// TransitionPoCToValidatingV2Command is a no-network command that transitions the broker's
+// internal node state to POC/Validating when PoC v2 is enabled.
+// Actual v2 validation is handled by the v2 orchestrator (not the broker), which calls
+// StopPowV2 once and then sends GenerateV2 validation requests with artifacts.
+// This command ensures broker state consistency without making any v1 PoW API calls.
+type TransitionPoCToValidatingV2Command struct{}
+
+func (c TransitionPoCToValidatingV2Command) Execute(ctx context.Context, worker *NodeWorker) NodeResult {
+	result := NodeResult{
+		OriginalTarget:    types.HardwareNodeStatus_POC,
+		OriginalPocTarget: PocStatusValidating,
+	}
+
+	if ctx.Err() != nil {
+		result.Succeeded = false
+		result.Error = ctx.Err().Error()
+		result.FinalStatus = worker.node.State.CurrentStatus
+		result.FinalPocStatus = worker.node.State.PocCurrentStatus
+		return result
+	}
+
+	// No network call - just transition broker state.
+	// The v2 orchestrator handles StopPowV2 and GenerateV2 validation requests.
+	result.Succeeded = true
+	result.FinalStatus = types.HardwareNodeStatus_POC
+	result.FinalPocStatus = PocStatusValidating
+	logging.Info("[TransitionPoCToValidatingV2Command] Transitioned broker state to POC/Validating (no network call)", types.PoC,
+		"node_id", worker.nodeId)
+	return result
+}

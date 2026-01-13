@@ -23,6 +23,7 @@ message Params {
   GenesisGuardianParams genesis_guardian_params = 10;
   DeveloperAccessParams developer_access_params = 11;
   ParticipantAccessParams participant_access_params = 12;
+  PoCv2Params poc_v2_params = 13;
 }
 
 message GenesisOnlyParams {
@@ -298,4 +299,17 @@ message ParticipantAccessParams {
   // participant_allowlist_until_block_height: allowlist is enforced while current_height < this value.
   // Set to 0 to disable cutoff (allowlist stays active as long as use_participant_allowlist=true).
   int64 participant_allowlist_until_block_height = 4;
+}
+
+// PoCv2Params defines the parameters for PoC v2 (artifact-based proof of compute).
+// When enabled, the network uses artifact+validation v2 messages for epoch weight calculation.
+message PoCv2Params {
+  option (gogoproto.equal) = true;
+  // enabled switches the network from PoC v1 to v2 for epoch weight calculation.
+  // This affects both regular PoC and confirmation PoC.
+  bool enabled = 1;
+  // model_id is the model identifier used for PoC v2 generation/validation.
+  string model_id = 2;
+  // seq_len is the sequence length used for PoC v2 generation/validation.
+  int64 seq_len = 3;
 }

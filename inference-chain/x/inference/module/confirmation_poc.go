@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 
+	mathsdk "cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/productscience/inference/x/inference/calculations"
 	"github.com/productscience/inference/x/inference/types"
@@ -358,52 +359,18 @@ func (am AppModule) updateConfirmationWeights(ctx context.Context, event *types.
 		return fmt.Errorf("failed to get current validator weights: %w", err)
 	}
 
-	// Get PoC batches and validations using trigger_height as key
-	allBatches, err := am.keeper.GetPoCBatchesByStage(ctx, event.TriggerHeight)
-	if err != nil {
-		return fmt.Errorf("failed to get PoC batches for confirmation: %w", err)
-	}
-
-	validations, err := am.keeper.GetPoCValidationByStage(ctx, event.TriggerHeight)
-	if err != nil {
-		return fmt.Errorf("failed to get PoC validations for confirmation: %w", err)
-	}
-
-	// Collect participants and seeds for WeightCalculator
-	participants := make(map[string]types.Participant)
-	seeds := make(map[string]types.RandomSeed)
-
-	for participantAddress := range allBatches {
-		participant, ok := am.keeper.GetParticipant(ctx, participantAddress)
-		if !ok {
-			am.LogWarn("updateConfirmationWeights: Participant not found", types.PoC,
-				"address", participantAddress)
-			continue
-		}
-		participants[participantAddress] = participant
-
-		seed, found := am.keeper.GetRandomSeed(ctx, event.EpochIndex, participantAddress)
-		if found {
-			seeds[participantAddress] = seed
-		}
-	}
-
-	// Create WeightCalculator (reuse regular PoC logic)
 	params := am.keeper.GetParams(ctx)
 	weightScaleFactor := params.PocParams.GetWeightScaleFactorDec()
-	calculator := NewWeightCalculator(
-		currentValidatorWeights,
-		allBatches,
-		validations,
-		participants,
-		seeds,
-		event.TriggerHeight,
-		am,
-		weightScaleFactor,
-	)
 
-	// Calculate confirmation weights
-	confirmationParticipants := calculator.Calculate()
+	var confirmationParticipants []*types.ActiveParticipant
+
+	// Route to v2 weight calculation if PoC v2 is enabled
+	if params.PocV2Params != nil && params.PocV2Params.Enabled {
+		am.LogInfo("updateConfirmationWeights: Using PoC v2 weight calculation", types.PoC)
+		confirmationParticipants = am.updateConfirmationWeightsV2(ctx, event, currentValidatorWeights, weightScaleFactor)
+	} else {
+		confirmationParticipants = am.updateConfirmationWeightsV1(ctx, event, currentValidatorWeights, weightScaleFactor)
+	}
 
 	// Convert to map for easy lookup
 	confirmationWeights := make(map[string]int64)
@@ -465,6 +432,116 @@ func (am AppModule) updateConfirmationWeights(ctx context.Context, event *types.
 	am.checkConfirmationSlashing(ctx, &epochGroupData)
 
 	return nil
+}
+
+// updateConfirmationWeightsV1 calculates confirmation weights using v1 PoC data
+func (am AppModule) updateConfirmationWeightsV1(
+	ctx context.Context,
+	event *types.ConfirmationPoCEvent,
+	currentValidatorWeights map[string]int64,
+	weightScaleFactor mathsdk.LegacyDec,
+) []*types.ActiveParticipant {
+	// Get PoC batches and validations using trigger_height as key
+	allBatches, err := am.keeper.GetPoCBatchesByStage(ctx, event.TriggerHeight)
+	if err != nil {
+		am.LogError("updateConfirmationWeightsV1: failed to get PoC batches for confirmation", types.PoC, "error", err)
+		return nil
+	}
+
+	validations, err := am.keeper.GetPoCValidationByStage(ctx, event.TriggerHeight)
+	if err != nil {
+		am.LogError("updateConfirmationWeightsV1: failed to get PoC validations for confirmation", types.PoC, "error", err)
+		return nil
+	}
+
+	// Collect participants and seeds for WeightCalculator
+	participants := make(map[string]types.Participant)
+	seeds := make(map[string]types.RandomSeed)
+
+	for participantAddress := range allBatches {
+		participant, ok := am.keeper.GetParticipant(ctx, participantAddress)
+		if !ok {
+			am.LogWarn("updateConfirmationWeightsV1: Participant not found", types.PoC,
+				"address", participantAddress)
+			continue
+		}
+		participants[participantAddress] = participant
+
+		seed, found := am.keeper.GetRandomSeed(ctx, event.EpochIndex, participantAddress)
+		if found {
+			seeds[participantAddress] = seed
+		}
+	}
+
+	// Create WeightCalculator (reuse regular PoC logic)
+	calculator := NewWeightCalculator(
+		currentValidatorWeights,
+		allBatches,
+		validations,
+		participants,
+		seeds,
+		event.TriggerHeight,
+		am,
+		weightScaleFactor,
+	)
+
+	// Calculate confirmation weights
+	return calculator.Calculate()
+}
+
+// updateConfirmationWeightsV2 calculates confirmation weights using v2 PoC data
+func (am AppModule) updateConfirmationWeightsV2(
+	ctx context.Context,
+	event *types.ConfirmationPoCEvent,
+	currentValidatorWeights map[string]int64,
+	weightScaleFactor mathsdk.LegacyDec,
+) []*types.ActiveParticipant {
+	// Get PoC v2 artifact batches using trigger_height as key
+	allArtifactBatches, err := am.keeper.GetPoCArtifactBatchesV2ByStage(ctx, event.TriggerHeight)
+	if err != nil {
+		am.LogError("updateConfirmationWeightsV2: failed to get PoC v2 artifact batches for confirmation", types.PoC, "error", err)
+		return nil
+	}
+
+	validationsV2, err := am.keeper.GetPoCValidationsV2ByStage(ctx, event.TriggerHeight)
+	if err != nil {
+		am.LogError("updateConfirmationWeightsV2: failed to get PoC v2 validations for confirmation", types.PoC, "error", err)
+		return nil
+	}
+
+	// Collect participants and seeds for WeightCalculatorV2
+	participants := make(map[string]types.Participant)
+	seeds := make(map[string]types.RandomSeed)
+
+	for participantAddress := range allArtifactBatches {
+		participant, ok := am.keeper.GetParticipant(ctx, participantAddress)
+		if !ok {
+			am.LogWarn("updateConfirmationWeightsV2: Participant not found", types.PoC,
+				"address", participantAddress)
+			continue
+		}
+		participants[participantAddress] = participant
+
+		seed, found := am.keeper.GetRandomSeed(ctx, event.EpochIndex, participantAddress)
+		if found {
+			seeds[participantAddress] = seed
+		}
+	}
+
+	// Create WeightCalculatorV2 (reuse v2 PoC logic)
+	calculator := NewWeightCalculatorV2(
+		currentValidatorWeights,
+		allArtifactBatches,
+		validationsV2,
+		participants,
+		seeds,
+		event.TriggerHeight,
+		am,
+		weightScaleFactor,
+	)
+
+	// Calculate confirmation weights
+	return calculator.Calculate()
 }
 
 // checkConfirmationSlashing checks if participants should be slashed based on confirmation PoC results

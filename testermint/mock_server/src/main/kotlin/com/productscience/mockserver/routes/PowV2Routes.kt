@@ -13,7 +13,7 @@ import org.slf4j.LoggerFactory
 
 /**
  * Configures routes for PoC v2 (artifact-based) endpoints.
- * These are the /api/v1/inference/pow/* endpoints that proxy through MLNode to vLLM.
+ * These are the /api/v1/inference/pow/ endpoints (init/generate, generate, status, stop) that proxy through MLNode to vLLM.
  */
 fun Route.powV2Routes(webhookService: WebhookService) {
     val logger = LoggerFactory.getLogger("PowV2Routes")
@@ -70,20 +70,33 @@ fun Route.powV2Routes(webhookService: WebhookService) {
 /**
  * Handles PoC v2 init/generate requests.
  * Triggers webhook callback to /generated with artifact batches.
+ *
+ * PoC v2 does NOT require a global stop before starting generation.
+ * This relaxes the v1 requirement for STOPPED state, allowing v2 to work
+ * without calling Stop() as per the plan.
  */
 private suspend fun handleInitGenerateV2(call: ApplicationCall, webhookService: WebhookService, logger: org.slf4j.Logger) {
     logger.info("Received PoC v2 init/generate request")
     
     val host = call.getHost()
-    if (getModelState(host) != ModelState.STOPPED ||
-        getPowState(host) != PowState.POW_STOPPED) {
-        logger.warn("Invalid state for PoC v2 init/generate. Current state: ${getModelState(host)}, POW state: ${getPowState(host)}")
-        call.respond(HttpStatusCode.BadRequest, mapOf(
-            "error" to "Invalid state for generation. state = ${getModelState(host)}. powState = ${getPowState(host)}"
+    val currentModelState = getModelState(host)
+    val currentPowState = getPowState(host)
+    
+    // PoC v2: Relaxed precondition - allow starting without requiring STOPPED state.
+    // This supports the "no Stop()" requirement from the plan.
+    // We still return success if already generating (idempotency).
+    if (currentPowState == PowState.POW_GENERATING) {
+        logger.info("PoC v2 init/generate: Already generating, returning success (idempotent)")
+        call.respond(HttpStatusCode.OK, mapOf(
+            "status" to "OK",
+            "backends" to 1,
+            "n_groups" to 1,
+            "message" to "Already generating"
         ))
         return
     }
 
+    logger.info("PoC v2 init/generate: Transitioning from state=$currentModelState, powState=$currentPowState to POW/POW_GENERATING")
     setModelState(host, ModelState.POW)
     setPowState(host, PowState.POW_GENERATING)
     logger.info("State updated to POW with POW_GENERATING substate (v2)")
@@ -104,19 +117,25 @@ private suspend fun handleInitGenerateV2(call: ApplicationCall, webhookService: 
 /**
  * Handles PoC v2 /generate requests (validation flow).
  * Triggers webhook callback to /validated with validation results.
+ *
+ * PoC v2: Relaxed state requirements to support the "no Stop()" flow.
  */
 private suspend fun handleGenerateV2(call: ApplicationCall, webhookService: WebhookService, logger: org.slf4j.Logger) {
     logger.info("Received PoC v2 generate (validation) request")
 
     val host = call.getHost()
-    // This can be called during POW_GENERATING or POW_VALIDATING states
-    if (getModelState(host) != ModelState.POW) {
-        logger.warn("Invalid state for PoC v2 generate. Current state: ${getModelState(host)}, POW state: ${getPowState(host)}")
-        call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid state for validation"))
-        return
-    }
+    val currentModelState = getModelState(host)
+    val currentPowState = getPowState(host)
+    
+    // PoC v2: Accept validation requests in any state. This supports the flow
+    // where validators send /generate with validation.artifacts without requiring
+    // the node to be in a specific state.
+    logger.info("PoC v2 generate: Current state=$currentModelState, powState=$currentPowState")
 
-    // Update state to validating
+    // Transition to POW/VALIDATING if not already in POW state
+    if (currentModelState != ModelState.POW) {
+        setModelState(host, ModelState.POW)
+    }
     setPowState(host, PowState.POW_VALIDATING)
 
     val requestBody = call.receiveText()
@@ -169,3 +188,4 @@ private suspend fun handlePowStopV2(call: ApplicationCall, logger: org.slf4j.Log
         "errors" to null
     ))
 }
+
