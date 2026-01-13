@@ -15,6 +15,7 @@ type MLNodeClient interface {
 	// PoC operations
 	GetPowStatus(ctx context.Context) (*PowStatusResponse, error)
 	InitGenerate(ctx context.Context, dto InitDto) error
+	InitGenerateV2(ctx context.Context, req PoCInitGenerateRequestV2) error
 	InitValidate(ctx context.Context, dto InitDto) error
 	ValidateBatch(ctx context.Context, batch ProofBatch) error
 

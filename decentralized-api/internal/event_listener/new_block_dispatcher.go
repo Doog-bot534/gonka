@@ -19,6 +19,7 @@ import (
 	"decentralized-api/internal/poc"
 	"decentralized-api/internal/validation"
 	"decentralized-api/logging"
+	"decentralized-api/pocstorage"
 
 	coretypes "github.com/cometbft/cometbft/rpc/core/types"
 	"github.com/productscience/inference/x/inference/types"
@@ -59,6 +60,7 @@ type MlNodeReconciliationConfig struct {
 type OnNewBlockDispatcher struct {
 	nodeBroker           *broker.Broker
 	nodePocOrchestrator  poc.NodePoCOrchestrator
+	pocStorage           pocstorage.PoCStorage
 	queryClient          ChainStateClient
 	phaseTracker         *chainphase.ChainPhaseTracker
 	reconciliationConfig MlNodeReconciliationConfig
@@ -96,6 +98,7 @@ var DefaultReconciliationConfig = MlNodeReconciliationConfig{
 func NewOnNewBlockDispatcher(
 	nodeBroker *broker.Broker,
 	nodePocOrchestrator poc.NodePoCOrchestrator,
+	pocStorage pocstorage.PoCStorage,
 	queryClient ChainStateClient,
 	phaseTracker *chainphase.ChainPhaseTracker,
 	getStatusFunc StatusFunc,
@@ -108,6 +111,7 @@ func NewOnNewBlockDispatcher(
 	return &OnNewBlockDispatcher{
 		nodeBroker:           nodeBroker,
 		nodePocOrchestrator:  nodePocOrchestrator,
+		pocStorage:           pocStorage,
 		queryClient:          queryClient,
 		phaseTracker:         phaseTracker,
 		reconciliationConfig: reconciliationConfig,
@@ -125,6 +129,7 @@ func NewOnNewBlockDispatcherFromCosmosClient(
 	nodeBroker *broker.Broker,
 	configManager *apiconfig.ConfigManager,
 	nodePocOrchestrator poc.NodePoCOrchestrator,
+	pocStorage pocstorage.PoCStorage,
 	cosmosClient cosmosclient.CosmosMessageClient,
 	phaseTracker *chainphase.ChainPhaseTracker,
 	reconciliationConfig MlNodeReconciliationConfig,
@@ -146,6 +151,7 @@ func NewOnNewBlockDispatcherFromCosmosClient(
 	dispatcher := NewOnNewBlockDispatcher(
 		nodeBroker,
 		nodePocOrchestrator,
+		pocStorage,
 		queryClient,
 		phaseTracker,
 		getStatusFunc,
@@ -308,6 +314,35 @@ func (d *OnNewBlockDispatcher) queryNetworkInfo(ctx context.Context) (NetworkInf
 	}, nil
 }
 
+func (d *OnNewBlockDispatcher) interruptActiveV2PoCIfAny() {
+	if d.pocStorage == nil {
+		return
+	}
+
+	now := time.Now().UTC()
+	run, err := d.pocStorage.GetLatestRun(context.Background())
+	if err != nil {
+		// likely pocstorage.ErrNotFound; ignore silently
+		return
+	}
+	if run.InterruptedTime != nil {
+		return
+	}
+	end := run.BlockTime.Add(time.Duration(run.DurationSeconds) * time.Second)
+	if !now.Before(end) {
+		return
+	}
+
+	if err := d.pocStorage.MarkInterrupted(context.Background(), run.BlockHeight, now); err != nil {
+		logging.Warn("Failed to mark v2 PoC interrupted when legacy PoC started", types.PoC,
+			"blockHeight", run.BlockHeight,
+			"error", err)
+		return
+	}
+	logging.Info("Marked v2 PoC interrupted because legacy PoC started", types.PoC,
+		"blockHeight", run.BlockHeight)
+}
+
 // handlePhaseTransitions checks for and handles phase transitions and stage events
 func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.EpochState) {
 	epochContext := epochState.LatestEpoch
@@ -430,6 +465,9 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 			logging.Info("Confirmation PoC generation starting", types.PoC,
 				"trigger_height", event.TriggerHeight,
 				"block_hash", event.PocSeedBlockHash)
+
+			// Legacy/v1 PoC is about to start; ensure any active v2 PoC run is interrupted.
+			d.interruptActiveV2PoCIfAny()
 
 			command := broker.NewStartPocCommand()
 			if err := d.nodeBroker.QueueMessage(command); err != nil {

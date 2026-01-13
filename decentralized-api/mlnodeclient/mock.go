@@ -32,6 +32,7 @@ type MockClient struct {
 	NodeStateError        error
 	GetPowStatusError     error
 	InitGenerateError     error
+	InitGenerateV2Error   error
 	InitValidateError     error
 	ValiateBatchError     error
 	InferenceHealthError  error
@@ -50,6 +51,7 @@ type MockClient struct {
 	NodeStateCalled        int
 	GetPowStatusCalled     int
 	InitGenerateCalled     int
+	InitGenerateV2Called   int
 	InitValidateCalled     int
 	ValidateBatchCalled    int
 	InferenceHealthCalled  int
@@ -65,6 +67,7 @@ type MockClient struct {
 
 	// Capture parameters
 	LastInitDto         *InitDto
+	LastInitDtoV2       *PoCInitGenerateRequestV2
 	LastInitValidateDto *InitDto
 	LastValidateBatch   ProofBatch
 	LastInferenceModel  string
@@ -158,6 +161,21 @@ func (m *MockClient) InitGenerate(ctx context.Context, dto InitDto) error {
 	}
 	m.CurrentState = MlNodeState_POW
 	m.PowStatus = POW_GENERATING
+	return nil
+}
+
+func (m *MockClient) InitGenerateV2(ctx context.Context, req PoCInitGenerateRequestV2) error {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+
+	logging.Info("MockClient. InitGenerateV2: called", types.Testing)
+	m.InitGenerateV2Called++
+	m.LastInitDtoV2 = &req
+	if m.InitGenerateV2Error != nil {
+		return m.InitGenerateV2Error
+	}
+
+	// Keep the v2 path side-effect free with respect to legacy state machine.
 	return nil
 }
 

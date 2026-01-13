@@ -355,8 +355,10 @@ func (c SetNodesActualStatusCommand) Execute(b *Broker) {
 			continue
 		}
 
-		if node.State.StatusTimestamp.After(update.Timestamp) {
-			logging.Info("Skipping status update: older than current", types.Nodes, "node_id", nodeId)
+		// Only accept strictly newer status timestamps to avoid flapping/races
+		// (e.g., registration-triggered status queries racing with reconciliation updates).
+		if !update.Timestamp.After(node.State.StatusTimestamp) {
+			logging.Info("Skipping status update: not newer than current", types.Nodes, "node_id", nodeId)
 			continue
 		}
 

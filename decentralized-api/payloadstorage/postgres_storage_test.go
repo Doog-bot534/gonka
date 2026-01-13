@@ -3,6 +3,7 @@ package payloadstorage
 import (
 	"context"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -14,6 +15,19 @@ import (
 )
 
 func setupPostgresContainer(t *testing.T) (func(), error) {
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker not found; skipping postgres storage tests")
+	}
+	{
+		// Best-effort check that Docker daemon is reachable.
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "docker", "info")
+		if err := cmd.Run(); err != nil {
+			t.Skip("docker not available; skipping postgres storage tests")
+		}
+	}
+
 	ctx := context.Background()
 
 	container, err := postgres.Run(ctx,

@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+const pocApiVersion = "2.0.1"
+
 func (s *Server) getVersions(ctx echo.Context) error {
 	cometClient := s.recorder.NewCometQueryClient()
 	resp, err := cometClient.GetNodeInfo(s.recorder.GetContext(), &cmtservice.GetNodeInfoRequest{})
@@ -23,6 +25,7 @@ func (s *Server) getVersions(ctx echo.Context) error {
 
 	return ctx.JSON(http.StatusOK, map[string]any{
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"poc_api_version": pocApiVersion,
 		"api_version": map[string]string{
 			"application_name": version.AppName,
 			"version":          version.Version,

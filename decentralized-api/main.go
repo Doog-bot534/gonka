@@ -16,6 +16,7 @@ import (
 	pserver "decentralized-api/internal/server/public"
 	"decentralized-api/mlnodeclient"
 	"decentralized-api/payloadstorage"
+	"decentralized-api/pocstorage"
 	"net"
 
 	"github.com/productscience/inference/api/inference/inference"
@@ -142,6 +143,9 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // Ensure resources are cleaned up
 
+	// PoC v2 offchain storage (file and/or Postgres depending on env), shared across components.
+	pocStore := pocstorage.NewPoCStorage(ctx, "/root/.dapi/data/poc")
+
 	// Start periodic config auto-flush of dynamic data to DB
 	config.StartAutoFlush(ctx, 60*time.Second)
 
@@ -150,7 +154,7 @@ func main() {
 
 	validator := validation.NewInferenceValidator(nodeBroker, config, recorder, chainPhaseTracker)
 	blsManager := bls.NewBlsManager(*recorder)
-	listener := event_listener.NewEventListener(config, nodePocOrchestrator, nodeBroker, validator, *recorder, trainingExecutor, chainPhaseTracker, cancel, blsManager)
+	listener := event_listener.NewEventListener(config, nodePocOrchestrator, nodeBroker, pocStore, validator, *recorder, trainingExecutor, chainPhaseTracker, cancel, blsManager)
 	// TODO: propagate trainingExecutor
 	go listener.Start(ctx)
 
@@ -178,12 +182,12 @@ func main() {
 		3*time.Minute, // cache TTL
 	)
 
-	publicServer := pserver.NewServer(nodeBroker, config, recorder, trainingExecutor, blockQueue, chainPhaseTracker, payloadStore)
+	publicServer := pserver.NewServer(nodeBroker, config, recorder, trainingExecutor, blockQueue, chainPhaseTracker, payloadStore, pocStore)
 	publicServer.Start(addr)
 
 	addr = fmt.Sprintf(":%v", config.GetApiConfig().MLServerPort)
 	logging.Info("start ml server on addr", types.Server, "addr", addr)
-	mlServer := mlserver.NewServer(recorder, nodeBroker)
+	mlServer := mlserver.NewServer(recorder, nodeBroker, pocStore)
 	mlServer.Start(addr)
 
 	addr = fmt.Sprintf(":%v", config.GetApiConfig().AdminServerPort)

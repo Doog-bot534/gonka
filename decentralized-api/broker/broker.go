@@ -133,6 +133,14 @@ func (b *Broker) GetParticipantAddress() string {
 	return b.participantInfo.GetAddress()
 }
 
+// GetParticipantPubKey returns the current participant's public key (base64) if available.
+func (b *Broker) GetParticipantPubKey() string {
+	if b == nil || b.participantInfo == nil {
+		return ""
+	}
+	return b.participantInfo.GetPubKey()
+}
+
 const (
 	PoCBatchesPath = "/v1/poc-batches"
 )

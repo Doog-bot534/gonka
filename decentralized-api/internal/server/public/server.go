@@ -8,6 +8,7 @@ import (
 	"decentralized-api/internal"
 	"decentralized-api/internal/server/middleware"
 	"decentralized-api/payloadstorage"
+	"decentralized-api/pocstorage"
 	"decentralized-api/training"
 	"net/http"
 
@@ -24,6 +25,7 @@ type Server struct {
 	bandwidthLimiter    *internal.BandwidthLimiter
 	identityCache       *identityCache
 	payloadStorage      payloadstorage.PayloadStorage
+	pocStorage          pocstorage.PoCStorage
 	phaseTracker        *chainphase.ChainPhaseTracker
 	epochGroupDataCache *internal.EpochGroupDataCache
 }
@@ -36,7 +38,8 @@ func NewServer(
 	trainingExecutor *training.Executor,
 	blockQueue *BridgeQueue,
 	phaseTracker *chainphase.ChainPhaseTracker,
-	payloadStorage payloadstorage.PayloadStorage) *Server {
+	payloadStorage payloadstorage.PayloadStorage,
+	pocStorage pocstorage.PoCStorage) *Server {
 	e := echo.New()
 	e.HTTPErrorHandler = middleware.TransparentErrorHandler
 
@@ -52,6 +55,7 @@ func NewServer(
 		blockQueue:          blockQueue,
 		identityCache:       newIdentityCache(),
 		payloadStorage:      payloadStorage,
+		pocStorage:          pocStorage,
 		phaseTracker:        phaseTracker,
 		epochGroupDataCache: internal.NewEpochGroupDataCache(recorder),
 	}
@@ -60,6 +64,12 @@ func NewServer(
 
 	e.Use(middleware.LoggingMiddleware)
 	g := e.Group("/v1/")
+
+	// Reserved for new PoC V2 offchain APIs.
+	// Gate the whole group to prevent mixed-version peers calling /v2 endpoints.
+	v2 := e.Group("/v2/", middleware.RequireApiVersion("2.0.1"))
+	v2.POST("poc/start", s.postPoCStartV2)
+	v2.GET("poc/results", s.getPoCResultsV2)
 
 	g.GET("status", s.getStatus)
 	g.GET("identity", s.getIdentity)

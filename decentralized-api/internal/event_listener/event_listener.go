@@ -12,6 +12,7 @@ import (
 	"decentralized-api/internal/startup"
 	"decentralized-api/internal/validation"
 	"decentralized-api/logging"
+	"decentralized-api/pocstorage"
 	"decentralized-api/training"
 	"decentralized-api/upgrade"
 	"encoding/json"
@@ -62,6 +63,7 @@ func NewEventListener(
 	configManager *apiconfig.ConfigManager,
 	nodePocOrchestrator poc.NodePoCOrchestrator,
 	nodeBroker *broker.Broker,
+	pocStorage pocstorage.PoCStorage,
 	validator *validation.InferenceValidator,
 	transactionRecorder cosmosclient.InferenceCosmosClient,
 	trainingExecutor *training.Executor,
@@ -74,6 +76,7 @@ func NewEventListener(
 		nodeBroker,
 		configManager,
 		nodePocOrchestrator,
+		pocStorage,
 		&transactionRecorder,
 		phaseTracker,
 		DefaultReconciliationConfig,

@@ -1,12 +1,14 @@
-New PoC Offchain Step-by-Step Testing and Migration
+# New PoC Offchain Step-by-Step Testing and Migration
 
-1. **Version 2.0.1:** We are creating a version of the `mlnode` and `api` nodes so that they function exactly as before but also include additional functionality and endpoints   
+1. **Version 2.0.1:** We are creating a version of the `mlnode` and `api` nodes so that they function exactly as before but also include additional functionality and endpoints
    1. As we want to iterate through multiple versions with a potentially different set of participants, all apis should be versioned so only triggered for nodes with the latest version (e.g. through adding to all requests `X-API-Version: 2.0.1`).  
       1. **Version discovery**: use the existing `GET /v1/versions` endpoint for discovery, but add a **new dedicated field** in its JSON response for this protocol (e.g. `poc_api_version` ), rather than reusing existing `api_version.version` fields that may already be used for other purposes.  
-   2. **PoCStart Endpoint**: Used to launch a new "poc." It records the "poc" in local database (using the same database as for seed). If records for an old poc are already being made, the new records must be completely separate to avoid confusion. It also sends a request to the `mlnode` to start generating new "nonces" for the next 60 seconds (duration), sending results every 5 seconds (frequency).   
+   2. **PoCStart Endpoint**: Used to launch a new "poc." It records the "poc" using the same storage backends we already support for inference payloads (**file storage and/or Postgres**, not SQLite). If records for an old poc are already being made, the new records must be completely separate to avoid confusion. It also sends a request to the `mlnode` to start generating new "nonces" for the next 60 seconds (duration), sending results every 5 seconds (frequency).
       1. The endpoint accepts requests with an `X-TA-Signature` only from a specific hardcoded public key; this is a temporary endpoint that will be removed in production.  
-      2. If a new PoC cannot start due to an old PoC or is interrupted by an old PoC, we record the interruption time in `interrupted_time`. On start, we check if an old PoC process is running; if so, we consider the process interrupted immediately and record the current time. Similarly, when moving to an old PoC process, we check if a new PoC is still active (not yet finished and not interrupted) and record it for the current new PoC.    
-      3. api POST v1/poc-v2/start:  
+      2. If a new PoC cannot start due to an old PoC or is interrupted by an old PoC, we record the interruption time in `interrupted_time`. On start, we perform **two independent checks**:
+         1. **Legacy/v1 PoC (broker-controlled) active**: if the existing PoC flow is currently running (as reflected in broker node PoC statuses), then the v2 PoC is considered interrupted immediately.
+         2. **Prior v2 PoC run (storage-controlled) active**: if the latest stored v2 run is still active (not finished and not interrupted), we mark that previous v2 run as interrupted and also consider this new v2 PoC interrupted immediately.  
+      3. api POST v2/poc/start:  
          1. `block_height` (int64)  
          2. `epoch_length` (int64) \- for the future, initially unused  
          3. `block_hash` (string)  
@@ -18,9 +20,10 @@ New PoC Offchain Step-by-Step Testing and Migration
             1. `model` (string)  
             2. `seq_len` (int)  
             3. `k_dim` (int; default 12)  
-      4. Storage in DB:  
-         1. `poc` table:   
-            1. `block_height` (key), `epoch_length` (future), `block_hash`, `block_time`, `duration`, `frequency`, `interrupted_time`.  
+      4. Storage (same backends as inference payload storage):  
+         1. Storage backends should mirror `decentralized-api/payloadstorage/*` (notably `payloadstorage/file_storage.go` and `payloadstorage/postgres_storage.go`, optionally `payloadstorage/hybrid_storage.go` and `payloadstorage/managed_storage.go`).  
+         2. Postgres should use the same connection mechanism as payload storage (standard libpq env vars already used by `payloadstorage/postgres_storage.go`: PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD).  
+         3. The PoC run record fields (regardless of backend): `block_height` (key), `epoch_length` (future), `block_hash`, `block_time`, `duration`, `frequency`, `interrupted_time`.  
       5. ML node trigger (generation start request):  
          1. The API node triggers each ML node generation via the ML node HTTP endpoint `POST /init/generate` (router `@router.post("/init/generate")`).  
          2. Request body (JSON) `PoCInitGenerateRequest`:  
@@ -37,17 +40,18 @@ New PoC Offchain Step-by-Step Testing and Migration
                2. `seq_len` (int)  
                3. `k_dim` (int; default 12)  
             10. `url` (string; optional)  
-   3. **PoCBatchesGenerated Endpoint**: For the new "nonce" format received from `mlnode`. When the API node receives nonces, it saves a record of the result (results may be received multiple times; each result is saved as a separate record): `node_id` of the mlnode (node num → broker node id string), current count of "nonces" for this "poc," hash of all "nonces" received so far, time since `block_time`, and an array of "nonces"  
-      1. api POST /v1/poc-v2-batches/generated:  
+   3. **PoCArtifactsGenerated Endpoint**: For the new **artifact-based** format received from `mlnode`. When the API node receives artifacts, it saves a record of the result (results may be received multiple times; each result is saved as a separate record): `node_id` of the mlnode (node num → broker node id string), current count of artifacts for this "poc," hash of all artifacts received so far, time since `block_time`, and an array of artifacts.  
+      1. api POST /v2/poc-artifacts/generated:  
          1. `public_key` (string)  
          2. `block_hash` (string)  
          3. `block_height` (int64)  
-         4. `model` (string)  
-         5. `nonces` (\[\]Nonces)  
-            1. `nonce` (int32)  
-            2. `vector` (\[\]byte which 12 x float16)  
-         6. `node_id` (uint64)  
-      2. Storage in DB: Uses the same database as seed, though nonces may eventually be stored with the payload.  
+         4. `node_id` (int)  
+         5. `artifacts` (\[\]ArtifactV2)  
+            1. `nonce` (int64)  
+            2. `vector_b64` (string; base64-encoded fp16 little-endian vector)  
+         6. `encoding` (object; optional; informational; ignored by decentralized-api)  
+         7. `request_id` (string; optional)  
+      2. Storage: Uses the same storage backends as inference payloads (file storage and/or Postgres), though nonces may eventually be stored with the payload.  
          1. `block_height`  
          2. `address` (participant own address)  
          3. `node_id` (string)  
@@ -55,13 +59,13 @@ New PoC Offchain Step-by-Step Testing and Migration
          5. `amount`  
          6. `hash`  
          7. `time_since_block`  
-         8. `nonces` (\[\] Nonces)
-            1. `nonce` (int32)  
-            2. `vector` (\[\]byte which 12 x float16)   
+         8. `artifacts` (\[\]ArtifactV2) (internal storage representation)
+            1. `nonce` (int64)
+            2. `vector_b64` (string)
    4. **PoCResult Endpoint:** Allows viewing poc results for each participant (currently only one), each of their ml nodes, and each result (at 5, 10, etc., second intervals): time since `block_time`, nonce count, hash, and the "nonces" themselves.  
-      1. The endpoint returns results for the last launched PoC, but a `GET` parameter can be used to view results for a different `block_height` (if there is no PoC with that block\_height, the endpoint should return the closest known PoC which happens before that block\_height)    
-      2. The endpoint accepts requests with an X-TA-Signature only from a specific hardcoded public key; this is a temporary endpoint that will be removed in production.   
-      3. api GET v1/poc/results?block\_height=...   
+      1. The endpoint returns results for the last launched PoC, but a `GET` parameter can be used to view results for a different `block_height` (if there is no PoC with that block\_height, the endpoint should return the closest known PoC which happens before that block\_height)
+      2. The endpoint accepts requests with an X-TA-Signature only from a specific hardcoded public key; this is a temporary endpoint that will be removed in production.
+      3. api GET v2/poc/results?block\_height=...
          1. poc  
             1. block\_height  
             2. … (other parameters of the poc)  
@@ -107,9 +111,9 @@ New PoC Offchain Step-by-Step Testing and Migration
    1. The PoC launch is moved to a reaction to a block (we use the block hash and `block_time`).  
    2. The `PoCStart` endpoint only determines which block to start from (`block_height`), and how often to launch (`epoch_length`).  
    3. We add another API that shows a vector for each participant of how much weight they had after "delay" seconds in different PoCs starting from "blockHeight".  
-      1. `GET v1/poc/stats?delay=...\&blockHeight=...`  
+      1. `GET v2/poc/stats?delay=...\&blockHeight=...`  
    4. And another `PoCStart` endpoint that allows stopping the procedure (the API accepts a request only from a specific public key).  
-      1. `POST v1/poc/stop`  
+      1. `POST v2/poc/stop`  
 6. **Testing 2.0.3:** We ask DevOps to launch this version, and we check if all nodes are consistently participating, if anyone drops out of participation (does their weight drop), how quickly we get a consistent stable result (after 15, 30, 45, 60 seconds).  
 7. **Version 2.0.4:** If successful, we perform validation.  
    1. PoCResult Enpoint POST should validate that the model for node id for participant is correct one (think about other missing validations)  
@@ -122,7 +126,7 @@ New PoC Offchain Step-by-Step Testing and Migration
       1. storage in db  
          1. `block_height`  
          2. `address`  
-         3. `vote`   
+         3. `vote`
          4. `interapted_time`  
    4. We add a vote to the PoC Result for each participant, add the flag `?vote_only=true`.  
 8. **Testing 2.0.4:** We ask DevOps to launch this version, and we check who has the available API and what they get, and how this will correlate with their weight.

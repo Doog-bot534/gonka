@@ -2,6 +2,7 @@ package utils
 
 const (
 	AuthorizationHeader     = "Authorization"
+	XApiVersionHeader       = "X-API-Version"
 	XSeedHeader             = "X-Seed"
 	XInferenceIdHeader      = "X-Inference-Id"
 	XRequesterAddressHeader = "X-Requester-Address"

@@ -320,6 +320,7 @@ func createIntegrationTestSetup(reconcilialtionConfig *MlNodeReconciliationConfi
 	dispatcher := NewOnNewBlockDispatcher(
 		nodeBroker,
 		pocOrchestrator,
+		nil, // pocStorage (PoC v2 offchain) not needed for these legacy flow integration tests
 		mockQueryClient,
 		phaseTracker,
 		mockStatusFunc,
@@ -430,7 +431,7 @@ func (setup *IntegrationTestSetup) simulateBlock(height int64) error {
 func (setup *IntegrationTestSetup) getNodeClient(nodeId string, port int) *mlnodeclient.MockClient {
 	// Construct URLs the same way the broker does
 	pocUrl := fmt.Sprintf("http://localhost:%d/poc", port)
-	inferenceUrl := fmt.Sprintf("http://localhost:8080/inference")
+	inferenceUrl := "http://localhost:8080/inference"
 
 	client := setup.MockClientFactory.GetClientForNode(pocUrl)
 	if client == nil {
