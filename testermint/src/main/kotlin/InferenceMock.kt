@@ -284,7 +284,7 @@ class InferenceMock(port: Int, val name: String) : IInferenceMock {
                     "webhook",
                     mapOf(
                         "method" to "POST",
-                        "url" to "{{jsonPath originalRequest.body '$.url'}}/generated",
+                        "url" to "{{jsonPath originalRequest.body '$.url'}}/v2/poc-artifacts/generated",
                         "headers" to mapOf("Content-Type" to "application/json"),
                         "delay" to mapOf("type" to "fixed", "milliseconds" to 1000),
                         "body" to body
@@ -323,7 +323,7 @@ class InferenceMock(port: Int, val name: String) : IInferenceMock {
                     "webhook",
                     mapOf(
                         "method" to "POST",
-                        "url" to "{{jsonPath originalRequest.body '$.url'}}/validated",
+                        "url" to "{{jsonPath originalRequest.body '$.url'}}/v2/poc-artifacts/validated",
                         "headers" to mapOf("Content-Type" to "application/json"),
                         "delay" to mapOf("type" to "fixed", "milliseconds" to 5000),
                         "body" to callbackBody

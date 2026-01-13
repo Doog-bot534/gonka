@@ -310,6 +310,8 @@ func (o *NodePoCOrchestratorV2Impl) ValidateReceivedArtifacts(pocStageStartBlock
 		}
 
 		// Build validation request
+		// Note: MLNode appends /validated to the URL, so we provide the v2 base path
+		validationCallbackUrl := o.callbackUrl + "/v2/poc-artifacts"
 		validationReq := mlnodeclient.PoCGenerateRequestV2{
 			BlockHash:   blockHash,
 			BlockHeight: pocStageStartBlockHeight,
@@ -320,7 +322,7 @@ func (o *NodePoCOrchestratorV2Impl) ValidateReceivedArtifacts(pocStageStartBlock
 				Model:  pocV2Params.ModelId,
 				SeqLen: pocV2Params.SeqLen,
 			},
-			URL: o.callbackUrl,
+			URL: validationCallbackUrl,
 			Validation: &mlnodeclient.ValidationV2{
 				Artifacts: sampledArtifacts,
 			},

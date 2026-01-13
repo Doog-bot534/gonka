@@ -1,7 +1,6 @@
 {
   "scenarioName": "ModelState",
   "requiredScenarioState": "POW_V2",
-  "newScenarioState": "POW_V2_VALIDATE",
   "request": {
     "method": "POST",
     "urlPath": "/api/v1/inference/pow/generate"
@@ -19,7 +18,7 @@
   "postServeActions": {
     "webhook": {
       "method": "POST",
-      "url": "{{jsonPath originalRequest.body '$.url'}}/validated",
+      "url": "{{jsonPath originalRequest.body '$.url'}}/v2/poc-artifacts/validated",
       "headers": {
         "Content-Type": "application/json"
       },

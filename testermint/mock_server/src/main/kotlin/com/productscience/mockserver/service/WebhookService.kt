@@ -168,7 +168,12 @@ class WebhookService(private val responseService: ResponseService) {
             logger.info("Processing PoC v2 generate webhook - URL: $url, PublicKey: $publicKey, BlockHeight: $blockHeight, NodeId: $nodeId")
 
             if (url != null && publicKey != null && blockHash != null && blockHeight != null) {
-                val webhookUrl = "$url/generated"
+                // Normalize URL: if url already contains /v2/poc-artifacts, append /generated; otherwise treat as host base
+                val webhookUrl = if (url.contains("/v2/poc-artifacts")) {
+                    "$url/generated"
+                } else {
+                    "$url/v2/poc-artifacts/generated"
+                }
 
                 // Get the weight from the ResponseService, default to 10 if not set
                 val weight = responseService.getPocResponseWeight(hostName) ?: 10L
@@ -220,9 +225,14 @@ class WebhookService(private val responseService: ResponseService) {
 
             logger.info("Processing PoC v2 validation webhook - PublicKey: $publicKey, BlockHeight: $blockHeight, nTotal: $nTotal")
 
-            // Determine callback URL
+            // Determine callback URL - normalize to v2 endpoint
             val webhookUrl = if (url != null) {
-                "$url/validated"
+                // Normalize URL: if url already contains /v2/poc-artifacts, append /validated; otherwise treat as host base
+                if (url.contains("/v2/poc-artifacts")) {
+                    "$url/validated"
+                } else {
+                    "$url/v2/poc-artifacts/validated"
+                }
             } else {
                 val keyName = System.getenv("KEY_NAME") ?: "localhost"
                 "http://$keyName-api:9100/v2/poc-artifacts/validated"

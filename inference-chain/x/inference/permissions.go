@@ -22,6 +22,8 @@ var InferenceOperationKeyPerms = []sdk.Msg{
 	&types.MsgValidation{},
 	&types.MsgSubmitPocBatch{},
 	&types.MsgSubmitPocValidation{},
+	&types.MsgSubmitPocArtifactBatchesV2{}, // PoC v2 artifact batches
+	&types.MsgSubmitPocValidationsV2{},     // PoC v2 validations
 	&types.MsgSubmitSeed{},
 	&types.MsgBridgeExchange{},
 	&types.MsgSubmitTrainingKvRecord{},

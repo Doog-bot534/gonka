@@ -5,6 +5,7 @@ import (
 	"decentralized-api/logging"
 	"encoding/base64"
 	"encoding/hex"
+	"fmt"
 
 	"github.com/cosmos/btcutil/bech32"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
@@ -12,14 +13,21 @@ import (
 	"golang.org/x/crypto/ripemd160"
 )
 
-// PubKeyToAddress Public key bytes to Cosmos address
-//
-//	pubKeyHex := "A1B2C3..." // Replace with your public key hex string
-func PubKeyToAddress(pubKeyHex string) (string, error) {
-	pubKeyBytes, err := hex.DecodeString(pubKeyHex)
+// PubKeyToAddress converts a public key string to a Cosmos bech32 address.
+// Accepts both base64-encoded (standard Cosmos format) and hex-encoded public keys.
+func PubKeyToAddress(pubKeyStr string) (string, error) {
+	var pubKeyBytes []byte
+	var err error
+
+	// Try base64 first (standard Cosmos format from chain queries)
+	pubKeyBytes, err = base64.StdEncoding.DecodeString(pubKeyStr)
 	if err != nil {
-		logging.Error("Invalid public key hex", types.Participants, "err", err)
-		return "", err
+		// Fallback to hex encoding (legacy format)
+		pubKeyBytes, err = hex.DecodeString(pubKeyStr)
+		if err != nil {
+			logging.Error("Invalid public key (not base64 or hex)", types.Participants, "err", err, "error-type", fmt.Sprintf("%T", err))
+			return "", err
+		}
 	}
 
 	// Step 1: SHA-256 hash
