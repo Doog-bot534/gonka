@@ -43,27 +43,47 @@ type pocStartV2Response struct {
 }
 
 func (s *Server) postPoCStartV2(c echo.Context) error {
+	const dbg = "POC_V2_DEBUG"
+
 	if s.pocStorage == nil {
+		logging.Error(dbg+": start: poc storage nil", types.PoC)
 		return echo.NewHTTPError(http.StatusInternalServerError, "poc storage not configured")
 	}
 
 	var req pocStartV2Request
 	bodyBytes, err := io.ReadAll(c.Request().Body)
 	if err != nil {
+		logging.Warn(dbg+": start: failed to read body", types.PoC, "error", err)
 		return echo.NewHTTPError(http.StatusBadRequest, "failed to read body")
 	}
 	if err := json.Unmarshal(bodyBytes, &req); err != nil {
+		logging.Warn(dbg+": start: invalid json", types.PoC, "error", err)
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
+
+	logging.Info(dbg+": start: received", types.PoC,
+		"remote_ip", c.RealIP(),
+		"api_version", c.Request().Header.Get(utils.XApiVersionHeader),
+		"blockHeight", req.BlockHeight,
+		"blockHash", req.BlockHash,
+		"blockTime", req.BlockTime,
+		"duration", req.Duration,
+		"frequency", req.Frequency,
+		"batchSize", req.BatchSize,
+		"model", req.Params.Model,
+		"seqLen", req.Params.SeqLen,
+		"kDim", req.Params.KDim)
 
 	// Temporary auth gate: require X-TA-Signature validated against a single pubkey.
 	// This is a testing-only constraint and should be removed for production.
 	signature := c.Request().Header.Get(utils.XTASignatureHeader)
 	if signature == "" {
+		logging.Warn(dbg+": start: missing X-TA-Signature", types.PoC)
 		return echo.NewHTTPError(http.StatusUnauthorized, "X-TA-Signature header required")
 	}
 	canonical, err := utils.CanonicalizeJSON(bodyBytes)
 	if err != nil {
+		logging.Warn(dbg+": start: canonicalize json failed", types.PoC, "error", err)
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid json")
 	}
 	payloadHash := pocV2StartPayloadHashFromBody(canonical)
@@ -71,30 +91,39 @@ func (s *Server) postPoCStartV2(c echo.Context) error {
 		logging.Warn("PoC v2 start signature invalid", types.PoC, "error", err)
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid X-TA-Signature")
 	}
+	logging.Info(dbg+": start: signature ok", types.PoC, "payload_hash", payloadHash)
 
 	// Basic validation
 	if req.BlockHeight <= 0 {
+		logging.Warn(dbg+": start: invalid block_height", types.PoC, "blockHeight", req.BlockHeight)
 		return echo.NewHTTPError(http.StatusBadRequest, "block_height must be > 0")
 	}
 	if req.BlockHash == "" {
+		logging.Warn(dbg+": start: missing block_hash", types.PoC)
 		return echo.NewHTTPError(http.StatusBadRequest, "block_hash is required")
 	}
 	if req.BlockTime.IsZero() {
+		logging.Warn(dbg+": start: missing block_time", types.PoC)
 		return echo.NewHTTPError(http.StatusBadRequest, "block_time is required")
 	}
 	if req.Duration <= 0 {
+		logging.Warn(dbg+": start: invalid duration", types.PoC, "duration", req.Duration)
 		return echo.NewHTTPError(http.StatusBadRequest, "duration must be > 0")
 	}
 	if req.Frequency <= 0 {
+		logging.Warn(dbg+": start: invalid frequency", types.PoC, "frequency", req.Frequency)
 		return echo.NewHTTPError(http.StatusBadRequest, "frequency must be > 0")
 	}
 	if req.BatchSize <= 0 {
+		logging.Warn(dbg+": start: invalid batch_size", types.PoC, "batchSize", req.BatchSize)
 		return echo.NewHTTPError(http.StatusBadRequest, "batch_size must be > 0")
 	}
 	if req.Params.Model == "" {
+		logging.Warn(dbg+": start: missing params.model", types.PoC)
 		return echo.NewHTTPError(http.StatusBadRequest, "params.model is required")
 	}
 	if req.Params.SeqLen <= 0 {
+		logging.Warn(dbg+": start: invalid params.seq_len", types.PoC, "seqLen", req.Params.SeqLen)
 		return echo.NewHTTPError(http.StatusBadRequest, "params.seq_len must be > 0")
 	}
 	if req.Params.KDim == 0 {
@@ -117,6 +146,7 @@ func (s *Server) postPoCStartV2(c echo.Context) error {
 	} else if legacyActive {
 		started = false
 	}
+	logging.Info(dbg+": start: legacy check complete", types.PoC, "legacyActive", legacyActive, "started", started)
 
 	prev, err := s.pocStorage.GetLatestRun(c.Request().Context())
 	if err == nil {
@@ -128,6 +158,9 @@ func (s *Server) postPoCStartV2(c echo.Context) error {
 			started = false
 		}
 	}
+	logging.Info(dbg+": start: v2 previous-run check complete", types.PoC,
+		"started", started,
+		"interruptedPrevious", interruptedPrev)
 
 	var interruptedAt *time.Time
 	if !started {
@@ -149,6 +182,7 @@ func (s *Server) postPoCStartV2(c echo.Context) error {
 
 	if err := s.pocStorage.UpsertRun(c.Request().Context(), run); err != nil {
 		logging.Error("Failed to upsert PoC run", types.PoC, "blockHeight", req.BlockHeight, "error", err)
+		logging.Error(dbg+": start: upsert failed", types.PoC, "blockHeight", req.BlockHeight, "error", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store poc run")
 	}
 
@@ -157,18 +191,23 @@ func (s *Server) postPoCStartV2(c echo.Context) error {
 		"started", started,
 		"legacyPoCActive", legacyActive,
 		"interruptedPrevious", interruptedPrev)
+	logging.Info(dbg+": start: stored", types.PoC, "blockHeight", run.BlockHeight, "started", started)
 
 	if started {
+		logging.Info(dbg+": start: triggering mlnodes", types.PoC, "blockHeight", run.BlockHeight, "model", run.Params.Model)
 		if err := s.triggerPoCV2InitGenerate(c.Request().Context(), run); err != nil {
 			logging.Error("Failed to trigger PoC v2 init generation on mlnodes", types.PoC,
 				"blockHeight", run.BlockHeight,
 				"error", err)
+			logging.Error(dbg+": start: trigger mlnodes failed", types.PoC, "blockHeight", run.BlockHeight, "error", err)
 			return echo.NewHTTPError(http.StatusBadGateway, err.Error())
 		}
 
 		s.schedulePoCV2Stop(run)
+		logging.Info(dbg+": start: scheduled stop", types.PoC, "blockHeight", run.BlockHeight, "after_seconds", run.DurationSeconds)
 	}
 
+	logging.Info(dbg+": start: responding", types.PoC, "blockHeight", run.BlockHeight, "started", started)
 	return c.JSON(http.StatusOK, pocStartV2Response{
 		Started:             started,
 		Run:                 run,

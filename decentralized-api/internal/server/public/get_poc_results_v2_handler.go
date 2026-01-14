@@ -38,7 +38,10 @@ type pocResultsV2NodeResult struct {
 }
 
 func (s *Server) getPoCResultsV2(c echo.Context) error {
+	const dbg = "POC_V2_DEBUG"
+
 	if s.pocStorage == nil {
+		logging.Error(dbg+": results: poc storage nil", types.PoC)
 		return echo.NewHTTPError(http.StatusInternalServerError, "poc storage not configured")
 	}
 
@@ -46,19 +49,27 @@ func (s *Server) getPoCResultsV2(c echo.Context) error {
 	// For GET requests we sign a stable payload derived from the selected block height.
 	signature := c.Request().Header.Get(utils.XTASignatureHeader)
 	if signature == "" {
+		logging.Warn(dbg+": results: missing X-TA-Signature", types.PoC, "remote_ip", c.RealIP())
 		return echo.NewHTTPError(http.StatusUnauthorized, "X-TA-Signature header required")
 	}
 
 	req, err := parsePoCResultsV2Request(c)
 	if err != nil {
+		logging.Warn(dbg+": results: bad request", types.PoC, "error", err)
 		return err
 	}
+
+	logging.Info(dbg+": results: received", types.PoC,
+		"remote_ip", c.RealIP(),
+		"api_version", c.Request().Header.Get(utils.XApiVersionHeader),
+		"block_height_param", req.BlockHeight)
 
 	payloadHash := pocV2ResultsPayloadHash(req)
 	if err := validatePoCV2StartSignature(signature, payloadHash); err != nil {
 		logging.Warn("PoC v2 results signature invalid", types.PoC, "error", err)
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid X-TA-Signature")
 	}
+	logging.Info(dbg+": results: signature ok", types.PoC, "payload_hash", payloadHash)
 
 	// Resolve run
 	var run pocstorage.PoCRun
@@ -69,15 +80,24 @@ func (s *Server) getPoCResultsV2(c echo.Context) error {
 	}
 	if err != nil {
 		if err == pocstorage.ErrNotFound {
+			logging.Info(dbg+": results: run not found", types.PoC, "block_height_param", req.BlockHeight)
 			return echo.NewHTTPError(http.StatusNotFound, "poc run not found")
 		}
+		logging.Error(dbg+": results: failed to load run", types.PoC, "error", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to load poc run")
 	}
+	logging.Info(dbg+": results: resolved run", types.PoC,
+		"run_block_height", run.BlockHeight,
+		"run_model", run.Params.Model,
+		"run_created_at", run.CreatedAt,
+		"run_interrupted", run.InterruptedTime != nil)
 
 	recs, err := s.pocStorage.ListGeneratedRecords(c.Request().Context(), run.BlockHeight)
 	if err != nil {
+		logging.Error(dbg+": results: failed to list records", types.PoC, "blockHeight", run.BlockHeight, "error", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to list poc records")
 	}
+	logging.Info(dbg+": results: loaded records", types.PoC, "blockHeight", run.BlockHeight, "count", len(recs))
 
 	resp := pocResultsV2Response{
 		PoC: pocResultsV2PoC{
@@ -86,6 +106,7 @@ func (s *Server) getPoCResultsV2(c echo.Context) error {
 		},
 	}
 
+	logging.Info(dbg+": results: responding", types.PoC, "blockHeight", run.BlockHeight, "participants", len(resp.PoC.Participants))
 	return c.JSON(http.StatusOK, resp)
 }
 
