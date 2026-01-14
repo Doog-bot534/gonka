@@ -252,7 +252,7 @@ func TestNodeWorker_MLClientInteraction(t *testing.T) {
 	assert.Equal(t, 2, mockClient.StopCalled, "Stop should be called again for inference up")
 	assert.Equal(t, 1, mockClient.InferenceUpCalled, "InferenceUp should be called once")
 	assert.Equal(t, "test-model", mockClient.LastInferenceModel, "Model should be captured")
-	assert.Equal(t, []string{"--arg1", "--arg2"}, mockClient.LastInferenceArgs, "Args should be captured")
+	assert.Equal(t, []string{"--arg1", "--arg2", "--enable-poc"}, mockClient.LastInferenceArgs, "Args should be captured")
 }
 
 func TestNodeWorkGroup_AddRemoveWorkers(t *testing.T) {

@@ -180,6 +180,15 @@ func (c InitValidateNodeCommand) Execute(ctx context.Context, worker *NodeWorker
 // InferenceUpNodeCommand brings up inference on a single node
 type InferenceUpNodeCommand struct{}
 
+func ensureArg(args []string, arg string) []string {
+	for _, a := range args {
+		if a == arg {
+			return args
+		}
+	}
+	return append(args, arg)
+}
+
 func (c InferenceUpNodeCommand) Execute(ctx context.Context, worker *NodeWorker) NodeResult {
 	result := NodeResult{
 		OriginalTarget:    types.HardwareNodeStatus_INFERENCE,
@@ -266,6 +275,8 @@ func (c InferenceUpNodeCommand) Execute(ctx context.Context, worker *NodeWorker)
 		localArgs = localModelConfig.Args
 	}
 	mergedArgs := worker.broker.MergeModelArgs(selectedModel.ModelArgs, localArgs)
+	// Required by MLNode runtime to enable PoC endpoints for the inference model.
+	mergedArgs = ensureArg(mergedArgs, "--enable-poc")
 
 	if err := worker.GetClient().InferenceUp(ctx, selectedModel.Id, mergedArgs); err != nil {
 		logging.Error("Failed to bring up inference", types.Nodes, "node_id", worker.nodeId, "error", err)
