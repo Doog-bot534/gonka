@@ -420,68 +420,6 @@ func (c StartPoCNodeCommandV2) Execute(ctx context.Context, worker *NodeWorker) 
 	return result
 }
 
-// ValidatePoCNodeCommandV2 initiates PoC v2 validation for specific artifacts.
-// Unlike v1, v2 validation uses /generate with validation.artifacts instead of InitValidate+ValidateBatch.
-type ValidatePoCNodeCommandV2 struct {
-	BlockHeight int64
-	BlockHash   string
-	PubKey      string
-	CallbackUrl string
-	TotalNodes  int
-	Model       string
-	SeqLen      int64
-	Nonces      []int64
-	Artifacts   []mlnodeclient.ArtifactV2
-}
-
-func (c ValidatePoCNodeCommandV2) Execute(ctx context.Context, worker *NodeWorker) NodeResult {
-	result := NodeResult{
-		OriginalTarget:    types.HardwareNodeStatus_POC,
-		OriginalPocTarget: PocStatusValidating,
-	}
-
-	if ctx.Err() != nil {
-		result.Succeeded = false
-		result.Error = ctx.Err().Error()
-		result.FinalStatus = worker.node.State.CurrentStatus
-		result.FinalPocStatus = worker.node.State.PocCurrentStatus
-		return result
-	}
-
-	// Build validation request
-	req := mlnodeclient.PoCGenerateRequestV2{
-		BlockHash:   c.BlockHash,
-		BlockHeight: c.BlockHeight,
-		PublicKey:   c.PubKey,
-		NodeId:      int(worker.node.Node.NodeNum),
-		NodeCount:   c.TotalNodes,
-		Nonces:      c.Nonces,
-		Params: mlnodeclient.PoCParamsV2{
-			Model:  c.Model,
-			SeqLen: c.SeqLen,
-		},
-		URL: c.CallbackUrl,
-		Validation: &mlnodeclient.ValidationV2{
-			Artifacts: c.Artifacts,
-		},
-	}
-
-	// Send validation request - NO Stop() call per plan
-	if _, err := worker.GetClient().GenerateV2(ctx, req); err != nil {
-		logging.Error("[ValidatePoCNodeCommandV2] Failed to start PoC v2 validation", types.PoC, "node_id", worker.nodeId, "error", err)
-		result.Succeeded = false
-		result.Error = err.Error()
-		result.FinalStatus = types.HardwareNodeStatus_FAILED
-	} else {
-		result.Succeeded = true
-		result.FinalStatus = types.HardwareNodeStatus_POC
-		result.FinalPocStatus = PocStatusValidating
-		logging.Info("[ValidatePoCNodeCommandV2] Successfully started PoC v2 validation on node", types.PoC,
-			"node_id", worker.nodeId, "nonces_count", len(c.Nonces))
-	}
-	return result
-}
-
 // TransitionPoCToValidatingV2Command is a no-network command that transitions the broker's
 // internal node state to POC/Validating when PoC v2 is enabled.
 // Actual v2 validation is handled by the v2 orchestrator (not the broker), which calls

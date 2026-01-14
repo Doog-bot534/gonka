@@ -31,16 +31,16 @@ type PoCInitGenerateRequestV2 struct {
 // PoCGenerateRequestV2 represents the request body for /api/v1/inference/pow/generate.
 // Used for both generation (nonces only) and validation (with validation.artifacts).
 type PoCGenerateRequestV2 struct {
-	BlockHash   string           `json:"block_hash"`
-	BlockHeight int64            `json:"block_height"`
-	PublicKey   string           `json:"public_key"`
-	NodeId      int              `json:"node_id"`
-	NodeCount   int              `json:"node_count"`
-	Nonces      []int64          `json:"nonces"`
-	Params      PoCParamsV2      `json:"params"`
-	Wait        bool             `json:"wait,omitempty"`
-	URL         string           `json:"url,omitempty"`
-	Validation  *ValidationV2    `json:"validation,omitempty"`
+	BlockHash   string            `json:"block_hash"`
+	BlockHeight int64             `json:"block_height"`
+	PublicKey   string            `json:"public_key"`
+	NodeId      int               `json:"node_id"`
+	NodeCount   int               `json:"node_count"`
+	Nonces      []int64           `json:"nonces"`
+	Params      PoCParamsV2       `json:"params"`
+	Wait        bool              `json:"wait,omitempty"`
+	URL         string            `json:"url,omitempty"`
+	Validation  *ValidationV2     `json:"validation,omitempty"`
 	StatTest    *StatTestParamsV2 `json:"stat_test,omitempty"`
 	// batch_size is intentionally omitted - MLNode will use its default
 }
@@ -55,6 +55,15 @@ type StatTestParamsV2 struct {
 	DistThreshold  float64 `json:"dist_threshold,omitempty"`
 	PMismatch      float64 `json:"p_mismatch,omitempty"`
 	FraudThreshold float64 `json:"fraud_threshold,omitempty"`
+}
+
+// DefaultStatTestParamsV2 returns the default statistical test parameters for PoC v2 validation.
+func DefaultStatTestParamsV2() *StatTestParamsV2 {
+	return &StatTestParamsV2{
+		DistThreshold:  0.02,
+		PMismatch:      0.075,
+		FraudThreshold: 0.01,
+	}
 }
 
 // PoCStatusResponseV2 represents the response from /api/v1/inference/pow/status.

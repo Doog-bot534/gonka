@@ -106,9 +106,10 @@ func (b *OrchestratorChainBridgeV2Impl) PoCv2ArtifactBatchesForStage(startPoCBlo
 
 		result.ArtifactBatches = append(result.ArtifactBatches, &PoCArtifactBatchesV2ForParticipant{
 			ParticipantAddress: participantBatches.Participant,
-			PublicKey:          participantBatches.PubKey,
+			PublicKey:          participantBatches.HexPubKey,
 			Batches:            batches,
 		})
+		logging.Info("PoCv2ArtifactBatchesForStage: Fetched batches from chain", types.PoC, "participant", participantBatches.Participant, "publicKey", participantBatches.HexPubKey, "numBatches", len(batches))
 	}
 
 	logging.Info("PoCv2ArtifactBatchesForStage: Fetched batches from chain", types.PoC,
@@ -326,7 +327,9 @@ func (o *NodePoCOrchestratorV2Impl) ValidateReceivedArtifacts(pocStageStartBlock
 			Validation: &mlnodeclient.ValidationV2{
 				Artifacts: sampledArtifacts,
 			},
+			StatTest: mlnodeclient.DefaultStatTestParamsV2(),
 		}
+		logging.Info("ValidateReceivedArtifacts (v2). Validation request", types.PoC, "validationReq", validationReq, "blockHash", blockHash, "blockHeight", pocStageStartBlockHeight, "pubKey", participantBatches.PublicKey)
 
 		validationSucceeded := false
 		for attempt := range POC_V2_VALIDATE_BATCH_RETRIES {
