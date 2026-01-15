@@ -1,10 +1,10 @@
 import com.productscience.ApplicationCLI
 import com.productscience.EpochStage
-import com.productscience.GENESIS_KEY_NAME
-import com.productscience.data.NodeResponse
-import com.productscience.data.Pubkey2
-import com.productscience.inferenceConfig
+import com.productscience.LocalInferencePair
+import com.productscience.data.*
+import com.productscience.defaultModel
 import com.productscience.initCluster
+import com.productscience.validNode
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Timeout
 import java.util.concurrent.TimeUnit
@@ -91,6 +91,80 @@ class SchedulingTests : TestermintTest() {
         }
 
         assertThat(allocatedNode2).isNotNull
+    }
+
+    @Test
+    fun `shared node ids do not filter other participant PoC batches`() {
+        val pocSlotSpec = spec {
+            this[AppState::inference] = spec<InferenceState> {
+                this[InferenceState::genesisOnlyParams] = spec<GenesisOnlyParams> {
+                    this[GenesisOnlyParams::maxIndividualPowerPercentage] = Decimal.fromDouble(0.0)
+                }
+                this[InferenceState::params] = spec<InferenceParams> {
+                    this[InferenceParams::epochParams] = spec<EpochParams> {
+                        this[EpochParams::pocSlotAllocation] = Decimal.fromDouble(0.25)
+                    }
+                }
+            }
+        }
+
+        val (cluster, genesis) = initCluster(
+            joinCount = 1,
+            mergeSpec = pocSlotSpec,
+            reboot = true,
+            resetMlNodes = false
+        )
+        val join = cluster.joinPairs.first()
+        val nodeIds = listOf("node-1", "node-2", "node-3", "node-4")
+
+        genesis.api.setNodesTo(buildNodesForPair(genesis, nodeIds))
+        join.api.setNodesTo(buildNodesForPair(join, nodeIds))
+        cluster.allPairs.forEach { it.waitForMlNodesToLoad() }
+
+        val genesisWeight = 10L
+        val joinWeight = 20L
+        genesis.api.getNodes().forEach { genesis.setPocWeight(genesisWeight, it.node) }
+        join.api.getNodes().forEach { join.setPocWeight(joinWeight, it.node) }
+
+        genesis.waitForStage(EpochStage.SET_NEW_VALIDATORS)
+
+        val allocationsByParticipant = cluster.allPairs.associateWith { pair ->
+            pair.api.getNodes().map { node ->
+                val timeslotAllocation = node.state.epochMlNodes?.values?.firstOrNull()?.timeslotAllocation
+                timeslotAllocation?.getOrNull(1) ?: false
+            }
+        }
+        val hasInferenceAllocation = allocationsByParticipant.values.flatten().any { it }
+        val allParticipantsHavePocNodes = allocationsByParticipant.values.all { allocation -> allocation.any { !it } }
+
+        assertThat(hasInferenceAllocation)
+            .describedAs("Expected at least one node allocated to inference during PoC")
+            .isTrue()
+        assertThat(allParticipantsHavePocNodes)
+            .describedAs("Expected each participant to keep at least one PoC node")
+            .isTrue()
+
+        genesis.waitForNextEpoch()
+
+        val stats = genesis.node.getParticipantCurrentStats()
+        val genesisStats = stats.getParticipant(genesis)
+        val joinStats = stats.getParticipant(join)
+
+        val expectedGenesisWeight = nodeIds.size * genesisWeight
+        val expectedJoinWeight = nodeIds.size * joinWeight
+
+        assertThat(genesisStats?.weight).isEqualTo(expectedGenesisWeight)
+        assertThat(joinStats?.weight).isEqualTo(expectedJoinWeight)
+    }
+}
+
+private fun buildNodesForPair(pair: LocalInferencePair, nodeIds: List<String>): List<InferenceNode> {
+    return nodeIds.mapIndexed { index, nodeId ->
+        validNode.copy(
+            id = nodeId,
+            host = "ml-${String.format("%04d", index + 1)}.${pair.name.trimStart('/')}.test",
+            models = mapOf(defaultModel to ModelConfig(args = emptyList()))
+        )
     }
 }
 
