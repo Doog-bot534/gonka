@@ -1,20 +1,20 @@
-# PoC v2 Switch Design
+# PoC v2 Design
 
-> **Scope**: Switch chain from v1 PoC logic to v2 after on-chain upgrade.
+> **Scope**: PoC v2 implementation for weight calculation and orchestration.
 > Builds on top of [messages-plan.md](./messages-plan.md) which defined proto messages and storage.
 
 ## Overview
 
-Enable v2 weight calculation and orchestration via a governance parameter flip.
-When `poc_v2_params.enabled = true`, the chain and decentralized-api use v2 logic.
+PoC v2 handles weight calculation and orchestration for ML node validation.
+Configuration via `poc_v2_params` chain parameters.
 
 ## Design Goals
 
-1. **Minimal changes** - Preserve all v1 code, add v2 alongside
-2. **Governance-controlled** - Switch via parameter update after upgrade
-3. **Code separation** - v2 logic in dedicated files, not mixed with v1
-4. **testermint compatibility** - Continue working with both v1 and v2 flows
-5. **No MLNode stop calls** - v2 flow does not call `.Stop()` on MLNode
+1. **Minimal code** - Single implementation path, no fallbacks
+2. **Governance-controlled** - Configuration via parameter updates
+3. **Code separation** - v2 logic in dedicated files
+4. **testermint compatibility** - Full integration test coverage
+5. **No MLNode stop calls** - v2 flow does not call `.Stop()` on MLNode during generation
 
 ## Chain Parameters
 
@@ -41,36 +41,22 @@ message Params {
 - `enabled = false`: No validation required
 - `enabled = true`: `model_id` must be non-empty, `seq_len` must be positive
 
-## Weight Calculation Switch
+## Weight Calculation
 
 ### Entry Point: `ComputeNewWeights`
 
-```
-if poc_v2_params.enabled:
-    → ComputeNewWeightsV2()
-else:
-    → ComputeNewWeightsV1()
-```
-
-### V2 Weight Calculation (`pocv2_chainvalidation.go`)
+Routes to `ComputeNewWeightsV2()` in `pocv2_chainvalidation.go`.
 
 - Query `PoCArtifactBatchesV2` and `PoCValidationsV2` by stage
 - For each participant: `validated_weight > 0` → valid vote
 - TODO: Derive explicit weight from voting once artifacts are off-chain
 - Same `validation_sample_size` semantics as v1
 
-## Confirmation PoC Switch
+## Confirmation PoC
 
-Same pattern in `confirmation_poc.go`:
+Handled in `confirmation_poc.go` via `calculateConfirmationWeightsV2()`.
 
-```
-if poc_v2_params.enabled:
-    → calculateConfirmationWeightsV2()
-else:
-    → existing v1 calculator
-```
-
-## decentralized-api Switch
+## decentralized-api
 
 ### MLNode Client (`mlnodeclient/poc_v2_requests.go`)
 
@@ -87,9 +73,8 @@ Request differences from v1:
 
 ### Node Worker Commands (`broker/node_worker_commands.go`)
 
-- `StartPoCNodeCommand`: If `poc_v2_params.enabled`, use `StartPoCNodeCommandV2` (no Stop() before init)
-- For validation: If `poc_v2_params.enabled`, use `TransitionPoCToValidatingV2Command` (no network call - just state transition)
-- Actual v2 validation handled by orchestrator via `StopPowV2` + `GenerateV2` with validation artifacts
+- `StartPoCNodeCommandV2`: Starts PoC generation (no Stop() before init)
+- Validation handled by orchestrator via `StopPowV2` + `GenerateV2` with validation artifacts
 
 ### Orchestrator (`internal/pocv2/node_orchestrator_v2.go`)
 
@@ -107,18 +92,23 @@ Relaxed state preconditions:
 
 This aligns with the "no Stop()" requirement - nodes can receive v2 commands without requiring a stop first.
 
-## Activation Sequence
+## Configuration
 
-1. Deploy upgrade binary with v2 code
-2. Chain upgrade executes
-3. Governance proposal to set `poc_v2_params.enabled = true`
-4. Next PoC stage uses v2 logic
+Update `poc_v2_params` via governance:
+```json
+{
+  "poc_v2_params": {
+    "enabled": true,
+    "model_id": "model-name",
+    "seq_len": 256
+  }
+}
+```
 
 ## Not Covered
 
 - Off-chain artifact storage migration
 - Multi-validator consensus on `validated_weight`
-- v1 deprecation/removal
 
 ---
 
@@ -128,15 +118,15 @@ See [switch-impl.md](./switch-impl.md) for detailed implementation.
 
 | Area | Status |
 |------|--------|
-| Chain parameters | ✅ Done |
-| Chain weight calculation | ✅ Done |
-| Chain confirmation weights | ✅ Done |
-| Chain gRPC query | ✅ Done |
-| DAPI v2 orchestrator | ✅ Done |
-| DAPI switch routing | ✅ Done |
-| DAPI v2 commands | ✅ Done |
-| DAPI StopPowV2 client | ✅ Done |
-| v2 command unit tests | ✅ Done |
-| testermint compatibility | ✅ Done |
+| Chain parameters | Done |
+| Chain weight calculation | Done |
+| Chain confirmation weights | Done |
+| Chain gRPC query | Done |
+| DAPI v2 orchestrator | Done |
+| DAPI v2 commands | Done |
+| DAPI StopPowV2 client | Done |
+| v2 command unit tests | Done |
+| testermint compatibility | Done |
+| v1 code removal | Done |
 
-**Ready for testnet activation** - Set `poc_v2_params.enabled = true` via governance.
+**Active on chain** - v1 code removed, v2 is the only implementation.

@@ -33,8 +33,6 @@ func TestTransitionPoCToValidatingV2Command_Success(t *testing.T) {
 	mockClient.Mu.Lock()
 	defer mockClient.Mu.Unlock()
 	assert.Equal(t, 0, mockClient.StopCalled, "Stop() should not be called")
-	assert.Equal(t, 0, mockClient.InitValidateCalled, "InitValidate() should not be called")
-	assert.Equal(t, 0, mockClient.ValidateBatchCalled, "ValidateBatch() should not be called")
 }
 
 // TestTransitionPoCToValidatingV2Command_CancelledContext verifies that the command

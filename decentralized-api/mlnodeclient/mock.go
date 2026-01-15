@@ -3,7 +3,6 @@ package mlnodeclient
 import (
 	"context"
 	"decentralized-api/logging"
-	"errors"
 	"sync"
 	"testing"
 
@@ -30,10 +29,6 @@ type MockClient struct {
 	// Error injection
 	StopError             error
 	NodeStateError        error
-	GetPowStatusError     error
-	InitGenerateError     error
-	InitValidateError     error
-	ValiateBatchError     error
 	InferenceHealthError  error
 	InferenceUpError      error
 	StartTrainingError    error
@@ -48,10 +43,6 @@ type MockClient struct {
 	// Call tracking
 	StopCalled             int
 	NodeStateCalled        int
-	GetPowStatusCalled     int
-	InitGenerateCalled     int
-	InitValidateCalled     int
-	ValidateBatchCalled    int
 	InferenceHealthCalled  int
 	InferenceUpCalled      int
 	StartTrainingCalled    int
@@ -69,16 +60,16 @@ type MockClient struct {
 	GetPowStatusV2Called int
 	StopPowV2Called      int
 
+	// Track Init/Validate attempts (for testing, always returns 0 since v1 is removed)
+	InitValidateCalled int
+
 	// PoC v2 state
 	PowStatusV2 string // "IDLE", "GENERATING", etc.
 
 	// Capture parameters
-	LastInitDto         *InitDto
-	LastInitValidateDto *InitDto
-	LastValidateBatch   ProofBatch
-	LastInferenceModel  string
-	LastInferenceArgs   []string
-	LastTrainingParams  struct {
+	LastInferenceModel string
+	LastInferenceArgs  []string
+	LastTrainingParams struct {
 		TaskId         uint64
 		Participant    string
 		NodeId         string
@@ -136,77 +127,6 @@ func (m *MockClient) NodeState(ctx context.Context) (*StateResponse, error) {
 		return nil, m.NodeStateError
 	}
 	return &StateResponse{State: m.CurrentState}, nil
-}
-
-func (m *MockClient) GetPowStatus(ctx context.Context) (*PowStatusResponse, error) {
-	m.Mu.Lock()
-	defer m.Mu.Unlock()
-	m.GetPowStatusCalled++
-	if m.GetPowStatusError != nil {
-		return nil, m.GetPowStatusError
-	}
-	return &PowStatusResponse{
-		Status:             m.PowStatus,
-		IsModelInitialized: m.PowStatus == POW_GENERATING,
-	}, nil
-}
-
-func (m *MockClient) InitGenerate(ctx context.Context, dto InitDto) error {
-	m.Mu.Lock()
-	defer m.Mu.Unlock()
-
-	if m.CurrentState != MlNodeState_STOPPED {
-		return errors.New("InitGenerate called with invalid state. Expected STOPPED. Actual: currentState =" + string(m.CurrentState))
-	}
-
-	logging.Info("MockClient. InitGenerate: called", types.Testing)
-	m.InitGenerateCalled++
-	m.LastInitDto = &dto
-	if m.InitGenerateError != nil {
-		return m.InitGenerateError
-	}
-	m.CurrentState = MlNodeState_POW
-	m.PowStatus = POW_GENERATING
-	return nil
-}
-
-func (m *MockClient) InitValidate(ctx context.Context, dto InitDto) error {
-	m.Mu.Lock()
-	defer m.Mu.Unlock()
-
-	if m.CurrentState != MlNodeState_POW ||
-		m.PowStatus != POW_GENERATING {
-		return errors.New("InitValidate called with invalid state. Expected MlNodeState_POW and POW_GENERATING. Actual: currentState = " + string(m.CurrentState) + ". powStatus =" + string(m.PowStatus))
-	}
-
-	logging.Info("MockClient. InitValidate: called", types.Testing)
-	m.InitValidateCalled++
-	m.LastInitValidateDto = &dto
-	if m.InitValidateError != nil {
-		return m.InitValidateError
-	}
-	m.CurrentState = MlNodeState_POW
-	m.PowStatus = POW_VALIDATING
-	return nil
-}
-
-func (m *MockClient) ValidateBatch(ctx context.Context, batch ProofBatch) error {
-	m.Mu.Lock()
-	defer m.Mu.Unlock()
-
-	if m.CurrentState != MlNodeState_POW ||
-		m.PowStatus != POW_VALIDATING {
-		return errors.New("ValidateBatch called with invalid state. Expected MlNodeState_POW and POW_VALIDATING. Actual: currentState = " + string(m.CurrentState) + ". powStatus =" + string(m.PowStatus))
-	}
-
-	m.ValidateBatchCalled++
-	m.LastValidateBatch = batch
-	if m.ValiateBatchError != nil {
-		return m.ValiateBatchError
-	}
-	m.CurrentState = MlNodeState_POW
-	m.PowStatus = POW_VALIDATING
-	return nil
 }
 
 func (m *MockClient) InferenceHealth(ctx context.Context) (bool, error) {
@@ -429,6 +349,10 @@ func (m *MockClient) InitGenerateV2(ctx context.Context, req PoCInitGenerateRequ
 	defer m.Mu.Unlock()
 
 	m.InitGenerateV2Called++
+
+	// Update mock state: node is now in PoC generation mode, not inference
+	m.CurrentState = MlNodeState_POW
+	m.InferenceIsHealthy = false
 
 	// Default success response
 	return &PoCInitGenerateResponseV2{

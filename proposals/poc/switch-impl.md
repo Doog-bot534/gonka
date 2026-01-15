@@ -1,7 +1,8 @@
-# PoC v2 Switch Implementation
+# PoC v2 Implementation
 
-> **Scope**: Implementation of governance-controlled switch from v1 to v2 PoC logic.
+> **Scope**: PoC v2 implementation details.
 > See [switch-plan.md](./switch-plan.md) for design.
+> **Note**: v1 code has been removed. v2 is the only implementation.
 
 ## Files Created/Modified
 
@@ -80,105 +81,75 @@ Key semantics:
 
 #### Modified: `x/inference/module/module.go`
 
-Added v2 routing:
+Routes to v2:
 ```go
 func (am AppModule) ComputeNewWeights(...) []*types.ActiveParticipant {
-    params := am.keeper.GetParams(ctx)
-    if params.PocV2Params != nil && params.PocV2Params.Enabled {
-        return am.ComputeNewWeightsV2(ctx, upcomingEpoch)
-    }
-    return am.ComputeNewWeightsV1(ctx, upcomingEpoch)
+    return am.ComputeNewWeightsV2(ctx, upcomingEpoch)
 }
 ```
 
 #### Modified: `x/inference/module/confirmation_poc.go`
 
-Added v2 routing in `updateConfirmationWeights`:
+Uses v2 weight calculation:
 ```go
-if params.PocV2Params != nil && params.PocV2Params.Enabled {
-    confirmationParticipants = am.calculateConfirmationWeightsV2(ctx, event, currentValidatorWeights)
-} else {
-    // existing v1 calculator
-}
+confirmationParticipants = am.calculateConfirmationWeightsV2(ctx, event, currentValidatorWeights)
 ```
 
-Added helper functions:
+Helper functions:
 - `calculateConfirmationWeightsV2`
 - `getPoCArtifactBatchesV2ForConfirmation`
 - `getPoCValidationsV2ForConfirmation`
 
 ---
 
-### decentralized-api (Full v2 Switch Routing)
+### decentralized-api
 
 #### Modified: `internal/event_listener/new_block_dispatcher.go`
 
-Added v2 orchestrator and switch routing:
+Uses v2 orchestrator:
 ```go
 type OnNewBlockDispatcher struct {
     // ... existing fields ...
     nodePocOrchestratorV2  pocv2.NodePoCOrchestratorV2
-    cachedPocV2ParamsBlock int64  // Block height at which v2 params were last cached
-    cachedPocV2Enabled     bool   // Cached value of poc_v2_params.enabled
 }
 
-// isPocV2Enabled checks chain params and caches result per block
-func (d *OnNewBlockDispatcher) isPocV2Enabled(ctx context.Context, blockHeight int64) bool
-
-// Routing in handlePhaseTransitions:
+// In handlePhaseTransitions:
 if epochContext.IsStartOfPoCValidationStage(blockHeight) {
-    if d.isPocV2Enabled(ctx, blockHeight) && d.nodePocOrchestratorV2 != nil {
-        d.nodePocOrchestratorV2.ValidateReceivedArtifacts(epochContext.PocStartBlockHeight)
-    } else {
-        d.nodePocOrchestrator.ValidateReceivedBatches(epochContext.PocStartBlockHeight)
-    }
+    d.nodePocOrchestratorV2.ValidateReceivedArtifacts(epochContext.PocStartBlockHeight)
 }
 ```
 
 #### Modified: `broker/broker.go`
 
-Extended `pocParams` to include v2 params:
+PoC params:
 ```go
 type pocParams struct {
     startPoCBlockHeight int64
     startPoCBlockHash   string
     modelParams         *types.PoCModelParams
-    // v2 params - set when poc_v2_params.enabled is true
-    v2Enabled bool
     v2ModelId string
     v2SeqLen  int64
 }
 ```
 
-Added v2 callback URL helpers:
+V2 callback URL helper:
 ```go
-const PoCv2ArtifactsBasePath = "/v2/poc-artifacts"
+const PoCv2ArtifactsBasePath = "/v2/poc-batches"
 
 func GetPocArtifactsV2GeneratedCallbackUrl(callbackUrl string) string
-func GetPocArtifactsV2ValidatedCallbackUrl(callbackUrl string) string
 ```
 
-Modified `getCommandForState` to use v2 commands when enabled:
+`getCommandForState` returns v2 commands:
 ```go
 case PocStatusGenerating:
-    if pocGenParams.v2Enabled {
-        return StartPoCNodeCommandV2{...}
-    }
-    // ... v1 fallback
-
-case PocStatusValidating:
-    if pocGenParams.v2Enabled {
-        // No-network command - actual v2 validation is handled by orchestrator
-        return TransitionPoCToValidatingV2Command{}
-    }
-    // ... v1 fallback (InitValidateNodeCommand)
+    return StartPoCNodeCommandV2{...}
 ```
 
-Key change: When v2 is enabled, the broker returns `TransitionPoCToValidatingV2Command` which makes **no network calls**. This ensures no v1 `/api/v1/pow/init/validate` calls are made in v2 mode. The v2 orchestrator handles `StopPowV2` and `GenerateV2` validation requests directly.
+Validation is handled by the v2 orchestrator, not the broker.
 
 #### Modified: `broker/node_worker_commands.go`
 
-V2 command structs (no Stop() calls during generation):
+V2 command struct (no Stop() calls during generation):
 ```go
 type StartPoCNodeCommandV2 struct {
     BlockHeight int64
@@ -189,34 +160,15 @@ type StartPoCNodeCommandV2 struct {
     Model       string // model_id from chain params
     SeqLen      int64  // seq_len from chain params
 }
-
-type ValidatePoCNodeCommandV2 struct {
-    BlockHeight int64
-    BlockHash   string
-    PubKey      string
-    CallbackUrl string
-    TotalNodes  int
-    Model       string
-    SeqLen      int64
-    Nonces      []int64
-    Artifacts   []mlnodeclient.ArtifactV2
-}
-
-// No-network command for v2 validation state transition
-type TransitionPoCToValidatingV2Command struct{}
 ```
 
-The `TransitionPoCToValidatingV2Command` is used when v2 is enabled to transition broker state to POC/Validating **without making any network calls**. The actual v2 validation (StopPowV2 + GenerateV2) is handled by the v2 orchestrator.
+Validation is handled by the v2 orchestrator via `StopPowV2` + `GenerateV2`.
 
-#### New File: `broker/node_worker_commands_v2_test.go`
+#### File: `broker/node_worker_commands_v2_test.go`
 
 Unit tests for v2 commands:
-- `TestTransitionPoCToValidatingV2Command_Success` - Verifies no network calls are made
-- `TestTransitionPoCToValidatingV2Command_CancelledContext` - Context cancellation handling
 - `TestStartPoCNodeCommandV2_Success` - Verifies v2 generation works without Stop()
 - `TestStartPoCNodeCommandV2_AlreadyGenerating` - Idempotency check
-- `TestStopPowV2_MockBehavior` - Mock client behavior
-```
 
 #### Modified: `internal/pocv2/node_orchestrator_v2.go`
 
@@ -260,7 +212,7 @@ func (o *NodePoCOrchestratorV2Impl) stopGenerationOnAllNodes(nodes []broker.Node
 
 #### Modified: `main.go`
 
-Added v2 orchestrator initialization:
+V2 orchestrator initialization:
 ```go
 nodePocOrchestratorV2 := pocv2.NewNodePoCOrchestratorV2ForCosmosChain(
     participantInfo.GetPubKey(),
@@ -270,7 +222,7 @@ nodePocOrchestratorV2 := pocv2.NewNodePoCOrchestratorV2ForCosmosChain(
     recorder,
     chainPhaseTracker,
 )
-listener := event_listener.NewEventListener(config, nodePocOrchestrator, nodePocOrchestratorV2, ...)
+listener := event_listener.NewEventListener(config, nodePocOrchestratorV2, ...)
 ```
 
 #### New File: `mlnodeclient/poc_v2_requests.go`
@@ -397,56 +349,49 @@ Use `params.PocV2Params` for field access, `*types.PoCv2Params` for type.
 
 V2 requests intentionally omit `k_dim`. The MLNode determines dimensions from the model.
 
-### Stop() Semantics in v2
+### Stop() Semantics
 
 **During generation**: No `Stop()` call before `InitGenerateV2`. Nodes handle concurrent generation requests.
 
-**At validation transition**: The v2 orchestrator calls `StopPowV2()` once on all nodes **before** sending validation requests. This is a single coordinated stop, not per-batch stops like v1.
-
-**Key difference from v1**: The broker does not call any v1 PoW endpoints when v2 is enabled. All v2 operations go through the dedicated v2 orchestrator and MLNode v2 API (`/api/v1/inference/pow/*`).
+**At validation transition**: The v2 orchestrator calls `StopPowV2()` once on all nodes **before** sending validation requests.
 
 ### validated_weight Semantics
 
 - `validated_weight > 0` → valid vote
 - `validated_weight <= 0` → invalid/reject
-- Future: explicit weight derivation from validator voting
 
 ---
 
-## Activation
+## Configuration
 
-1. Binary upgrade deploys v2 code
-2. Governance proposal sets:
-   ```json
-   {
-     "poc_v2_params": {
-       "enabled": true,
-       "model_id": "production-model-v2",
-       "seq_len": 256
-     }
-   }
-   ```
-3. Next PoC stage uses v2 logic
+Governance proposal sets:
+```json
+{
+  "poc_v2_params": {
+    "enabled": true,
+    "model_id": "model-name",
+    "seq_len": 256
+  }
+}
+```
 
 ---
 
 ## Implementation Status
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| Chain params (`poc_v2_params`) | ✅ Done | Proto + Go validation |
-| Chain weight calc switch | ✅ Done | `ComputeNewWeights` routes to v1/v2 |
-| Chain confirmation switch | ✅ Done | `confirmation_poc.go` routes to v1/v2 |
-| Chain gRPC query v2 batches | ✅ Done | `PocV2BatchesForStage` implemented |
-| DAPI v2 orchestrator | ✅ Done | `node_orchestrator_v2.go` |
-| DAPI switch routing | ✅ Done | Dispatcher + broker route by `enabled` |
-| DAPI v2 callback URLs | ✅ Done | `/v2/poc-artifacts` base path |
-| DAPI v2 commands | ✅ Done | `StartPoCNodeCommandV2`, `ValidatePoCNodeCommandV2`, `TransitionPoCToValidatingV2Command` |
-| DAPI StopPowV2 client | ✅ Done | `StopPowV2()` method in mlnodeclient |
-| DAPI v2 orchestrator stop | ✅ Done | `stopGenerationOnAllNodes()` called once at validation stage |
-| v2 command unit tests | ✅ Done | `node_worker_commands_v2_test.go` |
-| testermint v2 mocks | ✅ Done | `PowV2Routes`, `MockServerInferenceMock` |
-| testermint data classes | ✅ Done | `PocV2Params` in `AppExport.kt` |
-| Integration tests | ✅ Done | Fixed mocks to include `PocV2Params` |
+| Component | Status |
+|-----------|--------|
+| Chain params (`poc_v2_params`) | Done |
+| Chain weight calculation | Done |
+| Chain confirmation weights | Done |
+| Chain gRPC query v2 batches | Done |
+| DAPI v2 orchestrator | Done |
+| DAPI v2 callback URLs | Done |
+| DAPI v2 commands | Done |
+| DAPI StopPowV2 client | Done |
+| v2 command unit tests | Done |
+| testermint v2 mocks | Done |
+| Integration tests | Done |
+| v1 code removal | Done |
 
-All components are implemented and tests pass.
+All components implemented. v1 code removed.

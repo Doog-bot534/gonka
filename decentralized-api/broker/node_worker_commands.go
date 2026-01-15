@@ -44,139 +44,6 @@ func (c StopNodeCommand) Execute(ctx context.Context, worker *NodeWorker) NodeRe
 	return result
 }
 
-// StartPoCNodeCommand starts PoC on a single node
-type StartPoCNodeCommand struct {
-	BlockHeight int64
-	BlockHash   string
-	PubKey      string
-	CallbackUrl string
-	TotalNodes  int
-	ModelParams *types.PoCModelParams
-}
-
-func (c StartPoCNodeCommand) Execute(ctx context.Context, worker *NodeWorker) NodeResult {
-	result := NodeResult{
-		OriginalTarget:    types.HardwareNodeStatus_POC,
-		OriginalPocTarget: PocStatusGenerating,
-	}
-
-	if ctx.Err() != nil {
-		result.Succeeded = false
-		result.Error = ctx.Err().Error()
-		result.FinalStatus = worker.node.State.CurrentStatus
-		result.FinalPocStatus = worker.node.State.PocCurrentStatus
-		return result
-	}
-
-	// Idempotency check
-	state, err := worker.GetClient().NodeState(ctx)
-	if err == nil && state.State == mlnodeclient.MlNodeState_POW {
-		powStatus, powErr := worker.GetClient().GetPowStatus(ctx)
-		if powErr == nil && powStatus.Status == mlnodeclient.POW_GENERATING {
-			logging.Info("[StartPoCNodeCommand] Node already in PoC generating state", types.PoC, "node_id", worker.nodeId)
-			result.Succeeded = true
-			result.FinalStatus = types.HardwareNodeStatus_POC
-			result.FinalPocStatus = PocStatusGenerating
-			return result
-		}
-	}
-
-	// Stop node if needed
-	if state != nil && state.State != mlnodeclient.MlNodeState_STOPPED {
-		if err := worker.GetClient().Stop(ctx); err != nil {
-			logging.Error("[StartPoCNodeCommand] Failed to stop node for PoC", types.PoC, "node_id", worker.nodeId, "error", err)
-			result.Succeeded = false
-			result.Error = err.Error()
-			result.FinalStatus = types.HardwareNodeStatus_FAILED
-			return result
-		}
-	}
-
-	// Start PoC
-	dto := mlnodeclient.BuildInitDto(
-		c.BlockHeight, c.PubKey, int64(c.TotalNodes),
-		worker.node.Node.NodeNum, c.BlockHash, c.CallbackUrl, c.ModelParams,
-	)
-	if err := worker.GetClient().InitGenerate(ctx, dto); err != nil {
-		logging.Error("[StartPoCNodeCommand] Failed to start PoC", types.PoC, "node_id", worker.nodeId, "error", err)
-		result.Succeeded = false
-		result.Error = err.Error()
-		result.FinalStatus = types.HardwareNodeStatus_FAILED
-	} else {
-		result.Succeeded = true
-		result.FinalStatus = types.HardwareNodeStatus_POC
-		result.FinalPocStatus = PocStatusGenerating
-		logging.Info("[StartPoCNodeCommand] Successfully started PoC on node", types.PoC, "node_id", worker.nodeId)
-	}
-	return result
-}
-
-type InitValidateNodeCommand struct {
-	BlockHeight int64
-	BlockHash   string
-	PubKey      string
-	CallbackUrl string
-	TotalNodes  int
-	ModelParams *types.PoCModelParams
-}
-
-func (c InitValidateNodeCommand) Execute(ctx context.Context, worker *NodeWorker) NodeResult {
-	result := NodeResult{
-		OriginalTarget:    types.HardwareNodeStatus_POC,
-		OriginalPocTarget: PocStatusValidating,
-	}
-
-	if ctx.Err() != nil {
-		result.Succeeded = false
-		result.Error = ctx.Err().Error()
-		result.FinalStatus = worker.node.State.CurrentStatus
-		result.FinalPocStatus = worker.node.State.PocCurrentStatus
-		return result
-	}
-
-	// Idempotency check
-	state, err := worker.GetClient().NodeState(ctx)
-	if err == nil && state.State == mlnodeclient.MlNodeState_POW {
-		powStatus, powErr := worker.GetClient().GetPowStatus(ctx)
-		if powErr == nil && powStatus.Status == mlnodeclient.POW_VALIDATING {
-			logging.Info("Node already in PoC validating state", types.PoC, "node_id", worker.nodeId)
-			result.Succeeded = true
-			result.FinalStatus = types.HardwareNodeStatus_POC
-			result.FinalPocStatus = PocStatusValidating
-			return result
-		}
-	}
-
-	// Stop node if needed
-	if state != nil && state.State != mlnodeclient.MlNodeState_STOPPED && state.State != mlnodeclient.MlNodeState_POW {
-		if err := worker.GetClient().Stop(ctx); err != nil {
-			logging.Error("Failed to stop node for PoC validation", types.PoC, "node_id", worker.nodeId, "error", err)
-			result.Succeeded = false
-			result.Error = err.Error()
-			result.FinalStatus = types.HardwareNodeStatus_FAILED
-			return result
-		}
-	}
-
-	dto := mlnodeclient.BuildInitDto(
-		c.BlockHeight, c.PubKey, int64(c.TotalNodes),
-		worker.node.Node.NodeNum, c.BlockHash, c.CallbackUrl, c.ModelParams,
-	)
-
-	if err := worker.GetClient().InitValidate(ctx, dto); err != nil {
-		logging.Error("Failed to transition to PoC validate", types.PoC, "node_id", worker.nodeId, "error", err)
-		result.Succeeded = false
-		result.Error = err.Error()
-		result.FinalStatus = types.HardwareNodeStatus_FAILED
-	} else {
-		result.Succeeded = true
-		result.FinalStatus = types.HardwareNodeStatus_POC
-		result.FinalPocStatus = PocStatusValidating
-		logging.Info("Successfully transitioned node to PoC init validate stage", types.PoC, "node_id", worker.nodeId)
-	}
-	return result
-}
-
 // InferenceUpNodeCommand brings up inference on a single node
 type InferenceUpNodeCommand struct{}
 
@@ -357,15 +224,14 @@ func (c *NoOpNodeCommand) Execute(ctx context.Context, worker *NodeWorker) NodeR
 	}
 }
 
-// StartPoCNodeCommandV2 starts PoC v2 generation on a single node without calling Stop().
 type StartPoCNodeCommandV2 struct {
 	BlockHeight int64
 	BlockHash   string
 	PubKey      string
 	CallbackUrl string
 	TotalNodes  int
-	Model       string // model_id from chain params
-	SeqLen      int64  // seq_len from chain params
+	Model       string
+	SeqLen      int64
 }
 
 func (c StartPoCNodeCommandV2) Execute(ctx context.Context, worker *NodeWorker) NodeResult {
