@@ -307,6 +307,25 @@ CHAIN_GRPC_RATE_LIMIT_VAL=${CHAIN_GRPC_RATE_LIMIT_RPS:-20}
 CHAIN_GRPC_RATE_UNIT=${CHAIN_GRPC_RATE_UNIT:-m}
 CHAIN_GRPC_BURST=${CHAIN_GRPC_BURST:-200}
 
+# Timeout Configuration (Seconds)
+# Gonka API (Inference/Chat)
+# Connect: 120s (Generous handshake)
+# Transfer: 20m (Long inference)
+GONKA_API_CONNECT_TIMEOUT=${GONKA_API_CONNECT_TIMEOUT:-120}
+GONKA_API_TRANSFER_TIMEOUT=${GONKA_API_TRANSFER_TIMEOUT:-1200}
+
+# Chain API/RPC/gRPC
+# Connect: 30s (Standard)
+# Transfer: 2m (Standard)
+CHAIN_API_CONNECT_TIMEOUT=${CHAIN_API_CONNECT_TIMEOUT:-30}
+CHAIN_API_TRANSFER_TIMEOUT=${CHAIN_API_TRANSFER_TIMEOUT:-120}
+
+CHAIN_RPC_CONNECT_TIMEOUT=${CHAIN_RPC_CONNECT_TIMEOUT:-30}
+CHAIN_RPC_TRANSFER_TIMEOUT=${CHAIN_RPC_TRANSFER_TIMEOUT:-120}
+
+CHAIN_GRPC_CONNECT_TIMEOUT=${CHAIN_GRPC_CONNECT_TIMEOUT:-30}
+CHAIN_GRPC_TRANSFER_TIMEOUT=${CHAIN_GRPC_TRANSFER_TIMEOUT:-120}
+
 # Route Blocking Configuration
 GONKA_API_BLOCKED_ROUTES=${GONKA_API_BLOCKED_ROUTES:-"poc-batches"}
 CHAIN_API_BLOCKED_ROUTES=${CHAIN_API_BLOCKED_ROUTES:-""}
@@ -365,13 +384,15 @@ append_blocked_location() {
 }
 
 append_exempt_location() {
-    # Usage: append_exempt_location "routes" "prefix" "upstream_base" "status_check" "type" "extra_config"
+    # Usage: append_exempt_location "routes" "prefix" "upstream_base" "status_check" "type" "connect_timeout" "transfer_timeout" "extra_config"
     local routes="$1"
     local prefix="$2"
     local upstream_base="$3"
     local status_check="$4"
     local type="$5" # "http" or "grpc"
-    local extra_config="$6"
+    local connect_timeout="$6"
+    local transfer_timeout="$7"
+    local extra_config="$8"
 
     for route in $routes; do
         clean_route=$(echo "$route" | sed 's|^/||')
@@ -392,10 +413,10 @@ append_exempt_location() {
         grpc_set_header X-Forwarded-Proto \$\$scheme;
         grpc_set_header Authorization \$\$http_authorization;
 
-        # Standard timeouts for chain gRPC (2 minutes)
-        grpc_connect_timeout 30s;
-        grpc_send_timeout 120s;
-        grpc_read_timeout 120s;
+        # Timeouts corresponding to zone
+        grpc_connect_timeout ${connect_timeout}s;
+        grpc_send_timeout ${transfer_timeout}s;
+        grpc_read_timeout ${transfer_timeout}s;
         "
         else
             # HTTP Proxy Configuration
@@ -407,6 +428,11 @@ append_exempt_location() {
         proxy_set_header X-Forwarded-Proto \$\$scheme;
         proxy_set_header Authorization \$\$http_authorization;
         ${CORS_CONFIG}
+        
+        # Timeouts corresponding to zone
+        proxy_connect_timeout ${connect_timeout}s;
+        proxy_read_timeout ${transfer_timeout}s;
+        proxy_send_timeout ${transfer_timeout}s;
         "
         fi
 
@@ -426,10 +452,84 @@ append_exempt_location() {
 # --------------------------------------------------------------------------------
 # Generate Blocked Routes Configuration
 # --------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------
+# Generate Dynamic Configuration (API Versions)
+# --------------------------------------------------------------------------------
+API_VERSIONS=${API_VERSIONS:-"v1 v2"}
+API_VERSION_LOCATIONS=""
 BLOCKED_ROUTES_CONFIG=""
+EXEMPT_ROUTES_CONFIG=""
 
-# 1. Gonka API (Two prefixes)
-append_blocked_location "$GONKA_API_BLOCKED_ROUTES" "/api/v1/ /v1/"
+# 1. Gonka API dynamic generation
+APP_BLOCKED_PREFIXES=""
+APP_EXEMPT_PREFIXES=""
+
+for v in $API_VERSIONS; do
+    # 1. Accumulate Prefixes for Blocked/Exempt Logic
+    APP_BLOCKED_PREFIXES="${APP_BLOCKED_PREFIXES} /api/${v}/ /${v}/"
+    
+    # 2. Append Exempt Locations (Gonka API) using helper
+    # We call append_exempt_location for each version prefix to ensure correct regex generation
+    append_exempt_location "$GONKA_API_EXEMPT_ROUTES" "/api/${v}/" "http://api_backend/${v}/" "${API_STATUS}" "http" "$GONKA_API_CONNECT_TIMEOUT" "$GONKA_API_TRANSFER_TIMEOUT" ""
+    append_exempt_location "$GONKA_API_EXEMPT_ROUTES" "/${v}/" "http://api_backend/${v}/" "${API_STATUS}" "http" "$GONKA_API_CONNECT_TIMEOUT" "$GONKA_API_TRANSFER_TIMEOUT" ""
+
+    # 3. Generate Core Routing Location Block (to be injected into template)
+    # We use explicit variable expansion here because these values are known at startup
+    API_VERSION_LOCATIONS="${API_VERSION_LOCATIONS}
+        # Direct API ${v} routes
+        location /${v}/ {
+            ${LIMIT_REQ_RULE_GONKA_API}
+            ${API_STATUS}
+            proxy_pass http://api_backend/${v}/;
+            proxy_set_header Host \$\$host;
+            proxy_set_header X-Real-IP \$\$remote_addr;
+            proxy_set_header X-Forwarded-For \$\$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$\$scheme;
+            proxy_set_header Authorization \$\$http_authorization;
+
+            ${CORS_CONFIG}
+
+            # Handle WebSocket connections if needed
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade \$\$http_upgrade;
+            proxy_set_header Connection \"upgrade\";
+
+            # Extended timeouts for inference API
+            proxy_connect_timeout ${GONKA_API_CONNECT_TIMEOUT}s;
+            proxy_send_timeout ${GONKA_API_TRANSFER_TIMEOUT}s;
+            proxy_read_timeout ${GONKA_API_TRANSFER_TIMEOUT}s;
+        }
+
+        # API ${v} routes (via /api/ prefix) - Explicitly defined to ensure longest-prefix match wins over generic /api/
+        location /api/${v}/ {
+            ${LIMIT_REQ_RULE_GONKA_API}
+            ${API_STATUS}
+            proxy_pass http://api_backend/${v}/;
+            proxy_set_header Host \$\$host;
+            proxy_set_header X-Real-IP \$\$remote_addr;
+            proxy_set_header X-Forwarded-For \$\$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$\$scheme;
+            proxy_set_header Authorization \$\$http_authorization;
+
+            ${CORS_CONFIG}
+
+            # Handle WebSocket connections if needed
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade \$\$http_upgrade;
+            proxy_set_header Connection \"upgrade\";
+
+            # Extended timeouts for inference API
+            proxy_connect_timeout ${GONKA_API_CONNECT_TIMEOUT}s;
+            proxy_send_timeout ${GONKA_API_TRANSFER_TIMEOUT}s;
+            proxy_read_timeout ${GONKA_API_TRANSFER_TIMEOUT}s;
+        }
+    "
+done
+
+export API_VERSION_LOCATIONS
+
+# 4. Generate Blocked Routes
+append_blocked_location "$GONKA_API_BLOCKED_ROUTES" "${APP_BLOCKED_PREFIXES}"
 
 # 2. Chain API
 append_blocked_location "$CHAIN_API_BLOCKED_ROUTES" "/chain-api/"
@@ -443,27 +543,21 @@ append_blocked_location "$CHAIN_GRPC_BLOCKED_ROUTES" "/chain-grpc/"
 export BLOCKED_ROUTES_CONFIG
 
 # --------------------------------------------------------------------------------
-# Generate Exempt Routes Configuration
+# Generate Exempt Routes Configuration (Chain Services)
 # --------------------------------------------------------------------------------
-EXEMPT_ROUTES_CONFIG=""
-
-# 1. Gonka API Exempt Routes (Chat, Inference, etc)
-# Covers /api/v1/ and /v1/ - need to call twice or handle in function? 
-# The function takes single prefix. Let's call twice.
-append_exempt_location "$GONKA_API_EXEMPT_ROUTES" "/api/v1/" "http://api_backend/v1/" "${API_STATUS}" "http" ""
-append_exempt_location "$GONKA_API_EXEMPT_ROUTES" "/v1/" "http://api_backend/v1/" "${API_STATUS}" "http" ""
+# Note: Gonka API exempt routes are generated in the loop above
 
 # 2. Chain API Exempt Routes
-append_exempt_location "$CHAIN_API_EXEMPT_ROUTES" "/chain-api/" "http://chain_api_backend/" "${CHAIN_API_STATUS}" "http" ""
+append_exempt_location "$CHAIN_API_EXEMPT_ROUTES" "/chain-api/" "http://chain_api_backend/" "${CHAIN_API_STATUS}" "http" "$CHAIN_API_CONNECT_TIMEOUT" "$CHAIN_API_TRANSFER_TIMEOUT" ""
 
 # 3. Chain RPC Exempt Routes (Needs WebSocket support)
 WS_CONFIG="proxy_http_version 1.1;
         proxy_set_header Upgrade \$\$http_upgrade;
         proxy_set_header Connection \"upgrade\";"
-append_exempt_location "$CHAIN_RPC_EXEMPT_ROUTES" "/chain-rpc/" "http://chain_rpc_backend/" "${CHAIN_RPC_STATUS}" "http" "$WS_CONFIG"
+append_exempt_location "$CHAIN_RPC_EXEMPT_ROUTES" "/chain-rpc/" "http://chain_rpc_backend/" "${CHAIN_RPC_STATUS}" "http" "$CHAIN_RPC_CONNECT_TIMEOUT" "$CHAIN_RPC_TRANSFER_TIMEOUT" "$WS_CONFIG"
 
 # 4. Chain gRPC Exempt Routes
-append_exempt_location "$CHAIN_GRPC_EXEMPT_ROUTES" "/chain-grpc/" "grpc://chain_grpc_backend" "${CHAIN_GRPC_STATUS}" "grpc" ""
+append_exempt_location "$CHAIN_GRPC_EXEMPT_ROUTES" "/chain-grpc/" "grpc://chain_grpc_backend" "${CHAIN_GRPC_STATUS}" "grpc" "$CHAIN_GRPC_CONNECT_TIMEOUT" "$CHAIN_GRPC_TRANSFER_TIMEOUT" ""
 
 export EXEMPT_ROUTES_CONFIG
 
@@ -486,10 +580,16 @@ ENVSUBST_VARS="${ENVSUBST_VARS},\$DASHBOARD_PORT,\$DASHBOARD_UPSTREAM,\$ROOT_LOC
 ENVSUBST_VARS="${ENVSUBST_VARS},\$LIMIT_REQ_ZONE_GLOBAL,\$LIMIT_REQ_ZONE_GONKA_API,\$LIMIT_REQ_ZONE_EXEMPT"
 ENVSUBST_VARS="${ENVSUBST_VARS},\$LIMIT_REQ_ZONE_CHAIN_RPC,\$LIMIT_REQ_ZONE_CHAIN_API,\$LIMIT_REQ_ZONE_CHAIN_GRPC"
 
+# Group 7: Timeouts
+ENVSUBST_VARS="${ENVSUBST_VARS},\$GONKA_API_CONNECT_TIMEOUT,\$GONKA_API_TRANSFER_TIMEOUT"
+ENVSUBST_VARS="${ENVSUBST_VARS},\$CHAIN_API_CONNECT_TIMEOUT,\$CHAIN_API_TRANSFER_TIMEOUT"
+ENVSUBST_VARS="${ENVSUBST_VARS},\$CHAIN_RPC_CONNECT_TIMEOUT,\$CHAIN_RPC_TRANSFER_TIMEOUT"
+ENVSUBST_VARS="${ENVSUBST_VARS},\$CHAIN_GRPC_CONNECT_TIMEOUT,\$CHAIN_GRPC_TRANSFER_TIMEOUT"
+
 # Group 6: Rate Limiting Rules
 ENVSUBST_VARS="${ENVSUBST_VARS},\$LIMIT_REQ_RULE_GLOBAL,\$LIMIT_REQ_RULE_GONKA_API"
 ENVSUBST_VARS="${ENVSUBST_VARS},\$LIMIT_REQ_RULE_CHAIN_RPC,\$LIMIT_REQ_RULE_CHAIN_API,\$LIMIT_REQ_RULE_CHAIN_GRPC"
-ENVSUBST_VARS="${ENVSUBST_VARS},\$BLOCKED_ROUTES_CONFIG,\$EXEMPT_ROUTES_CONFIG"
+ENVSUBST_VARS="${ENVSUBST_VARS},\$BLOCKED_ROUTES_CONFIG,\$EXEMPT_ROUTES_CONFIG,\$API_VERSION_LOCATIONS"
 
 echo "Rendering unified nginx configuration (mode: $NGINX_MODE, server_name: $SERVER_NAME)"
 envsubst "$ENVSUBST_VARS" < /etc/nginx/nginx.unified.conf.template | sed 's/\$\$/$/g' > /etc/nginx/nginx.conf

@@ -68,11 +68,14 @@ http {
         # Exempt Routes (High Performance)
         ${EXEMPT_ROUTES_CONFIG}
 
-        # API routes - restricted to v1 only
-        location /api/v1/ {
+        # Dynamic API Versions (e.g. /v1/, /v2/)
+        ${API_VERSION_LOCATIONS}
+
+        # Generic API routes
+        location /api/ {
             ${LIMIT_REQ_RULE_GONKA_API}
             ${API_STATUS}
-            proxy_pass http://api_backend/v1/;
+            proxy_pass http://api_backend/;
             proxy_set_header Host $$host;
             proxy_set_header X-Real-IP $$remote_addr;
             proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
@@ -86,34 +89,10 @@ http {
             proxy_set_header Upgrade $$http_upgrade;
             proxy_set_header Connection "upgrade";
 
-            # Extended timeouts for inference API (20 minutes)
-            proxy_connect_timeout 120s;
-            proxy_send_timeout 1200s;
-            proxy_read_timeout 1200s;
-        }
-
-        # Direct API v1 routes - bypasses /api/ prefix
-        location /v1/ {
-            ${LIMIT_REQ_RULE_GONKA_API}
-            ${API_STATUS}
-            proxy_pass http://api_backend/v1/;
-            proxy_set_header Host $$host;
-            proxy_set_header X-Real-IP $$remote_addr;
-            proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $$scheme;
-            proxy_set_header Authorization $$http_authorization;
-
-            ${CORS_CONFIG}
-
-            # Handle WebSocket connections if needed
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $$http_upgrade;
-            proxy_set_header Connection "upgrade";
-
-            # Extended timeouts for inference API (20 minutes)
-            proxy_connect_timeout 120s;
-            proxy_send_timeout 1200s;
-            proxy_read_timeout 1200s;
+            # Extended timeouts for inference API
+            proxy_connect_timeout ${GONKA_API_CONNECT_TIMEOUT}s;
+            proxy_send_timeout ${GONKA_API_TRANSFER_TIMEOUT}s;
+            proxy_read_timeout ${GONKA_API_TRANSFER_TIMEOUT}s;
         }
 
         # Chain RPC endpoint
@@ -133,10 +112,10 @@ http {
             proxy_set_header Upgrade $$http_upgrade;
             proxy_set_header Connection "upgrade";
 
-            # Standard timeouts for chain API (2 minutes)
-            proxy_connect_timeout 30s;
-            proxy_send_timeout 120s;
-            proxy_read_timeout 120s;
+            # Standard timeouts for chain API
+            proxy_connect_timeout ${CHAIN_RPC_CONNECT_TIMEOUT}s;
+            proxy_send_timeout ${CHAIN_RPC_TRANSFER_TIMEOUT}s;
+            proxy_read_timeout ${CHAIN_RPC_TRANSFER_TIMEOUT}s;
         }
 
         # Chain API endpoint (REST API)
@@ -152,10 +131,10 @@ http {
 
             ${CORS_CONFIG}
 
-            # Standard timeouts for chain API (2 minutes)
-            proxy_connect_timeout 30s;
-            proxy_send_timeout 120s;
-            proxy_read_timeout 120s;
+            # Standard timeouts for chain API
+            proxy_connect_timeout ${CHAIN_API_CONNECT_TIMEOUT}s;
+            proxy_send_timeout ${CHAIN_API_TRANSFER_TIMEOUT}s;
+            proxy_read_timeout ${CHAIN_API_TRANSFER_TIMEOUT}s;
         }
 
         # Chain gRPC endpoint (if needed)
@@ -169,10 +148,10 @@ http {
             grpc_set_header X-Forwarded-Proto $$scheme;
             grpc_set_header Authorization $$http_authorization;
 
-            # Standard timeouts for chain gRPC (2 minutes)
-            grpc_connect_timeout 30s;
-            grpc_send_timeout 120s;
-            grpc_read_timeout 120s;
+            # Standard timeouts for chain gRPC
+            grpc_connect_timeout ${CHAIN_GRPC_CONNECT_TIMEOUT}s;
+            grpc_send_timeout ${CHAIN_GRPC_TRANSFER_TIMEOUT}s;
+            grpc_read_timeout ${CHAIN_GRPC_TRANSFER_TIMEOUT}s;
         }
 
         # Root location - either dashboard or not configured page
@@ -188,5 +167,3 @@ http {
         }
     }
 }
-
-
