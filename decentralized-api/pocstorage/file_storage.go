@@ -19,7 +19,7 @@ import (
 
 // File layout:
 // - runs:    {baseDir}/runs/{blockHeight}.json
-// - records: {baseDir}/records/{blockHeight}/{timestamp_nanos}.json
+// - records: {baseDir}/records/{blockHeight}/{address}/{timestamp_nanos}.json
 type FileStorage struct {
 	baseDir string
 	locks   sync.Map // key -> *sync.Mutex
@@ -33,17 +33,21 @@ func (f *FileStorage) runsDir() string {
 	return filepath.Join(f.baseDir, "runs")
 }
 
-func (f *FileStorage) recordsDir(blockHeight int64) string {
+func safePathSegment(s string) string {
+	// Avoid path traversal / separators from model strings etc.
+	return strings.ReplaceAll(s, "/", "_")
+}
+
+func (f *FileStorage) recordsDir(blockHeight int64, address string) string {
+	return filepath.Join(f.baseDir, "records", strconv.FormatInt(blockHeight, 10), safePathSegment(address))
+}
+
+func (f *FileStorage) recordsBlockDir(blockHeight int64) string {
 	return filepath.Join(f.baseDir, "records", strconv.FormatInt(blockHeight, 10))
 }
 
 func (f *FileStorage) stateDir(blockHeight int64) string {
 	return filepath.Join(f.baseDir, "state", strconv.FormatInt(blockHeight, 10))
-}
-
-func safePathSegment(s string) string {
-	// Avoid path traversal / separators from model strings etc.
-	return strings.ReplaceAll(s, "/", "_")
 }
 
 func (f *FileStorage) statePath(blockHeight int64, address, nodeID, model string) string {
@@ -217,12 +221,28 @@ func (f *FileStorage) StoreGeneratedRecord(ctx context.Context, rec PoCBatchesGe
 		}
 	}
 
-	batchHash := computeBatchHash(rec.Artifacts)
-	newAmount := state.Amount + int64(len(rec.Artifacts))
-	newHash, err := computeRollingHash(state.Hash, batchHash, newAmount)
-	if err != nil {
-		return PoCBatchesGeneratedRecord{}, err
+	var newAmount int64
+	var newHash string
+	var errState error
+
+	if len(rec.Artifacts) > 0 {
+		// Peer (or local) with artifacts: compute hash from artifacts.
+		batchHash := computeBatchHash(rec.Artifacts)
+		newAmount = state.Amount + int64(len(rec.Artifacts))
+		newHash, errState = computeRollingHash(state.Hash, batchHash, newAmount)
+	} else {
+		// Peer without artifacts: trust the provided amount/hash.
+		// Note: We blindly accept the new state as "current" because we can't verify it incrementally without artifacts.
+		// In a real verification scenario, we might want to check if it's strictly increasing, but for now we trust the peer's latest claim.
+		newAmount = rec.Amount
+		newHash = rec.Hash
+		errState = nil
 	}
+
+	if errState != nil {
+		return PoCBatchesGeneratedRecord{}, errState
+	}
+
 	state.Amount = newAmount
 	state.Hash = newHash
 	state.UpdatedAt = rec.ReceivedAt
@@ -236,9 +256,12 @@ func (f *FileStorage) StoreGeneratedRecord(ctx context.Context, rec PoCBatchesGe
 	}
 
 	// Write record with computed snapshot.
+	// For peer records without artifacts, Artifacts is empty, which is fine (we store the metadata/proof of receipt).
 	rec.Amount = newAmount
 	rec.Hash = newHash
-	dir := f.recordsDir(rec.BlockHeight)
+
+	// Separation by address: records/{blockHeight}/{address}/{timestamp}.json
+	dir := f.recordsDir(rec.BlockHeight, rec.Address)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return PoCBatchesGeneratedRecord{}, fmt.Errorf("mkdir records dir: %w", err)
 	}
@@ -250,34 +273,74 @@ func (f *FileStorage) StoreGeneratedRecord(ctx context.Context, rec PoCBatchesGe
 	return rec, nil
 }
 
+func (f *FileStorage) StoreGeneratedRecordsBatch(ctx context.Context, records []PoCBatchesGeneratedRecord) ([]PoCBatchesGeneratedRecord, error) {
+	// For file storage, locking is granular per file (per address/node/model).
+	// So we can simply iterate and call StoreGeneratedRecord.
+	// Optimizing this further would require architectural changes to file layout or locking.
+	var out []PoCBatchesGeneratedRecord
+	for _, rec := range records {
+		updated, err := f.StoreGeneratedRecord(ctx, rec)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, updated)
+	}
+	return out, nil
+}
+
 func (f *FileStorage) ListGeneratedRecords(ctx context.Context, blockHeight int64) ([]PoCBatchesGeneratedRecord, error) {
 	_ = ctx
-	dir := f.recordsDir(blockHeight)
-	entries, err := os.ReadDir(dir)
+	// Root dir for this block: records/{blockHeight}
+	rootDir := f.recordsBlockDir(blockHeight)
+
+	// Check if root dir exists
+	entries, err := os.ReadDir(rootDir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, ErrNotFound
 		}
-		return nil, fmt.Errorf("readdir: %w", err)
+		return nil, fmt.Errorf("readdir block root: %w", err)
 	}
-	records := make([]PoCBatchesGeneratedRecord, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
+
+	var records []PoCBatchesGeneratedRecord
+
+	// Iterate over address directories
+	for _, addressEntry := range entries {
+		if !addressEntry.IsDir() {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		addressDir := filepath.Join(rootDir, addressEntry.Name())
+
+		fileEntries, err := os.ReadDir(addressDir)
 		if err != nil {
 			continue
 		}
-		var rec PoCBatchesGeneratedRecord
-		if err := json.Unmarshal(data, &rec); err != nil {
-			continue
+
+		for _, e := range fileEntries {
+			if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(addressDir, e.Name()))
+			if err != nil {
+				continue
+			}
+			var rec PoCBatchesGeneratedRecord
+			if err := json.Unmarshal(data, &rec); err != nil {
+				continue
+			}
+			records = append(records, rec)
 		}
-		records = append(records, rec)
 	}
+
 	if len(records) == 0 {
 		return nil, ErrNotFound
 	}
+
+	// Sort by received_at to maintain consistent order
+	sort.Slice(records, func(i, j int) bool {
+		return records[i].ReceivedAt.Before(records[j].ReceivedAt)
+	})
+
 	return records, nil
 }
 

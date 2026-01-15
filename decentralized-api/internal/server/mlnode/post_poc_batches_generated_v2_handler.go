@@ -1,6 +1,7 @@
 package mlnode
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -116,6 +117,10 @@ func (s *Server) postGeneratedArtifactsV2(ctx echo.Context) error {
 		"hash", stored.Hash,
 		"time_since_block", stored.TimeSinceBlock,
 		"artifacts_count", len(stored.Artifacts))
+
+	if s.broadcaster != nil {
+		go s.broadcaster.Broadcast(context.Background(), stored)
+	}
 
 	return ctx.NoContent(http.StatusOK)
 }

@@ -74,7 +74,7 @@ func (s *Server) getInferencePayloads(ctx echo.Context) error {
 	}
 
 	// Get validator's pubkeys (including grantees/warm keys) for signature verification
-	validatorPubkeys, err := s.getAllowedPubKeys(ctx, validatorAddress)
+	validatorPubkeys, err := s.getAllowedPubKeys(ctx, epochId, validatorAddress)
 	if err != nil {
 		logging.Error("Failed to get validator pubkeys", types.Validation,
 			"validatorAddress", validatorAddress, "error", err)

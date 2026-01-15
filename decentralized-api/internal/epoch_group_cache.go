@@ -26,6 +26,8 @@ type EpochGroupDataCache struct {
 	// Multi-epoch cache for GetEpochGroupData (max 2 epochs)
 	epochCache map[uint64]*cachedEpochData
 
+	lastLimitEpoch uint64
+
 	recorder cosmosclient.CosmosMessageClient
 }
 
@@ -36,6 +38,7 @@ func NewEpochGroupDataCache(recorder cosmosclient.CosmosMessageClient) *EpochGro
 	}
 }
 
+// TODO: It seems we need to remove it and keep only the multi-epoch cache.
 func (c *EpochGroupDataCache) GetCurrentEpochGroupData(currentEpochIndex uint64) (*types.EpochGroupData, error) {
 	c.mu.RLock()
 	if c.cachedGroupData != nil && c.cachedEpochIndex == currentEpochIndex {
@@ -115,6 +118,7 @@ func (c *EpochGroupDataCache) GetEpochGroupData(ctx context.Context, epochIndex 
 		data:       &resp.EpochGroupData,
 		addressSet: addressSet,
 	}
+	c.tuneSystemLimitsLocked(epochIndex, uint64(len(resp.EpochGroupData.ValidationWeights)))
 
 	logging.Debug("Cached epoch group data", types.Config,
 		"epochIndex", epochIndex,
@@ -157,4 +161,12 @@ func (c *EpochGroupDataCache) pruneOldest(currentEpoch uint64) {
 			logging.Debug("Pruned old epoch from cache", types.Config, "epochId", epochId)
 		}
 	}
+}
+
+func (c *EpochGroupDataCache) tuneSystemLimitsLocked(epochIndex uint64, validatorCount uint64) {
+	if epochIndex == 0 || epochIndex <= c.lastLimitEpoch {
+		return
+	}
+	c.lastLimitEpoch = epochIndex
+	ConfigureSystemLimitsForValidators(validatorCount)
 }

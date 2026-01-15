@@ -187,7 +187,10 @@ func main() {
 
 	addr = fmt.Sprintf(":%v", config.GetApiConfig().MLServerPort)
 	logging.Info("start ml server on addr", types.Server, "addr", addr)
-	mlServer := mlserver.NewServer(recorder, nodeBroker, pocStore)
+
+	broadcaster := poc.NewResultBroadcaster(recorder, participantInfo.GetAddress(), chainPhaseTracker)
+	broadcaster.Start(ctx)
+	mlServer := mlserver.NewServer(recorder, nodeBroker, pocStore, broadcaster)
 	mlServer.Start(addr)
 
 	addr = fmt.Sprintf(":%v", config.GetApiConfig().AdminServerPort)

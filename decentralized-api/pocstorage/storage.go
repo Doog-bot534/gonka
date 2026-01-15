@@ -128,6 +128,11 @@ type PoCStorage interface {
 	// so callers do not need to reread historical records.
 	StoreGeneratedRecord(ctx context.Context, rec PoCBatchesGeneratedRecord) (PoCBatchesGeneratedRecord, error)
 
+	// StoreGeneratedRecordsBatch stores multiple mlnode emissions in a single transaction/operation.
+	// This is optimized for peer result ingestion where multiple nodes are updated at once.
+	// Returns the stored records with updated Amount/Hash.
+	StoreGeneratedRecordsBatch(ctx context.Context, records []PoCBatchesGeneratedRecord) ([]PoCBatchesGeneratedRecord, error)
+
 	// ListGeneratedRecords returns all stored mlnode emissions for a given PoC run.
 	ListGeneratedRecords(ctx context.Context, blockHeight int64) ([]PoCBatchesGeneratedRecord, error)
 }

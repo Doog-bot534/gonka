@@ -27,6 +27,7 @@ type Server struct {
 	payloadStorage      payloadstorage.PayloadStorage
 	pocStorage          pocstorage.PoCStorage
 	phaseTracker        *chainphase.ChainPhaseTracker
+	participantsCache   *internal.ParticipantsListCache
 	epochGroupDataCache *internal.EpochGroupDataCache
 }
 
@@ -57,6 +58,7 @@ func NewServer(
 		payloadStorage:      payloadStorage,
 		pocStorage:          pocStorage,
 		phaseTracker:        phaseTracker,
+		participantsCache:   internal.NewParticipantsListCache(recorder),
 		epochGroupDataCache: internal.NewEpochGroupDataCache(recorder),
 	}
 
@@ -70,6 +72,7 @@ func NewServer(
 	v2 := e.Group("/v2/", middleware.RequireApiVersion("2.0.1"))
 	v2.POST("poc/start", s.postPoCStartV2)
 	v2.GET("poc/results", s.getPoCResultsV2)
+	v2.POST("poc/results", s.postPoCResultsV2)
 
 	g.GET("status", s.getStatus)
 	g.GET("identity", s.getIdentity)

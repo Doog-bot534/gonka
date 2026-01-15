@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -228,6 +229,18 @@ func (s *PostgresStorage) StoreGeneratedRecord(ctx context.Context, rec PoCBatch
 		return PoCBatchesGeneratedRecord{}, err
 	}
 
+	// Optimization: Compute batch hash *before* starting the transaction to avoid holding the lock during CPU-bound work.
+	var batchHash string
+	if len(rec.Artifacts) > 0 {
+		batchHash = computeBatchHash(rec.Artifacts)
+	}
+
+	// Prepare JSON before tx as well.
+	noncesJSON, err := jsonMarshal(rec.Artifacts)
+	if err != nil {
+		return PoCBatchesGeneratedRecord{}, err
+	}
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return PoCBatchesGeneratedRecord{}, fmt.Errorf("begin tx: %w", err)
@@ -252,11 +265,23 @@ FOR UPDATE
 		prevHash = ""
 	}
 
-	batchHash := computeBatchHash(rec.Artifacts)
-	newAmount := prevAmount + int64(len(rec.Artifacts))
-	newHash, err := computeRollingHash(prevHash, batchHash, newAmount)
-	if err != nil {
-		return PoCBatchesGeneratedRecord{}, err
+	var newAmount int64
+	var newHash string
+	var errState error
+
+	if len(rec.Artifacts) > 0 {
+		// Peer (or local) with artifacts: compute incrementally.
+		newAmount = prevAmount + int64(len(rec.Artifacts))
+		newHash, errState = computeRollingHash(prevHash, batchHash, newAmount)
+	} else {
+		// Peer without artifacts: trust the provided amount/hash.
+		newAmount = rec.Amount
+		newHash = rec.Hash
+		errState = nil
+	}
+
+	if errState != nil {
+		return PoCBatchesGeneratedRecord{}, errState
 	}
 
 	// Upsert state.
@@ -275,10 +300,6 @@ ON CONFLICT (block_height, address, node_id, model) DO UPDATE SET
 	}
 
 	// Insert record with computed snapshot.
-	noncesJSON, err := jsonMarshal(rec.Artifacts)
-	if err != nil {
-		return PoCBatchesGeneratedRecord{}, err
-	}
 	rec.Amount = newAmount
 	rec.Hash = newHash
 
@@ -297,6 +318,171 @@ INSERT INTO poc_batches_generated (
 		return PoCBatchesGeneratedRecord{}, fmt.Errorf("commit tx: %w", err)
 	}
 	return rec, nil
+}
+
+func (s *PostgresStorage) StoreGeneratedRecordsBatch(ctx context.Context, records []PoCBatchesGeneratedRecord) ([]PoCBatchesGeneratedRecord, error) {
+	if len(records) == 0 {
+		return nil, nil
+	}
+	// Sort to avoid deadlocks
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].BlockHeight != records[j].BlockHeight {
+			return records[i].BlockHeight < records[j].BlockHeight
+		}
+		if records[i].Address != records[j].Address {
+			return records[i].Address < records[j].Address
+		}
+		if records[i].NodeID != records[j].NodeID {
+			return records[i].NodeID < records[j].NodeID
+		}
+		return records[i].Model < records[j].Model
+	})
+
+	// Assuming all for same block (if not, we'd need multiple ensurePartition calls)
+	// Just call for all distinct heights seen
+	seenHeights := make(map[int64]bool)
+	for i := range records {
+		r := &records[i]
+		if !seenHeights[r.BlockHeight] {
+			if err := s.ensurePartition(ctx, r.BlockHeight); err != nil {
+				return nil, err
+			}
+			seenHeights[r.BlockHeight] = true
+		}
+		if r.ReceivedAt.IsZero() {
+			r.ReceivedAt = time.Now().UTC()
+		}
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Bulk Lock State
+	// Use unnest to select multiple rows
+	var (
+		heights []int64
+		addrs   []string
+		nodes   []string
+		models  []string
+	)
+	for _, r := range records {
+		heights = append(heights, r.BlockHeight)
+		addrs = append(addrs, r.Address)
+		nodes = append(nodes, r.NodeID)
+		models = append(models, r.Model)
+	}
+
+	rows, err := tx.Query(ctx, `
+SELECT block_height, address, node_id, model, amount, hash 
+FROM poc_mlnode_state
+WHERE (block_height, address, node_id, model) IN (
+	SELECT * FROM unnest($1::bigint[], $2::text[], $3::text[], $4::text[])
+)
+FOR UPDATE
+`, heights, addrs, nodes, models)
+	if err != nil {
+		return nil, fmt.Errorf("select state batch: %w", err)
+	}
+
+	stateMap := make(map[string]PoCMlnodeState)
+	for rows.Next() {
+		var s PoCMlnodeState
+		if err := rows.Scan(&s.BlockHeight, &s.Address, &s.NodeID, &s.Model, &s.Amount, &s.Hash); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan state: %w", err)
+		}
+		key := fmt.Sprintf("%d:%s:%s:%s", s.BlockHeight, s.Address, s.NodeID, s.Model)
+		stateMap[key] = s
+	}
+	rows.Close()
+
+	// Process Records
+	var outRecords []PoCBatchesGeneratedRecord
+	batch := &pgx.Batch{}
+
+	for _, rec := range records {
+		if err := validateRecordKey(rec); err != nil {
+			return nil, err
+		}
+
+		key := fmt.Sprintf("%d:%s:%s:%s", rec.BlockHeight, rec.Address, rec.NodeID, rec.Model)
+		state, exists := stateMap[key]
+		if !exists {
+			state = PoCMlnodeState{
+				BlockHeight: rec.BlockHeight,
+				Address:     rec.Address,
+				NodeID:      rec.NodeID,
+				Model:       rec.Model,
+				Amount:      0,
+				Hash:        "",
+			}
+		}
+
+		var newAmount int64
+		var newHash string
+		var errState error
+
+		var batchHash string
+		if len(rec.Artifacts) > 0 {
+			batchHash = computeBatchHash(rec.Artifacts)
+			newAmount = state.Amount + int64(len(rec.Artifacts))
+			newHash, errState = computeRollingHash(state.Hash, batchHash, newAmount)
+		} else {
+			newAmount = rec.Amount
+			newHash = rec.Hash
+			errState = nil
+		}
+		if errState != nil {
+			return nil, errState
+		}
+
+		rec.Amount = newAmount
+		rec.Hash = newHash
+
+		outRecords = append(outRecords, rec)
+
+		// Queue State Upsert
+		batch.Queue(`
+INSERT INTO poc_mlnode_state (
+  block_height, address, node_id, model,
+  amount, hash, updated_at
+) VALUES ($1,$2,$3,$4,$5,$6,$7)
+ON CONFLICT (block_height, address, node_id, model) DO UPDATE SET
+  amount = EXCLUDED.amount,
+  hash = EXCLUDED.hash,
+  updated_at = EXCLUDED.updated_at
+`, rec.BlockHeight, rec.Address, rec.NodeID, rec.Model, newAmount, newHash, rec.ReceivedAt)
+
+		// Queue Record Insert
+		noncesJSON, err := jsonMarshal(rec.Artifacts)
+		if err != nil {
+			return nil, err
+		}
+
+		batch.Queue(`
+INSERT INTO poc_batches_generated (
+    block_height, address, public_key, block_hash,
+    node_id, model, amount, hash, time_since_block,
+    nonces_json, received_at
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+`, rec.BlockHeight, rec.Address, rec.PublicKey, rec.BlockHash,
+			rec.NodeID, rec.Model, rec.Amount, rec.Hash, rec.TimeSinceBlock,
+			noncesJSON, rec.ReceivedAt)
+	}
+
+	br := tx.SendBatch(ctx, batch)
+	if err := br.Close(); err != nil {
+		return nil, fmt.Errorf("batch execution failed: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+
+	return outRecords, nil
 }
 
 func (s *PostgresStorage) ListGeneratedRecords(ctx context.Context, blockHeight int64) ([]PoCBatchesGeneratedRecord, error) {
