@@ -192,6 +192,13 @@ func (k Keeper) CompleteDKG(ctx sdk.Context, epochBLSData *types.EpochBLSData) e
 		// Store valid dealers in epoch data
 		epochBLSData.ValidDealers = validDealers
 
+		// Precompute per-slot public keys for faster validation later
+		slotPublicKeys, err := k.PrecomputeSlotPublicKeys(epochBLSData)
+		if err != nil {
+			return fmt.Errorf("failed to precompute slot public keys for epoch %d: %w", epochBLSData.EpochId, err)
+		}
+		epochBLSData.SlotPublicKeys = slotPublicKeys
+
 		// Store updated epoch data
 		if err := k.SetEpochBLSData(ctx, *epochBLSData); err != nil {
 			return fmt.Errorf("failed to set EpochBLSData for epoch %d: %w", epochBLSData.EpochId, err)

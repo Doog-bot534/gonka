@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/consensys/gnark-crypto/ecc"
 	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fp"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
@@ -19,27 +20,16 @@ func (k Keeper) computeParticipantPublicKey(epochBLSData *types.EpochBLSData, sl
 
 	// For each slot assigned to this participant
 	for _, slotIndex := range slotIndices {
-		// For each valid dealer's commitments
-		for dealerIdx, isValid := range epochBLSData.ValidDealers {
-			if !isValid || dealerIdx >= len(epochBLSData.DealerParts) {
-				continue
-			}
-
-			dealerPart := epochBLSData.DealerParts[dealerIdx]
-			if dealerPart == nil || len(dealerPart.Commitments) == 0 {
-				continue
-			}
-
-			// Evaluate dealer's commitment polynomial at this slot index
-			// This requires polynomial evaluation using the commitments
-			slotPublicKey, err := k.evaluateCommitmentPolynomial(dealerPart.Commitments, slotIndex)
-			if err != nil {
-				return nil, fmt.Errorf("failed to evaluate commitment polynomial for dealer %d slot %d: %w", dealerIdx, slotIndex, err)
-			}
-
-			// Add to aggregated public key
-			aggregatedPubKey.Add(&aggregatedPubKey, &slotPublicKey)
+		if len(epochBLSData.SlotPublicKeys) <= int(slotIndex) {
+			return nil, fmt.Errorf("precomputed slot public key missing for slot %d", slotIndex)
 		}
+
+		// Use precomputed slot public key
+		var slotPubKey bls12381.G2Affine
+		if err := slotPubKey.Unmarshal(epochBLSData.SlotPublicKeys[slotIndex]); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal precomputed slot public key %d: %w", slotIndex, err)
+		}
+		aggregatedPubKey.Add(&aggregatedPubKey, &slotPubKey)
 	}
 
 	// Return compressed public key bytes
@@ -47,41 +37,78 @@ func (k Keeper) computeParticipantPublicKey(epochBLSData *types.EpochBLSData, sl
 	return pubKeyBytes[:], nil
 }
 
-// evaluateCommitmentPolynomial evaluates polynomial at given slot index
-func (k Keeper) evaluateCommitmentPolynomial(commitments [][]byte, slotIndex uint32) (bls12381.G2Affine, error) {
-	var result bls12381.G2Affine
-	result.SetInfinity()
+// PrecomputeSlotPublicKeys precomputes public keys for all slots in the epoch.
+func (k Keeper) PrecomputeSlotPublicKeys(epochBLSData *types.EpochBLSData) ([][]byte, error) {
+	totalSlots := epochBLSData.ITotalSlots
+	slotPublicKeys := make([][]byte, totalSlots)
 
-	// Evaluate polynomial at x = slotIndex+1 using Fr arithmetic:
-	// result = Σ(commitments[i] * x^i)
-	var x fr.Element
-	x.SetUint64(uint64(slotIndex + 1))
-	var power fr.Element
-	power.SetOne() // x^0 = 1
-
-	for i, commitmentBytes := range commitments {
-		if len(commitmentBytes) != 96 {
-			return result, fmt.Errorf("invalid commitment %d length: expected 96, got %d", i, len(commitmentBytes))
+	// Pre-unmarshal all valid dealer commitments once
+	type dealerCommitments struct {
+		points []bls12381.G2Affine
+	}
+	activeDealers := make([]dealerCommitments, 0)
+	for dealerIdx, isValid := range epochBLSData.ValidDealers {
+		if !isValid || dealerIdx >= len(epochBLSData.DealerParts) {
+			continue
+		}
+		dealerPart := epochBLSData.DealerParts[dealerIdx]
+		if dealerPart == nil || len(dealerPart.Commitments) == 0 {
+			continue
 		}
 
-		var commitment bls12381.G2Affine
-		err := commitment.Unmarshal(commitmentBytes)
-		if err != nil {
-			return result, fmt.Errorf("failed to unmarshal commitment %d: %w", i, err)
+		points := make([]bls12381.G2Affine, len(dealerPart.Commitments))
+		for i, cb := range dealerPart.Commitments {
+			if err := points[i].Unmarshal(cb); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal commitment %d for dealer %d: %w", i, dealerIdx, err)
+			}
 		}
-
-		// Multiply commitment by x^i
-		var term bls12381.G2Affine
-		term.ScalarMultiplication(&commitment, power.BigInt(new(big.Int)))
-
-		// Add to result
-		result.Add(&result, &term)
-
-		// Update power for next iteration: power *= x
-		power.Mul(&power, &x)
+		activeDealers = append(activeDealers, dealerCommitments{points: points})
 	}
 
-	return result, nil
+	// 1. Pre-aggregate commitments across all dealers: totalCommitments[i] = sum over all dealers of C_dealer,i
+	// This reduces 100 MSM calls per slot down to 1 MSM call per slot.
+	maxCoeffs := 0
+	for _, dealer := range activeDealers {
+		if len(dealer.points) > maxCoeffs {
+			maxCoeffs = len(dealer.points)
+		}
+	}
+
+	totalCommitments := make([]bls12381.G2Affine, maxCoeffs)
+	for i := range totalCommitments {
+		totalCommitments[i].SetInfinity()
+	}
+
+	for _, dealer := range activeDealers {
+		for i, point := range dealer.points {
+			totalCommitments[i].Add(&totalCommitments[i], &point)
+		}
+	}
+
+	// 2. For each slot, compute aggregated public key using the total commitments
+	for slotIndex := uint32(0); slotIndex < totalSlots; slotIndex++ {
+		var x fr.Element
+		x.SetUint64(uint64(slotIndex + 1))
+
+		var power fr.Element
+		power.SetOne()
+		scalars := make([]fr.Element, len(totalCommitments))
+		for i := range scalars {
+			scalars[i] = power
+			power.Mul(&power, &x)
+		}
+
+		var aggregatedPubKey bls12381.G2Affine
+		_, err := aggregatedPubKey.MultiExp(totalCommitments, scalars, ecc.MultiExpConfig{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to multiexp for slot %d: %w", slotIndex, err)
+		}
+
+		pkBytes := aggregatedPubKey.Bytes()
+		slotPublicKeys[slotIndex] = pkBytes[:]
+	}
+
+	return slotPublicKeys, nil
 }
 
 // verifyBLSPartialSignature verifies BLS partial signatures per-slot.
@@ -123,23 +150,17 @@ func (k Keeper) verifyBLSPartialSignature(signature []byte, messageHash []byte, 
 			return false
 		}
 
-		// Compute aggregated slot public key across valid dealers
+		// Compute aggregated slot public key
 		var slotPubKey bls12381.G2Affine
-		slotPubKey.SetInfinity()
-		for dealerIdx, isValid := range epochBLSData.ValidDealers {
-			if !isValid || dealerIdx >= len(epochBLSData.DealerParts) {
-				continue
-			}
-			dealerPart := epochBLSData.DealerParts[dealerIdx]
-			if dealerPart == nil || len(dealerPart.Commitments) == 0 {
-				continue
-			}
-			eval, err := k.evaluateCommitmentPolynomial(dealerPart.Commitments, slotIndex)
-			if err != nil {
-				k.Logger().Error("Failed to evaluate commitment polynomial", "dealerIdx", dealerIdx, "slot", slotIndex, "error", err)
-				return false
-			}
-			slotPubKey.Add(&slotPubKey, &eval)
+		if len(epochBLSData.SlotPublicKeys) <= int(slotIndex) {
+			k.Logger().Error("Precomputed slot public key missing", "slot", slotIndex)
+			return false
+		}
+
+		// Use precomputed slot public key
+		if err := slotPubKey.Unmarshal(epochBLSData.SlotPublicKeys[slotIndex]); err != nil {
+			k.Logger().Error("Failed to unmarshal precomputed slot public key", "slot", slotIndex, "error", err)
+			return false
 		}
 
 		// Pairing checks
