@@ -234,7 +234,8 @@ message MsgSubmitPocValidationResponse {}
 message MsgSubmitPocBatchesV2 {
   option (cosmos.msg.v1.signer) = "creator";
   string creator = 1;
-  repeated PoCBatchV2 batches = 2;
+  int64 poc_stage_start_block_height = 2;
+  repeated PoCBatchPayloadV2 batches = 3;
 }
 
 message MsgSubmitPocBatchesV2Response {}
@@ -242,7 +243,8 @@ message MsgSubmitPocBatchesV2Response {}
 message MsgSubmitPocValidationsV2 {
   option (cosmos.msg.v1.signer) = "creator";
   string creator = 1;
-  repeated PoCValidationV2 validations = 2;
+  int64 poc_stage_start_block_height = 2;
+  repeated PoCValidationPayloadV2 validations = 3;
 }
 
 message MsgSubmitPocValidationsV2Response {}

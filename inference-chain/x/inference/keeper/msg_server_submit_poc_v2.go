@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"fmt"
 
 	sdkerrors "cosmossdk.io/errors"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -11,15 +12,85 @@ import (
 // SubmitPocBatchesV2 handles submission of PoC v2 batches from multiple nodes.
 func (k msgServer) SubmitPocBatchesV2(goCtx context.Context, msg *types.MsgSubmitPocBatchesV2) (*types.MsgSubmitPocBatchesV2Response, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
+	currentBlockHeight := ctx.BlockHeight()
+	startBlockHeight := msg.PocStageStartBlockHeight
 
 	// Participant access gating: blocklisted accounts cannot participate in PoC.
 	if k.IsPoCParticipantBlocked(ctx, msg.Creator) {
-		k.LogError(PocFailureTag+"[SubmitPocArtifactBatchesV2] participant is blocked from PoC", types.PoC, "participant", msg.Creator)
+		k.LogError(PocFailureTag+"[SubmitPocBatchesV2] participant is blocked from PoC", types.PoC, "participant", msg.Creator)
 		return nil, sdkerrors.Wrap(types.ErrParticipantBlocked, msg.Creator)
 	}
 
-	currentBlockHeight := ctx.BlockHeight()
+	// Check for active confirmation PoC event first
+	activeEvent, isActive, err := k.Keeper.GetActiveConfirmationPoCEvent(ctx)
+	if err != nil {
+		k.LogError(PocFailureTag+"[SubmitPocBatchesV2] Error checking confirmation PoC event", types.PoC, "error", err)
+		// Continue with regular PoC check
+	}
 
+	// Validate PoC window once at message level (all batches share the same height)
+	if isActive && activeEvent != nil && activeEvent.Phase == types.ConfirmationPoCPhase_CONFIRMATION_POC_GENERATION {
+		// Verify the message is for this confirmation PoC event
+		if startBlockHeight != activeEvent.TriggerHeight {
+			k.LogError(PocFailureTag+"[SubmitPocBatchesV2] Confirmation PoC: start block height mismatch", types.PoC,
+				"participant", msg.Creator,
+				"msg.PocStageStartBlockHeight", startBlockHeight,
+				"event.TriggerHeight", activeEvent.TriggerHeight,
+				"currentBlockHeight", currentBlockHeight)
+			errMsg := fmt.Sprintf("[SubmitPocBatchesV2] Confirmation PoC active but start block height doesn't match. "+
+				"participant = %s. msg.PocStageStartBlockHeight = %d. event.TriggerHeight = %d",
+				msg.Creator, startBlockHeight, activeEvent.TriggerHeight)
+			return nil, sdkerrors.Wrap(types.ErrPocWrongStartBlockHeight, errMsg)
+		}
+
+		// Verify we're in the batch submission window (generation + exchange period)
+		epochParams := k.GetParams(ctx).EpochParams
+		if !activeEvent.IsInBatchSubmissionWindow(currentBlockHeight, epochParams) {
+			k.LogError(PocFailureTag+"[SubmitPocBatchesV2] Confirmation PoC: outside batch submission window", types.PoC,
+				"participant", msg.Creator,
+				"currentBlockHeight", currentBlockHeight,
+				"generationStartHeight", activeEvent.GenerationStartHeight,
+				"exchangeEndHeight", activeEvent.GetExchangeEnd(epochParams))
+			return nil, sdkerrors.Wrap(types.ErrPocTooLate, "Confirmation PoC batch submission window closed")
+		}
+	} else {
+		// Regular PoC logic
+		epochParams := k.Keeper.GetParams(goCtx).EpochParams
+		upcomingEpoch, found := k.Keeper.GetUpcomingEpoch(ctx)
+		if !found {
+			k.LogError(PocFailureTag+"[SubmitPocBatchesV2] Failed to get upcoming epoch", types.PoC,
+				"participant", msg.Creator,
+				"currentBlockHeight", currentBlockHeight)
+			return nil, sdkerrors.Wrap(types.ErrUpcomingEpochNotFound, "Failed to get upcoming epoch")
+		}
+		epochContext := types.NewEpochContext(*upcomingEpoch, *epochParams)
+
+		if !epochContext.IsStartOfPocStage(startBlockHeight) {
+			k.LogError(PocFailureTag+"[SubmitPocBatchesV2] message start block height doesn't match the upcoming epoch group", types.PoC,
+				"participant", msg.Creator,
+				"msg.PocStageStartBlockHeight", startBlockHeight,
+				"epochContext.PocStartBlockHeight", epochContext.PocStartBlockHeight,
+				"currentBlockHeight", currentBlockHeight)
+			errMsg := fmt.Sprintf("[SubmitPocBatchesV2] message start block height doesn't match the upcoming epoch group. "+
+				"participant = %s. msg.PocStageStartBlockHeight = %d. epochContext.PocStartBlockHeight = %d. currentBlockHeight = %d",
+				msg.Creator, startBlockHeight, epochContext.PocStartBlockHeight, currentBlockHeight)
+			return nil, sdkerrors.Wrap(types.ErrPocWrongStartBlockHeight, errMsg)
+		}
+
+		if !epochContext.IsPoCExchangeWindow(currentBlockHeight) {
+			k.LogError(PocFailureTag+"[SubmitPocBatchesV2] PoC exchange window is closed.", types.PoC,
+				"participant", msg.Creator,
+				"msg.PocStageStartBlockHeight", startBlockHeight,
+				"currentBlockHeight", currentBlockHeight,
+				"epochContext.PocStartBlockHeight", epochContext.PocStartBlockHeight)
+			errMsg := fmt.Sprintf("PoC exchange window is closed. "+
+				"participant = %s. msg.BlockHeight = %d, currentBlockHeight = %d, epochContext.PocStartBlockHeight = %d",
+				msg.Creator, startBlockHeight, currentBlockHeight, epochContext.PocStartBlockHeight)
+			return nil, sdkerrors.Wrap(types.ErrPocTooLate, errMsg)
+		}
+	}
+
+	// Process each batch
 	for i, batch := range msg.Batches {
 		if batch.NodeId == "" {
 			k.LogError(PocFailureTag+"[SubmitPocBatchesV2] NodeId is empty", types.PoC,
@@ -40,37 +111,7 @@ func (k msgServer) SubmitPocBatchesV2(goCtx context.Context, msg *types.MsgSubmi
 			}
 		}
 
-		startBlockHeight := batch.PocStageStartBlockHeight
-
-		// Reuse existing PoC window semantics
-		epochParams := k.Keeper.GetParams(goCtx).EpochParams
-		upcomingEpoch, found := k.Keeper.GetUpcomingEpoch(ctx)
-		if !found {
-			k.LogError(PocFailureTag+"[SubmitPocBatchesV2] Failed to get upcoming epoch", types.PoC,
-				"participant", msg.Creator,
-				"batchIndex", i)
-			return nil, sdkerrors.Wrap(types.ErrUpcomingEpochNotFound, "Failed to get upcoming epoch")
-		}
-		epochContext := types.NewEpochContext(*upcomingEpoch, *epochParams)
-
-		if !epochContext.IsStartOfPocStage(startBlockHeight) {
-			k.LogError(PocFailureTag+"[SubmitPocBatchesV2] start block height mismatch", types.PoC,
-				"participant", msg.Creator,
-				"batchIndex", i,
-				"batch.PocStageStartBlockHeight", startBlockHeight,
-				"epochContext.PocStartBlockHeight", epochContext.PocStartBlockHeight)
-			return nil, sdkerrors.Wrap(types.ErrPocWrongStartBlockHeight, "start block height mismatch")
-		}
-
-		if !epochContext.IsPoCExchangeWindow(currentBlockHeight) {
-			k.LogError(PocFailureTag+"[SubmitPocBatchesV2] PoC exchange window is closed", types.PoC,
-				"participant", msg.Creator,
-				"batchIndex", i,
-				"currentBlockHeight", currentBlockHeight)
-			return nil, sdkerrors.Wrap(types.ErrPocTooLate, "PoC exchange window is closed")
-		}
-
-		// Store the v2 batch with creator as participant
+		// Store the v2 batch with creator as participant (combine message-level height with payload)
 		storedBatch := types.PoCBatchV2{
 			ParticipantAddress:       msg.Creator,
 			PocStageStartBlockHeight: startBlockHeight,
@@ -93,6 +134,8 @@ func (k msgServer) SubmitPocBatchesV2(goCtx context.Context, msg *types.MsgSubmi
 // SubmitPocValidationsV2 handles batch submission of PoC v2 validations.
 func (k msgServer) SubmitPocValidationsV2(goCtx context.Context, msg *types.MsgSubmitPocValidationsV2) (*types.MsgSubmitPocValidationsV2Response, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
+	currentBlockHeight := ctx.BlockHeight()
+	startBlockHeight := msg.PocStageStartBlockHeight
 
 	// Participant access gating: blocklisted accounts cannot validate in PoC.
 	if k.IsPoCParticipantBlocked(ctx, msg.Creator) {
@@ -100,39 +143,76 @@ func (k msgServer) SubmitPocValidationsV2(goCtx context.Context, msg *types.MsgS
 		return nil, sdkerrors.Wrap(types.ErrParticipantBlocked, msg.Creator)
 	}
 
-	currentBlockHeight := ctx.BlockHeight()
+	// Check for active confirmation PoC event first
+	activeEvent, isActive, err := k.Keeper.GetActiveConfirmationPoCEvent(ctx)
+	if err != nil {
+		k.LogError(PocFailureTag+"[SubmitPocValidationsV2] Error checking confirmation PoC event", types.PoC, "error", err)
+		// Continue with regular PoC check
+	}
 
-	for i, validation := range msg.Validations {
-		startBlockHeight := validation.PocStageStartBlockHeight
+	// Validate PoC window once at message level (all validations share the same height)
+	if isActive && activeEvent != nil && activeEvent.Phase == types.ConfirmationPoCPhase_CONFIRMATION_POC_VALIDATION {
+		// Verify the message is for this confirmation PoC event
+		if startBlockHeight != activeEvent.TriggerHeight {
+			k.LogError(PocFailureTag+"[SubmitPocValidationsV2] Confirmation PoC: start block height mismatch", types.PoC,
+				"validatorParticipant", msg.Creator,
+				"msg.PocStageStartBlockHeight", startBlockHeight,
+				"event.TriggerHeight", activeEvent.TriggerHeight,
+				"currentBlockHeight", currentBlockHeight)
+			errMsg := fmt.Sprintf("[SubmitPocValidationsV2] Confirmation PoC active but start block height doesn't match. "+
+				"validatorParticipant = %s. msg.PocStageStartBlockHeight = %d. event.TriggerHeight = %d",
+				msg.Creator, startBlockHeight, activeEvent.TriggerHeight)
+			return nil, sdkerrors.Wrap(types.ErrPocWrongStartBlockHeight, errMsg)
+		}
 
-		// Reuse existing PoC window semantics for each validation
-		epochParams := k.Keeper.GetParams(goCtx).EpochParams
+		// Verify we're in the validation window
+		epochParams := k.GetParams(ctx).EpochParams
+		if !activeEvent.IsInValidationWindow(currentBlockHeight, epochParams) {
+			k.LogError(PocFailureTag+"[SubmitPocValidationsV2] Confirmation PoC: outside validation window", types.PoC,
+				"validatorParticipant", msg.Creator,
+				"currentBlockHeight", currentBlockHeight,
+				"validationStartHeight", activeEvent.GetValidationStart(epochParams),
+				"validationEndHeight", activeEvent.GetValidationEnd(epochParams))
+			return nil, sdkerrors.Wrap(types.ErrPocTooLate, "Confirmation PoC validation window closed")
+		}
+	} else {
+		// Regular PoC logic
+		epochParams := k.Keeper.GetParams(ctx).EpochParams
 		upcomingEpoch, found := k.Keeper.GetUpcomingEpoch(ctx)
 		if !found {
 			k.LogError(PocFailureTag+"[SubmitPocValidationsV2] Failed to get upcoming epoch", types.PoC,
-				"validator", msg.Creator,
-				"validationIndex", i)
-			return nil, sdkerrors.Wrap(types.ErrUpcomingEpochNotFound, "Failed to get upcoming epoch")
+				"validatorParticipant", msg.Creator,
+				"currentBlockHeight", currentBlockHeight)
+			return nil, sdkerrors.Wrap(types.ErrUpcomingEpochNotFound, "[SubmitPocValidationsV2] Failed to get upcoming epoch")
 		}
 		epochContext := types.NewEpochContext(*upcomingEpoch, *epochParams)
 
 		if !epochContext.IsStartOfPocStage(startBlockHeight) {
-			k.LogError(PocFailureTag+"[SubmitPocValidationsV2] start block height mismatch", types.PoC,
-				"validator", msg.Creator,
-				"participant", validation.ParticipantAddress,
-				"validationIndex", i)
-			return nil, sdkerrors.Wrap(types.ErrPocWrongStartBlockHeight, "start block height mismatch")
+			k.LogError(PocFailureTag+"[SubmitPocValidationsV2] message start block height doesn't match the upcoming epoch", types.PoC,
+				"validatorParticipant", msg.Creator,
+				"msg.PocStageStartBlockHeight", startBlockHeight,
+				"epochContext.PocStartBlockHeight", epochContext.PocStartBlockHeight,
+				"currentBlockHeight", currentBlockHeight)
+			errMsg := fmt.Sprintf("[SubmitPocValidationsV2] message start block height doesn't match the upcoming epoch. "+
+				"validatorParticipant = %s. msg.PocStageStartBlockHeight = %d. epochContext.PocStartBlockHeight = %d. currentBlockHeight = %d",
+				msg.Creator, startBlockHeight, epochContext.PocStartBlockHeight, currentBlockHeight)
+			return nil, sdkerrors.Wrap(types.ErrPocWrongStartBlockHeight, errMsg)
 		}
 
 		if !epochContext.IsValidationExchangeWindow(currentBlockHeight) {
-			k.LogError(PocFailureTag+"[SubmitPocValidationsV2] PoC validation exchange window is closed", types.PoC,
-				"validator", msg.Creator,
-				"participant", validation.ParticipantAddress,
-				"validationIndex", i)
-			return nil, sdkerrors.Wrap(types.ErrPocTooLate, "PoC validation exchange window is closed")
+			k.LogError(PocFailureTag+"[SubmitPocValidationsV2] PoC validation exchange window is closed.", types.PoC,
+				"validatorParticipant", msg.Creator,
+				"msg.BlockHeight", startBlockHeight,
+				"epochContext.PocStartBlockHeight", epochContext.PocStartBlockHeight,
+				"currentBlockHeight", currentBlockHeight)
+			errMsg := fmt.Sprintf("msg.BlockHeight = %d, currentBlockHeight = %d", startBlockHeight, currentBlockHeight)
+			return nil, sdkerrors.Wrap(types.ErrPocTooLate, errMsg)
 		}
+	}
 
-		// Store the v2 validation
+	// Process each validation
+	for _, validation := range msg.Validations {
+		// Store the v2 validation (combine message-level height with payload)
 		storedValidation := types.PoCValidationV2{
 			ParticipantAddress:          validation.ParticipantAddress,
 			ValidatorParticipantAddress: msg.Creator,

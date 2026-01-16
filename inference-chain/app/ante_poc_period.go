@@ -24,9 +24,28 @@ func (ppd PocPeriodValidationDecorator) checkPocMessageTooLate(ctx sdk.Context, 
 
 	switch m := msg.(type) {
 	case *inferencetypes.MsgSubmitPocBatch:
+		// V1 PoC batch is deprecated - reject early in ante
+		ppd.inferenceKeeper.LogDebug(
+			"AnteHandle: PocPeriodValidation - rejecting deprecated MsgSubmitPocBatch",
+			inferencetypes.PoC,
+			"msg_type_url", sdk.MsgTypeURL(msg),
+		)
+		return inferencetypes.ErrDeprecated
+
+	case *inferencetypes.MsgSubmitPocValidation:
+		// V1 PoC validation is deprecated - reject early in ante
+		ppd.inferenceKeeper.LogDebug(
+			"AnteHandle: PocPeriodValidation - rejecting deprecated MsgSubmitPocValidation",
+			inferencetypes.PoC,
+			"msg_type_url", sdk.MsgTypeURL(msg),
+		)
+		return inferencetypes.ErrDeprecated
+
+	case *inferencetypes.MsgSubmitPocBatchesV2:
+		// Height is now at message level - check once
 		if err := ppd.inferenceKeeper.CheckPoCMessageTooLate(ctx, m.PocStageStartBlockHeight, inferencemodulekeeper.PoCWindowBatch); err != nil {
 			ppd.inferenceKeeper.LogDebug(
-				"AnteHandle: PocPeriodValidation - rejecting MsgSubmitPocBatch as too late",
+				"AnteHandle: PocPeriodValidation - rejecting MsgSubmitPocBatchesV2 as too late",
 				inferencetypes.PoC,
 				"msg_type_url", sdk.MsgTypeURL(msg),
 				"pocStageStartBlockHeight", m.PocStageStartBlockHeight,
@@ -36,10 +55,11 @@ func (ppd PocPeriodValidationDecorator) checkPocMessageTooLate(ctx sdk.Context, 
 			return err
 		}
 
-	case *inferencetypes.MsgSubmitPocValidation:
+	case *inferencetypes.MsgSubmitPocValidationsV2:
+		// Height is now at message level - check once
 		if err := ppd.inferenceKeeper.CheckPoCMessageTooLate(ctx, m.PocStageStartBlockHeight, inferencemodulekeeper.PoCWindowValidation); err != nil {
 			ppd.inferenceKeeper.LogDebug(
-				"AnteHandle: PocPeriodValidation - rejecting MsgSubmitPocValidation as too late",
+				"AnteHandle: PocPeriodValidation - rejecting MsgSubmitPocValidationsV2 as too late",
 				inferencetypes.PoC,
 				"msg_type_url", sdk.MsgTypeURL(msg),
 				"pocStageStartBlockHeight", m.PocStageStartBlockHeight,
@@ -55,7 +75,8 @@ func (ppd PocPeriodValidationDecorator) checkPocMessageTooLate(ctx sdk.Context, 
 
 func (ppd PocPeriodValidationDecorator) checkMessage(ctx sdk.Context, msg sdk.Msg) error {
 	switch m := msg.(type) {
-	case *inferencetypes.MsgSubmitPocBatch, *inferencetypes.MsgSubmitPocValidation:
+	case *inferencetypes.MsgSubmitPocBatch, *inferencetypes.MsgSubmitPocValidation,
+		*inferencetypes.MsgSubmitPocBatchesV2, *inferencetypes.MsgSubmitPocValidationsV2:
 		return ppd.checkPocMessageTooLate(ctx, msg)
 
 	case *authztypes.MsgExec:

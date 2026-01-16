@@ -61,11 +61,11 @@ func (s *Server) postGeneratedArtifactsV2(ctx echo.Context) error {
 
 	// Use batch submission (wrapping single batch from this callback)
 	msg := &inference.MsgSubmitPocBatchesV2{
-		Batches: []*inference.PoCBatchV2{
+		PocStageStartBlockHeight: body.BlockHeight,
+		Batches: []*inference.PoCBatchPayloadV2{
 			{
-				PocStageStartBlockHeight: body.BlockHeight,
-				NodeId:                   nodeId,
-				Artifacts:                protoArtifacts,
+				NodeId:    nodeId,
+				Artifacts: protoArtifacts,
 			},
 		},
 	}
@@ -121,11 +121,11 @@ func (s *Server) postValidatedArtifactsV2(ctx echo.Context) error {
 
 	// Use batch submission (even for single validation - no single-validation RPC exists)
 	msg := &inference.MsgSubmitPocValidationsV2{
-		Validations: []*inference.PoCValidationV2{
+		PocStageStartBlockHeight: body.BlockHeight,
+		Validations: []*inference.PoCValidationPayloadV2{
 			{
-				ParticipantAddress:       address,
-				PocStageStartBlockHeight: body.BlockHeight,
-				ValidatedWeight:          validatedWeight,
+				ParticipantAddress: address,
+				ValidatedWeight:    validatedWeight,
 			},
 		},
 	}

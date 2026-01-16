@@ -145,7 +145,7 @@ func (m *PoCBatchV2) GetArtifacts() []*PoCArtifactV2 {
 }
 
 // PoCValidationV2 represents a validator's attestation of a participant's PoC work.
-// validated_weight: -1 = reject/fraud, >=0 = accept
+// validated_weight: -1 = reject/fraud, >0 = accept
 type PoCValidationV2 struct {
 	ParticipantAddress          string `protobuf:"bytes,1,opt,name=participant_address,json=participantAddress,proto3" json:"participant_address,omitempty"`
 	ValidatorParticipantAddress string `protobuf:"bytes,2,opt,name=validator_participant_address,json=validatorParticipantAddress,proto3" json:"validator_participant_address,omitempty"`
@@ -214,40 +214,152 @@ func (m *PoCValidationV2) GetValidatedWeight() int64 {
 	return 0
 }
 
+// PoCBatchPayloadV2 is the message payload for batch submission.
+// Height is at message level, participant derived from signer.
+type PoCBatchPayloadV2 struct {
+	NodeId    string           `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	Artifacts []*PoCArtifactV2 `protobuf:"bytes,2,rep,name=artifacts,proto3" json:"artifacts,omitempty"`
+}
+
+func (m *PoCBatchPayloadV2) Reset()         { *m = PoCBatchPayloadV2{} }
+func (m *PoCBatchPayloadV2) String() string { return proto.CompactTextString(m) }
+func (*PoCBatchPayloadV2) ProtoMessage()    {}
+func (*PoCBatchPayloadV2) Descriptor() ([]byte, []int) {
+	return fileDescriptor_02f1658865fe708f, []int{3}
+}
+func (m *PoCBatchPayloadV2) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *PoCBatchPayloadV2) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_PoCBatchPayloadV2.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *PoCBatchPayloadV2) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PoCBatchPayloadV2.Merge(m, src)
+}
+func (m *PoCBatchPayloadV2) XXX_Size() int {
+	return m.Size()
+}
+func (m *PoCBatchPayloadV2) XXX_DiscardUnknown() {
+	xxx_messageInfo_PoCBatchPayloadV2.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PoCBatchPayloadV2 proto.InternalMessageInfo
+
+func (m *PoCBatchPayloadV2) GetNodeId() string {
+	if m != nil {
+		return m.NodeId
+	}
+	return ""
+}
+
+func (m *PoCBatchPayloadV2) GetArtifacts() []*PoCArtifactV2 {
+	if m != nil {
+		return m.Artifacts
+	}
+	return nil
+}
+
+// PoCValidationPayloadV2 is the message payload for validation submission.
+// Height is at message level, validator derived from signer.
+type PoCValidationPayloadV2 struct {
+	ParticipantAddress string `protobuf:"bytes,1,opt,name=participant_address,json=participantAddress,proto3" json:"participant_address,omitempty"`
+	ValidatedWeight    int64  `protobuf:"varint,2,opt,name=validated_weight,json=validatedWeight,proto3" json:"validated_weight,omitempty"`
+}
+
+func (m *PoCValidationPayloadV2) Reset()         { *m = PoCValidationPayloadV2{} }
+func (m *PoCValidationPayloadV2) String() string { return proto.CompactTextString(m) }
+func (*PoCValidationPayloadV2) ProtoMessage()    {}
+func (*PoCValidationPayloadV2) Descriptor() ([]byte, []int) {
+	return fileDescriptor_02f1658865fe708f, []int{4}
+}
+func (m *PoCValidationPayloadV2) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *PoCValidationPayloadV2) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_PoCValidationPayloadV2.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *PoCValidationPayloadV2) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PoCValidationPayloadV2.Merge(m, src)
+}
+func (m *PoCValidationPayloadV2) XXX_Size() int {
+	return m.Size()
+}
+func (m *PoCValidationPayloadV2) XXX_DiscardUnknown() {
+	xxx_messageInfo_PoCValidationPayloadV2.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PoCValidationPayloadV2 proto.InternalMessageInfo
+
+func (m *PoCValidationPayloadV2) GetParticipantAddress() string {
+	if m != nil {
+		return m.ParticipantAddress
+	}
+	return ""
+}
+
+func (m *PoCValidationPayloadV2) GetValidatedWeight() int64 {
+	if m != nil {
+		return m.ValidatedWeight
+	}
+	return 0
+}
+
 func init() {
 	proto.RegisterType((*PoCArtifactV2)(nil), "inference.inference.PoCArtifactV2")
 	proto.RegisterType((*PoCBatchV2)(nil), "inference.inference.PoCBatchV2")
 	proto.RegisterType((*PoCValidationV2)(nil), "inference.inference.PoCValidationV2")
+	proto.RegisterType((*PoCBatchPayloadV2)(nil), "inference.inference.PoCBatchPayloadV2")
+	proto.RegisterType((*PoCValidationPayloadV2)(nil), "inference.inference.PoCValidationPayloadV2")
 }
 
 func init() { proto.RegisterFile("inference/inference/poc_v2.proto", fileDescriptor_02f1658865fe708f) }
 
 var fileDescriptor_02f1658865fe708f = []byte{
-	// 376 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x52, 0x4d, 0x4b, 0xe3, 0x40,
-	0x18, 0xee, 0x34, 0xdd, 0x2e, 0x9d, 0xdd, 0xa5, 0xcb, 0x74, 0x59, 0x03, 0x6a, 0x08, 0x39, 0xd5,
-	0x4b, 0x0a, 0x11, 0x8f, 0x8a, 0x4d, 0x2f, 0x7a, 0x32, 0xa4, 0x50, 0xc1, 0x4b, 0x98, 0xce, 0x4c,
-	0x9b, 0xc1, 0x9a, 0x09, 0x93, 0x69, 0xd5, 0x7f, 0xe1, 0xcf, 0xf2, 0xd8, 0x63, 0x8f, 0xd2, 0xfe,
-	0x02, 0xff, 0x81, 0x64, 0x52, 0xd2, 0x2a, 0x05, 0xd1, 0xcb, 0xf0, 0x7e, 0x3c, 0xcf, 0xfb, 0xce,
-	0xf3, 0xf0, 0x42, 0x9b, 0x27, 0x23, 0x26, 0x59, 0x42, 0x58, 0x67, 0x13, 0xa5, 0x82, 0x44, 0x33,
-	0xcf, 0x4d, 0xa5, 0x50, 0x02, 0xb5, 0xca, 0xba, 0x5b, 0x46, 0xce, 0x29, 0xfc, 0x13, 0x88, 0x5e,
-	0x57, 0x2a, 0x3e, 0xc2, 0x44, 0x0d, 0x3c, 0xf4, 0x0f, 0xfe, 0x48, 0x44, 0x42, 0x98, 0x09, 0x6c,
-	0xd0, 0x36, 0xc2, 0x22, 0x41, 0xff, 0x61, 0x7d, 0xc6, 0x88, 0x12, 0xd2, 0xac, 0xda, 0xa0, 0xfd,
-	0x3b, 0x5c, 0x67, 0xce, 0x02, 0x40, 0x18, 0x88, 0x9e, 0x8f, 0x15, 0x89, 0x07, 0x1e, 0xea, 0xc0,
-	0x56, 0x8a, 0xa5, 0xe2, 0x84, 0xa7, 0x38, 0x51, 0x11, 0xa6, 0x54, 0xb2, 0x2c, 0xd3, 0xa3, 0x1a,
-	0x21, 0xda, 0x6a, 0x75, 0x8b, 0x0e, 0x3a, 0x83, 0x07, 0xf9, 0x1f, 0x33, 0x85, 0xc7, 0x2c, 0x7f,
-	0xa5, 0x8a, 0x86, 0x13, 0x41, 0x6e, 0xa3, 0x98, 0xf1, 0x71, 0xac, 0xf4, 0x36, 0x23, 0x34, 0x53,
-	0x41, 0xfa, 0x39, 0xa4, 0x9f, 0x23, 0xfc, 0x1c, 0x70, 0xa1, 0xfb, 0x68, 0x0f, 0xfe, 0x4c, 0x04,
-	0x65, 0x11, 0xa7, 0xa6, 0xa1, 0x97, 0xd4, 0xf3, 0xf4, 0x92, 0xa2, 0x73, 0xd8, 0xc0, 0x6b, 0x51,
-	0x99, 0x59, 0xb3, 0x8d, 0xf6, 0x2f, 0xcf, 0x71, 0x77, 0x18, 0xe0, 0xbe, 0x53, 0x1f, 0x6e, 0x48,
-	0xce, 0x2b, 0x80, 0xcd, 0x40, 0xf4, 0x06, 0x78, 0xc2, 0x29, 0x56, 0x5c, 0x24, 0xdf, 0xd1, 0xe7,
-	0xc3, 0xc3, 0x59, 0x31, 0x40, 0xc8, 0x68, 0x17, 0xb5, 0xaa, 0xa9, 0xfb, 0x25, 0x28, 0xf8, 0xba,
-	0x47, 0xc6, 0x27, 0x1e, 0x1d, 0xc1, 0xbf, 0xeb, 0xf1, 0x8c, 0x46, 0xf7, 0x05, 0xa7, 0xa6, 0x39,
-	0xcd, 0xb2, 0x7e, 0xad, 0xcb, 0xfe, 0xd5, 0xf3, 0xd2, 0x02, 0xf3, 0xa5, 0x05, 0x5e, 0x96, 0x16,
-	0x78, 0x5a, 0x59, 0x95, 0xf9, 0xca, 0xaa, 0x2c, 0x56, 0x56, 0xe5, 0xe6, 0x64, 0xcc, 0x55, 0x3c,
-	0x1d, 0xba, 0x44, 0xdc, 0x75, 0x52, 0x29, 0xe8, 0x94, 0xa8, 0x8c, 0xf0, 0x0f, 0xe7, 0xf6, 0xb0,
-	0x15, 0xab, 0xc7, 0x94, 0x65, 0xc3, 0xba, 0x3e, 0xbd, 0xe3, 0xb7, 0x00, 0x00, 0x00, 0xff, 0xff,
-	0x2d, 0x7b, 0x9e, 0x6d, 0x9e, 0x02, 0x00, 0x00,
+	// 413 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x53, 0xcd, 0x8e, 0xd3, 0x30,
+	0x10, 0xae, 0x93, 0xa5, 0x68, 0x0d, 0x68, 0xc1, 0x8b, 0x96, 0x48, 0x40, 0x14, 0xe5, 0x54, 0x2e,
+	0xa9, 0x14, 0xc4, 0x11, 0xc4, 0xa6, 0x17, 0x38, 0x11, 0x65, 0xa5, 0x20, 0x71, 0x89, 0x5c, 0xdb,
+	0xdb, 0x58, 0x14, 0x4f, 0xe4, 0x78, 0x0b, 0xfb, 0x16, 0x3c, 0x16, 0xc7, 0x3d, 0xee, 0x11, 0xb5,
+	0x4f, 0xc0, 0x1b, 0xa0, 0x38, 0x25, 0x6d, 0x51, 0x10, 0x6a, 0x2f, 0xd1, 0xfc, 0x7c, 0xdf, 0x4c,
+	0xbe, 0xcf, 0x1a, 0x1c, 0x48, 0x75, 0x29, 0xb4, 0x50, 0x4c, 0x8c, 0x37, 0x51, 0x05, 0xac, 0x58,
+	0xc4, 0x51, 0xa5, 0xc1, 0x00, 0x39, 0xed, 0xea, 0x51, 0x17, 0x85, 0xaf, 0xf1, 0x83, 0x14, 0x26,
+	0xe7, 0xda, 0xc8, 0x4b, 0xca, 0x4c, 0x1e, 0x93, 0xc7, 0xf8, 0x8e, 0x02, 0xc5, 0x84, 0x87, 0x02,
+	0x34, 0x72, 0xb3, 0x36, 0x21, 0x67, 0x78, 0xb8, 0x10, 0xcc, 0x80, 0xf6, 0x9c, 0x00, 0x8d, 0xee,
+	0x67, 0xeb, 0x2c, 0xbc, 0x45, 0x18, 0xa7, 0x30, 0x49, 0xa8, 0x61, 0x65, 0x1e, 0x93, 0x31, 0x3e,
+	0xad, 0xa8, 0x36, 0x92, 0xc9, 0x8a, 0x2a, 0x53, 0x50, 0xce, 0xb5, 0xa8, 0x6b, 0x3b, 0xea, 0x38,
+	0x23, 0x5b, 0xad, 0xf3, 0xb6, 0x43, 0xde, 0xe0, 0x67, 0xcd, 0x3f, 0xd6, 0x86, 0xce, 0x44, 0xf3,
+	0xd5, 0xa6, 0x98, 0xce, 0x81, 0x7d, 0x2e, 0x4a, 0x21, 0x67, 0xa5, 0xb1, 0xdb, 0xdc, 0xcc, 0xab,
+	0x80, 0x5d, 0x34, 0x90, 0x8b, 0x06, 0x91, 0x34, 0x80, 0x77, 0xb6, 0x4f, 0x9e, 0xe0, 0xbb, 0x0a,
+	0xb8, 0x28, 0x24, 0xf7, 0x5c, 0xbb, 0x64, 0xd8, 0xa4, 0xef, 0x39, 0x79, 0x8b, 0x8f, 0xe9, 0x5a,
+	0x54, 0xed, 0x1d, 0x05, 0xee, 0xe8, 0x5e, 0x1c, 0x46, 0x3d, 0x06, 0x44, 0x3b, 0xea, 0xb3, 0x0d,
+	0x29, 0xfc, 0x85, 0xf0, 0x49, 0x0a, 0x93, 0x9c, 0xce, 0x25, 0xa7, 0x46, 0x82, 0x3a, 0x44, 0x5f,
+	0x82, 0x9f, 0x2f, 0xda, 0x01, 0xa0, 0x8b, 0x3e, 0xaa, 0x63, 0xa9, 0x4f, 0x3b, 0x50, 0xba, 0xbf,
+	0x47, 0xee, 0x7f, 0x3c, 0x7a, 0x81, 0x1f, 0xae, 0xc7, 0x0b, 0x5e, 0x7c, 0x6d, 0x39, 0x47, 0x96,
+	0x73, 0xd2, 0xd5, 0x3f, 0xda, 0x72, 0xa8, 0xf0, 0xa3, 0x3f, 0xaf, 0x99, 0xd2, 0xeb, 0x39, 0x50,
+	0x9e, 0xc7, 0xdb, 0x1e, 0xa3, 0x7f, 0x7b, 0xec, 0x1c, 0xe2, 0xb1, 0xc1, 0x67, 0x3b, 0x16, 0x6f,
+	0x96, 0xee, 0xed, 0x74, 0x9f, 0x4a, 0xa7, 0x57, 0x65, 0xf2, 0xe1, 0xc7, 0xd2, 0x47, 0x37, 0x4b,
+	0x1f, 0xfd, 0x5c, 0xfa, 0xe8, 0xfb, 0xca, 0x1f, 0xdc, 0xac, 0xfc, 0xc1, 0xed, 0xca, 0x1f, 0x7c,
+	0x7a, 0x35, 0x93, 0xa6, 0xbc, 0x9a, 0x46, 0x0c, 0xbe, 0x8c, 0x2b, 0x0d, 0xfc, 0x8a, 0x99, 0x9a,
+	0xc9, 0xbf, 0x8e, 0xea, 0xdb, 0x56, 0x6c, 0xae, 0x2b, 0x51, 0x4f, 0x87, 0xf6, 0xc0, 0x5e, 0xfe,
+	0x0e, 0x00, 0x00, 0xff, 0xff, 0xa6, 0xaf, 0x69, 0x22, 0x84, 0x03, 0x00, 0x00,
 }
 
 func (m *PoCArtifactV2) Marshal() (dAtA []byte, err error) {
@@ -388,6 +500,85 @@ func (m *PoCValidationV2) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *PoCBatchPayloadV2) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PoCBatchPayloadV2) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PoCBatchPayloadV2) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Artifacts) > 0 {
+		for iNdEx := len(m.Artifacts) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Artifacts[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintPocV2(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.NodeId) > 0 {
+		i -= len(m.NodeId)
+		copy(dAtA[i:], m.NodeId)
+		i = encodeVarintPocV2(dAtA, i, uint64(len(m.NodeId)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *PoCValidationPayloadV2) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PoCValidationPayloadV2) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PoCValidationPayloadV2) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.ValidatedWeight != 0 {
+		i = encodeVarintPocV2(dAtA, i, uint64(m.ValidatedWeight))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.ParticipantAddress) > 0 {
+		i -= len(m.ParticipantAddress)
+		copy(dAtA[i:], m.ParticipantAddress)
+		i = encodeVarintPocV2(dAtA, i, uint64(len(m.ParticipantAddress)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintPocV2(dAtA []byte, offset int, v uint64) int {
 	offset -= sovPocV2(v)
 	base := offset
@@ -457,6 +648,41 @@ func (m *PoCValidationV2) Size() (n int) {
 	}
 	if m.PocStageStartBlockHeight != 0 {
 		n += 1 + sovPocV2(uint64(m.PocStageStartBlockHeight))
+	}
+	if m.ValidatedWeight != 0 {
+		n += 1 + sovPocV2(uint64(m.ValidatedWeight))
+	}
+	return n
+}
+
+func (m *PoCBatchPayloadV2) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.NodeId)
+	if l > 0 {
+		n += 1 + l + sovPocV2(uint64(l))
+	}
+	if len(m.Artifacts) > 0 {
+		for _, e := range m.Artifacts {
+			l = e.Size()
+			n += 1 + l + sovPocV2(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *PoCValidationPayloadV2) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.ParticipantAddress)
+	if l > 0 {
+		n += 1 + l + sovPocV2(uint64(l))
 	}
 	if m.ValidatedWeight != 0 {
 		n += 1 + sovPocV2(uint64(m.ValidatedWeight))
@@ -853,6 +1079,223 @@ func (m *PoCValidationV2) Unmarshal(dAtA []byte) error {
 				}
 			}
 		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ValidatedWeight", wireType)
+			}
+			m.ValidatedWeight = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPocV2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ValidatedWeight |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipPocV2(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthPocV2
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *PoCBatchPayloadV2) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowPocV2
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: PoCBatchPayloadV2: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: PoCBatchPayloadV2: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NodeId", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPocV2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthPocV2
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPocV2
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.NodeId = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Artifacts", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPocV2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPocV2
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPocV2
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Artifacts = append(m.Artifacts, &PoCArtifactV2{})
+			if err := m.Artifacts[len(m.Artifacts)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipPocV2(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthPocV2
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *PoCValidationPayloadV2) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowPocV2
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: PoCValidationPayloadV2: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: PoCValidationPayloadV2: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ParticipantAddress", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPocV2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthPocV2
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPocV2
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ParticipantAddress = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ValidatedWeight", wireType)
 			}

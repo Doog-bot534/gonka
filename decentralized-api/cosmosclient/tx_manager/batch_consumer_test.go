@@ -298,11 +298,11 @@ func TestBatchConsumer_PocV2Batching(t *testing.T) {
 	// Publish 3 PoC V2 batch messages (should trigger flush)
 	for i := 0; i < 3; i++ {
 		msg := &inference.MsgSubmitPocBatchesV2{
-			Creator: "creator",
-			Batches: []*inference.PoCBatchV2{
+			Creator:                  "creator",
+			PocStageStartBlockHeight: int64(i),
+			Batches: []*inference.PoCBatchPayloadV2{
 				{
-					PocStageStartBlockHeight: int64(i),
-					NodeId:                   "node-1",
+					NodeId: "node-1",
 				},
 			},
 		}
@@ -336,12 +336,12 @@ func TestBatchConsumer_ValidationV2Batching(t *testing.T) {
 	// Publish 3 validation V2 messages (should trigger flush)
 	for i := 0; i < 3; i++ {
 		msg := &inference.MsgSubmitPocValidationsV2{
-			Creator: "creator",
-			Validations: []*inference.PoCValidationV2{
+			Creator:                  "creator",
+			PocStageStartBlockHeight: int64(i),
+			Validations: []*inference.PoCValidationPayloadV2{
 				{
-					ParticipantAddress:       "cosmos1abc",
-					PocStageStartBlockHeight: int64(i),
-					ValidatedWeight:          100,
+					ParticipantAddress: "cosmos1abc",
+					ValidatedWeight:    100,
 				},
 			},
 		}
@@ -383,12 +383,14 @@ func TestBatchConsumer_AllQueuesIndependent(t *testing.T) {
 			InferenceId: uuid.New().String(),
 		})
 		consumer.PublishPocBatchV2(&inference.MsgSubmitPocBatchesV2{
-			Creator: "creator",
-			Batches: []*inference.PoCBatchV2{{NodeId: "node"}},
+			Creator:                  "creator",
+			PocStageStartBlockHeight: 100,
+			Batches:                  []*inference.PoCBatchPayloadV2{{NodeId: "node"}},
 		})
 		consumer.PublishPocValidationV2(&inference.MsgSubmitPocValidationsV2{
-			Creator:     "creator",
-			Validations: []*inference.PoCValidationV2{{ParticipantAddress: "cosmos1abc"}},
+			Creator:                  "creator",
+			PocStageStartBlockHeight: 100,
+			Validations:              []*inference.PoCValidationPayloadV2{{ParticipantAddress: "cosmos1abc"}},
 		})
 	}
 
