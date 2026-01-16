@@ -4,18 +4,30 @@ import (
 	"decentralized-api/broker"
 	cosmos_client "decentralized-api/cosmosclient"
 	"decentralized-api/internal/server/middleware"
+	"decentralized-api/pocartifacts"
 
 	"github.com/labstack/echo/v4"
 )
 
 type Server struct {
-	e        *echo.Echo
-	recorder cosmos_client.CosmosMessageClient
-	broker   *broker.Broker
+	e             *echo.Echo
+	recorder      cosmos_client.CosmosMessageClient
+	broker        *broker.Broker
+	artifactStore *pocartifacts.ArtifactStore // Optional: for off-chain PoC artifacts
+}
+
+// ServerOption configures optional Server dependencies.
+type ServerOption func(*Server)
+
+// WithArtifactStore enables local artifact storage for off-chain PoC.
+func WithArtifactStore(store *pocartifacts.ArtifactStore) ServerOption {
+	return func(s *Server) {
+		s.artifactStore = store
+	}
 }
 
 // TODO breacking changes: url path, support on mlnode side
-func NewServer(recorder cosmos_client.CosmosMessageClient, broker *broker.Broker) *Server {
+func NewServer(recorder cosmos_client.CosmosMessageClient, broker *broker.Broker, opts ...ServerOption) *Server {
 	e := echo.New()
 
 	e.HTTPErrorHandler = middleware.TransparentErrorHandler
@@ -27,6 +39,10 @@ func NewServer(recorder cosmos_client.CosmosMessageClient, broker *broker.Broker
 		e:        e,
 		recorder: recorder,
 		broker:   broker,
+	}
+
+	for _, opt := range opts {
+		opt(s)
 	}
 
 	// keep old paths too for backward compatibility
