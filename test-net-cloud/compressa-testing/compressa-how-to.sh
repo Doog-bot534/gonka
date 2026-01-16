@@ -1,15 +1,16 @@
 # Define env vars
 export ACCOUNT_NAME="test-account"
 # Url of the genesis k8s node API
-export PLAIN_NODE_URL="http://34.9.136.116:30000/"
-export NODE_URL="http://34.9.136.116:30000/api"
+export PLAIN_NODE_URL="http://36.189.234.237:19254"
+export NODE_URL="http://36.189.234.237:19254/api"
+export PLAIN_NODE_URL_TCP="tcp://36.189.234.237:19254"
 # Example, join node URL instead of genesis node URL:
 # export NODE_URL="http://34.9.136.116:30010"
 export GONKA_ENDPOINTS=$NODE_URL/v1
 # WARNING: redefine INFERENCED_BINARY to your local path to inferenced binary
 # export INFERENCED_BINARY="kubectl -n genesis exec node-0 -- inferenced"
 # export INFERENCED_BINARY="inferenced"
-export INFERENCED_BINARY="/Users/dima/cosmos/bin/inferenced"
+export INFERENCED_BINARY="/Users/maria.mitina/MMD/DEV/compressa-perf/inferenced"
 
 # Example endpoints to check the server status with
 curl "$NODE_URL/v1/status" | jq
@@ -51,7 +52,7 @@ compressa-perf \
 ./check-balances.sh
 
 # You can also pass the address of the developer to the script
-export GONKA_ADDRESS
+export GONKA_ADDRESS="gonka14j23uy42yl9nam246j3xaq4429gdww0v393rtq"
 ./check-balances.sh
 
 # BELOW IS THE ADDITIONAL INFO and more examples,
@@ -62,13 +63,13 @@ export GONKA_ADDRESS
 "$INFERENCED_BINARY" create-client $ACCOUNT_NAME \
   --node-address "$NODE_URL"
 
-export GONKA_ADDRESS="gonka1mff5uudv6tuupxq2nvx8ezdt9c230kucxwqe5p"
+export GONKA_ADDRESS="gonka14j23uy42yl9nam246j3xaq4429gdww0v393rtq"
 
 # View it
 "$INFERENCED_BINARY" keys list
 
 "$INFERENCED_BINARY" query bank balances "$GONKA_ADDRESS" \
-  --node tcp://34.9.136.116:30000/chain-rpc/ # trailing slash in necesary for now
+  --node $PLAIN_NODE_URL_TCP/chain-rpc/ # trailing slash in necesary for now
 
 # Export private key:
 GONKA_PRIVATE_KEY="$(echo y | "$INFERENCED_BINARY" keys export $ACCOUNT_NAME --unarmored-hex --unsafe)"
@@ -82,7 +83,7 @@ echo "$GONKA_PRIVATE_KEY"
 # 4. Download: https://github.com/gonka-ai/gonka/blob/main/mlnode/packages/benchmarks/resources/config.yml
 #    No need to change anything inside the config.yml file.
 
-export GONKA_ADDRESS
+export GONKA_ADDRESS="gonka14j23uy42yl9nam246j3xaq4429gdww0v393rtq"
 ./check-balances.sh
 
 compressa-perf measure-from-yaml \
@@ -99,7 +100,7 @@ compressa-perf measure-from-yaml \
   config-2.yml \
   --model_name Qwen/Qwen2.5-1.5B-Instruct
 
-export GONKA_ADDRESS
+export GONKA_ADDRESS="gonka14j23uy42yl9nam246j3xaq4429gdww0v393rtq"
 ./check-balances.sh
 
 kubectl -n genesis exec node-0 -- inferenced query inference list-inference --output json

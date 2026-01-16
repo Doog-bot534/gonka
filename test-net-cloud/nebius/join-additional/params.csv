@@ -1,0 +1,4 @@
+domain,ssh_port,p2p_port,api_port,hf_home,deploy_dir,private_ip
+xj7-5.s.filfox.io,18227,19253,19254,/srv/dai/cache/,/srv/dai/,172.18.114.104
+xj7-5.s.filfox.io,18228,19255,19256,/srv/dai/cache/,/srv/dai/,172.18.114.103
+xj7-5.s.filfox.io,18229,19257,19258,/srv/dai/cache/,/srv/dai/,172.18.114.102

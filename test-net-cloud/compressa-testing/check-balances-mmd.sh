@@ -4,8 +4,8 @@ set -euo pipefail
 ###############################################################################
 # Configuration – edit these three lines if you need to.
 ###############################################################################
-HOST="36.189.234.237:19254"            # API host, e.g. "34.9.17.182:1317"
-INFERENCED_BINARY="/Users/maria.mitina/MMD/DEV/compressa-perf/inferenced"   # inferenced cmd
+HOST="xj7-5.s.filfox.io:19254"            # API host, e.g. "34.9.17.182:1317"
+INFERENCED_BINARY="kubectl -n genesis exec node-0 -- inferenced"   # inferenced cmd
 if [ -z "${GONKA_ADDRESS:-}" ]; then
   echo "Info: GONKA_ADDRESS is not set. Not querying for requester address." >&2
 else
@@ -47,7 +47,7 @@ done < <(echo "$PARTICIPANT_JSON" | jq -r '.active_participants.participants[].i
 if [ -n "${GONKA_ADDRESS:-}" ]; then
   ADDRESSES+=("$GONKA_ADDRESS") # append requester address if set
 fi
-echo "The addresses to query: ${ADDRESSES}" >&2
+echo "Total addresses to query: ${#ADDRESSES[@]}" >&2
 
 ###############################################################################
 # 3. Loop through addresses and query balances
@@ -56,7 +56,7 @@ echo "[" | tee "$OUTFILE"        # open JSON array
 FIRST=1
 for ADDR in "${ADDRESSES[@]}"; do
   echo "→ Querying balance for $ADDR" >&2
-  if BALANCE_JSON=$($INFERENCED_BINARY query bank balances "$ADDR" --node "tcp://${HOST}/chain-rpc/" --output json); then
+  if BALANCE_JSON=$($INFERENCED_BINARY query bank balances "$ADDR" --output json); then
     [[ $FIRST -eq 0 ]] && echo "," | tee -a "$OUTFILE"
     FIRST=0
     echo "{\"address\":\"${ADDR}\",\"balance\":${BALANCE_JSON}}" | tee -a "$OUTFILE"

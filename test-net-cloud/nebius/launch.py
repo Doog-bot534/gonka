@@ -2,6 +2,7 @@ import os
 import shutil
 import hashlib
 import urllib.request
+import urllib.error
 import zipfile
 import subprocess
 import json
@@ -43,19 +44,19 @@ def load_config_from_env(hf_home: str = None):
         "KEY_NAME": "genesis",
         "KEYRING_PASSWORD": "12345678",
         "API_PORT": "8000",
-        "PUBLIC_URL": "http://89.169.111.79:8000",
-        "P2P_EXTERNAL_ADDRESS": "tcp://89.169.111.79:5000",
+        "PUBLIC_URL": "http://172.18.114.104:8000",
+        "P2P_EXTERNAL_ADDRESS": "tcp://172.18.114.104:5000",
         "ACCOUNT_PUBKEY": "", # will be populated later
         "NODE_CONFIG": "./node-config.json",
         "HF_HOME": Path(hf_home) if hf_home else (Path(os.environ["HOME"]).absolute() / "hf-cache").__str__(),
-        "SEED_API_URL": "http://89.169.111.79:8000",
-        "SEED_NODE_RPC_URL": "http://89.169.111.79:26657",
+        "SEED_API_URL": "http://172.18.114.104:8000",
+        "SEED_NODE_RPC_URL": "http://172.18.114.104:26657",
         "DAPI_API__POC_CALLBACK_URL": "http://api:9100",
         "DAPI_CHAIN_NODE__URL": "http://node:26657",
         "DAPI_CHAIN_NODE__P2P_URL": "http://node:26656",
-        "SEED_NODE_P2P_URL": "tcp://89.169.111.79:5000",
-        "RPC_SERVER_URL_1": "http://89.169.111.79:26657",
-        "RPC_SERVER_URL_2": "http://89.169.111.79:26657",
+        "SEED_NODE_P2P_URL": "tcp://172.18.114.104:5000",
+        "RPC_SERVER_URL_1": "http://172.18.114.104:26657",
+        "RPC_SERVER_URL_2": "http://172.18.114.104:26657",
         "PORT": "8080",
         "INFERENCE_PORT": "5050",
         "KEYRING_BACKEND": "file",
@@ -1194,7 +1195,7 @@ def register_joining_participant(service="api"):
         text=True
     )
     
-    print("Participant registration completed!")
+    print("Participant registration in progress!")
     print("Output:")
     print("=" * 50)
     if result.stdout:
@@ -1202,13 +1203,20 @@ def register_joining_participant(service="api"):
     if result.stderr:
         print("Errors/Warnings:")
         print(result.stderr)
+        # TODO: Add check for "timeout after 30 seconds waiting for participant to be available" error
+        if "timeout after" in result.stderr and "waiting for participant to be available" in result.stderr:
+            print("Participant registration timed out! It is impossible to proceed with the node registration.")
+            raise RuntimeError("Participant registration timed out! It is impossible to proceed with the node registration.")
+        else:
+            print("Participant registration failed with other error!")
+            raise RuntimeError(result.stderr)
     print("=" * 50)
     
     if result.returncode != 0:
         print(f"Participant registration failed with return code: {result.returncode}")
         raise subprocess.CalledProcessError(result.returncode, register_cmd)
     
-    print("Participant registration completed successfully!")
+    print("Participant registration initiated successfully!")
 
 
 def grant_key_permissions(warm_key_address: str):
