@@ -306,13 +306,13 @@ fun initialize(pairs: List<LocalInferencePair>, resetMlNodes: Boolean = true): L
         it.mock?.setInferenceResponse(defaultInferenceResponseObject, streamDelay = Duration.ofMillis(200))
         val params = it.getParams()
         
-        // Sanity check: verify PoC v2 is enabled (prevents silent fallback to v1)
-        val pocV2Params = params.pocV2Params
-        if (pocV2Params == null || !pocV2Params.enabled) {
-            Logger.warn("PoC v2 is NOT enabled! Chain params show poc_v2_params.enabled=false. " +
+        // Sanity check: verify PoC v2 is enabled (model_id set in poc_params)
+        val pocParams = params.pocParams
+        if (pocParams.modelId.isNullOrEmpty()) {
+            Logger.warn("PoC v2 is NOT enabled! Chain params show poc_params.model_id is empty. " +
                 "Tests may be using old PoC v1 implementation. Check genesis spec configuration.")
         } else {
-            Logger.info("PoC v2 enabled: modelId={}, seqLen={}", pocV2Params.modelId, pocV2Params.seqLen)
+            Logger.info("PoC v2 enabled: modelId={}, seqLen={}", pocParams.modelId, pocParams.seqLen)
         }
         
         it.node.getColdAddress()
@@ -483,11 +483,10 @@ fun createSpec(epochLength: Long = 15L, epochShift: Int = 0): Spec<AppState> = s
                 this[DynamicPricingParams::gracePeriodEndEpoch] = 0L   // Disable grace period
                 this[DynamicPricingParams::gracePeriodPerTokenPrice] = 0L
             }
-            // Enable PoC v2 by default for all Testermint clusters
-            this[InferenceParams::pocV2Params] = spec<PocV2Params> {
-                this[PocV2Params::enabled] = true
-                this[PocV2Params::modelId] = defaultModel
-                this[PocV2Params::seqLen] = 256L
+            // Enable PoC v2 by setting model_id and seq_len in poc_params
+            this[InferenceParams::pocParams] = spec<PocParams> {
+                this[PocParams::modelId] = defaultModel
+                this[PocParams::seqLen] = 256L
             }
         }
         this[InferenceState::genesisOnlyParams] = spec<GenesisOnlyParams> {

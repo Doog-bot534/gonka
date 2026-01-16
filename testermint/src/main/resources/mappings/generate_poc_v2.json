@@ -19,7 +19,7 @@
   "postServeActions": {
     "webhook": {
       "method": "POST",
-      "url": "{{jsonPath originalRequest.body '$.url'}}/v2/poc-artifacts/generated",
+      "url": "{{jsonPath originalRequest.body '$.url'}}/v2/poc-batches/generated",
       "headers": {
         "Content-Type": "application/json"
       },

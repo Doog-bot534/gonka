@@ -168,11 +168,11 @@ class WebhookService(private val responseService: ResponseService) {
             logger.info("Processing PoC v2 generate webhook - URL: $url, PublicKey: $publicKey, BlockHeight: $blockHeight, NodeId: $nodeId")
 
             if (url != null && publicKey != null && blockHash != null && blockHeight != null) {
-                // Normalize URL: if url already contains /v2/poc-artifacts, append /generated; otherwise treat as host base
-                val webhookUrl = if (url.contains("/v2/poc-artifacts")) {
+                // Normalize URL: if url already contains /v2/poc-batches, append /generated; otherwise treat as host base
+                val webhookUrl = if (url.contains("/v2/poc-batches")) {
                     "$url/generated"
                 } else {
-                    "$url/v2/poc-artifacts/generated"
+                    "$url/v2/poc-batches/generated"
                 }
 
                 // Get the weight from the ResponseService, default to 10 if not set
@@ -227,15 +227,15 @@ class WebhookService(private val responseService: ResponseService) {
 
             // Determine callback URL - normalize to v2 endpoint
             val webhookUrl = if (url != null) {
-                // Normalize URL: if url already contains /v2/poc-artifacts, append /validated; otherwise treat as host base
-                if (url.contains("/v2/poc-artifacts")) {
+                // Normalize URL: if url already contains /v2/poc-batches, append /validated; otherwise treat as host base
+                if (url.contains("/v2/poc-batches")) {
                     "$url/validated"
                 } else {
-                    "$url/v2/poc-artifacts/validated"
+                    "$url/v2/poc-batches/validated"
                 }
             } else {
                 val keyName = System.getenv("KEY_NAME") ?: "localhost"
-                "http://$keyName-api:9100/v2/poc-artifacts/validated"
+                "http://$keyName-api:9100/v2/poc-batches/validated"
             }
 
             // Create validation result (happy path: no fraud)

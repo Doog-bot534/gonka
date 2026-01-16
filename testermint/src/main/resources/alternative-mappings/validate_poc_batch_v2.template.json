@@ -18,7 +18,7 @@
   "postServeActions": {
     "webhook": {
       "method": "POST",
-      "url": "http://{{KEY_NAME}}-api:9100/v2/poc-artifacts/validated",
+      "url": "http://{{KEY_NAME}}-api:9100/v2/poc-batches/validated",
       "headers": {
         "Content-Type": "application/json"
       },

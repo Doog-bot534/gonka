@@ -18,7 +18,7 @@ message PoCBatchV2 {
 }
 
 // PoCValidationV2 represents a validator's attestation of a participant's PoC work.
-// validated_weight: -1 = reject/fraud, >=0 = accept
+// validated_weight: -1 = reject/fraud, >0 = accept
 message PoCValidationV2 {
   string participant_address = 1;
   string validator_participant_address = 2;

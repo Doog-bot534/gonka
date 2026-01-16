@@ -94,10 +94,7 @@
           "weight_scale_factor": {
             "value": "25",
             "exponent": -1
-          }
-        },
-        "poc_v2_params": {
-          "enabled": true,
+          },
           "model_id": "Qwen/Qwen2.5-7B-Instruct",
           "seq_len": 256
         },
