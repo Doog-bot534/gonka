@@ -64,15 +64,15 @@ func (s *Server) postGeneratedArtifactsV2(ctx echo.Context) error {
 
 	// Store artifacts locally if artifact store is configured (dual-write mode)
 	if s.artifactStore != nil {
-		epochStore, err := s.artifactStore.GetOrCreateStore(body.BlockHeight)
+		stageStore, err := s.artifactStore.GetOrCreateStore(body.BlockHeight)
 		if err != nil {
-			logging.Error("ArtifactBatchV2-callback. Failed to get epoch store", types.PoC,
-				"blockHeight", body.BlockHeight, "error", err)
+			logging.Error("ArtifactBatchV2-callback. Failed to get stage store", types.PoC,
+				"pocStageStartBlockHeight", body.BlockHeight, "error", err)
 		} else {
 			storedCount := 0
 			for _, a := range body.Artifacts {
 				vectorBytes, _ := base64.StdEncoding.DecodeString(a.VectorB64)
-				err := epochStore.Add(int32(a.Nonce), vectorBytes)
+				err := stageStore.Add(int32(a.Nonce), vectorBytes)
 				if err != nil {
 					if errors.Is(err, pocartifacts.ErrDuplicateNonce) {
 						logging.Debug("ArtifactBatchV2-callback. Duplicate nonce skipped", types.PoC,
@@ -86,9 +86,9 @@ func (s *Server) postGeneratedArtifactsV2(ctx echo.Context) error {
 				}
 			}
 			logging.Debug("ArtifactBatchV2-callback. Stored artifacts locally", types.PoC,
-				"blockHeight", body.BlockHeight,
+				"pocStageStartBlockHeight", body.BlockHeight,
 				"storedCount", storedCount,
-				"totalCount", epochStore.Count())
+				"totalCount", stageStore.Count())
 		}
 	}
 

@@ -249,6 +249,29 @@ func (s *ArtifactStore) GetRoot() []byte {
 	return bagPeaks(s.mmrNodes, s.nextLeafIndex)
 }
 
+// GetRootAt returns the MMR root hash at a specific snapshot count.
+// This enables snapshot binding validation: callers can verify that a
+// (root_hash, count) pair matches the store's historical state.
+// Returns nil if snapshotCount is 0, error if snapshotCount exceeds current count.
+func (s *ArtifactStore) GetRootAt(snapshotCount uint32) ([]byte, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.closed {
+		return nil, ErrStoreClosed
+	}
+
+	if snapshotCount == 0 {
+		return nil, nil
+	}
+
+	if snapshotCount > s.nextLeafIndex {
+		return nil, fmt.Errorf("snapshot count %d exceeds current count %d", snapshotCount, s.nextLeafIndex)
+	}
+
+	return bagPeaks(s.mmrNodes, snapshotCount), nil
+}
+
 func (s *ArtifactStore) Count() uint32 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

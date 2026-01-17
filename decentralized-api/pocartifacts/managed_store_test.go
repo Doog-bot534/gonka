@@ -20,30 +20,30 @@ func TestManagedArtifactStore_GetOrCreateStore(t *testing.T) {
 		t.Fatal("store1 is nil")
 	}
 
-	// Same epoch should return same store
+	// Same stage should return same store
 	store1Again, err := m.GetOrCreateStore(100)
 	if err != nil {
 		t.Fatalf("GetOrCreateStore(100) again failed: %v", err)
 	}
 	if store1 != store1Again {
-		t.Error("expected same store instance for same epoch")
+		t.Error("expected same store instance for same stage")
 	}
 
-	// Different epoch should create new store
+	// Different stage should create new store
 	store2, err := m.GetOrCreateStore(200)
 	if err != nil {
 		t.Fatalf("GetOrCreateStore(200) failed: %v", err)
 	}
 	if store1 == store2 {
-		t.Error("expected different store instance for different epoch")
+		t.Error("expected different store instance for different stage")
 	}
 
 	// Verify directories created
 	if _, err := os.Stat(filepath.Join(dir, "100")); os.IsNotExist(err) {
-		t.Error("epoch 100 directory not created")
+		t.Error("stage 100 directory not created")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "200")); os.IsNotExist(err) {
-		t.Error("epoch 200 directory not created")
+		t.Error("stage 200 directory not created")
 	}
 }
 
@@ -243,5 +243,104 @@ func TestManagedArtifactStore_Flush(t *testing.T) {
 	}
 	if info.Size() == 0 {
 		t.Error("data file should not be empty after flush")
+	}
+}
+
+func TestManagedArtifactStore_AcquireStore(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManagedArtifactStore(dir, 3)
+	defer m.Close()
+
+	// Create a store first
+	_, err := m.GetOrCreateStore(100)
+	if err != nil {
+		t.Fatalf("GetOrCreateStore failed: %v", err)
+	}
+
+	// Acquire the store
+	store, release, err := m.AcquireStore(100)
+	if err != nil {
+		t.Fatalf("AcquireStore failed: %v", err)
+	}
+	if store == nil {
+		t.Fatal("acquired store is nil")
+	}
+
+	// Verify we can use the store
+	if err := store.Add(1, []byte("test")); err != nil {
+		t.Fatalf("Add to acquired store failed: %v", err)
+	}
+
+	// Release the store
+	release()
+}
+
+func TestManagedArtifactStore_AcquireStore_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManagedArtifactStore(dir, 3)
+	defer m.Close()
+
+	_, _, err := m.AcquireStore(999)
+	if err == nil {
+		t.Error("expected error for non-existent stage")
+	}
+}
+
+func TestManagedArtifactStore_SafePruning(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManagedArtifactStore(dir, 2) // retainCount=2
+	defer m.Close()
+
+	// Create stores at heights 100, 200, 300
+	for _, height := range []int64{100, 200, 300} {
+		if _, err := m.GetOrCreateStore(height); err != nil {
+			t.Fatalf("GetOrCreateStore(%d) failed: %v", height, err)
+		}
+	}
+
+	// Acquire store at height 100 (should prevent pruning)
+	_, release, err := m.AcquireStore(100)
+	if err != nil {
+		t.Fatalf("AcquireStore(100) failed: %v", err)
+	}
+
+	// Trigger cleanup - should skip height 100 because it's acquired
+	m.cleanup()
+	time.Sleep(50 * time.Millisecond)
+
+	// Height 100 should still exist (has active reference)
+	heights, err := m.ListStores()
+	if err != nil {
+		t.Fatalf("ListStores failed: %v", err)
+	}
+
+	// With retainCount=2, would normally keep only 200 and 300
+	// But 100 is acquired, so it should still exist
+	found100 := false
+	for _, h := range heights {
+		if h == 100 {
+			found100 = true
+			break
+		}
+	}
+	if !found100 {
+		t.Error("height 100 should not be pruned while acquired")
+	}
+
+	// Release the store
+	release()
+
+	// Now cleanup should be able to prune height 100
+	m.cleanup()
+	time.Sleep(50 * time.Millisecond)
+
+	heights, err = m.ListStores()
+	if err != nil {
+		t.Fatalf("ListStores failed: %v", err)
+	}
+
+	// Now should have only 200 and 300
+	if len(heights) != 2 {
+		t.Errorf("expected 2 stores after release and prune, got %d: %v", len(heights), heights)
 	}
 }

@@ -20,7 +20,7 @@ import (
 
 const (
 	maxLeafIndicesPerRequest = 500
-	pocProofsMsgTypeUrl      = "/inference.inference.MsgStartInference"
+	pocProofsMsgTypeUrl      = "/inference.inference.MsgSubmitPocValidationsV2"
 	timestampWindowNanos     = 5 * 60 * 1_000_000_000 // 5 minutes in nanoseconds
 )
 
@@ -139,39 +139,74 @@ func (s *Server) postPocProofs(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "timestamp out of acceptable window")
 	}
 
-	// Get pubkeys for validator (via authz cache)
+	// Get pubkey for the specific signer address (via authz cache)
 	// validator_address = cold key for authz lookup
-	// validator_signer_address = actual signer (must be in pubkeys list)
-	pubkeys, err := s.authzCache.GetPubKeys(ctx.Request().Context(), req.ValidatorAddress, pocProofsMsgTypeUrl)
+	// validator_signer_address = actual signer (must be authorized for validator_address)
+	signerPubkey, err := s.authzCache.GetPubKeyForSigner(
+		ctx.Request().Context(),
+		req.ValidatorAddress,
+		req.ValidatorSignerAddress,
+		pocProofsMsgTypeUrl,
+	)
 	if err != nil {
-		logging.Error("Failed to get validator pubkeys", types.Validation,
-			"validatorAddress", req.ValidatorAddress, "error", err)
+		logging.Error("Failed to get signer pubkey", types.Validation,
+			"validatorAddress", req.ValidatorAddress,
+			"validatorSignerAddress", req.ValidatorSignerAddress,
+			"error", err)
 		return echo.NewHTTPError(http.StatusUnauthorized, "validator not found")
 	}
+	if signerPubkey == "" {
+		logging.Warn("Signer not authorized for validator", types.Validation,
+			"validatorAddress", req.ValidatorAddress,
+			"validatorSignerAddress", req.ValidatorSignerAddress)
+		return echo.NewHTTPError(http.StatusUnauthorized, "signer not authorized for validator")
+	}
 
-	// Verify signature
-	// TODO: accept only request from validator with weight > 0
-	// TODO: use ValidatorSignerAddress to verify signature, not all warm keys
-	if err := verifyPocProofsSignature(&req, rootHash, pubkeys); err != nil {
+	// Verify signature against the specific signer's pubkey
+	if err := verifyPocProofsSignatureWithPubkey(&req, rootHash, signerPubkey); err != nil {
 		logging.Warn("Invalid PoC proofs signature", types.Validation,
 			"validatorAddress", req.ValidatorAddress,
 			"validatorSignerAddress", req.ValidatorSignerAddress, "error", err)
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid signature")
 	}
 
-	// Get epoch-specific artifact store
-	epochStore, err := s.artifactStore.GetStore(int64(req.PocStageStartBlockHeight))
+	// Get stage-specific artifact store with safe reference (prevents mid-request pruning)
+	stageStore, releaseStore, err := s.artifactStore.AcquireStore(int64(req.PocStageStartBlockHeight))
 	if err != nil {
-		logging.Warn("Epoch store not found", types.Validation,
+		logging.Warn("Stage store not found", types.Validation,
 			"pocStageStartBlockHeight", req.PocStageStartBlockHeight, "error", err)
-		return echo.NewHTTPError(http.StatusBadRequest, "epoch not found (may be pruned or not yet created)")
+		return echo.NewHTTPError(http.StatusNotFound, "stage not found (may be pruned or not yet created)")
+	}
+	defer releaseStore()
+
+	// Snapshot binding validation: verify (root_hash, count) matches store state
+	reqCount := uint32(req.Count)
+	storeRoot, err := stageStore.GetRootAt(reqCount)
+	if err != nil {
+		logging.Warn("Snapshot count exceeds store", types.Validation,
+			"pocStageStartBlockHeight", req.PocStageStartBlockHeight,
+			"requestedCount", reqCount, "error", err)
+		return echo.NewHTTPError(http.StatusBadRequest, "count exceeds stored artifacts")
+	}
+	if !bytes.Equal(rootHash, storeRoot) {
+		logging.Warn("Root hash mismatch", types.Validation,
+			"pocStageStartBlockHeight", req.PocStageStartBlockHeight,
+			"requestedCount", reqCount)
+		return echo.NewHTTPError(http.StatusBadRequest, "root_hash does not match store state at count")
+	}
+
+	// Validate all leaf indices are within snapshot range
+	for _, leafIndex := range req.LeafIndices {
+		if uint32(leafIndex) >= reqCount {
+			return echo.NewHTTPError(http.StatusBadRequest, "leaf_index out of snapshot range")
+		}
 	}
 
 	// Generate proofs
 	proofs := make([]PocProofItem, 0, len(req.LeafIndices))
 	for _, leafIndex := range req.LeafIndices {
 		leafIdx := uint32(leafIndex)
-		nonce, vector, err := epochStore.GetArtifact(leafIdx)
+		nonce, vector, err := stageStore.GetArtifact(leafIdx)
 		if err != nil {
 			if err == pocartifacts.ErrLeafIndexOutOfRange {
 				return echo.NewHTTPError(http.StatusBadRequest, "leaf_index out of range")
@@ -181,11 +216,14 @@ func (s *Server) postPocProofs(ctx echo.Context) error {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get artifact")
 		}
 
-		proof, err := epochStore.GetProof(leafIdx, uint32(req.Count))
+		proof, err := stageStore.GetProof(leafIdx, reqCount)
 		if err != nil {
+			if err == pocartifacts.ErrLeafIndexOutOfRange {
+				return echo.NewHTTPError(http.StatusBadRequest, "leaf_index out of range for proof")
+			}
 			logging.Error("Failed to get proof", types.Validation,
-				"leafIndex", leafIdx, "count", req.Count, "error", err)
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to get proof")
+				"leafIndex", leafIdx, "count", reqCount, "error", err)
+			return echo.NewHTTPError(http.StatusBadRequest, "failed to generate proof")
 		}
 
 		// Encode proof hashes as base64
@@ -232,25 +270,24 @@ func buildPocProofsSignPayload(req *PocProofsRequest, rootHash []byte) []byte {
 	return []byte(hex.EncodeToString(hash[:]))
 }
 
-// verifyPocProofsSignature verifies the signature against any of the provided pubkeys
-func verifyPocProofsSignature(req *PocProofsRequest, rootHash []byte, pubkeys []string) error {
+// verifyPocProofsSignatureWithPubkey verifies the signature against a specific pubkey.
+// The pubkey is base64-encoded.
+func verifyPocProofsSignatureWithPubkey(req *PocProofsRequest, rootHash []byte, pubkeyB64 string) error {
 	payload := buildPocProofsSignPayload(req, rootHash)
 
 	signatureBytes, err := base64.StdEncoding.DecodeString(req.Signature)
 	if err != nil {
-		return err
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid signature encoding")
 	}
 
-	for _, pubkeyStr := range pubkeys {
-		pubkeyBytes, err := base64.StdEncoding.DecodeString(pubkeyStr)
-		if err != nil {
-			continue
-		}
+	pubkeyBytes, err := base64.StdEncoding.DecodeString(pubkeyB64)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "invalid pubkey encoding")
+	}
 
-		pubkey := secp256k1.PubKey{Key: pubkeyBytes}
-		if pubkey.VerifySignature(payload, signatureBytes) {
-			return nil
-		}
+	pubkey := secp256k1.PubKey{Key: pubkeyBytes}
+	if pubkey.VerifySignature(payload, signatureBytes) {
+		return nil
 	}
 
 	return echo.NewHTTPError(http.StatusUnauthorized, "signature verification failed")

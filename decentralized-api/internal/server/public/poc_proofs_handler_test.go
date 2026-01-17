@@ -94,34 +94,34 @@ func TestStringUint32_UnmarshalJSON(t *testing.T) {
 	}
 }
 
-func TestVerifyPocProofsSignature_NoPubkeys(t *testing.T) {
-	rootHash := make([]byte, 32)
-	req := &PocProofsRequest{
-		Signature: base64.StdEncoding.EncodeToString([]byte("invalid")),
-	}
-
-	err := verifyPocProofsSignature(req, rootHash, []string{})
-	assert.Error(t, err)
-}
-
-func TestVerifyPocProofsSignature_InvalidPubkey(t *testing.T) {
-	rootHash := make([]byte, 32)
-	req := &PocProofsRequest{
-		Signature: base64.StdEncoding.EncodeToString([]byte("somesig")),
-	}
-
-	// Invalid base64 pubkey should be skipped
-	err := verifyPocProofsSignature(req, rootHash, []string{"not-base64!!!"})
-	assert.Error(t, err)
-}
-
-func TestVerifyPocProofsSignature_InvalidSignatureFormat(t *testing.T) {
+func TestVerifyPocProofsSignatureWithPubkey_InvalidSignatureEncoding(t *testing.T) {
 	rootHash := make([]byte, 32)
 	req := &PocProofsRequest{
 		Signature: "not-valid-base64!!!",
 	}
 
-	err := verifyPocProofsSignature(req, rootHash, []string{base64.StdEncoding.EncodeToString([]byte("pubkey"))})
+	err := verifyPocProofsSignatureWithPubkey(req, rootHash, base64.StdEncoding.EncodeToString([]byte("pubkey")))
+	assert.Error(t, err)
+}
+
+func TestVerifyPocProofsSignatureWithPubkey_InvalidPubkeyEncoding(t *testing.T) {
+	rootHash := make([]byte, 32)
+	req := &PocProofsRequest{
+		Signature: base64.StdEncoding.EncodeToString([]byte("somesig")),
+	}
+
+	err := verifyPocProofsSignatureWithPubkey(req, rootHash, "not-valid-base64!!!")
+	assert.Error(t, err)
+}
+
+func TestVerifyPocProofsSignatureWithPubkey_InvalidSignature(t *testing.T) {
+	rootHash := make([]byte, 32)
+	req := &PocProofsRequest{
+		Signature: base64.StdEncoding.EncodeToString([]byte("somesig")),
+	}
+
+	// Valid base64 but invalid secp256k1 pubkey
+	err := verifyPocProofsSignatureWithPubkey(req, rootHash, base64.StdEncoding.EncodeToString([]byte("pubkey")))
 	assert.Error(t, err)
 }
 

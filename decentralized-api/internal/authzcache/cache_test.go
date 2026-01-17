@@ -45,11 +45,14 @@ func (m *MockCosmosClient) NewInferenceQueryClient() interface {
 }
 
 func TestAuthzCache_CacheHit(t *testing.T) {
-	// Pre-populate cache
+	// Pre-populate cache with signers
 	cache := &AuthzCache{
 		cache: map[string]*cachedEntry{
 			"granter1|/msg/type": {
-				pubkeys:   []string{"pubkey1", "pubkey2"},
+				signers: []SignerInfo{
+					{Address: "addr1", PubKey: "pubkey1"},
+					{Address: "addr2", PubKey: "pubkey2"},
+				},
 				expiresAt: time.Now().Add(time.Minute),
 			},
 		},
@@ -65,7 +68,9 @@ func TestAuthzCache_CacheExpired(t *testing.T) {
 	cache := &AuthzCache{
 		cache: map[string]*cachedEntry{
 			"granter1|/msg/type": {
-				pubkeys:   []string{"old_pubkey"},
+				signers: []SignerInfo{
+					{Address: "addr1", PubKey: "old_pubkey"},
+				},
 				expiresAt: time.Now().Add(-time.Minute), // expired
 			},
 		},
@@ -85,7 +90,9 @@ func TestAuthzCache_CacheKeyFormat(t *testing.T) {
 	cache := &AuthzCache{
 		cache: map[string]*cachedEntry{
 			expectedKey: {
-				pubkeys:   []string{"pubkey1"},
+				signers: []SignerInfo{
+					{Address: granterAddress, PubKey: "pubkey1"},
+				},
 				expiresAt: time.Now().Add(time.Minute),
 			},
 		},
@@ -101,11 +108,15 @@ func TestAuthzCache_DifferentMsgTypes(t *testing.T) {
 	cache := &AuthzCache{
 		cache: map[string]*cachedEntry{
 			"granter1|/msg/type1": {
-				pubkeys:   []string{"pubkey_type1"},
+				signers: []SignerInfo{
+					{Address: "addr1", PubKey: "pubkey_type1"},
+				},
 				expiresAt: time.Now().Add(time.Minute),
 			},
 			"granter1|/msg/type2": {
-				pubkeys:   []string{"pubkey_type2"},
+				signers: []SignerInfo{
+					{Address: "addr2", PubKey: "pubkey_type2"},
+				},
 				expiresAt: time.Now().Add(time.Minute),
 			},
 		},
@@ -118,4 +129,39 @@ func TestAuthzCache_DifferentMsgTypes(t *testing.T) {
 	pubkeys2, err := cache.GetPubKeys(context.Background(), "granter1", "/msg/type2")
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"pubkey_type2"}, pubkeys2)
+}
+
+func TestAuthzCache_GetPubKeyForSigner(t *testing.T) {
+	cache := &AuthzCache{
+		cache: map[string]*cachedEntry{
+			"granter1|/msg/type": {
+				signers: []SignerInfo{
+					{Address: "signer1", PubKey: "pubkey1"},
+					{Address: "signer2", PubKey: "pubkey2"},
+					{Address: "granter1", PubKey: "granter_pubkey"},
+				},
+				expiresAt: time.Now().Add(time.Minute),
+			},
+		},
+	}
+
+	// Should find signer1
+	pubkey, err := cache.GetPubKeyForSigner(context.Background(), "granter1", "signer1", "/msg/type")
+	assert.NoError(t, err)
+	assert.Equal(t, "pubkey1", pubkey)
+
+	// Should find signer2
+	pubkey, err = cache.GetPubKeyForSigner(context.Background(), "granter1", "signer2", "/msg/type")
+	assert.NoError(t, err)
+	assert.Equal(t, "pubkey2", pubkey)
+
+	// Should find granter itself
+	pubkey, err = cache.GetPubKeyForSigner(context.Background(), "granter1", "granter1", "/msg/type")
+	assert.NoError(t, err)
+	assert.Equal(t, "granter_pubkey", pubkey)
+
+	// Should return empty string for unknown signer (not an error)
+	pubkey, err = cache.GetPubKeyForSigner(context.Background(), "granter1", "unknown_signer", "/msg/type")
+	assert.NoError(t, err)
+	assert.Equal(t, "", pubkey)
 }

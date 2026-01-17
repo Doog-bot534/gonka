@@ -12,16 +12,22 @@ import (
 
 const authzCacheTTL = 2 * time.Minute
 
+// SignerInfo holds address and pubkey for an authorized signer.
+type SignerInfo struct {
+	Address string
+	PubKey  string
+}
+
 type cachedEntry struct {
-	pubkeys   []string
+	signers   []SignerInfo // all authorized signers (granter + grantees)
 	expiresAt time.Time
 }
 
-// AuthzCache caches public keys for granter addresses to avoid repeated chain queries.
+// AuthzCache caches authorized signers for granter addresses to avoid repeated chain queries.
 // Keys are cached with TTL since authz grants can change.
 type AuthzCache struct {
 	mu       sync.RWMutex
-	cache    map[string]*cachedEntry // granterAddress -> entry
+	cache    map[string]*cachedEntry // "granterAddress|msgTypeUrl" -> entry
 	recorder cosmosclient.CosmosMessageClient
 }
 
@@ -36,13 +42,46 @@ func NewAuthzCache(recorder cosmosclient.CosmosMessageClient) *AuthzCache {
 // Includes granter's own key plus any grantee keys via authz.
 // Results are cached with TTL.
 func (c *AuthzCache) GetPubKeys(ctx context.Context, granterAddress, msgTypeUrl string) ([]string, error) {
+	signers, err := c.getSigners(ctx, granterAddress, msgTypeUrl)
+	if err != nil {
+		return nil, err
+	}
+
+	pubkeys := make([]string, len(signers))
+	for i, s := range signers {
+		pubkeys[i] = s.PubKey
+	}
+	return pubkeys, nil
+}
+
+// GetPubKeyForSigner returns the pubkey for a specific signer address, if authorized.
+// Returns empty string and no error if the signer is not authorized.
+// This enables verifying signatures against a specific validator_signer_address.
+func (c *AuthzCache) GetPubKeyForSigner(ctx context.Context, granterAddress, signerAddress, msgTypeUrl string) (string, error) {
+	signers, err := c.getSigners(ctx, granterAddress, msgTypeUrl)
+	if err != nil {
+		return "", err
+	}
+
+	for _, s := range signers {
+		if s.Address == signerAddress {
+			return s.PubKey, nil
+		}
+	}
+
+	return "", nil // not found, but not an error
+}
+
+// getSigners returns all authorized signers for the granter/msgType combination.
+// Uses caching to avoid repeated chain queries.
+func (c *AuthzCache) getSigners(ctx context.Context, granterAddress, msgTypeUrl string) ([]SignerInfo, error) {
 	cacheKey := granterAddress + "|" + msgTypeUrl
 
 	c.mu.RLock()
 	if entry, ok := c.cache[cacheKey]; ok && time.Now().Before(entry.expiresAt) {
-		pubkeys := entry.pubkeys
+		signers := entry.signers
 		c.mu.RUnlock()
-		return pubkeys, nil
+		return signers, nil
 	}
 	c.mu.RUnlock()
 
@@ -51,10 +90,10 @@ func (c *AuthzCache) GetPubKeys(ctx context.Context, granterAddress, msgTypeUrl 
 
 	// Double-check after acquiring write lock
 	if entry, ok := c.cache[cacheKey]; ok && time.Now().Before(entry.expiresAt) {
-		return entry.pubkeys, nil
+		return entry.signers, nil
 	}
 
-	logging.Debug("Fetching authz pubkeys", types.Validation,
+	logging.Debug("Fetching authz signers", types.Validation,
 		"granterAddress", granterAddress, "msgTypeUrl", msgTypeUrl)
 
 	queryClient := c.recorder.NewInferenceQueryClient()
@@ -76,20 +115,26 @@ func (c *AuthzCache) GetPubKeys(ctx context.Context, granterAddress, msgTypeUrl 
 		return nil, err
 	}
 
-	// Collect all pubkeys: grantees + granter
-	pubkeys := make([]string, 0, len(grantees.Grantees)+1)
+	// Collect all signers: grantees + granter
+	signers := make([]SignerInfo, 0, len(grantees.Grantees)+1)
 	for _, grantee := range grantees.Grantees {
-		pubkeys = append(pubkeys, grantee.PubKey)
+		signers = append(signers, SignerInfo{
+			Address: grantee.Address,
+			PubKey:  grantee.PubKey,
+		})
 	}
-	pubkeys = append(pubkeys, participant.Pubkey)
+	signers = append(signers, SignerInfo{
+		Address: granterAddress,
+		PubKey:  participant.Pubkey,
+	})
 
 	c.cache[cacheKey] = &cachedEntry{
-		pubkeys:   pubkeys,
+		signers:   signers,
 		expiresAt: time.Now().Add(authzCacheTTL),
 	}
 
-	logging.Debug("Cached authz pubkeys", types.Validation,
-		"granterAddress", granterAddress, "count", len(pubkeys))
+	logging.Debug("Cached authz signers", types.Validation,
+		"granterAddress", granterAddress, "count", len(signers))
 
-	return pubkeys, nil
+	return signers, nil
 }

@@ -966,3 +966,70 @@ func BenchmarkAddAndFlush(b *testing.B) {
 		}
 	}
 }
+
+func TestGetRootAt(t *testing.T) {
+	dir := t.TempDir()
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer store.Close()
+
+	// Empty store
+	root, err := store.GetRootAt(0)
+	if err != nil {
+		t.Errorf("GetRootAt(0) on empty store should not error: %v", err)
+	}
+	if root != nil {
+		t.Errorf("GetRootAt(0) should return nil")
+	}
+
+	// Add artifacts and record roots at each count
+	roots := make([][]byte, 11)
+	for i := int32(1); i <= 10; i++ {
+		if err := store.Add(i, []byte{byte(i)}); err != nil {
+			t.Fatalf("Add(%d) failed: %v", i, err)
+		}
+		root, err := store.GetRootAt(uint32(i))
+		if err != nil {
+			t.Fatalf("GetRootAt(%d) failed: %v", i, err)
+		}
+		roots[i] = root
+	}
+
+	// Verify historical roots are still accessible
+	for i := uint32(1); i <= 10; i++ {
+		root, err := store.GetRootAt(i)
+		if err != nil {
+			t.Fatalf("GetRootAt(%d) failed: %v", i, err)
+		}
+		if !bytes.Equal(root, roots[i]) {
+			t.Errorf("GetRootAt(%d) returned different root", i)
+		}
+	}
+
+	// Current root should match GetRoot()
+	currentRoot := store.GetRoot()
+	root10, _ := store.GetRootAt(10)
+	if !bytes.Equal(currentRoot, root10) {
+		t.Error("GetRootAt(count) should equal GetRoot()")
+	}
+
+	// Requesting count > current count should error
+	_, err = store.GetRootAt(11)
+	if err == nil {
+		t.Error("GetRootAt(11) should error when count is 10")
+	}
+}
+
+func TestGetRootAt_ClosedStore(t *testing.T) {
+	dir := t.TempDir()
+	store, _ := Open(dir)
+	store.Add(1, []byte{1})
+	store.Close()
+
+	_, err := store.GetRootAt(1)
+	if err != ErrStoreClosed {
+		t.Errorf("expected ErrStoreClosed, got %v", err)
+	}
+}

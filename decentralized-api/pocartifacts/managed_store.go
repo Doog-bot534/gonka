@@ -15,25 +15,28 @@ import (
 	"github.com/productscience/inference/x/inference/types"
 )
 
-// ManagedArtifactStore wraps per-epoch ArtifactStores with automatic pruning.
+// ManagedArtifactStore wraps per-stage ArtifactStores with automatic pruning.
 // - Creates separate directories for each poc_stage_start_block_height
 // - Automatically prunes old stores in background, keeping the newest N
+// - Safe pruning: stores with active references are skipped
 // - Aligned with payloadstorage/ManagedStorage pattern
 type ManagedArtifactStore struct {
 	mu          sync.RWMutex
 	baseDir     string
 	stores      map[int64]*ArtifactStore // poc_stage_start_block_height -> store
+	refCounts   map[int64]int            // active references per store (prevents pruning)
 	retainCount int                      // keep newest N stores
 	cancel      context.CancelFunc       // cancels cleanup goroutine
 }
 
 // NewManagedArtifactStore creates a new managed store with automatic pruning.
-// retainCount specifies how many recent stores to keep (based on block height).
+// retainCount specifies how many recent stores to keep (based on poc_stage_start_block_height).
 func NewManagedArtifactStore(baseDir string, retainCount int) *ManagedArtifactStore {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &ManagedArtifactStore{
 		baseDir:     baseDir,
 		stores:      make(map[int64]*ArtifactStore),
+		refCounts:   make(map[int64]int),
 		retainCount: retainCount,
 		cancel:      cancel,
 	}
@@ -41,7 +44,8 @@ func NewManagedArtifactStore(baseDir string, retainCount int) *ManagedArtifactSt
 	return m
 }
 
-// GetOrCreateStore returns the store for the given block height, creating it if needed.
+// GetOrCreateStore returns the store for the given PoC stage, creating it if needed.
+// Note: Does not acquire a reference; use AcquireStore for safe access during requests.
 func (m *ManagedArtifactStore) GetOrCreateStore(pocStageStartHeight int64) (*ArtifactStore, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -53,15 +57,16 @@ func (m *ManagedArtifactStore) GetOrCreateStore(pocStageStartHeight int64) (*Art
 	storeDir := filepath.Join(m.baseDir, strconv.FormatInt(pocStageStartHeight, 10))
 	store, err := Open(storeDir)
 	if err != nil {
-		return nil, fmt.Errorf("open store for height %d: %w", pocStageStartHeight, err)
+		return nil, fmt.Errorf("open store for stage %d: %w", pocStageStartHeight, err)
 	}
 
 	m.stores[pocStageStartHeight] = store
 	return store, nil
 }
 
-// GetStore returns the store for the given block height, or an error if it doesn't exist.
+// GetStore returns the store for the given PoC stage, or an error if it doesn't exist.
 // Does not create new stores (for proof requests).
+// Note: Does not acquire a reference; use AcquireStore for safe access during requests.
 func (m *ManagedArtifactStore) GetStore(pocStageStartHeight int64) (*ArtifactStore, error) {
 	m.mu.RLock()
 	store, ok := m.stores[pocStageStartHeight]
@@ -74,7 +79,7 @@ func (m *ManagedArtifactStore) GetStore(pocStageStartHeight int64) (*ArtifactSto
 	// Try to open from disk (may exist from previous run)
 	storeDir := filepath.Join(m.baseDir, strconv.FormatInt(pocStageStartHeight, 10))
 	if _, err := os.Stat(storeDir); os.IsNotExist(err) {
-		return nil, fmt.Errorf("store for height %d not found", pocStageStartHeight)
+		return nil, fmt.Errorf("store for stage %d not found", pocStageStartHeight)
 	}
 
 	m.mu.Lock()
@@ -87,16 +92,65 @@ func (m *ManagedArtifactStore) GetStore(pocStageStartHeight int64) (*ArtifactSto
 
 	store, err := Open(storeDir)
 	if err != nil {
-		return nil, fmt.Errorf("open store for height %d: %w", pocStageStartHeight, err)
+		return nil, fmt.Errorf("open store for stage %d: %w", pocStageStartHeight, err)
 	}
 
 	m.stores[pocStageStartHeight] = store
 	return store, nil
 }
 
+// AcquireStore gets a store and increments its reference count.
+// Returns the store and a release function that MUST be called when done.
+// While a store has references > 0, it will not be pruned.
+func (m *ManagedArtifactStore) AcquireStore(pocStageStartHeight int64) (*ArtifactStore, func(), error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	store, ok := m.stores[pocStageStartHeight]
+	if !ok {
+		// Try to open from disk
+		storeDir := filepath.Join(m.baseDir, strconv.FormatInt(pocStageStartHeight, 10))
+		if _, err := os.Stat(storeDir); os.IsNotExist(err) {
+			return nil, nil, fmt.Errorf("store for stage %d not found", pocStageStartHeight)
+		}
+
+		var err error
+		store, err = Open(storeDir)
+		if err != nil {
+			return nil, nil, fmt.Errorf("open store for stage %d: %w", pocStageStartHeight, err)
+		}
+		m.stores[pocStageStartHeight] = store
+	}
+
+	m.refCounts[pocStageStartHeight]++
+
+	release := func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.refCounts[pocStageStartHeight] > 0 {
+			m.refCounts[pocStageStartHeight]--
+		}
+		if m.refCounts[pocStageStartHeight] == 0 {
+			delete(m.refCounts, pocStageStartHeight)
+		}
+	}
+
+	return store, release, nil
+}
+
 // PruneStore removes the store directory and closes any open store.
+// Skips stores with active references (refCount > 0) to prevent mid-request failures.
 func (m *ManagedArtifactStore) PruneStore(pocStageStartHeight int64) error {
 	m.mu.Lock()
+
+	// Skip stores with active references
+	if m.refCounts[pocStageStartHeight] > 0 {
+		m.mu.Unlock()
+		logging.Debug("Skipping prune of in-use store", types.PoC,
+			"height", pocStageStartHeight, "refCount", m.refCounts[pocStageStartHeight])
+		return nil
+	}
+
 	if store, ok := m.stores[pocStageStartHeight]; ok {
 		store.Close()
 		delete(m.stores, pocStageStartHeight)
@@ -163,12 +217,13 @@ func (m *ManagedArtifactStore) Close() error {
 	defer m.mu.Unlock()
 
 	var errs []error
-	for epoch, store := range m.stores {
+	for height, store := range m.stores {
 		if err := store.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("close epoch %d: %w", epoch, err))
+			errs = append(errs, fmt.Errorf("close stage %d: %w", height, err))
 		}
 	}
 	m.stores = make(map[int64]*ArtifactStore)
+	m.refCounts = make(map[int64]int)
 
 	if len(errs) > 0 {
 		return fmt.Errorf("close errors: %v", errs)
@@ -176,7 +231,7 @@ func (m *ManagedArtifactStore) Close() error {
 	return nil
 }
 
-// ListStores returns sorted list of block heights with stores on disk.
+// ListStores returns sorted list of poc_stage_start_block_heights with stores on disk.
 func (m *ManagedArtifactStore) ListStores() ([]int64, error) {
 	entries, err := os.ReadDir(m.baseDir)
 	if err != nil {
