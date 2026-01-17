@@ -250,6 +250,317 @@ func TestSubmitGroupKeyValidationSignature_Timing(t *testing.T) {
 	t.Logf("Final aggregated signature verified successfully! Epoch transitioned to SIGNED phase.")
 }
 
+func TestPrecomputeSlotPublicKeys_TimingComparison(t *testing.T) {
+	if testing.Short() {
+		t.Skip("timing test skipped with -short")
+	}
+
+	k, _ := setupTimingKeeper(t)
+
+	// Test with 100 slots
+	totalSlots := uint32(100)
+	numParticipants := 100
+	commitmentCount := int(totalSlots/2) + 1 // t = 51
+	participants := buildTimingParticipants(totalSlots, numParticipants)
+	_, _, _, g2Gen := bls12381.Generators()
+
+	t.Logf("Timing comparison: slots=%d participants=%d commitments_per_dealer=%d", totalSlots, numParticipants, commitmentCount)
+
+	dealerCoeffs, totalCoeffs := buildDealerCoefficients(numParticipants, commitmentCount)
+	dealerParts := make([]*types.DealerPartStorage, numParticipants)
+	validDealers := make([]bool, numParticipants)
+	for i := range dealerParts {
+		commitments := make([][]byte, commitmentCount)
+		for j := 0; j < commitmentCount; j++ {
+			commitments[j] = g2BytesFromScalar(g2Gen, dealerCoeffs[i][j])
+		}
+		dealerParts[i] = &types.DealerPartStorage{
+			DealerAddress: participants[i].Address,
+			Commitments:   commitments,
+		}
+		validDealers[i] = true
+	}
+
+	prevGroupKey := g2BytesFromScalar(g2Gen, totalCoeffs[0])
+
+	epochData := types.EpochBLSData{
+		EpochId:        1,
+		ITotalSlots:    totalSlots,
+		TSlotsDegree:   uint32(commitmentCount - 1),
+		Participants:   participants,
+		DkgPhase:       types.DKGPhase_DKG_PHASE_SIGNED,
+		GroupPublicKey: prevGroupKey,
+		DealerParts:    dealerParts,
+		ValidDealers:   validDealers,
+	}
+
+	// 1. Measure PrecomputeSlotPublicKeys (gnark-crypto)
+	startGnark := time.Now()
+	resGnark, err := k.PrecomputeSlotPublicKeys(&epochData)
+	durationGnark := time.Since(startGnark)
+	require.NoError(t, err)
+
+	// 2. Measure PrecomputeSlotPublicKeysBlst (blst)
+	startBlst := time.Now()
+	resBlst, err := k.PrecomputeSlotPublicKeysBlst(&epochData)
+	durationBlst := time.Since(startBlst)
+	require.NoError(t, err)
+
+	// 3. Compare results
+	require.Equal(t, len(resGnark), len(resBlst), "Result lengths must match")
+	for i := range resGnark {
+		require.Equal(t, resGnark[i], resBlst[i], "Result at slot %d must match exactly", i)
+	}
+
+	t.Logf("PrecomputeSlotPublicKeys (gnark-crypto): %s", durationGnark)
+	t.Logf("PrecomputeSlotPublicKeysBlst (blst):      %s", durationBlst)
+	if durationBlst < durationGnark {
+		improvement := float64(durationGnark-durationBlst) / float64(durationGnark) * 100
+		t.Logf("blst is %.2f%% faster", improvement)
+	} else {
+		t.Logf("gnark-crypto is faster (unexpected for large MSM)")
+	}
+}
+
+func TestVerifyBLSPartialSignature_TimingComparison(t *testing.T) {
+	if testing.Short() {
+		t.Skip("timing test skipped with -short")
+	}
+
+	k, _ := setupTimingKeeper(t)
+
+	totalSlots := uint32(100)
+	numParticipants := 100
+	commitmentCount := int(totalSlots/2) + 1
+	participants := buildTimingParticipants(totalSlots, numParticipants)
+	_, _, _, g2Gen := bls12381.Generators()
+
+	dealerCoeffs, totalCoeffs := buildDealerCoefficients(numParticipants, commitmentCount)
+	dealerParts := make([]*types.DealerPartStorage, numParticipants)
+	validDealers := make([]bool, numParticipants)
+	for i := range dealerParts {
+		commitments := make([][]byte, commitmentCount)
+		for j := 0; j < commitmentCount; j++ {
+			commitments[j] = g2BytesFromScalar(g2Gen, dealerCoeffs[i][j])
+		}
+		dealerParts[i] = &types.DealerPartStorage{
+			DealerAddress: participants[i].Address,
+			Commitments:   commitments,
+		}
+		validDealers[i] = true
+	}
+
+	prevGroupKey := g2BytesFromScalar(g2Gen, totalCoeffs[0])
+
+	epochData := types.EpochBLSData{
+		EpochId:        1,
+		ITotalSlots:    totalSlots,
+		TSlotsDegree:   uint32(commitmentCount - 1),
+		Participants:   participants,
+		DkgPhase:       types.DKGPhase_DKG_PHASE_SIGNED,
+		GroupPublicKey: prevGroupKey,
+		DealerParts:    dealerParts,
+		ValidDealers:   validDealers,
+	}
+
+	// Precompute slot public keys
+	slotPKs, err := k.PrecomputeSlotPublicKeys(&epochData)
+	require.NoError(t, err)
+	epochData.SlotPublicKeys = slotPKs
+
+	// Prepare a signature for some slots (32-byte message hash)
+	messageHash := make([]byte, 32)
+	copy(messageHash, "test message")
+	messageG1, err := k.hashToG1(messageHash)
+	require.NoError(t, err)
+
+	// Use participant 0's slots
+	p0 := participants[0]
+	numSlots := int(p0.SlotEndIndex - p0.SlotStartIndex + 1)
+	slotIndices := make([]uint32, numSlots)
+	for i := 0; i < numSlots; i++ {
+		slotIndices[i] = p0.SlotStartIndex + uint32(i)
+	}
+
+	// For each slot, compute a valid signature
+	slotScalars := computeSlotScalars(totalCoeffs, totalSlots)
+	signaturePayload := make([]byte, 0, numSlots*48)
+	for _, slotIdx := range slotIndices {
+		sig := g1SignatureFromScalar(messageG1, slotScalars[slotIdx])
+		signaturePayload = append(signaturePayload, sig...)
+	}
+
+	// 1. Measure verifyBLSPartialSignature (gnark-crypto)
+	startGnark := time.Now()
+	okGnark := k.verifyBLSPartialSignature(signaturePayload, messageHash, &epochData, slotIndices)
+	durationGnark := time.Since(startGnark)
+	require.True(t, okGnark)
+
+	// 2. Measure verifyBLSPartialSignatureBlst (blst)
+	startBlst := time.Now()
+	okBlst := k.verifyBLSPartialSignatureBlst(signaturePayload, messageHash, &epochData, slotIndices)
+	durationBlst := time.Since(startBlst)
+	require.True(t, okBlst)
+
+	t.Logf("verifyBLSPartialSignature (gnark-crypto): %s", durationGnark)
+	t.Logf("verifyBLSPartialSignatureBlst (blst):      %s", durationBlst)
+	if durationBlst < durationGnark {
+		improvement := float64(durationGnark-durationBlst) / float64(durationGnark) * 100
+		t.Logf("blst is %.2f%% faster", improvement)
+	}
+}
+
+func TestAggregateBLSPartialSignatures_Timing(t *testing.T) {
+	if testing.Short() {
+		t.Skip("timing test skipped with -short")
+	}
+
+	k, _ := setupTimingKeeper(t)
+
+	totalSlots := uint32(100)
+	numParticipants := 100
+	commitmentCount := int(totalSlots/2) + 1
+
+	// Setup mock data for coefficients
+	_, totalCoeffs := buildDealerCoefficients(numParticipants, commitmentCount)
+
+	// Prepare message hash and G1 point
+	messageHash := make([]byte, 32)
+	copy(messageHash, "aggregation test message")
+	messageG1, err := k.hashToG1(messageHash)
+	require.NoError(t, err)
+
+	// Prepare 51 slots (threshold) for aggregation
+	requiredSlots := uint32(51)
+	slotScalars := computeSlotScalars(totalCoeffs, totalSlots)
+
+	partialSignatures := make([]types.PartialSignature, 0, requiredSlots)
+	for i := uint32(0); i < requiredSlots; i++ {
+		sig := g1SignatureFromScalar(messageG1, slotScalars[i])
+		partialSignatures = append(partialSignatures, types.PartialSignature{
+			Signature:   sig,
+			SlotIndices: []uint32{i},
+		})
+	}
+
+	t.Logf("Timing aggregation of %d partial signatures (each for 1 slot)", len(partialSignatures))
+
+	// Measure gnark-crypto aggregation time
+	start := time.Now()
+	aggregatedSig, err := k.aggregateBLSPartialSignatures(partialSignatures)
+	duration := time.Since(start)
+	require.NoError(t, err)
+	require.NotNil(t, aggregatedSig)
+
+	t.Logf("aggregateBLSPartialSignatures (gnark-crypto): %s", duration)
+
+	// Measure blst aggregation time
+	startBlst := time.Now()
+	aggregatedSigBlst, err := k.aggregateBLSPartialSignaturesBlst(partialSignatures)
+	durationBlst := time.Since(startBlst)
+	require.NoError(t, err)
+	require.NotNil(t, aggregatedSigBlst)
+
+	// Compare results
+	require.Equal(t, aggregatedSig, aggregatedSigBlst, "Aggregated signatures must match exactly")
+
+	t.Logf("aggregateBLSPartialSignaturesBlst (blst):      %s", durationBlst)
+	if durationBlst < duration {
+		improvement := float64(duration-durationBlst) / float64(duration) * 100
+		t.Logf("blst is %.2f%% faster", improvement)
+	}
+}
+
+func TestVerifyFinalSignature_TimingComparison(t *testing.T) {
+	if testing.Short() {
+		t.Skip("timing test skipped with -short")
+	}
+
+	k, _ := setupTimingKeeper(t)
+
+	// Prepare data
+	messageHash := make([]byte, 32)
+	copy(messageHash, "final signature test")
+
+	_, _, _, g2Gen := bls12381.Generators()
+	var sk fr.Element
+	sk.SetRandom()
+
+	var pk bls12381.G2Affine
+	pk.ScalarMultiplication(&g2Gen, sk.BigInt(new(big.Int)))
+	pkBytes := pk.Bytes()
+
+	messageG1, _ := k.hashToG1(messageHash)
+	var sig bls12381.G1Affine
+	sig.ScalarMultiplication(&messageG1, sk.BigInt(new(big.Int)))
+	sigArr := sig.Bytes()
+	sigBytes := sigArr[:]
+
+	// 1. Measure gnark
+	startGnark := time.Now()
+	okGnark := k.verifyFinalSignature(sigBytes, messageHash, pkBytes[:])
+	durationGnark := time.Since(startGnark)
+	require.True(t, okGnark)
+
+	// 2. Measure blst
+	startBlst := time.Now()
+	okBlst := k.verifyFinalSignatureBlst(sigBytes, messageHash, pkBytes[:])
+	durationBlst := time.Since(startBlst)
+	require.True(t, okBlst)
+
+	t.Logf("verifyFinalSignature (gnark-crypto): %s", durationGnark)
+	t.Logf("verifyFinalSignatureBlst (blst):      %s", durationBlst)
+}
+
+func TestComputeParticipantPublicKey_TimingComparison(t *testing.T) {
+	if testing.Short() {
+		t.Skip("timing test skipped with -short")
+	}
+
+	k, _ := setupTimingKeeper(t)
+
+	// Setup mock EpochBLSData with 100 slots
+	totalSlots := uint32(100)
+	slotPKs := make([][]byte, totalSlots)
+	_, _, _, g2Gen := bls12381.Generators()
+	for i := uint32(0); i < totalSlots; i++ {
+		var sk fr.Element
+		sk.SetUint64(uint64(i + 1))
+		var pk bls12381.G2Affine
+		pk.ScalarMultiplication(&g2Gen, sk.BigInt(new(big.Int)))
+		pkArr := pk.Bytes()
+		slotPKs[i] = pkArr[:]
+	}
+
+	epochData := types.EpochBLSData{
+		SlotPublicKeys: slotPKs,
+	}
+
+	// Use all 100 slots for the participant
+	slotIndices := make([]uint32, totalSlots)
+	for i := uint32(0); i < totalSlots; i++ {
+		slotIndices[i] = i
+	}
+
+	// 1. Measure gnark
+	startGnark := time.Now()
+	resGnark, err := k.computeParticipantPublicKey(&epochData, slotIndices)
+	durationGnark := time.Since(startGnark)
+	require.NoError(t, err)
+
+	// 2. Measure blst
+	startBlst := time.Now()
+	resBlst, err := k.computeParticipantPublicKeyBlst(&epochData, slotIndices)
+	durationBlst := time.Since(startBlst)
+	require.NoError(t, err)
+
+	// Compare results
+	require.Equal(t, resGnark, resBlst, "Participant public keys must match")
+
+	t.Logf("computeParticipantPublicKey (gnark-crypto): %s", durationGnark)
+	t.Logf("computeParticipantPublicKeyBlst (blst):      %s", durationBlst)
+}
+
 func setupTimingKeeper(t testing.TB) (Keeper, sdk.Context) {
 	storeKey := storetypes.NewKVStoreKey(types.StoreKey)
 

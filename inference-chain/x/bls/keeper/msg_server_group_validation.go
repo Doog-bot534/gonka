@@ -164,7 +164,7 @@ func (ms msgServer) SubmitGroupKeyValidationSignature(goCtx context.Context, msg
 	}
 
 	// Verify BLS partial signature against participant's computed individual public key
-	if !ms.verifyBLSPartialSignature(msg.PartialSignature, validationState.MessageHash, &previousEpochBLSData, filteredSlots) {
+	if !ms.verifyBLSPartialSignatureBlst(msg.PartialSignature, validationState.MessageHash, &previousEpochBLSData, filteredSlots) {
 		ms.Keeper.LogError("Invalid BLS signature verification", "creator", msg.Creator)
 		return nil, fmt.Errorf("invalid BLS signature verification failed for participant %s", msg.Creator)
 	}
@@ -187,60 +187,18 @@ func (ms msgServer) SubmitGroupKeyValidationSignature(goCtx context.Context, msg
 	if validationState.SlotsCovered >= requiredSlots {
 		ms.Keeper.LogInfo("Enough signatures collected, validating group key")
 		// Aggregate signatures and finalize validation
-		finalSignature, aggErr := ms.aggregateBLSPartialSignatures(validationState.PartialSignatures)
+		finalSignature, aggErr := ms.aggregateBLSPartialSignaturesBlst(validationState.PartialSignatures)
 		if aggErr != nil {
 			ms.Keeper.LogError("Failed to aggregate partial signatures", "error", aggErr.Error())
 			return nil, fmt.Errorf("failed to aggregate partial signatures: %w", aggErr)
 		}
 
 		// Verify aggregated final signature against previous epoch group public key
-		// e(finalSig, G2_gen) == e(H(message), prevGroupPubKey)
-		var finalSigAff bls12381.G1Affine
-		if err := finalSigAff.Unmarshal(finalSignature); err != nil {
-			ms.Keeper.LogError("Failed to unmarshal aggregated final signature", "error", err.Error())
-			return nil, fmt.Errorf("failed to unmarshal aggregated final signature: %w", err)
-		}
-
-		var prevGroupKey bls12381.G2Affine
-		if err := prevGroupKey.Unmarshal(previousEpochBLSData.GroupPublicKey); err != nil {
-			ms.Keeper.LogError("Failed to unmarshal previous epoch group key", "error", err.Error())
-			return nil, fmt.Errorf("failed to unmarshal previous epoch group key: %w", err)
-		}
-
-		messageG1, err := ms.Keeper.hashToG1(validationState.MessageHash)
-		if err != nil {
-			ms.Keeper.LogError("Failed to hash validation message to G1 for final verification", "error", err.Error())
-			return nil, fmt.Errorf("failed to hash validation message to G1: %w", err)
-		}
-
-		_, _, _, g2Gen := bls12381.Generators()
-		pair1, err := bls12381.Pair([]bls12381.G1Affine{finalSigAff}, []bls12381.G2Affine{g2Gen})
-		if err != nil {
-			ms.Keeper.LogError("Failed to compute pairing for final signature", "error", err.Error())
-			return nil, fmt.Errorf("failed to compute pairing for final signature: %w", err)
-		}
-		pair2, err := bls12381.Pair([]bls12381.G1Affine{messageG1}, []bls12381.G2Affine{prevGroupKey})
-		if err != nil {
-			ms.Keeper.LogError("Failed to compute pairing for previous group key", "error", err.Error())
-			return nil, fmt.Errorf("failed to compute pairing for previous group key: %w", err)
-		}
-		if !pair1.Equal(&pair2) {
-			// Log final signature uncompressed to help debugging
-			var sigUncompressed []byte
-			appendFp64 := func(e fp.Element) {
-				be48 := e.Bytes()
-				var limb [64]byte
-				copy(limb[64-48:], be48[:])
-				sigUncompressed = append(sigUncompressed, limb[:]...)
-			}
-			appendFp64(finalSigAff.X)
-			appendFp64(finalSigAff.Y)
-
+		if !ms.verifyFinalSignatureBlst(finalSignature, validationState.MessageHash, previousEpochBLSData.GroupPublicKey) {
 			ms.Keeper.LogError(
 				"Final aggregated signature verification failed",
 				"previous_epoch_id", previousEpochId,
 				"hash32_hex", fmt.Sprintf("%x", validationState.MessageHash),
-				"final_sig_uncompressed_128_hex", fmt.Sprintf("%x", sigUncompressed),
 			)
 			return nil, fmt.Errorf("final aggregated signature failed verification against previous epoch group key")
 		}

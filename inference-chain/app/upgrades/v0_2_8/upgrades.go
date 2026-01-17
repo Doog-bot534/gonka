@@ -102,7 +102,7 @@ func MigrateBLSData(ctx context.Context, k keeper.Keeper, bk blskeeper.Keeper) e
 	if epochData.DkgPhase == blstypes.DKGPhase_DKG_PHASE_COMPLETED || epochData.DkgPhase == blstypes.DKGPhase_DKG_PHASE_SIGNED {
 		if len(epochData.SlotPublicKeys) == 0 {
 			bk.Logger().Info("Generating precomputed slot public keys for epoch", "epoch_id", epochID)
-			slotKeys, err := bk.PrecomputeSlotPublicKeys(&epochData)
+			slotKeys, err := bk.PrecomputeSlotPublicKeysBlst(&epochData)
 			if err != nil {
 				return fmt.Errorf("failed to precompute slot keys for epoch %d: %w", epochID, err)
 			}

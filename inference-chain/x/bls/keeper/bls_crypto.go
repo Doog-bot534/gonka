@@ -10,6 +10,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/hash_to_curve"
 	"github.com/productscience/inference/x/bls/types"
+	blst "github.com/supranational/blst/bindings/go"
 )
 
 // computeParticipantPublicKey computes individual BLS public key for participant's slots
@@ -35,6 +36,30 @@ func (k Keeper) computeParticipantPublicKey(epochBLSData *types.EpochBLSData, sl
 	// Return compressed public key bytes
 	pubKeyBytes := aggregatedPubKey.Bytes()
 	return pubKeyBytes[:], nil
+}
+
+// computeParticipantPublicKeyBlst computes individual BLS public key for participant's slots using blst.
+func (k Keeper) computeParticipantPublicKeyBlst(epochBLSData *types.EpochBLSData, slotIndices []uint32) ([]byte, error) {
+	if len(slotIndices) == 0 {
+		return new(blst.P2).ToAffine().Compress(), nil
+	}
+
+	points := make([]*blst.P2Affine, 0, len(slotIndices))
+	for _, slotIndex := range slotIndices {
+		if len(epochBLSData.SlotPublicKeys) <= int(slotIndex) {
+			return nil, fmt.Errorf("precomputed slot public key missing for slot %d", slotIndex)
+		}
+
+		p := new(blst.P2Affine).Uncompress(epochBLSData.SlotPublicKeys[slotIndex])
+		if p == nil {
+			return nil, fmt.Errorf("failed to unmarshal precomputed slot public key %d with blst", slotIndex)
+		}
+		points = append(points, p)
+	}
+
+	// Efficiently add all points
+	res := blst.P2AffinesAdd(points)
+	return res.ToAffine().Compress(), nil
 }
 
 // PrecomputeSlotPublicKeys precomputes public keys for all slots in the epoch.
@@ -111,6 +136,166 @@ func (k Keeper) PrecomputeSlotPublicKeys(epochBLSData *types.EpochBLSData) ([][]
 	return slotPublicKeys, nil
 }
 
+// PrecomputeSlotPublicKeysBlst precomputes public keys for all slots in the epoch using the blst library.
+// This is an identical implementation to PrecomputeSlotPublicKeys but uses blst for higher performance MSM.
+func (k Keeper) PrecomputeSlotPublicKeysBlst(epochBLSData *types.EpochBLSData) ([][]byte, error) {
+	totalSlots := epochBLSData.ITotalSlots
+	slotPublicKeys := make([][]byte, totalSlots)
+
+	// Pre-unmarshal all valid dealer commitments once using blst
+	type dealerCommitments struct {
+		points []*blst.P2Affine
+	}
+	activeDealers := make([]dealerCommitments, 0)
+	for dealerIdx, isValid := range epochBLSData.ValidDealers {
+		if !isValid || dealerIdx >= len(epochBLSData.DealerParts) {
+			continue
+		}
+		dealerPart := epochBLSData.DealerParts[dealerIdx]
+		if dealerPart == nil || len(dealerPart.Commitments) == 0 {
+			continue
+		}
+
+		points := make([]*blst.P2Affine, len(dealerPart.Commitments))
+		for i, cb := range dealerPart.Commitments {
+			p := new(blst.P2Affine).Uncompress(cb)
+			if p == nil {
+				return nil, fmt.Errorf("failed to unmarshal commitment %d for dealer %d with blst", i, dealerIdx)
+			}
+			points[i] = p
+		}
+		activeDealers = append(activeDealers, dealerCommitments{points: points})
+	}
+
+	if len(activeDealers) == 0 {
+		return slotPublicKeys, nil
+	}
+
+	maxCoeffs := 0
+	for _, dealer := range activeDealers {
+		if len(dealer.points) > maxCoeffs {
+			maxCoeffs = len(dealer.points)
+		}
+	}
+
+	// 1. Pre-aggregate commitments across all dealers
+	totalCommitmentsAffine := make([]*blst.P2Affine, maxCoeffs)
+	for i := 0; i < maxCoeffs; i++ {
+		pointsToAggregate := make([]*blst.P2Affine, 0)
+		for _, dealer := range activeDealers {
+			if i < len(dealer.points) {
+				pointsToAggregate = append(pointsToAggregate, dealer.points[i])
+			}
+		}
+		if len(pointsToAggregate) == 0 {
+			// Identity point in G2
+			totalCommitmentsAffine[i] = new(blst.P2).ToAffine()
+		} else {
+			totalCommitmentsAffine[i] = blst.P2AffinesAdd(pointsToAggregate).ToAffine()
+		}
+	}
+
+	// 2. For each slot, compute aggregated public key using the total commitments
+	for slotIndex := uint32(0); slotIndex < totalSlots; slotIndex++ {
+		// Use gnark's fr for easy field math (powers), then convert to blst bytes
+		var x fr.Element
+		x.SetUint64(uint64(slotIndex + 1))
+
+		var power fr.Element
+		power.SetOne()
+
+		scalars := make([]byte, len(totalCommitmentsAffine)*32)
+		for i := 0; i < len(totalCommitmentsAffine); i++ {
+			pBytes := power.Bytes()
+			// gnark-crypto uses big-endian, blst expects little-endian for scalars
+			for j := 0; j < 16; j++ {
+				pBytes[j], pBytes[31-j] = pBytes[31-j], pBytes[j]
+			}
+			copy(scalars[i*32:(i+1)*32], pBytes[:])
+			power.Mul(&power, &x)
+		}
+
+		// Perform MSM with blst
+		// 255 bits for BLS12-381 scalar field
+		aggregatedPubKeyP2 := blst.P2AffinesMult(totalCommitmentsAffine, scalars, 255)
+
+		pkBytes := aggregatedPubKeyP2.ToAffine().Compress()
+		slotPublicKeys[slotIndex] = pkBytes
+	}
+
+	return slotPublicKeys, nil
+}
+
+// verifyBLSPartialSignatureBlst verifies BLS partial signatures per-slot using the blst library.
+func (k Keeper) verifyBLSPartialSignatureBlst(signature []byte, messageHash []byte, epochBLSData *types.EpochBLSData, slotIndices []uint32) bool {
+	// Sanity: signature must be multiple of 48 and match slots length
+	if len(signature)%48 != 0 {
+		k.Logger().Error("Invalid signature payload length", "length", len(signature))
+		return false
+	}
+	sigCount := len(signature) / 48
+	if sigCount != len(slotIndices) {
+		k.Logger().Error("Signature count mismatch", "sigCount", sigCount, "slots", len(slotIndices))
+		return false
+	}
+
+	// Hash message to G1 using gnark-crypto implementation for consistency
+	messageG1Gnark, err := k.hashToG1(messageHash)
+	if err != nil {
+		k.Logger().Error("Failed to hash message to G1", "error", err)
+		return false
+	}
+	msgG1Bytes := messageG1Gnark.Bytes()
+	messageG1Blst := new(blst.P1Affine).Uncompress(msgG1Bytes[:])
+	if messageG1Blst == nil {
+		k.Logger().Error("Failed to uncompress message G1 with blst")
+		return false
+	}
+
+	// G2 generator in blst
+	g2Gen := blst.P2Generator().ToAffine()
+
+	// Verify each (slot, sig) pair independently
+	for i, slotIndex := range slotIndices {
+		start := i * 48
+		end := start + 48
+		sigBytes := signature[start:end]
+
+		// Parse G1 signature with blst
+		g1Signature := new(blst.P1Affine).Uncompress(sigBytes)
+		if g1Signature == nil {
+			k.Logger().Error("Failed to unmarshal per-slot G1 signature with blst", "slot", slotIndex)
+			return false
+		}
+
+		// Parse precomputed slot public key with blst
+		if len(epochBLSData.SlotPublicKeys) <= int(slotIndex) {
+			k.Logger().Error("Precomputed slot public key missing", "slot", slotIndex)
+			return false
+		}
+		slotPubKey := new(blst.P2Affine).Uncompress(epochBLSData.SlotPublicKeys[slotIndex])
+		if slotPubKey == nil {
+			k.Logger().Error("Failed to unmarshal precomputed slot public key with blst", "slot", slotIndex)
+			return false
+		}
+
+		// Pairing check: e(signature, G2_generator) == e(messageG1, slotPubKey)
+		// Combined Miller loop: e(signature, G2_generator) * e(messageG1, -slotPubKey) == 1
+		// To negate a point, we subtract it from the identity point.
+		negSlotPubKey := new(blst.P2).Sub(slotPubKey).ToAffine()
+
+		// Perform pairing check
+		ml := blst.Fp12MillerLoopN([]blst.P2Affine{*g2Gen, *negSlotPubKey}, []blst.P1Affine{*g1Signature, *messageG1Blst})
+		ml.FinalExp()
+		one := blst.Fp12One()
+		if !ml.Equals(&one) {
+			k.Logger().Error("Per-slot signature verification failed with blst", "slot", slotIndex)
+			return false
+		}
+	}
+	return true
+}
+
 // verifyBLSPartialSignature verifies BLS partial signatures per-slot.
 // The signature payload may contain N concatenated 48-byte compressed G1 signatures,
 // and SlotIndices must have the same length N (1:1 mapping). Each (slot, sig)
@@ -163,23 +348,127 @@ func (k Keeper) verifyBLSPartialSignature(signature []byte, messageHash []byte, 
 			return false
 		}
 
-		// Pairing checks
-		p1, err := bls12381.Pair([]bls12381.G1Affine{g1Signature}, []bls12381.G2Affine{g2Gen})
+		// Pairing check: e(signature, G2_generator) == e(messageG1, slotPubKey)
+		// Optimized using PairingCheck which combines Miller loops and does a single FinalExp.
+		// e(signature, G2_generator) * e(messageG1, -slotPubKey) == 1
+		var negSlotPubKey bls12381.G2Affine
+		negSlotPubKey.Neg(&slotPubKey)
+
+		isValid, err := bls12381.PairingCheck(
+			[]bls12381.G1Affine{g1Signature, messageG1},
+			[]bls12381.G2Affine{g2Gen, negSlotPubKey},
+		)
 		if err != nil {
-			k.Logger().Error("Failed to compute pairing 1", "slot", slotIndex, "error", err)
+			k.Logger().Error("Failed to compute pairing check", "slot", slotIndex, "error", err)
 			return false
 		}
-		p2, err := bls12381.Pair([]bls12381.G1Affine{messageG1}, []bls12381.G2Affine{slotPubKey})
-		if err != nil {
-			k.Logger().Error("Failed to compute pairing 2", "slot", slotIndex, "error", err)
-			return false
-		}
-		if !p1.Equal(&p2) {
+		if !isValid {
 			k.Logger().Error("Per-slot signature verification failed", "slot", slotIndex)
 			return false
 		}
 	}
 	return true
+}
+
+// aggregateBLSPartialSignaturesBlst aggregates per-slot signatures into a single signature using Lagrange weights and blst.
+func (k Keeper) aggregateBLSPartialSignaturesBlst(partialSignatures []types.PartialSignature) ([]byte, error) {
+	if len(partialSignatures) == 0 {
+		return nil, fmt.Errorf("no partial signatures to aggregate")
+	}
+
+	// Flatten per-slot signatures and track unique slots
+	type slotSig struct {
+		slot uint32
+		sig  *blst.P1Affine
+	}
+	var slotSigs []slotSig
+	slotSeen := make(map[uint32]struct{})
+	var uniqueSlots []uint32
+
+	for i, ps := range partialSignatures {
+		if len(ps.Signature)%48 != 0 {
+			return nil, fmt.Errorf("invalid signature payload at index %d: length=%d", i, len(ps.Signature))
+		}
+		count := len(ps.Signature) / 48
+		if count != len(ps.SlotIndices) {
+			return nil, fmt.Errorf("signature count mismatch at index %d: sigs=%d slots=%d", i, count, len(ps.SlotIndices))
+		}
+		for j := 0; j < count; j++ {
+			slot := ps.SlotIndices[j]
+			start := j * 48
+			end := start + 48
+			g1 := new(blst.P1Affine).Uncompress(ps.Signature[start:end])
+			if g1 == nil {
+				return nil, fmt.Errorf("failed to uncompress signature at batch %d item %d with blst", i, j)
+			}
+			slotSigs = append(slotSigs, slotSig{slot: slot, sig: g1})
+			if _, ok := slotSeen[slot]; !ok {
+				slotSeen[slot] = struct{}{}
+				uniqueSlots = append(uniqueSlots, slot)
+			}
+		}
+	}
+
+	if len(uniqueSlots) == 0 {
+		return nil, fmt.Errorf("no slot indices present in partial signatures")
+	}
+
+	// Compute Lagrange coefficients λ_i(0) using gnark-crypto for field math
+	xElems := make([]fr.Element, len(uniqueSlots))
+	for i, idx := range uniqueSlots {
+		xElems[i].SetUint64(uint64(idx + 1))
+	}
+
+	lambdaBySlot := make(map[uint32][]byte, len(uniqueSlots))
+	for i := range uniqueSlots {
+		var numerator fr.Element
+		numerator.SetOne()
+		for j := range uniqueSlots {
+			if j == i {
+				continue
+			}
+			var term fr.Element
+			term.Neg(&xElems[j])
+			numerator.Mul(&numerator, &term)
+		}
+
+		var denominator fr.Element
+		denominator.SetOne()
+		for j := range uniqueSlots {
+			if j == i {
+				continue
+			}
+			var diff fr.Element
+			diff.Sub(&xElems[i], &xElems[j])
+			denominator.Mul(&denominator, &diff)
+		}
+
+		var denInv fr.Element
+		denInv.Inverse(&denominator)
+		var lam fr.Element
+		lam.Mul(&numerator, &denInv)
+
+		// Convert to little-endian for blst
+		lBytes := lam.Bytes()
+		for j := 0; j < 16; j++ {
+			lBytes[j], lBytes[31-j] = lBytes[31-j], lBytes[j]
+		}
+		lambdaBySlot[uniqueSlots[i]] = lBytes[:]
+	}
+
+	// Prepare data for blst MSM
+	points := make([]*blst.P1Affine, len(slotSigs))
+	scalars := make([]byte, len(slotSigs)*32)
+	for i, ss := range slotSigs {
+		points[i] = ss.sig
+		copy(scalars[i*32:(i+1)*32], lambdaBySlot[ss.slot])
+	}
+
+	// Perform MSM with blst
+	aggregatedSignature := blst.P1AffinesMult(points, scalars, 255)
+
+	// Return compressed bytes
+	return aggregatedSignature.ToAffine().Compress(), nil
 }
 
 // aggregateBLSPartialSignatures aggregates per-slot signatures into a single signature using Lagrange weights.
@@ -284,6 +573,118 @@ func (k Keeper) aggregateBLSPartialSignatures(partialSignatures []types.PartialS
 	// Return compressed bytes
 	signatureBytes := aggregatedSignature.Bytes()
 	return signatureBytes[:], nil
+}
+
+// verifyFinalSignature verifies an aggregated signature against a group public key using gnark-crypto.
+// e(signature, G2_generator) == e(message_hash_to_g1, group_public_key)
+func (k Keeper) verifyFinalSignature(signature []byte, messageHash []byte, groupPubKeyBytes []byte) bool {
+	var sigAff bls12381.G1Affine
+	if err := sigAff.Unmarshal(signature); err != nil {
+		k.Logger().Error("Failed to unmarshal final signature", "error", err)
+		return false
+	}
+
+	var groupPubKey bls12381.G2Affine
+	if err := groupPubKey.Unmarshal(groupPubKeyBytes); err != nil {
+		k.Logger().Error("Failed to unmarshal group public key", "error", err)
+		return false
+	}
+
+	messageG1, err := k.hashToG1(messageHash)
+	if err != nil {
+		k.Logger().Error("Failed to hash message to G1", "error", err)
+		return false
+	}
+
+	_, _, _, g2Gen := bls12381.Generators()
+
+	// e(signature, G2_generator) * e(messageG1, -groupPubKey) == 1
+	var negGroupPubKey bls12381.G2Affine
+	negGroupPubKey.Neg(&groupPubKey)
+
+	isValid, err := bls12381.PairingCheck(
+		[]bls12381.G1Affine{sigAff, messageG1},
+		[]bls12381.G2Affine{g2Gen, negGroupPubKey},
+	)
+	if err != nil {
+		k.Logger().Error("Failed to compute pairing check", "error", err)
+		return false
+	}
+	return isValid
+}
+
+// verifyFinalSignatureBlst verifies an aggregated signature against a group public key using blst.
+func (k Keeper) verifyFinalSignatureBlst(signature []byte, messageHash []byte, groupPubKeyBytes []byte) bool {
+	g1Signature := new(blst.P1Affine).Uncompress(signature)
+	if g1Signature == nil {
+		k.Logger().Error("Failed to unmarshal final signature with blst")
+		return false
+	}
+
+	groupPubKey := new(blst.P2Affine).Uncompress(groupPubKeyBytes)
+	if groupPubKey == nil {
+		k.Logger().Error("Failed to unmarshal group public key with blst")
+		return false
+	}
+
+	// Hash message to G1 (using gnark-crypto hashToG1 for consistency)
+	messageG1Gnark, err := k.hashToG1(messageHash)
+	if err != nil {
+		k.Logger().Error("Failed to hash message to G1", "error", err)
+		return false
+	}
+	msgG1Bytes := messageG1Gnark.Bytes()
+	messageG1Blst := new(blst.P1Affine).Uncompress(msgG1Bytes[:])
+	if messageG1Blst == nil {
+		k.Logger().Error("Failed to uncompress message G1 with blst")
+		return false
+	}
+
+	g2Gen := blst.P2Generator().ToAffine()
+
+	// e(signature, G2_generator) * e(messageG1, -groupPubKey) == 1
+	negGroupPubKey := new(blst.P2).Sub(groupPubKey).ToAffine()
+
+	ml := blst.Fp12MillerLoopN([]blst.P2Affine{*g2Gen, *negGroupPubKey}, []blst.P1Affine{*g1Signature, *messageG1Blst})
+	ml.FinalExp()
+	one := blst.Fp12One()
+	return ml.Equals(&one)
+}
+
+// aggregateG2Points aggregates a list of G2 points using gnark-crypto.
+func (k Keeper) aggregateG2Points(points [][]byte) ([]byte, error) {
+	var aggregate bls12381.G2Affine
+	aggregate.SetInfinity()
+
+	for i, pb := range points {
+		var p bls12381.G2Affine
+		if err := p.Unmarshal(pb); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal point at index %d: %w", i, err)
+		}
+		aggregate.Add(&aggregate, &p)
+	}
+
+	res := aggregate.Bytes()
+	return res[:], nil
+}
+
+// aggregateG2PointsBlst aggregates a list of G2 points using blst.
+func (k Keeper) aggregateG2PointsBlst(points [][]byte) ([]byte, error) {
+	if len(points) == 0 {
+		return new(blst.P2).ToAffine().Compress(), nil
+	}
+
+	blstPoints := make([]*blst.P2Affine, 0, len(points))
+	for i, pb := range points {
+		p := new(blst.P2Affine).Uncompress(pb)
+		if p == nil {
+			return nil, fmt.Errorf("failed to uncompress point at index %d with blst", i)
+		}
+		blstPoints = append(blstPoints, p)
+	}
+
+	res := blst.P2AffinesAdd(blstPoints)
+	return res.ToAffine().Compress(), nil
 }
 
 // hashToG1 maps a 32-byte message hash (interpreted as an Fp element) to a G1 point.
