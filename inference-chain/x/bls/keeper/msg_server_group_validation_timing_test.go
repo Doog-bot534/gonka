@@ -561,6 +561,72 @@ func TestComputeParticipantPublicKey_TimingComparison(t *testing.T) {
 	t.Logf("computeParticipantPublicKeyBlst (blst):      %s", durationBlst)
 }
 
+func TestDecompressG2To256_TimingComparison(t *testing.T) {
+	if testing.Short() {
+		t.Skip("timing test skipped with -short")
+	}
+
+	k, _ := setupTimingKeeper(t)
+
+	_, _, _, g2Gen := bls12381.Generators()
+	var sk fr.Element
+	sk.SetRandom()
+	var pk bls12381.G2Affine
+	pk.ScalarMultiplication(&g2Gen, sk.BigInt(new(big.Int)))
+	pkBytes := pk.Bytes()
+
+	// 1. Measure gnark
+	startGnark := time.Now()
+	resGnark, err := k.DecompressG2To256(pkBytes[:])
+	durationGnark := time.Since(startGnark)
+	require.NoError(t, err)
+
+	// 2. Measure blst
+	startBlst := time.Now()
+	resBlst, err := k.DecompressG2To256Blst(pkBytes[:])
+	durationBlst := time.Since(startBlst)
+	require.NoError(t, err)
+
+	// 3. Compare results
+	require.Equal(t, resGnark, resBlst, "Decompressed G2 formats must match exactly")
+
+	t.Logf("DecompressG2To256 (gnark-crypto): %s", durationGnark)
+	t.Logf("DecompressG2To256Blst (blst):      %s", durationBlst)
+}
+
+func TestDecompressG1To128_TimingComparison(t *testing.T) {
+	if testing.Short() {
+		t.Skip("timing test skipped with -short")
+	}
+
+	k, _ := setupTimingKeeper(t)
+
+	_, _, g1Gen, _ := bls12381.Generators()
+	var sk fr.Element
+	sk.SetRandom()
+	var sig bls12381.G1Affine
+	sig.ScalarMultiplication(&g1Gen, sk.BigInt(new(big.Int)))
+	sigBytes := sig.Bytes()
+
+	// 1. Measure gnark
+	startGnark := time.Now()
+	resGnark, err := k.DecompressG1To128(sigBytes[:])
+	durationGnark := time.Since(startGnark)
+	require.NoError(t, err)
+
+	// 2. Measure blst
+	startBlst := time.Now()
+	resBlst, err := k.DecompressG1To128Blst(sigBytes[:])
+	durationBlst := time.Since(startBlst)
+	require.NoError(t, err)
+
+	// 3. Compare results
+	require.Equal(t, resGnark, resBlst, "Decompressed G1 formats must match exactly")
+
+	t.Logf("DecompressG1To128 (gnark-crypto): %s", durationGnark)
+	t.Logf("DecompressG1To128Blst (blst):      %s", durationBlst)
+}
+
 func setupTimingKeeper(t testing.TB) (Keeper, sdk.Context) {
 	storeKey := storetypes.NewKVStoreKey(types.StoreKey)
 

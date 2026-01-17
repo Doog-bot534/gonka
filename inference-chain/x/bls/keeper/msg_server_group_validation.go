@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 
-	bls12381 "github.com/consensys/gnark-crypto/ecc/bls12-381"
-	"github.com/consensys/gnark-crypto/ecc/bls12-381/fp"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/productscience/inference/x/bls/types"
 	"golang.org/x/crypto/sha3"
@@ -241,23 +239,17 @@ func (ms msgServer) SubmitGroupKeyValidationSignature(goCtx context.Context, msg
 // computeValidationMessageHash computes the message hash for group key validation.
 // Uses Ethereum-compatible abi.encodePacked(previous_epoch_id [8], chain_id [32], new_group_key_uncompressed [256]).
 func (ms msgServer) computeValidationMessageHash(ctx sdk.Context, groupPublicKey []byte, previousEpochId, newEpochId uint64) ([]byte, error) {
-	// Expect 96-byte compressed G2 key; decompress deterministically.
-	if len(groupPublicKey) != 96 {
-		return nil, fmt.Errorf("invalid group public key length: expected 96 bytes, got %d", len(groupPublicKey))
-	}
-	var g2 bls12381.G2Affine
-	if err := g2.Unmarshal(groupPublicKey); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal compressed G2 key: %w", err)
+	// Decompress and format group key using helper (blst optimized)
+	g2Uncompressed256, err := ms.Keeper.DecompressG2To256Blst(groupPublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decompress group key: %w", err)
 	}
 
 	// Use GONKA_CHAIN_ID bytes32 (hash of chain-id string), consistent with bridge signing logic
 	gonkaIdHash := sha256.Sum256([]byte(ctx.ChainID()))
 	chainIdBytes := gonkaIdHash[:]
 
-	// Implement Ethereum-compatible abi.encodePacked with uncompressed G2 in 64-byte limbs:
-	// Order: X.c0, X.c1, Y.c0, Y.c1, each 64-byte big-endian (16 zero bytes + 48-byte fp).
 	var encodedData []byte
-	var g2Uncompressed256 []byte
 
 	// Add previous_epoch_id (uint64 -> 8 bytes big endian)
 	previousEpochBytes := make([]byte, 8)
@@ -267,23 +259,8 @@ func (ms msgServer) computeValidationMessageHash(ctx sdk.Context, groupPublicKey
 	// Add chain_id (32 bytes)
 	encodedData = append(encodedData, chainIdBytes...)
 
-	// Build 256-byte uncompressed encoding: 4 field elements, each 64 bytes
-	appendFp64 := func(e fp.Element) {
-		// 48-byte big-endian field element
-		be48 := e.Bytes()
-		// Left-pad to 64 bytes
-		var limb [64]byte
-		copy(limb[64-48:], be48[:])
-		encodedData = append(encodedData, limb[:]...)
-		g2Uncompressed256 = append(g2Uncompressed256, limb[:]...)
-	}
-
-	// Note: gnark-crypto stores E2 as (A0, A1). We need c0 then c1.
-	// g2.X.A0 = c0, g2.X.A1 = c1; same for Y.
-	appendFp64(g2.X.A0)
-	appendFp64(g2.X.A1)
-	appendFp64(g2.Y.A0)
-	appendFp64(g2.Y.A1)
+	// Add the 256-byte uncompressed G2 key
+	encodedData = append(encodedData, g2Uncompressed256...)
 
 	// Compute keccak256 hash (Ethereum-compatible)
 	hash := sha3.NewLegacyKeccak256()
