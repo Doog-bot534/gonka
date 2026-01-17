@@ -33,7 +33,7 @@ The implementation is functional but requires additional testing before deployme
 
 ## Off-Chain Data Architecture
 
-PoC v2 artifacts require more data per artifact than v1. To maintain an adequate ratio between PoC generation time and PoC validation time, the total number of generated nonces per node must high enough to support meaningful sampling. Storing full artifact batches on-chain creates scalability constraints, and we have already observed issues with too many transactions being recorded.
+PoC v2 artifacts require more data per artifact than v1. To maintain an adequate ratio between PoC generation time and PoC validation time, the total number of generated nonces per node must be high enough to support meaningful sampling. Storing full artifact batches on-chain creates scalability constraints, and we have already observed issues with too many transactions being recorded.
 
 Proposed approach: store only a commitment on-chain (Merkle root + leaf count), while keeping full artifacts off-chain. Validators query the chain for the committed `(root_hash, count)`, sample leaf indices, request artifacts and proofs from participants over an API, and verify inclusion before statistical validation.
 
