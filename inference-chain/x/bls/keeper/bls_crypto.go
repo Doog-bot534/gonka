@@ -13,6 +13,9 @@ import (
 	blst "github.com/supranational/blst/bindings/go"
 )
 
+// Thanks for this optimizations inspiration to prof. Dan Boneh & Ash Vardanian
+// from Alex Petrov aka sysman.
+
 // computeParticipantPublicKey computes individual BLS public key for participant's slots
 func (k Keeper) computeParticipantPublicKey(epochBLSData *types.EpochBLSData, slotIndices []uint32) ([]byte, error) {
 	// Initialize aggregated public key as G2 identity
