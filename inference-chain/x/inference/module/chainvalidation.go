@@ -12,9 +12,11 @@ import (
 )
 
 // WeightCalculator encapsulates all the data needed to calculate new weights for participants.
+// Uses off-chain store commits and weight distributions instead of on-chain batches.
 type WeightCalculator struct {
 	CurrentValidatorWeights map[string]int64
-	Batches                 map[string][]types.PoCBatchV2
+	StoreCommits            map[string]types.PoCV2StoreCommit
+	NodeWeightDistributions map[string]types.MLNodeWeightDistribution
 	Validations             map[string][]types.PoCValidationV2
 	Participants            map[string]types.Participant
 	Seeds                   map[string]types.RandomSeed
@@ -26,7 +28,8 @@ type WeightCalculator struct {
 // NewWeightCalculator creates a new WeightCalculator instance.
 func NewWeightCalculator(
 	currentValidatorWeights map[string]int64,
-	batches map[string][]types.PoCBatchV2,
+	storeCommits map[string]types.PoCV2StoreCommit,
+	nodeWeightDistributions map[string]types.MLNodeWeightDistribution,
 	validations map[string][]types.PoCValidationV2,
 	participants map[string]types.Participant,
 	seeds map[string]types.RandomSeed,
@@ -36,7 +39,8 @@ func NewWeightCalculator(
 ) *WeightCalculator {
 	return &WeightCalculator{
 		CurrentValidatorWeights: currentValidatorWeights,
-		Batches:                 batches,
+		StoreCommits:            storeCommits,
+		NodeWeightDistributions: nodeWeightDistributions,
 		Validations:             validations,
 		Participants:            participants,
 		Seeds:                   seeds,
@@ -64,7 +68,7 @@ func (wc *WeightCalculator) Calculate() []*types.ActiveParticipant {
 
 func (wc *WeightCalculator) getSortedParticipantKeys() []string {
 	var sortedKeys []string
-	for key := range wc.Batches {
+	for key := range wc.StoreCommits {
 		sortedKeys = append(sortedKeys, key)
 	}
 	sort.Strings(sortedKeys)
@@ -84,7 +88,8 @@ func (wc *WeightCalculator) validatedParticipant(participantAddress string) *typ
 		return nil
 	}
 
-	nodeWeights, claimedWeight := wc.calculateParticipantWeight(wc.Batches[participantAddress])
+	// Get claimed weight from store commit and per-node weights from distribution
+	nodeWeights, claimedWeight := wc.calculateParticipantWeight(participantAddress)
 	if claimedWeight < 1 {
 		wc.Logger.LogWarn("Calculate: Participant has non-positive claimedWeight.", types.PoC, "participant", participantAddress, "claimedWeight", claimedWeight)
 		return nil
@@ -218,31 +223,32 @@ type nodeWeight struct {
 	weight int64
 }
 
-// calculateParticipantWeight computes the claimed weight from artifact batches.
-// Weight = total unique artifact nonces across all batches for this participant.
-func (wc *WeightCalculator) calculateParticipantWeight(batches []types.PoCBatchV2) ([]nodeWeight, int64) {
-	nodeWeights := make(map[string]int64)
-	totalWeight := int64(0)
-
-	uniqueNonces := make(map[int32]struct{})
-	for _, batch := range batches {
-		weight := int64(0)
-		for _, artifact := range batch.Artifacts {
-			if _, exists := uniqueNonces[artifact.Nonce]; !exists {
-				uniqueNonces[artifact.Nonce] = struct{}{}
-				weight++
-			}
-		}
-
-		weight = mathsdk.LegacyNewDec(weight).Mul(wc.WeightScaleFactor).TruncateInt64()
-		nodeId := batch.NodeId
-		nodeWeights[nodeId] += weight
-		totalWeight += weight
+// calculateParticipantWeight computes the claimed weight from store commit and weight distribution.
+// Total weight comes from StoreCommit.Count (scaled by weightScaleFactor).
+// Per-node weights come from MLNodeWeightDistribution.
+func (wc *WeightCalculator) calculateParticipantWeight(participantAddress string) ([]nodeWeight, int64) {
+	commit, hasCommit := wc.StoreCommits[participantAddress]
+	if !hasCommit || commit.Count == 0 {
+		return nil, 0
 	}
 
-	nodeWeightsSlice := make([]nodeWeight, 0, len(nodeWeights))
-	for nodeId, weight := range nodeWeights {
-		nodeWeightsSlice = append(nodeWeightsSlice, nodeWeight{nodeId: nodeId, weight: weight})
+	// Calculate total weight from commit count
+	totalWeight := mathsdk.LegacyNewDec(int64(commit.Count)).Mul(wc.WeightScaleFactor).TruncateInt64()
+
+	// Get per-node weights from distribution
+	distribution, hasDistribution := wc.NodeWeightDistributions[participantAddress]
+	if !hasDistribution || len(distribution.Weights) == 0 {
+		// No distribution - create a single "unknown" node with all weight
+		wc.Logger.LogWarn("Calculate: No weight distribution for participant, using single node", types.PoC,
+			"participant", participantAddress, "totalWeight", totalWeight)
+		return []nodeWeight{{nodeId: "unknown", weight: totalWeight}}, totalWeight
+	}
+
+	// Build per-node weights from distribution
+	nodeWeightsSlice := make([]nodeWeight, 0, len(distribution.Weights))
+	for _, w := range distribution.Weights {
+		scaledWeight := mathsdk.LegacyNewDec(int64(w.Weight)).Mul(wc.WeightScaleFactor).TruncateInt64()
+		nodeWeightsSlice = append(nodeWeightsSlice, nodeWeight{nodeId: w.NodeId, weight: scaledWeight})
 	}
 	sort.Slice(nodeWeightsSlice, func(i, j int) bool {
 		return nodeWeightsSlice[i].nodeId < nodeWeightsSlice[j].nodeId
@@ -581,7 +587,7 @@ func (am AppModule) getInferenceServingNodeIds(ctx context.Context, upcomingEpoc
 	return inferenceServingNodeIds
 }
 
-// ComputeNewWeights computes new weights for active participants.
+// ComputeNewWeights computes new weights for active participants using off-chain store commits.
 func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.Epoch) []*types.ActiveParticipant {
 	epochStartBlockHeight := upcomingEpoch.PocStartBlockHeight
 	am.LogInfo("ComputeNewWeights: computing new weights", types.PoC,
@@ -607,14 +613,24 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 		return nil
 	}
 
-	// Get PoC batches
-	allBatches, err := am.keeper.GetPoCBatchesV2ByStage(ctx, epochStartBlockHeight)
+	// Get off-chain store commits (replaces on-chain batches)
+	allStoreCommits, err := am.keeper.GetAllPoCV2StoreCommitsForStage(ctx, epochStartBlockHeight)
 	if err != nil {
-		am.LogError("ComputeNewWeights: Error getting batches by PoC stage", types.PoC,
+		am.LogError("ComputeNewWeights: Error getting store commits by PoC stage", types.PoC,
 			"upcomingEpoch.Index", upcomingEpoch.Index,
 			"upcomingEpoch.PocStartBlockHeight", upcomingEpoch.PocStartBlockHeight,
 			"error", err)
 		return nil
+	}
+
+	// Get weight distributions for per-node weights
+	allWeightDistributions, err := am.keeper.GetAllMLNodeWeightDistributionsForStage(ctx, epochStartBlockHeight)
+	if err != nil {
+		am.LogError("ComputeNewWeights: Error getting weight distributions by PoC stage", types.PoC,
+			"upcomingEpoch.Index", upcomingEpoch.Index,
+			"upcomingEpoch.PocStartBlockHeight", upcomingEpoch.PocStartBlockHeight,
+			"error", err)
+		// Continue without distributions - will use single "unknown" node
 	}
 
 	// Build inference-serving node IDs for filtering
@@ -622,14 +638,14 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 	am.LogInfo("ComputeNewWeights: Found inference-serving nodes", types.PoC,
 		"inferenceServingNodeIds", inferenceServingNodeIds)
 
-	// Filter out batches from inference-serving nodes
-	batches := am.filterPoCBatchesFromInferenceNodes(allBatches, inferenceServingNodeIds)
+	// Filter out store commits with distributions that only have inference-serving nodes
+	storeCommits, weightDistributions := am.filterStoreCommitsFromInferenceNodes(allStoreCommits, allWeightDistributions, inferenceServingNodeIds)
 
-	am.LogInfo("ComputeNewWeights: Filtered batches", types.PoC,
+	am.LogInfo("ComputeNewWeights: Filtered store commits", types.PoC,
 		"upcomingEpoch.Index", upcomingEpoch.Index,
 		"upcomingEpoch.PocStartBlockHeight", upcomingEpoch.PocStartBlockHeight,
-		"originalBatchesCount", len(allBatches),
-		"filteredBatchesCount", len(batches))
+		"originalCommitsCount", len(allStoreCommits),
+		"filteredCommitsCount", len(storeCommits))
 
 	// Get PoC validations
 	validations, err := am.keeper.GetPoCValidationsV2ByStage(ctx, epochStartBlockHeight)
@@ -655,15 +671,16 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 	// Collect participants and seeds
 	participants := make(map[string]types.Participant)
 	seeds := make(map[string]types.RandomSeed)
-	allowedBatches := make(map[string][]types.PoCBatchV2)
+	allowedCommits := make(map[string]types.PoCV2StoreCommit)
+	allowedDistributions := make(map[string]types.MLNodeWeightDistribution)
 
-	var sortedBatchKeys []string
-	for key := range batches {
-		sortedBatchKeys = append(sortedBatchKeys, key)
+	var sortedCommitKeys []string
+	for key := range storeCommits {
+		sortedCommitKeys = append(sortedCommitKeys, key)
 	}
-	sort.Strings(sortedBatchKeys)
+	sort.Strings(sortedCommitKeys)
 
-	for _, participantAddress := range sortedBatchKeys {
+	for _, participantAddress := range sortedCommitKeys {
 		// Check participant allowlist
 		if !am.keeper.IsParticipantAllowed(ctx, epochStartBlockHeight, participantAddress) {
 			am.LogInfo("ComputeNewWeights: Participant not in allowlist, skipping", types.PoC,
@@ -692,7 +709,10 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 			continue
 		}
 		seeds[participantAddress] = seed
-		allowedBatches[participantAddress] = batches[participantAddress]
+		allowedCommits[participantAddress] = storeCommits[participantAddress]
+		if dist, ok := weightDistributions[participantAddress]; ok {
+			allowedDistributions[participantAddress] = dist
+		}
 	}
 
 	// Add seeds for preserved participants
@@ -714,7 +734,8 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 	weightScaleFactor := params.PocParams.GetWeightScaleFactorDec()
 	calculator := NewWeightCalculator(
 		currentValidatorWeights,
-		allowedBatches,
+		allowedCommits,
+		allowedDistributions,
 		validations,
 		participants,
 		seeds,
@@ -788,35 +809,64 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 	return allActiveParticipants
 }
 
-// filterPoCBatchesFromInferenceNodes removes PoC batches from nodes that should be serving inference
-func (am AppModule) filterPoCBatchesFromInferenceNodes(allBatches map[string][]types.PoCBatchV2, inferenceServingNodeIds map[string]bool) map[string][]types.PoCBatchV2 {
-	filteredBatches := make(map[string][]types.PoCBatchV2)
-	excludedBatchCount := 0
+// filterStoreCommitsFromInferenceNodes filters store commits and their weight distributions
+// to exclude weight from inference-serving nodes. Returns filtered commits and distributions.
+func (am AppModule) filterStoreCommitsFromInferenceNodes(
+	allCommits map[string]types.PoCV2StoreCommit,
+	allDistributions map[string]types.MLNodeWeightDistribution,
+	inferenceServingNodeIds map[string]bool,
+) (map[string]types.PoCV2StoreCommit, map[string]types.MLNodeWeightDistribution) {
+	filteredCommits := make(map[string]types.PoCV2StoreCommit)
+	filteredDistributions := make(map[string]types.MLNodeWeightDistribution)
+	excludedNodeCount := 0
 
-	for participantAddress, batches := range allBatches {
-		var validBatches []types.PoCBatchV2
+	for participantAddress, commit := range allCommits {
+		distribution, hasDistribution := allDistributions[participantAddress]
 
-		for _, batch := range batches {
-			if inferenceServingNodeIds[batch.NodeId] {
-				excludedBatchCount++
-				am.LogWarn("filterPoCBatchesFromInferenceNodes: Excluding PoC batch from inference-serving node", types.PoC,
+		if !hasDistribution || len(distribution.Weights) == 0 {
+			// No distribution - keep the commit as-is
+			filteredCommits[participantAddress] = commit
+			continue
+		}
+
+		// Filter out inference-serving nodes from distribution
+		var filteredWeights []*types.MLNodeWeight
+		filteredCount := uint32(0)
+		for _, w := range distribution.Weights {
+			if inferenceServingNodeIds[w.NodeId] {
+				excludedNodeCount++
+				am.LogWarn("filterStoreCommitsFromInferenceNodes: Excluding weight from inference-serving node", types.PoC,
 					"participantAddress", participantAddress,
-					"nodeId", batch.NodeId,
-					"batchArtifactCount", len(batch.Artifacts))
+					"nodeId", w.NodeId,
+					"weight", w.Weight)
 			} else {
-				validBatches = append(validBatches, batch)
+				filteredWeights = append(filteredWeights, w)
+				filteredCount += w.Weight
 			}
 		}
 
-		if len(validBatches) > 0 {
-			filteredBatches[participantAddress] = validBatches
+		if filteredCount == 0 {
+			// All nodes were inference-serving - skip this participant
+			am.LogWarn("filterStoreCommitsFromInferenceNodes: All nodes inference-serving, skipping participant", types.PoC,
+				"participantAddress", participantAddress)
+			continue
 		}
+
+		// Create filtered commit with adjusted count
+		filteredCommit := commit
+		filteredCommit.Count = filteredCount
+		filteredCommits[participantAddress] = filteredCommit
+
+		// Create filtered distribution
+		filteredDistribution := distribution
+		filteredDistribution.Weights = filteredWeights
+		filteredDistributions[participantAddress] = filteredDistribution
 	}
 
-	am.LogInfo("filterPoCBatchesFromInferenceNodes: Summary", types.PoC,
-		"excludedBatchCount", excludedBatchCount,
-		"originalParticipants", len(allBatches),
-		"filteredParticipants", len(filteredBatches))
+	am.LogInfo("filterStoreCommitsFromInferenceNodes: Summary", types.PoC,
+		"excludedNodeCount", excludedNodeCount,
+		"originalParticipants", len(allCommits),
+		"filteredParticipants", len(filteredCommits))
 
-	return filteredBatches
+	return filteredCommits, filteredDistributions
 }

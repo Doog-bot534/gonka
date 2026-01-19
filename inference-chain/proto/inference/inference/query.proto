@@ -147,6 +147,11 @@ service Query {
 
   }
 
+  rpc AllMLNodeWeightDistributionsForStage (QueryAllMLNodeWeightDistributionsForStageRequest) returns (QueryAllMLNodeWeightDistributionsForStageResponse) {
+    option (google.api.http).get = "/productscience/inference/inference/all_mlnode_weight_distributions/{poc_stage_start_block_height}";
+
+  }
+
   // Queries a list of GetCurrentEpoch items.
   rpc GetCurrentEpoch (QueryGetCurrentEpochRequest) returns (QueryGetCurrentEpochResponse) {
     option (google.api.http).get = "/productscience/inference/inference/get_current_epoch";
@@ -677,6 +682,19 @@ message PoCV2StoreCommitWithAddress {
   uint32 count = 2;
   bytes root_hash = 3;
   string hex_pub_key = 4;
+}
+
+message QueryAllMLNodeWeightDistributionsForStageRequest {
+  int64 poc_stage_start_block_height = 1;
+}
+
+message QueryAllMLNodeWeightDistributionsForStageResponse {
+  repeated MLNodeWeightDistributionWithAddress distributions = 1;
+}
+
+message MLNodeWeightDistributionWithAddress {
+  string participant_address = 1;
+  repeated MLNodeWeight weights = 2;
 }
 
 message QueryGetCurrentEpochRequest {}

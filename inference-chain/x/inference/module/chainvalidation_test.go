@@ -81,14 +81,11 @@ func TestComputeNewWeightsWithStakingValidators(t *testing.T) {
 	// Create AppModule with the keeper
 	am := inference.NewAppModule(nil, k, nil, nil, nil, nil)
 
-	// Set up V2 batches
-	batch := types.PoCBatchV2{
-		ParticipantAddress:       testutil.Executor2,
-		PocStageStartBlockHeight: 100,
-		NodeId:                   "node-1",
-		Artifacts:                []*types.PoCArtifactV2{{Nonce: 1}},
-	}
-	k.SetPocBatchV2(ctx, batch)
+	// Set up store commit (replaces V2 batches)
+	setStoreCommit(ctx, k, testutil.Executor2, 100, 1)
+
+	// Set up weight distribution (per-node weights)
+	setWeightDistribution(ctx, k, testutil.Executor2, 100, []nodeDistWeight{{"node-1", 1}})
 
 	// Set up V2 validations
 	validation := types.PoCValidationV2{
@@ -363,14 +360,11 @@ func TestComputeNewWeights(t *testing.T) {
 
 				inference.InitGenesis(ctx, *k, mocks.StubGenesisState())
 
-				// Set up V2 batches
-				batch := types.PoCBatchV2{
-					ParticipantAddress:       testutil.Executor2,
-					PocStageStartBlockHeight: 100,
-					NodeId:                   "node-1",
-					Artifacts:                []*types.PoCArtifactV2{{Nonce: 1}},
-				}
-				k.SetPocBatchV2(ctx, batch)
+				// Set up store commit (replaces V2 batches)
+				setStoreCommit(ctx, *k, testutil.Executor2, 100, 1)
+
+				// Set up weight distribution
+				setWeightDistribution(ctx, *k, testutil.Executor2, 100, []nodeDistWeight{{"node-1", 1}})
 
 				// Set up V2 validations
 				validation := types.PoCValidationV2{
@@ -425,14 +419,11 @@ func TestComputeNewWeights(t *testing.T) {
 				k.SetEpoch(ctx, &types.Epoch{Index: 1, PocStartBlockHeight: 50})
 				k.SetEffectiveEpochIndex(ctx, 1)
 
-				// Set up V2 batches
-				batch := types.PoCBatchV2{
-					ParticipantAddress:       testutil.Executor2,
-					PocStageStartBlockHeight: 100,
-					NodeId:                   "node-1",
-					Artifacts:                []*types.PoCArtifactV2{{Nonce: 1}},
-				}
-				k.SetPocBatchV2(ctx, batch)
+				// Set up store commit (replaces V2 batches)
+				setStoreCommit(ctx, *k, testutil.Executor2, 100, 1)
+
+				// Set up weight distribution
+				setWeightDistribution(ctx, *k, testutil.Executor2, 100, []nodeDistWeight{{"node-1", 1}})
 
 				// Set up V2 validations with only one validator (not enough weight)
 				validation := types.PoCValidationV2{
@@ -488,14 +479,11 @@ func TestComputeNewWeights(t *testing.T) {
 				k.SetEpoch(ctx, &types.Epoch{Index: 1, PocStartBlockHeight: 50})
 				k.SetEffectiveEpochIndex(ctx, 1)
 
-				// Set up V2 batches
-				batch := types.PoCBatchV2{
-					ParticipantAddress:       testutil.Executor2,
-					PocStageStartBlockHeight: 100,
-					NodeId:                   "node-1",
-					Artifacts:                []*types.PoCArtifactV2{{Nonce: 1}},
-				}
-				k.SetPocBatchV2(ctx, batch)
+				// Set up store commit (replaces V2 batches)
+				setStoreCommit(ctx, *k, testutil.Executor2, 100, 1)
+
+				// Set up weight distribution
+				setWeightDistribution(ctx, *k, testutil.Executor2, 100, []nodeDistWeight{{"node-1", 1}})
 
 				// Set up V2 validations with enough total weight but not enough valid weight
 				// In V2, we use ValidatedWeight. A weight of 0 indicates fraud/invalid
@@ -604,6 +592,39 @@ func initMockGroupMembers(mocks *keepertest.InferenceMocks, validator []*types.V
 		AnyTimes()
 }
 
+// Helper for setting up store commits in tests
+type nodeDistWeight struct {
+	nodeId string
+	weight uint32
+}
+
+func setStoreCommit(ctx sdk.Context, k keeper.Keeper, participant string, pocStartHeight int64, count uint32) {
+	commit := types.PoCV2StoreCommit{
+		ParticipantAddress:       participant,
+		PocStageStartBlockHeight: pocStartHeight,
+		Count:                    count,
+		RootHash:                 make([]byte, 32), // dummy root hash
+		CommitBlockHeight:        pocStartHeight,
+	}
+	k.SetPoCV2StoreCommit(ctx, commit)
+}
+
+func setWeightDistribution(ctx sdk.Context, k keeper.Keeper, participant string, pocStartHeight int64, nodeWeights []nodeDistWeight) {
+	weights := make([]*types.MLNodeWeight, len(nodeWeights))
+	for i, nw := range nodeWeights {
+		weights[i] = &types.MLNodeWeight{
+			NodeId: nw.nodeId,
+			Weight: nw.weight,
+		}
+	}
+	distribution := types.MLNodeWeightDistribution{
+		ParticipantAddress:       participant,
+		PocStageStartBlockHeight: pocStartHeight,
+		Weights:                  weights,
+	}
+	k.SetMLNodeWeightDistribution(ctx, distribution)
+}
+
 func TestComputeNewWeights_AllowlistExcludesParticipant(t *testing.T) {
 	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonkapub")
 	sdk.GetConfig().SetBech32PrefixForValidator("gonkavaloper", "gonkavaloperpub")
@@ -642,19 +663,12 @@ func TestComputeNewWeights_AllowlistExcludesParticipant(t *testing.T) {
 	participantA := testutil.Executor
 	participantB := testutil.Executor2
 
-	// Set up V2 batches for both participants
-	k.SetPocBatchV2(ctx, types.PoCBatchV2{
-		ParticipantAddress:       participantA,
-		PocStageStartBlockHeight: 100,
-		NodeId:                   "node-a",
-		Artifacts:                []*types.PoCArtifactV2{{Nonce: 1}},
-	})
-	k.SetPocBatchV2(ctx, types.PoCBatchV2{
-		ParticipantAddress:       participantB,
-		PocStageStartBlockHeight: 100,
-		NodeId:                   "node-b",
-		Artifacts:                []*types.PoCArtifactV2{{Nonce: 2}},
-	})
+	// Set up store commits for both participants (replaces V2 batches)
+	setStoreCommit(ctx, k, participantA, 100, 1)
+	setWeightDistribution(ctx, k, participantA, 100, []nodeDistWeight{{"node-a", 1}})
+
+	setStoreCommit(ctx, k, participantB, 100, 1)
+	setWeightDistribution(ctx, k, participantB, 100, []nodeDistWeight{{"node-b", 1}})
 
 	// Set up V2 validations for both
 	k.SetPocValidationV2(ctx, types.PoCValidationV2{

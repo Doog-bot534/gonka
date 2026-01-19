@@ -15,8 +15,8 @@ import (
 )
 
 // postGeneratedArtifactsV2 handles PoC v2 artifact batch callbacks from MLNode.
-// Receives artifact batches and submits them to chain via MsgSubmitPocBatchesV2.
-// If artifactStore is configured, also stores artifacts locally for off-chain proofs.
+// Stores artifacts locally for off-chain proofs. Store commits and weight distributions
+// are submitted to chain separately by CommitWorker and the block dispatcher.
 func (s *Server) postGeneratedArtifactsV2(ctx echo.Context) error {
 	var body mlnodeclient.GeneratedArtifactBatchV2
 
@@ -37,18 +37,18 @@ func (s *Server) postGeneratedArtifactsV2(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "not in PoC generate phase")
 	}
 
-	// Look up node_id string from node number (chain requires non-empty nodeId)
+	// Look up node_id string from node number
 	node, found := s.broker.GetNodeByNodeNum(uint64(body.NodeId))
 	if !found {
 		logging.Error("ArtifactBatchV2-callback. Unknown NodeNum", types.PoC, "node_num", body.NodeId)
 		return echo.NewHTTPError(http.StatusBadRequest, "unknown node_num")
 	}
 	nodeId := node.Id
-	logging.Info("ArtifactBatchV2-callback. Found node by node num", types.PoC,
+	logging.Debug("ArtifactBatchV2-callback. Found node by node num", types.PoC,
 		"nodeId", nodeId,
 		"nodeNum", body.NodeId)
 
-	// Convert artifacts from JSON format to proto format
+	// Convert artifacts from JSON format to proto format for local storage
 	protoArtifacts := make([]*inference.PoCArtifactV2, 0, len(body.Artifacts))
 	for _, a := range body.Artifacts {
 		vectorBytes, err := base64.StdEncoding.DecodeString(a.VectorB64)
@@ -68,25 +68,12 @@ func (s *Server) postGeneratedArtifactsV2(ctx echo.Context) error {
 		})
 	}
 
+	// Store artifacts locally for off-chain proofs
+	// Store commits (MsgPoCV2StoreCommit) are submitted by CommitWorker
+	// Weight distributions (MsgMLNodeWeightDistribution) are submitted at end of generation
 	s.addToLocalStorage(body.BlockHeight, nodeId, protoArtifacts)
 
-	// Use batch submission (wrapping single batch from this callback)
-	msg := &inference.MsgSubmitPocBatchesV2{
-		PocStageStartBlockHeight: body.BlockHeight,
-		Batches: []*inference.PoCBatchPayloadV2{
-			{
-				NodeId:    nodeId,
-				Artifacts: protoArtifacts,
-			},
-		},
-	}
-
-	if err := s.recorder.SubmitPocBatchesV2(msg); err != nil {
-		logging.Error("BatchV2-callback. Failed to submit MsgSubmitPocBatchesV2", types.PoC, "error", err)
-		return err
-	}
-
-	logging.Info("BatchV2-callback. Submitted batch", types.PoC,
+	logging.Debug("ArtifactBatchV2-callback. Stored locally", types.PoC,
 		"blockHeight", body.BlockHeight,
 		"nodeId", nodeId,
 		"artifactsCount", len(protoArtifacts))

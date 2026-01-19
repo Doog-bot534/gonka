@@ -120,3 +120,41 @@ func (k Keeper) MLNodeWeightDistribution(goCtx context.Context, req *types.Query
 		Found:   true,
 	}, nil
 }
+
+// AllMLNodeWeightDistributionsForStage returns all weight distributions for a given PoC stage.
+func (k Keeper) AllMLNodeWeightDistributionsForStage(goCtx context.Context, req *types.QueryAllMLNodeWeightDistributionsForStageRequest) (*types.QueryAllMLNodeWeightDistributionsForStageResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid request")
+	}
+
+	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	var distributions []*types.MLNodeWeightDistributionWithAddress
+
+	iter, err := k.MLNodeWeightDistributions.Iterate(ctx, collections.NewPrefixedPairRange[int64, sdk.AccAddress](req.PocStageStartBlockHeight))
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to iterate distributions: %v", err)
+	}
+	defer iter.Close()
+
+	for ; iter.Valid(); iter.Next() {
+		key, err := iter.Key()
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get key: %v", err)
+		}
+		value, err := iter.Value()
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get value: %v", err)
+		}
+
+		addr := key.K2()
+		distributions = append(distributions, &types.MLNodeWeightDistributionWithAddress{
+			ParticipantAddress: addr.String(),
+			Weights:            value.Weights,
+		})
+	}
+
+	return &types.QueryAllMLNodeWeightDistributionsForStageResponse{
+		Distributions: distributions,
+	}, nil
+}

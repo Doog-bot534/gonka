@@ -39,6 +39,7 @@ const (
 	Query_PoCV2StoreCommit_FullMethodName                          = "/inference.inference.Query/PoCV2StoreCommit"
 	Query_MLNodeWeightDistribution_FullMethodName                  = "/inference.inference.Query/MLNodeWeightDistribution"
 	Query_AllPoCV2StoreCommitsForStage_FullMethodName              = "/inference.inference.Query/AllPoCV2StoreCommitsForStage"
+	Query_AllMLNodeWeightDistributionsForStage_FullMethodName      = "/inference.inference.Query/AllMLNodeWeightDistributionsForStage"
 	Query_GetCurrentEpoch_FullMethodName                           = "/inference.inference.Query/GetCurrentEpoch"
 	Query_TokenomicsData_FullMethodName                            = "/inference.inference.Query/TokenomicsData"
 	Query_GetUnitOfComputePriceProposal_FullMethodName             = "/inference.inference.Query/GetUnitOfComputePriceProposal"
@@ -135,6 +136,7 @@ type QueryClient interface {
 	PoCV2StoreCommit(ctx context.Context, in *QueryPoCV2StoreCommitRequest, opts ...grpc.CallOption) (*QueryPoCV2StoreCommitResponse, error)
 	MLNodeWeightDistribution(ctx context.Context, in *QueryMLNodeWeightDistributionRequest, opts ...grpc.CallOption) (*QueryMLNodeWeightDistributionResponse, error)
 	AllPoCV2StoreCommitsForStage(ctx context.Context, in *QueryAllPoCV2StoreCommitsForStageRequest, opts ...grpc.CallOption) (*QueryAllPoCV2StoreCommitsForStageResponse, error)
+	AllMLNodeWeightDistributionsForStage(ctx context.Context, in *QueryAllMLNodeWeightDistributionsForStageRequest, opts ...grpc.CallOption) (*QueryAllMLNodeWeightDistributionsForStageResponse, error)
 	// Queries a list of GetCurrentEpoch items.
 	GetCurrentEpoch(ctx context.Context, in *QueryGetCurrentEpochRequest, opts ...grpc.CallOption) (*QueryGetCurrentEpochResponse, error)
 	// Queries a TokenomicsData by index.
@@ -421,6 +423,15 @@ func (c *queryClient) MLNodeWeightDistribution(ctx context.Context, in *QueryMLN
 func (c *queryClient) AllPoCV2StoreCommitsForStage(ctx context.Context, in *QueryAllPoCV2StoreCommitsForStageRequest, opts ...grpc.CallOption) (*QueryAllPoCV2StoreCommitsForStageResponse, error) {
 	out := new(QueryAllPoCV2StoreCommitsForStageResponse)
 	err := c.cc.Invoke(ctx, Query_AllPoCV2StoreCommitsForStage_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryClient) AllMLNodeWeightDistributionsForStage(ctx context.Context, in *QueryAllMLNodeWeightDistributionsForStageRequest, opts ...grpc.CallOption) (*QueryAllMLNodeWeightDistributionsForStageResponse, error) {
+	out := new(QueryAllMLNodeWeightDistributionsForStageResponse)
+	err := c.cc.Invoke(ctx, Query_AllMLNodeWeightDistributionsForStage_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -985,6 +996,7 @@ type QueryServer interface {
 	PoCV2StoreCommit(context.Context, *QueryPoCV2StoreCommitRequest) (*QueryPoCV2StoreCommitResponse, error)
 	MLNodeWeightDistribution(context.Context, *QueryMLNodeWeightDistributionRequest) (*QueryMLNodeWeightDistributionResponse, error)
 	AllPoCV2StoreCommitsForStage(context.Context, *QueryAllPoCV2StoreCommitsForStageRequest) (*QueryAllPoCV2StoreCommitsForStageResponse, error)
+	AllMLNodeWeightDistributionsForStage(context.Context, *QueryAllMLNodeWeightDistributionsForStageRequest) (*QueryAllMLNodeWeightDistributionsForStageResponse, error)
 	// Queries a list of GetCurrentEpoch items.
 	GetCurrentEpoch(context.Context, *QueryGetCurrentEpochRequest) (*QueryGetCurrentEpochResponse, error)
 	// Queries a TokenomicsData by index.
@@ -1153,6 +1165,9 @@ func (UnimplementedQueryServer) MLNodeWeightDistribution(context.Context, *Query
 }
 func (UnimplementedQueryServer) AllPoCV2StoreCommitsForStage(context.Context, *QueryAllPoCV2StoreCommitsForStageRequest) (*QueryAllPoCV2StoreCommitsForStageResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AllPoCV2StoreCommitsForStage not implemented")
+}
+func (UnimplementedQueryServer) AllMLNodeWeightDistributionsForStage(context.Context, *QueryAllMLNodeWeightDistributionsForStageRequest) (*QueryAllMLNodeWeightDistributionsForStageResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AllMLNodeWeightDistributionsForStage not implemented")
 }
 func (UnimplementedQueryServer) GetCurrentEpoch(context.Context, *QueryGetCurrentEpochRequest) (*QueryGetCurrentEpochResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetCurrentEpoch not implemented")
@@ -1697,6 +1712,24 @@ func _Query_AllPoCV2StoreCommitsForStage_Handler(srv interface{}, ctx context.Co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(QueryServer).AllPoCV2StoreCommitsForStage(ctx, req.(*QueryAllPoCV2StoreCommitsForStageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Query_AllMLNodeWeightDistributionsForStage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryAllMLNodeWeightDistributionsForStageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).AllMLNodeWeightDistributionsForStage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_AllMLNodeWeightDistributionsForStage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).AllMLNodeWeightDistributionsForStage(ctx, req.(*QueryAllMLNodeWeightDistributionsForStageRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2831,6 +2864,10 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AllPoCV2StoreCommitsForStage",
 			Handler:    _Query_AllPoCV2StoreCommitsForStage_Handler,
+		},
+		{
+			MethodName: "AllMLNodeWeightDistributionsForStage",
+			Handler:    _Query_AllMLNodeWeightDistributionsForStage_Handler,
 		},
 		{
 			MethodName: "GetCurrentEpoch",

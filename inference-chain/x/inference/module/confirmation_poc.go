@@ -427,19 +427,25 @@ func (am AppModule) updateConfirmationWeights(ctx context.Context, event *types.
 	return nil
 }
 
-
-// updateConfirmationWeightsV2 calculates confirmation weights using v2 PoC data
+// updateConfirmationWeightsV2 calculates confirmation weights using off-chain store commits
 func (am AppModule) updateConfirmationWeightsV2(
 	ctx context.Context,
 	event *types.ConfirmationPoCEvent,
 	currentValidatorWeights map[string]int64,
 	weightScaleFactor mathsdk.LegacyDec,
 ) []*types.ActiveParticipant {
-	// Get PoC v2 batches using trigger_height as key
-	allBatches, err := am.keeper.GetPoCBatchesV2ByStage(ctx, event.TriggerHeight)
+	// Get off-chain store commits using trigger_height as key
+	storeCommits, err := am.keeper.GetAllPoCV2StoreCommitsForStage(ctx, event.TriggerHeight)
 	if err != nil {
-		am.LogError("updateConfirmationWeightsV2: failed to get PoC v2 artifact batches for confirmation", types.PoC, "error", err)
+		am.LogError("updateConfirmationWeightsV2: failed to get store commits for confirmation", types.PoC, "error", err)
 		return nil
+	}
+
+	// Get weight distributions for per-node weights
+	weightDistributions, err := am.keeper.GetAllMLNodeWeightDistributionsForStage(ctx, event.TriggerHeight)
+	if err != nil {
+		am.LogError("updateConfirmationWeightsV2: failed to get weight distributions for confirmation", types.PoC, "error", err)
+		// Continue without distributions
 	}
 
 	validationsV2, err := am.keeper.GetPoCValidationsV2ByStage(ctx, event.TriggerHeight)
@@ -448,11 +454,11 @@ func (am AppModule) updateConfirmationWeightsV2(
 		return nil
 	}
 
-	// Collect participants and seeds for WeightCalculatorV2
+	// Collect participants and seeds
 	participants := make(map[string]types.Participant)
 	seeds := make(map[string]types.RandomSeed)
 
-	for participantAddress := range allBatches {
+	for participantAddress := range storeCommits {
 		participant, ok := am.keeper.GetParticipant(ctx, participantAddress)
 		if !ok {
 			am.LogWarn("updateConfirmationWeightsV2: Participant not found", types.PoC,
@@ -467,10 +473,11 @@ func (am AppModule) updateConfirmationWeightsV2(
 		}
 	}
 
-	// Create WeightCalculator
+	// Create WeightCalculator with store commits and distributions
 	calculator := NewWeightCalculator(
 		currentValidatorWeights,
-		allBatches,
+		storeCommits,
+		weightDistributions,
 		validationsV2,
 		participants,
 		seeds,

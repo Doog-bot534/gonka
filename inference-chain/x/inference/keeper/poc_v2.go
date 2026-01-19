@@ -79,3 +79,73 @@ func (k Keeper) GetPoCValidationsV2ByStage(ctx context.Context, pocStageStartBlo
 
 	return result, nil
 }
+
+// GetAllPoCV2StoreCommitsForStage returns all store commits for a given PoC stage, keyed by participant address.
+func (k Keeper) GetAllPoCV2StoreCommitsForStage(ctx context.Context, pocStageStartBlockHeight int64) (map[string]types.PoCV2StoreCommit, error) {
+	result := make(map[string]types.PoCV2StoreCommit)
+
+	iter, err := k.PoCV2StoreCommits.Iterate(ctx, collections.NewPrefixedPairRange[int64, sdk.AccAddress](pocStageStartBlockHeight))
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
+
+	for ; iter.Valid(); iter.Next() {
+		key, err := iter.Key()
+		if err != nil {
+			return nil, err
+		}
+		value, err := iter.Value()
+		if err != nil {
+			return nil, err
+		}
+		addr := key.K2()
+		result[addr.String()] = value
+	}
+
+	return result, nil
+}
+
+// GetAllMLNodeWeightDistributionsForStage returns all weight distributions for a given PoC stage, keyed by participant address.
+func (k Keeper) GetAllMLNodeWeightDistributionsForStage(ctx context.Context, pocStageStartBlockHeight int64) (map[string]types.MLNodeWeightDistribution, error) {
+	result := make(map[string]types.MLNodeWeightDistribution)
+
+	iter, err := k.MLNodeWeightDistributions.Iterate(ctx, collections.NewPrefixedPairRange[int64, sdk.AccAddress](pocStageStartBlockHeight))
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
+
+	for ; iter.Valid(); iter.Next() {
+		key, err := iter.Key()
+		if err != nil {
+			return nil, err
+		}
+		value, err := iter.Value()
+		if err != nil {
+			return nil, err
+		}
+		addr := key.K2()
+		result[addr.String()] = value
+	}
+
+	return result, nil
+}
+
+// SetPoCV2StoreCommit stores a PoCV2StoreCommit (for testing).
+func (k Keeper) SetPoCV2StoreCommit(ctx context.Context, commit types.PoCV2StoreCommit) {
+	addr := sdk.MustAccAddressFromBech32(commit.ParticipantAddress)
+	pk := collections.Join(commit.PocStageStartBlockHeight, addr)
+	if err := k.PoCV2StoreCommits.Set(ctx, pk, commit); err != nil {
+		panic(err)
+	}
+}
+
+// SetMLNodeWeightDistribution stores an MLNodeWeightDistribution (for testing).
+func (k Keeper) SetMLNodeWeightDistribution(ctx context.Context, distribution types.MLNodeWeightDistribution) {
+	addr := sdk.MustAccAddressFromBech32(distribution.ParticipantAddress)
+	pk := collections.Join(distribution.PocStageStartBlockHeight, addr)
+	if err := k.MLNodeWeightDistributions.Set(ctx, pk, distribution); err != nil {
+		panic(err)
+	}
+}
