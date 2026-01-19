@@ -181,12 +181,10 @@ func main() {
 	)
 
 	// Shared managed artifact store for off-chain PoC (used by both mlnode and public servers)
-	// Manages per-epoch directories with automatic pruning (retains last 3 epochs)
-	artifactStore := pocartifacts.NewManagedArtifactStore("/root/.dapi/data/poc-artifacts", 3)
+	// Manages per-height directories with automatic pruning (retains last 10)
+	artifactStore := pocartifacts.NewManagedArtifactStore("/root/.dapi/data/poc-artifacts", 10)
 	defer artifactStore.Close()
-
-	// Flush artifacts to disk every 5 seconds
-	artifactStore.StartPeriodicFlush(ctx, 5*time.Second)
+	listener.SetArtifactStore(artifactStore)
 
 	publicServer := pserver.NewServer(nodeBroker, config, recorder, trainingExecutor, blockQueue, chainPhaseTracker, payloadStore, pserver.WithArtifactStore(artifactStore))
 	publicServer.Start(addr)

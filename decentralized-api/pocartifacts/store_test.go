@@ -286,12 +286,9 @@ func TestFilesCreated(t *testing.T) {
 	store.Flush()
 	store.Close()
 
-	// Check files exist
+	// Check data file exists (single file storage)
 	if _, err := os.Stat(filepath.Join(dir, "artifacts.data")); os.IsNotExist(err) {
 		t.Error("artifacts.data not created")
-	}
-	if _, err := os.Stat(filepath.Join(dir, "artifacts.index")); os.IsNotExist(err) {
-		t.Error("artifacts.index not created")
 	}
 }
 
@@ -1031,5 +1028,181 @@ func TestGetRootAt_ClosedStore(t *testing.T) {
 	_, err := store.GetRootAt(1)
 	if err != ErrStoreClosed {
 		t.Errorf("expected ErrStoreClosed, got %v", err)
+	}
+}
+
+func TestGetFlushedRoot_Empty(t *testing.T) {
+	dir := t.TempDir()
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer store.Close()
+
+	count, root := store.GetFlushedRoot()
+	if count != 0 {
+		t.Errorf("expected count 0, got %d", count)
+	}
+	if root != nil {
+		t.Errorf("expected nil root for empty store")
+	}
+}
+
+func TestGetFlushedRoot_OnlyReturnsFlushedData(t *testing.T) {
+	dir := t.TempDir()
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer store.Close()
+
+	// Add artifacts but don't flush
+	for i := int32(0); i < 5; i++ {
+		store.Add(i, []byte{byte(i)})
+	}
+
+	// GetFlushedRoot should return 0 (nothing flushed)
+	count, root := store.GetFlushedRoot()
+	if count != 0 {
+		t.Errorf("expected flushed count 0 before flush, got %d", count)
+	}
+	if root != nil {
+		t.Errorf("expected nil root before flush")
+	}
+
+	// GetRoot should return the current (unflushed) state
+	if store.GetRoot() == nil {
+		t.Error("GetRoot should return non-nil for unflushed data")
+	}
+
+	// Flush and verify
+	store.Flush()
+
+	count, root = store.GetFlushedRoot()
+	if count != 5 {
+		t.Errorf("expected flushed count 5 after flush, got %d", count)
+	}
+	if root == nil {
+		t.Error("expected non-nil root after flush")
+	}
+
+	// Add more artifacts without flushing
+	for i := int32(5); i < 10; i++ {
+		store.Add(i, []byte{byte(i)})
+	}
+
+	// GetFlushedRoot should still return 5
+	count, root = store.GetFlushedRoot()
+	if count != 5 {
+		t.Errorf("expected flushed count 5 after adding more, got %d", count)
+	}
+
+	// GetRoot should return count 10
+	if store.Count() != 10 {
+		t.Errorf("expected total count 10, got %d", store.Count())
+	}
+}
+
+func TestGetFlushedRoot_MatchesGetRootAt(t *testing.T) {
+	dir := t.TempDir()
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer store.Close()
+
+	for i := int32(0); i < 10; i++ {
+		store.Add(i, []byte{byte(i)})
+	}
+	store.Flush()
+
+	flushedCount, flushedRoot := store.GetFlushedRoot()
+	rootAt, err := store.GetRootAt(flushedCount)
+	if err != nil {
+		t.Fatalf("GetRootAt failed: %v", err)
+	}
+
+	if !bytes.Equal(flushedRoot, rootAt) {
+		t.Error("GetFlushedRoot should match GetRootAt(flushedCount)")
+	}
+}
+
+func TestGetFlushedRoot_SurvivesRecovery(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create store, add data, flush, close
+	store1, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+
+	for i := int32(0); i < 5; i++ {
+		store1.Add(i, []byte{byte(i)})
+	}
+	store1.Flush()
+
+	count1, root1 := store1.GetFlushedRoot()
+	store1.Close()
+
+	// Reopen and verify flushed state is preserved
+	store2, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Reopen failed: %v", err)
+	}
+	defer store2.Close()
+
+	count2, root2 := store2.GetFlushedRoot()
+	if count1 != count2 {
+		t.Errorf("flushed count changed after recovery: %d -> %d", count1, count2)
+	}
+	if !bytes.Equal(root1, root2) {
+		t.Error("flushed root changed after recovery")
+	}
+}
+
+func TestSingleFileRecovery_NoIndexFile(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create store and add data
+	store1, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+
+	for i := int32(0); i < 10; i++ {
+		store1.Add(i, []byte{byte(i), byte(i + 1)})
+	}
+	store1.Flush()
+	store1.Close()
+
+	// Verify only data file exists (no index file)
+	if _, err := os.Stat(filepath.Join(dir, "artifacts.index")); !os.IsNotExist(err) {
+		t.Error("artifacts.index should not exist (single file storage)")
+	}
+
+	// Reopen and verify all data recovered
+	store2, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Reopen failed: %v", err)
+	}
+	defer store2.Close()
+
+	if store2.Count() != 10 {
+		t.Errorf("expected count 10 after recovery, got %d", store2.Count())
+	}
+
+	// Verify artifacts are accessible
+	for i := uint32(0); i < 10; i++ {
+		nonce, vector, err := store2.GetArtifact(i)
+		if err != nil {
+			t.Fatalf("GetArtifact(%d) failed: %v", i, err)
+		}
+		if nonce != int32(i) {
+			t.Errorf("artifact %d: expected nonce %d, got %d", i, i, nonce)
+		}
+		expected := []byte{byte(i), byte(i + 1)}
+		if !bytes.Equal(vector, expected) {
+			t.Errorf("artifact %d: vector mismatch", i)
+		}
 	}
 }

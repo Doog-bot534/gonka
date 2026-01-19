@@ -18,15 +18,13 @@ import (
 // ManagedArtifactStore wraps per-stage ArtifactStores with automatic pruning.
 // - Creates separate directories for each poc_stage_start_block_height
 // - Automatically prunes old stores in background, keeping the newest N
-// - Safe pruning: stores with active references are skipped
-// - Aligned with payloadstorage/ManagedStorage pattern
 type ManagedArtifactStore struct {
 	mu          sync.RWMutex
 	baseDir     string
 	stores      map[int64]*ArtifactStore // poc_stage_start_block_height -> store
-	refCounts   map[int64]int            // active references per store (prevents pruning)
 	retainCount int                      // keep newest N stores
 	cancel      context.CancelFunc       // cancels cleanup goroutine
+	flushCancel context.CancelFunc       // cancels periodic flush goroutine
 }
 
 // NewManagedArtifactStore creates a new managed store with automatic pruning.
@@ -36,7 +34,6 @@ func NewManagedArtifactStore(baseDir string, retainCount int) *ManagedArtifactSt
 	m := &ManagedArtifactStore{
 		baseDir:     baseDir,
 		stores:      make(map[int64]*ArtifactStore),
-		refCounts:   make(map[int64]int),
 		retainCount: retainCount,
 		cancel:      cancel,
 	}
@@ -45,7 +42,6 @@ func NewManagedArtifactStore(baseDir string, retainCount int) *ManagedArtifactSt
 }
 
 // GetOrCreateStore returns the store for the given PoC stage, creating it if needed.
-// Note: Does not acquire a reference; use AcquireStore for safe access during requests.
 func (m *ManagedArtifactStore) GetOrCreateStore(pocStageStartHeight int64) (*ArtifactStore, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -66,7 +62,6 @@ func (m *ManagedArtifactStore) GetOrCreateStore(pocStageStartHeight int64) (*Art
 
 // GetStore returns the store for the given PoC stage, or an error if it doesn't exist.
 // Does not create new stores (for proof requests).
-// Note: Does not acquire a reference; use AcquireStore for safe access during requests.
 func (m *ManagedArtifactStore) GetStore(pocStageStartHeight int64) (*ArtifactStore, error) {
 	m.mu.RLock()
 	store, ok := m.stores[pocStageStartHeight]
@@ -99,58 +94,9 @@ func (m *ManagedArtifactStore) GetStore(pocStageStartHeight int64) (*ArtifactSto
 	return store, nil
 }
 
-// AcquireStore gets a store and increments its reference count.
-// Returns the store and a release function that MUST be called when done.
-// While a store has references > 0, it will not be pruned.
-func (m *ManagedArtifactStore) AcquireStore(pocStageStartHeight int64) (*ArtifactStore, func(), error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	store, ok := m.stores[pocStageStartHeight]
-	if !ok {
-		// Try to open from disk
-		storeDir := filepath.Join(m.baseDir, strconv.FormatInt(pocStageStartHeight, 10))
-		if _, err := os.Stat(storeDir); os.IsNotExist(err) {
-			return nil, nil, fmt.Errorf("store for stage %d not found", pocStageStartHeight)
-		}
-
-		var err error
-		store, err = Open(storeDir)
-		if err != nil {
-			return nil, nil, fmt.Errorf("open store for stage %d: %w", pocStageStartHeight, err)
-		}
-		m.stores[pocStageStartHeight] = store
-	}
-
-	m.refCounts[pocStageStartHeight]++
-
-	release := func() {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		if m.refCounts[pocStageStartHeight] > 0 {
-			m.refCounts[pocStageStartHeight]--
-		}
-		if m.refCounts[pocStageStartHeight] == 0 {
-			delete(m.refCounts, pocStageStartHeight)
-		}
-	}
-
-	return store, release, nil
-}
-
 // PruneStore removes the store directory and closes any open store.
-// Skips stores with active references (refCount > 0) to prevent mid-request failures.
 func (m *ManagedArtifactStore) PruneStore(pocStageStartHeight int64) error {
 	m.mu.Lock()
-
-	// Skip stores with active references
-	if m.refCounts[pocStageStartHeight] > 0 {
-		m.mu.Unlock()
-		logging.Debug("Skipping prune of in-use store", types.PoC,
-			"height", pocStageStartHeight, "refCount", m.refCounts[pocStageStartHeight])
-		return nil
-	}
-
 	if store, ok := m.stores[pocStageStartHeight]; ok {
 		store.Close()
 		delete(m.stores, pocStageStartHeight)
@@ -166,7 +112,6 @@ func (m *ManagedArtifactStore) PruneStore(pocStageStartHeight int64) error {
 	return nil
 }
 
-// Flush flushes all open stores to disk.
 func (m *ManagedArtifactStore) Flush() error {
 	m.mu.RLock()
 	stores := make([]*ArtifactStore, 0, len(m.stores))
@@ -189,7 +134,17 @@ func (m *ManagedArtifactStore) Flush() error {
 }
 
 // StartPeriodicFlush flushes all open stores at the specified interval.
-func (m *ManagedArtifactStore) StartPeriodicFlush(ctx context.Context, interval time.Duration) {
+// Can be stopped with StopPeriodicFlush().
+func (m *ManagedArtifactStore) StartPeriodicFlush(interval time.Duration) {
+	m.mu.Lock()
+	if m.flushCancel != nil {
+		m.mu.Unlock()
+		return // already running
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	m.flushCancel = cancel
+	m.mu.Unlock()
+
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
@@ -206,11 +161,30 @@ func (m *ManagedArtifactStore) StartPeriodicFlush(ctx context.Context, interval 
 	}()
 }
 
+// StopPeriodicFlush stops the periodic flush goroutine and performs a final flush.
+func (m *ManagedArtifactStore) StopPeriodicFlush() {
+	m.mu.Lock()
+	if m.flushCancel != nil {
+		m.flushCancel()
+		m.flushCancel = nil
+	}
+	m.mu.Unlock()
+
+	// Final flush to persist any remaining data
+	if err := m.Flush(); err != nil {
+		logging.Warn("Final artifact flush failed", types.PoC, "error", err)
+	}
+}
+
 // Close stops the cleanup loop, flushes and closes all stores.
 func (m *ManagedArtifactStore) Close() error {
 	// Stop cleanup goroutine first
 	if m.cancel != nil {
 		m.cancel()
+	}
+	// Stop flush goroutine
+	if m.flushCancel != nil {
+		m.flushCancel()
 	}
 
 	m.mu.Lock()
@@ -223,7 +197,6 @@ func (m *ManagedArtifactStore) Close() error {
 		}
 	}
 	m.stores = make(map[int64]*ArtifactStore)
-	m.refCounts = make(map[int64]int)
 
 	if len(errs) > 0 {
 		return fmt.Errorf("close errors: %v", errs)
@@ -278,12 +251,10 @@ func (m *ManagedArtifactStore) cleanup() {
 		return
 	}
 
-	// Keep the newest retainCount stores
 	if len(heights) <= m.retainCount {
 		return
 	}
 
-	// Prune oldest stores sequentially (heights is sorted ascending, so oldest are first)
 	toPrune := heights[:len(heights)-m.retainCount]
 	for _, height := range toPrune {
 		if err := m.PruneStore(height); err != nil {

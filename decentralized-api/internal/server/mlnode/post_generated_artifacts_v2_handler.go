@@ -31,6 +31,12 @@ func (s *Server) postGeneratedArtifactsV2(ctx echo.Context) error {
 		"nodeId", body.NodeId,
 		"artifactsCount", len(body.Artifacts))
 
+	if !s.broker.IsInPoCGeneratePhase() {
+		logging.Warn("ArtifactBatchV2-callback. Rejected - not in PoC generate phase", types.PoC,
+			"blockHeight", body.BlockHeight)
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "not in PoC generate phase")
+	}
+
 	// Look up node_id string from node number (chain requires non-empty nodeId)
 	node, found := s.broker.GetNodeByNodeNum(uint64(body.NodeId))
 	if !found {
@@ -62,35 +68,7 @@ func (s *Server) postGeneratedArtifactsV2(ctx echo.Context) error {
 		})
 	}
 
-	// Store artifacts locally if artifact store is configured (dual-write mode)
-	if s.artifactStore != nil {
-		stageStore, err := s.artifactStore.GetOrCreateStore(body.BlockHeight)
-		if err != nil {
-			logging.Error("ArtifactBatchV2-callback. Failed to get stage store", types.PoC,
-				"pocStageStartBlockHeight", body.BlockHeight, "error", err)
-		} else {
-			storedCount := 0
-			for _, a := range body.Artifacts {
-				vectorBytes, _ := base64.StdEncoding.DecodeString(a.VectorB64)
-				err := stageStore.Add(int32(a.Nonce), vectorBytes)
-				if err != nil {
-					if errors.Is(err, pocartifacts.ErrDuplicateNonce) {
-						logging.Debug("ArtifactBatchV2-callback. Duplicate nonce skipped", types.PoC,
-							"nonce", a.Nonce)
-						continue
-					}
-					logging.Error("ArtifactBatchV2-callback. Failed to store artifact locally", types.PoC,
-						"nonce", a.Nonce, "error", err)
-				} else {
-					storedCount++
-				}
-			}
-			logging.Debug("ArtifactBatchV2-callback. Stored artifacts locally", types.PoC,
-				"pocStageStartBlockHeight", body.BlockHeight,
-				"storedCount", storedCount,
-				"totalCount", stageStore.Count())
-		}
-	}
+	s.addToLocalStorage(body.BlockHeight, protoArtifacts)
 
 	// Use batch submission (wrapping single batch from this callback)
 	msg := &inference.MsgSubmitPocBatchesV2{
@@ -132,6 +110,12 @@ func (s *Server) postValidatedArtifactsV2(ctx echo.Context) error {
 		"nTotal", body.NTotal,
 		"fraudDetected", body.FraudDetected)
 
+	if !s.broker.IsInPoCValidatePhase() {
+		logging.Warn("ValidatedArtifactsV2-callback. Rejected - not in PoC validate phase", types.PoC,
+			"blockHeight", body.BlockHeight)
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "not in PoC validate phase")
+	}
+
 	// Convert public key to bech32 address
 	// PoC validation provides hex-encoded public keys
 	address, err := cosmos_client.PubKeyHexToAddress(body.PublicKey)
@@ -171,4 +155,26 @@ func (s *Server) postValidatedArtifactsV2(ctx echo.Context) error {
 	}
 
 	return ctx.NoContent(http.StatusOK)
+}
+
+func (s *Server) addToLocalStorage(pocStageStartHeight int64, artifacts []*inference.PoCArtifactV2) {
+	if s.artifactStore == nil {
+		return
+	}
+
+	store, err := s.artifactStore.GetOrCreateStore(pocStageStartHeight)
+	if err != nil {
+		logging.Error("Failed to get artifact store", types.PoC,
+			"pocStageStartHeight", pocStageStartHeight, "error", err)
+		return
+	}
+
+	for _, a := range artifacts {
+		if err := store.Add(int32(a.Nonce), a.Vector); err != nil {
+			if errors.Is(err, pocartifacts.ErrDuplicateNonce) {
+				continue
+			}
+			logging.Error("Failed to store artifact", types.PoC, "nonce", a.Nonce, "error", err)
+		}
+	}
 }

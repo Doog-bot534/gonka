@@ -20,6 +20,7 @@ import (
 	"decentralized-api/internal/pocv2"
 	"decentralized-api/internal/validation"
 	"decentralized-api/logging"
+	"decentralized-api/pocartifacts"
 
 	coretypes "github.com/cometbft/cometbft/rpc/core/types"
 	"github.com/productscience/inference/x/inference/types"
@@ -69,6 +70,7 @@ type OnNewBlockDispatcher struct {
 	configManager         *apiconfig.ConfigManager
 	validator             *validation.InferenceValidator
 	epochGroupDataCache   *internal.EpochGroupDataCache
+	artifactStore         *pocartifacts.ManagedArtifactStore
 }
 
 // StatusResponse matches the structure expected by getStatus function
@@ -158,6 +160,25 @@ func NewOnNewBlockDispatcherFromCosmosClient(
 	)
 	dispatcher.epochGroupDataCache = epochGroupDataCache
 	return dispatcher
+}
+
+// SetArtifactStore sets the artifact store for phase-based flush control.
+func (d *OnNewBlockDispatcher) SetArtifactStore(store *pocartifacts.ManagedArtifactStore) {
+	d.artifactStore = store
+}
+
+func (d *OnNewBlockDispatcher) startArtifactFlush() {
+	if d.artifactStore != nil {
+		d.artifactStore.StartPeriodicFlush(5 * time.Second)
+		logging.Info("Started artifact flush", types.PoC)
+	}
+}
+
+func (d *OnNewBlockDispatcher) stopArtifactFlush() {
+	if d.artifactStore != nil {
+		d.artifactStore.StopPeriodicFlush()
+		logging.Info("Stopped artifact flush", types.PoC)
+	}
 }
 
 // ProcessNewBlock is the main entry point for processing new block events
@@ -323,9 +344,9 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 
 	// Check for PoC start for the next epoch. This is the most important transition.
 	if epochContext.IsStartOfPocStage(blockHeight) {
-
 		logging.Info("DapiStage:IsStartOfPocStage: sending StartPoCEvent to the PoC orchestrator", types.Stages, "blockHeight", blockHeight, "blockHash", blockHash)
 		d.randomSeedManager.GenerateSeedInfo(epochContext.EpochIndex)
+		d.startArtifactFlush()
 		return
 	}
 
@@ -333,6 +354,7 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 	if epochContext.IsEndOfPoCStage(blockHeight) {
 		logging.Info("DapiStage:IsEndOfPoCStage. Calling MoveToValidationStage", types.Stages,
 			"blockHeigh", blockHeight, "blockHash", blockHash)
+		d.stopArtifactFlush()
 		command := broker.NewInitValidateCommand()
 		err := d.nodeBroker.QueueMessage(command)
 		if err != nil {
@@ -432,6 +454,7 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 				"trigger_height", event.TriggerHeight,
 				"block_hash", event.PocSeedBlockHash)
 
+			d.startArtifactFlush()
 			command := broker.NewStartPocCommand()
 			if err := d.nodeBroker.QueueMessage(command); err != nil {
 				logging.Error("Failed to send confirmation PoC start command", types.PoC, "error", err)
@@ -445,6 +468,7 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 				"exchange_end", event.GetExchangeEnd(epochParams),
 				"validation_starts_at", event.GetValidationStart(epochParams))
 
+			d.stopArtifactFlush()
 			command := broker.NewInitValidateCommand()
 			if err := d.nodeBroker.QueueMessage(command); err != nil {
 				logging.Error("Failed to send confirmation PoC validate command", types.PoC, "error", err)

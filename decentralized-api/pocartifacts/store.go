@@ -1,6 +1,7 @@
 package pocartifacts
 
 import (
+	"bufio"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -25,18 +26,17 @@ var (
 
 // ArtifactStore provides append-only storage for PoC artifacts with MMR commitments.
 //
-// Uses 2 files on disk + in-memory MMR. On restart, MMR and nonce map are rebuilt
-// by re-hashing the data file (~2-3 sec for 1M artifacts). For instant recovery,
-// persist MMR nodes to artifacts.tree and nonces to nonces.log.
+// Uses single file on disk + in-memory state (offsets, MMR, nonce map).
+// On restart, state is rebuilt by reading the data file (~2-3 sec for 1M artifacts, 1 cpu core).
 type ArtifactStore struct {
 	mu     sync.RWMutex
 	dir    string
 	closed bool
 
 	dataFile *os.File // artifacts.data: [LE32 len][LE32 nonce][vector]...
-	idxFile  *os.File // artifacts.index: [LE64 offset]... (entry k at byte k*8)
 
 	buffer           []bufferedArtifact
+	offsets          []uint64
 	nonceToLeafIndex map[int32]uint32
 	mmrNodes         [][]byte
 	nextLeafIndex    uint32
@@ -56,31 +56,23 @@ func Open(dir string) (*ArtifactStore, error) {
 	}
 
 	dataPath := filepath.Join(dir, "artifacts.data")
-	idxPath := filepath.Join(dir, "artifacts.index")
 
 	dataFile, err := os.OpenFile(dataPath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("open data file: %w", err)
 	}
 
-	idxFile, err := os.OpenFile(idxPath, os.O_RDWR|os.O_CREATE, 0644)
-	if err != nil {
-		dataFile.Close()
-		return nil, fmt.Errorf("open index file: %w", err)
-	}
-
 	s := &ArtifactStore{
 		dir:              dir,
 		dataFile:         dataFile,
-		idxFile:          idxFile,
 		buffer:           make([]bufferedArtifact, 0, 1024),
+		offsets:          make([]uint64, 0, 1024),
 		nonceToLeafIndex: make(map[int32]uint32),
 		mmrNodes:         make([][]byte, 0, 1024),
 	}
 
 	if err := s.recover(); err != nil {
 		s.dataFile.Close()
-		s.idxFile.Close()
 		return nil, fmt.Errorf("recover: %w", err)
 	}
 
@@ -108,8 +100,7 @@ func (s *ArtifactStore) recover() error {
 			break
 		}
 		if errors.Is(err, io.ErrUnexpectedEOF) {
-			// Truncated record from crash - discard partial data
-			if truncErr := s.truncateToOffset(offset); truncErr != nil {
+			if truncErr := s.dataFile.Truncate(int64(offset)); truncErr != nil {
 				return fmt.Errorf("truncate after partial record: %w", truncErr)
 			}
 			break
@@ -126,6 +117,7 @@ func (s *ArtifactStore) recover() error {
 			return fmt.Errorf("data file exceeds max leaf count %d", MaxLeafCount)
 		}
 
+		s.offsets = append(s.offsets, offset)
 		s.nonceToLeafIndex[nonce] = s.nextLeafIndex
 		leafHash := hashLeaf(encodeLeaf(nonce, vector))
 		appendToMMR(&s.mmrNodes, leafHash, s.nextLeafIndex)
@@ -136,17 +128,6 @@ func (s *ArtifactStore) recover() error {
 	s.flushedLeafCount = s.nextLeafIndex
 	s.flushedDataOffset = offset
 
-	return nil
-}
-
-func (s *ArtifactStore) truncateToOffset(dataOffset uint64) error {
-	if err := s.dataFile.Truncate(int64(dataOffset)); err != nil {
-		return fmt.Errorf("truncate data file: %w", err)
-	}
-	idxSize := int64(s.nextLeafIndex) * 8
-	if err := s.idxFile.Truncate(idxSize); err != nil {
-		return fmt.Errorf("truncate index file: %w", err)
-	}
 	return nil
 }
 
@@ -204,30 +185,23 @@ func (s *ArtifactStore) flushLocked() error {
 		return fmt.Errorf("seek data file: %w", err)
 	}
 
-	if _, err := s.idxFile.Seek(0, io.SeekEnd); err != nil {
-		return fmt.Errorf("seek index file: %w", err)
-	}
-
+	w := bufio.NewWriter(s.dataFile)
 	offset := s.flushedDataOffset
-	for _, art := range s.buffer {
-		var idxBuf [8]byte
-		binary.LittleEndian.PutUint64(idxBuf[:], offset)
-		if _, err := s.idxFile.Write(idxBuf[:]); err != nil {
-			return fmt.Errorf("write index: %w", err)
-		}
 
-		n, err := writeArtifact(s.dataFile, art.nonce, art.vector)
+	for _, art := range s.buffer {
+		s.offsets = append(s.offsets, offset)
+		n, err := writeArtifact(w, art.nonce, art.vector)
 		if err != nil {
 			return fmt.Errorf("write artifact: %w", err)
 		}
 		offset += uint64(n)
 	}
 
+	if err := w.Flush(); err != nil {
+		return fmt.Errorf("flush buffer: %w", err)
+	}
 	if err := s.dataFile.Sync(); err != nil {
 		return fmt.Errorf("sync data file: %w", err)
-	}
-	if err := s.idxFile.Sync(); err != nil {
-		return fmt.Errorf("sync index file: %w", err)
 	}
 
 	s.flushedLeafCount = s.nextLeafIndex
@@ -272,6 +246,19 @@ func (s *ArtifactStore) GetRootAt(snapshotCount uint32) ([]byte, error) {
 	return bagPeaks(s.mmrNodes, snapshotCount), nil
 }
 
+// GetFlushedRoot returns the root and count of ONLY persisted artifacts.
+// Safe to report externally - survives process crashes.
+func (s *ArtifactStore) GetFlushedRoot() (count uint32, root []byte) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.flushedLeafCount == 0 {
+		return 0, nil
+	}
+
+	return s.flushedLeafCount, bagPeaks(s.mmrNodes, s.flushedLeafCount)
+}
+
 func (s *ArtifactStore) Count() uint32 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -296,11 +283,7 @@ func (s *ArtifactStore) GetArtifact(leafIndex uint32) (nonce int32, vector []byt
 		return art.nonce, art.vector, nil
 	}
 
-	offset, err := s.readOffset(leafIndex)
-	if err != nil {
-		return 0, nil, fmt.Errorf("read offset: %w", err)
-	}
-
+	offset := s.offsets[leafIndex]
 	if _, err := s.dataFile.Seek(int64(offset), io.SeekStart); err != nil {
 		return 0, nil, fmt.Errorf("seek data file: %w", err)
 	}
@@ -343,32 +326,15 @@ func (s *ArtifactStore) Close() error {
 
 	s.closed = true
 
-	// Use internal flush (no lock) since we already hold the lock
 	if err := s.flushLocked(); err != nil {
 		return fmt.Errorf("flush on close: %w", err)
 	}
 
-	var errs []error
 	if err := s.dataFile.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("close data file: %w", err))
-	}
-	if err := s.idxFile.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("close index file: %w", err))
+		return fmt.Errorf("close data file: %w", err)
 	}
 
-	if len(errs) > 0 {
-		return errors.Join(errs...)
-	}
 	return nil
-}
-
-func (s *ArtifactStore) readOffset(leafIndex uint32) (uint64, error) {
-	var buf [8]byte
-	pos := int64(leafIndex) * 8
-	if _, err := s.idxFile.ReadAt(buf[:], pos); err != nil {
-		return 0, err
-	}
-	return binary.LittleEndian.Uint64(buf[:]), nil
 }
 
 // writeArtifact format: [LE32 len][LE32 nonce][vector bytes]
