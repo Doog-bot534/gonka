@@ -1,7 +1,8 @@
 # PoC v2 Off-Chain Artifacts Proposal
 
 ## Related Documents
-- `proposals/poc/merkle-tree.md` — Normative MMR specification and storage layout.
+- `proposals/poc/offchain-phase1.md` — Phase 1 implementation (storage & MMR).
+- `proposals/poc/offchain-phase2.md` — Phase 2 implementation (proof API & managed storage).
 - `.cursorrules/rules.md` — Project conventions.
 
 ---
@@ -284,22 +285,37 @@ To prevent adaptive cheating:
 
 ## 8. Implementation Phases
 
-### Phase 1: Storage & MMR (see `merkle-tree.md`)
-- Implement 4-file storage layout.
-- Cover with unit tests.
-- Integrate MMR generation into `api`.
+### Phase 1: Storage & MMR ✅
+**Status:** Complete (see `offchain-phase1.md`)
+- Single-file storage layout with in-memory MMR
+- 40+ unit tests covering proofs, recovery, tamper detection
+- Dual-write integration in artifact handler
 
-### Phase 2: Proof API
-- Implement `/v1/poc/proofs` endpoint.
-- Signature verification with efficient authz caching.
-- Rate limiting.
-- Integration tests with testermint.
+### Phase 2: Proof API ✅
+**Status:** Complete (see `offchain-phase2.md`)
+- `POST /v1/poc/proofs` endpoint with signature verification
+- `GET /v1/poc/artifacts/state` endpoint for validators
+- AuthzCache with signer-binding for pubkey lookup
+- ManagedArtifactStore with per-height directories and auto-pruning
+- Rate limiting (100 req/min per IP)
+- Integration tests with testermint
 
-### Phase 3: New Chain Messages
-- Add `PoCV2StoreCommit` proto and handler.
-- Periodic commit broadcast (without disabling batches initially).
-- Add `MLNodeWeightDistribution` proto and handler.
-- Testermint verification.
+### Phase 3: New Chain Messages ✅
+**Status:** Complete (see `offchain-phase3.md`)
+- `MsgPoCV2StoreCommit` proto, handler, and query endpoint
+- `MsgMLNodeWeightDistribution` proto, handler, and query endpoint
+- Artifact store node tracking (`AddWithNode`, `GetNodeDistribution`)
+- Commit submission from handler (per-batch)
+- Distribution submission from dispatcher (at end of generation)
+- Testermint verification
+
+### Phase 3.5: PoC Package Consolidation
+**Status:** Planned (see `manager-v5.md`)
+- Consolidate all PoC logic into `poc/` package
+- Block-driven commit worker with PhaseTracker subscription
+- Single owner for flush, commits, and distribution
+- Pure phase predicates (`poc/phase/`)
+- Move orchestrator to `poc/orchestrator.go`
 
 ### Phase 4: Validation Switchover
 - Update `node_orchestrator.go` to fetch from off-chain API instead of chain.
@@ -337,5 +353,22 @@ message PoCArtifactV2 {
 | Window validation | `inference-chain/x/inference/keeper/poc_period_validation.go` | `CheckPoCMessageTooLate` |
 | Validation sample size | `decentralized-api/internal/pocv2/node_orchestrator.go:253-264` | `PocParams.ValidationSampleSize` |
 | Sampling logic | `decentralized-api/internal/pocv2/node_orchestrator.go:392-418` | Deterministic seed from pubkey+hash+height |
-| Signed request pattern | `decentralized-api/internal/validation/payload_retrieval.go` | Reuse for proof endpoint auth |
+| **Off-chain artifact store** | `decentralized-api/pocartifacts/store.go` | ArtifactStore with MMR |
+| **MMR implementation** | `decentralized-api/pocartifacts/mmr.go` | Proof generation/verification |
+| **Managed store** | `decentralized-api/pocartifacts/managed_store.go` | Per-height stores with auto-pruning |
+| **Proof API handler** | `decentralized-api/internal/server/public/poc_handler.go` | POST /v1/poc/proofs, GET /v1/poc/artifacts/state |
+| **Authz cache** | `decentralized-api/internal/authzcache/cache.go` | Signer pubkey lookup with TTL |
+| **Store commit handler** | `inference-chain/x/inference/keeper/msg_server_poc_v2_commit.go` | MsgPoCV2StoreCommit, MsgMLNodeWeightDistribution |
+| **Store commit submission** | `decentralized-api/internal/server/mlnode/post_generated_artifacts_v2_handler.go` | submitStoreCommit() |
+| **Weight distribution** | `decentralized-api/internal/event_listener/new_block_dispatcher.go` | submitNodeWeightDistribution() |
+| **Testermint integration** | `testermint/src/test/kotlin/PoCOffChainTests.kt` | E2E proof API test |
 | Proto comment (future off-chain) | `inference-chain/proto/inference/inference/tx.proto:231-233` | Acknowledges planned migration |
+
+---
+
+## 11. Related Documents
+
+- `offchain-phase1.md` — Phase 1 implementation details
+- `offchain-phase2.md` — Phase 2 implementation details
+- `offchain-phase3.md` — Phase 3 implementation details
+- `manager-v5.md` — PoC package consolidation proposal (Phase 3.5)

@@ -36,6 +36,9 @@ service Msg {
   // PoC v2 (batch-based) messages
   rpc SubmitPocBatchesV2               (MsgSubmitPocBatchesV2) returns (MsgSubmitPocBatchesV2Response);
   rpc SubmitPocValidationsV2           (MsgSubmitPocValidationsV2) returns (MsgSubmitPocValidationsV2Response);
+  // PoC v2 off-chain commit messages
+  rpc PoCV2StoreCommit                 (MsgPoCV2StoreCommit) returns (MsgPoCV2StoreCommitResponse);
+  rpc MLNodeWeightDistribution         (MsgMLNodeWeightDistribution) returns (MsgMLNodeWeightDistributionResponse);
   rpc SubmitSeed                       (MsgSubmitSeed) returns (MsgSubmitSeedResponse);
   rpc SubmitUnitOfComputePriceProposal (MsgSubmitUnitOfComputePriceProposal) returns (MsgSubmitUnitOfComputePriceProposalResponse);
   rpc RegisterModel                    (MsgRegisterModel) returns (MsgRegisterModelResponse);
@@ -248,6 +251,27 @@ message MsgSubmitPocValidationsV2 {
 }
 
 message MsgSubmitPocValidationsV2Response {}
+
+// PoC v2 off-chain commit - commits MMR state to chain
+message MsgPoCV2StoreCommit {
+  option (cosmos.msg.v1.signer) = "creator";
+  string creator = 1;
+  int64 poc_stage_start_block_height = 2;
+  uint32 count = 3;
+  bytes root_hash = 4;
+}
+
+message MsgPoCV2StoreCommitResponse {}
+
+// Reports per-node weight distribution after generation
+message MsgMLNodeWeightDistribution {
+  option (cosmos.msg.v1.signer) = "creator";
+  string creator = 1;
+  int64 poc_stage_start_block_height = 2;
+  repeated MLNodeWeight weights = 3;
+}
+
+message MsgMLNodeWeightDistributionResponse {}
 
 message MsgSubmitSeed {
   option (cosmos.msg.v1.signer) = "creator";

@@ -36,6 +36,8 @@ const (
 	Query_PocValidationsForStage_FullMethodName                    = "/inference.inference.Query/PocValidationsForStage"
 	Query_PocV2BatchesForStage_FullMethodName                      = "/inference.inference.Query/PocV2BatchesForStage"
 	Query_PocV2ValidationsForStage_FullMethodName                  = "/inference.inference.Query/PocV2ValidationsForStage"
+	Query_PoCV2StoreCommit_FullMethodName                          = "/inference.inference.Query/PoCV2StoreCommit"
+	Query_MLNodeWeightDistribution_FullMethodName                  = "/inference.inference.Query/MLNodeWeightDistribution"
 	Query_GetCurrentEpoch_FullMethodName                           = "/inference.inference.Query/GetCurrentEpoch"
 	Query_TokenomicsData_FullMethodName                            = "/inference.inference.Query/TokenomicsData"
 	Query_GetUnitOfComputePriceProposal_FullMethodName             = "/inference.inference.Query/GetUnitOfComputePriceProposal"
@@ -128,6 +130,9 @@ type QueryClient interface {
 	// PoC v2 queries
 	PocV2BatchesForStage(ctx context.Context, in *QueryPocV2BatchesForStageRequest, opts ...grpc.CallOption) (*QueryPocV2BatchesForStageResponse, error)
 	PocV2ValidationsForStage(ctx context.Context, in *QueryPocV2ValidationsForStageRequest, opts ...grpc.CallOption) (*QueryPocV2ValidationsForStageResponse, error)
+	// PoC v2 off-chain commit queries
+	PoCV2StoreCommit(ctx context.Context, in *QueryPoCV2StoreCommitRequest, opts ...grpc.CallOption) (*QueryPoCV2StoreCommitResponse, error)
+	MLNodeWeightDistribution(ctx context.Context, in *QueryMLNodeWeightDistributionRequest, opts ...grpc.CallOption) (*QueryMLNodeWeightDistributionResponse, error)
 	// Queries a list of GetCurrentEpoch items.
 	GetCurrentEpoch(ctx context.Context, in *QueryGetCurrentEpochRequest, opts ...grpc.CallOption) (*QueryGetCurrentEpochResponse, error)
 	// Queries a TokenomicsData by index.
@@ -387,6 +392,24 @@ func (c *queryClient) PocV2BatchesForStage(ctx context.Context, in *QueryPocV2Ba
 func (c *queryClient) PocV2ValidationsForStage(ctx context.Context, in *QueryPocV2ValidationsForStageRequest, opts ...grpc.CallOption) (*QueryPocV2ValidationsForStageResponse, error) {
 	out := new(QueryPocV2ValidationsForStageResponse)
 	err := c.cc.Invoke(ctx, Query_PocV2ValidationsForStage_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryClient) PoCV2StoreCommit(ctx context.Context, in *QueryPoCV2StoreCommitRequest, opts ...grpc.CallOption) (*QueryPoCV2StoreCommitResponse, error) {
+	out := new(QueryPoCV2StoreCommitResponse)
+	err := c.cc.Invoke(ctx, Query_PoCV2StoreCommit_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryClient) MLNodeWeightDistribution(ctx context.Context, in *QueryMLNodeWeightDistributionRequest, opts ...grpc.CallOption) (*QueryMLNodeWeightDistributionResponse, error) {
+	out := new(QueryMLNodeWeightDistributionResponse)
+	err := c.cc.Invoke(ctx, Query_MLNodeWeightDistribution_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -947,6 +970,9 @@ type QueryServer interface {
 	// PoC v2 queries
 	PocV2BatchesForStage(context.Context, *QueryPocV2BatchesForStageRequest) (*QueryPocV2BatchesForStageResponse, error)
 	PocV2ValidationsForStage(context.Context, *QueryPocV2ValidationsForStageRequest) (*QueryPocV2ValidationsForStageResponse, error)
+	// PoC v2 off-chain commit queries
+	PoCV2StoreCommit(context.Context, *QueryPoCV2StoreCommitRequest) (*QueryPoCV2StoreCommitResponse, error)
+	MLNodeWeightDistribution(context.Context, *QueryMLNodeWeightDistributionRequest) (*QueryMLNodeWeightDistributionResponse, error)
 	// Queries a list of GetCurrentEpoch items.
 	GetCurrentEpoch(context.Context, *QueryGetCurrentEpochRequest) (*QueryGetCurrentEpochResponse, error)
 	// Queries a TokenomicsData by index.
@@ -1106,6 +1132,12 @@ func (UnimplementedQueryServer) PocV2BatchesForStage(context.Context, *QueryPocV
 }
 func (UnimplementedQueryServer) PocV2ValidationsForStage(context.Context, *QueryPocV2ValidationsForStageRequest) (*QueryPocV2ValidationsForStageResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PocV2ValidationsForStage not implemented")
+}
+func (UnimplementedQueryServer) PoCV2StoreCommit(context.Context, *QueryPoCV2StoreCommitRequest) (*QueryPoCV2StoreCommitResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PoCV2StoreCommit not implemented")
+}
+func (UnimplementedQueryServer) MLNodeWeightDistribution(context.Context, *QueryMLNodeWeightDistributionRequest) (*QueryMLNodeWeightDistributionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method MLNodeWeightDistribution not implemented")
 }
 func (UnimplementedQueryServer) GetCurrentEpoch(context.Context, *QueryGetCurrentEpochRequest) (*QueryGetCurrentEpochResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetCurrentEpoch not implemented")
@@ -1596,6 +1628,42 @@ func _Query_PocV2ValidationsForStage_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(QueryServer).PocV2ValidationsForStage(ctx, req.(*QueryPocV2ValidationsForStageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Query_PoCV2StoreCommit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryPoCV2StoreCommitRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).PoCV2StoreCommit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_PoCV2StoreCommit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).PoCV2StoreCommit(ctx, req.(*QueryPoCV2StoreCommitRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Query_MLNodeWeightDistribution_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryMLNodeWeightDistributionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).MLNodeWeightDistribution(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_MLNodeWeightDistribution_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).MLNodeWeightDistribution(ctx, req.(*QueryMLNodeWeightDistributionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2718,6 +2786,14 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PocV2ValidationsForStage",
 			Handler:    _Query_PocV2ValidationsForStage_Handler,
+		},
+		{
+			MethodName: "PoCV2StoreCommit",
+			Handler:    _Query_PoCV2StoreCommit_Handler,
+		},
+		{
+			MethodName: "MLNodeWeightDistribution",
+			Handler:    _Query_MLNodeWeightDistribution_Handler,
 		},
 		{
 			MethodName: "GetCurrentEpoch",

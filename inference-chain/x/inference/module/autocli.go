@@ -319,6 +319,19 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 					Short:          "Get cached capacity for a specific model",
 					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "model_id"}},
 				},
+				// PoC v2 off-chain commit queries
+				{
+					RpcMethod:      "PoCV2StoreCommit",
+					Use:            "poc-v2-store-commit [poc-stage-start-block-height] [participant-address]",
+					Short:          "Query PoC v2 store commit for a participant",
+					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "poc_stage_start_block_height"}, {ProtoField: "participant_address"}},
+				},
+				{
+					RpcMethod:      "MLNodeWeightDistribution",
+					Use:            "mlnode-weight-distribution [poc-stage-start-block-height] [participant-address]",
+					Short:          "Query MLNode weight distribution for a participant",
+					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "poc_stage_start_block_height"}, {ProtoField: "participant_address"}},
+				},
 				// this line is used by ignite scaffolding # autocli/query
 			},
 		},

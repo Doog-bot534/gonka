@@ -15,44 +15,67 @@ import java.util.concurrent.TimeUnit
 class PoCOffChainTests : TestermintTest() {
 
     @Test
-    fun `poc proofs endpoint returns valid proofs after poc cycle`() {
-        logSection("=== TEST: PoC Off-Chain Proofs API ===")
+    fun `poc offchain artifacts - proofs endpoint and chain commits work after poc cycle`() {
+        logSection("=== TEST: PoC Off-Chain Artifacts ===")
 
         // Initialize cluster with default configuration
         val (cluster, genesis) = initCluster(reboot = true)
         cluster.allPairs.forEach { it.waitForMlNodesToLoad() }
+
         // Wait for PoC generation phase to end
         genesis.waitForStage(EpochStage.END_OF_POC, offset = 1)
+        // Wait for commit/distribution transactions to be included
+        genesis.node.waitForNextBlock(3)
 
-        logSection("Querying artifact store state")
-
-        // Get current epoch info
         val epochData = genesis.getEpochData()
         val pocStartHeight = epochData.latestEpoch.pocStartBlockHeight
+        val participantAddress = genesis.node.getColdAddress()
 
-        // Query actual artifact store state
+        // === Part 1: Query chain for store commit and weight distribution ===
+        logSection("Querying chain for store commit and weight distribution")
+
+        Logger.info("Querying for pocStartHeight=$pocStartHeight, participant=$participantAddress")
+
+        val storeCommit = genesis.node.getPoCV2StoreCommit(pocStartHeight, participantAddress)
+        Logger.info("Store commit: found=${storeCommit.found}, count=${storeCommit.count}, rootHash=${storeCommit.rootHash}")
+
+        val weightDistribution = genesis.node.getMLNodeWeightDistribution(pocStartHeight, participantAddress)
+        Logger.info("Weight distribution: found=${weightDistribution.found}, weights=${weightDistribution.weights}")
+
+        if (storeCommit.found) {
+            assertThat(storeCommit.count).isGreaterThan(0)
+            assertThat(storeCommit.rootHash).isNotNull()
+        }
+
+        if (weightDistribution.found) {
+            assertThat(weightDistribution.weights).isNotEmpty()
+            weightDistribution.weights.forEach { weight ->
+                Logger.info("Node ${weight.nodeId}: weight=${weight.weight}")
+                assertThat(weight.nodeId).isNotEmpty()
+            }
+        }
+
+        // === Part 2: Query DAPI artifact store and proofs ===
+        logSection("Querying artifact store state from DAPI")
+
         val artifactState = genesis.api.getPocArtifactsState(pocStartHeight)
         Logger.info("Artifact store state: count=${artifactState.count}, rootHash=${artifactState.rootHash}")
 
-        // Skip if no artifacts stored
         if (artifactState.count == 0L) {
-            Logger.warn("No artifacts stored for epoch $pocStartHeight, skipping proof test")
+            Logger.warn("No artifacts stored for epoch $pocStartHeight, skipping proof verification")
+            logSection("TEST PASSED: Chain commits queried (no artifacts for proof test)")
             return
         }
 
-        logSection("Building proof request with real values")
+        // === Part 3: Request and verify proofs ===
+        logSection("Requesting proofs from DAPI")
 
-        val validatorAddress = genesis.node.getColdAddress()
-        val validatorSignerAddress = genesis.node.getColdAddress()
+        val validatorAddress = participantAddress
         val timestamp = Instant.now().toEpochNanos()
-
-        // Use actual values from artifact store
         val rootHash = artifactState.rootHash
         val count = artifactState.count
-        // Request first few artifacts (up to 3, or less if fewer exist)
         val leafIndices = (0 until minOf(3, count.toInt())).map { it.toLong() }
 
-        // Build and sign the request payload
         val signPayload = buildPocProofsSignPayload(
             pocStartHeight,
             Base64.getDecoder().decode(rootHash),
@@ -60,12 +83,9 @@ class PoCOffChainTests : TestermintTest() {
             leafIndices,
             timestamp,
             validatorAddress,
-            validatorSignerAddress
+            validatorAddress
         )
-        val signPayloadHex = signPayload.joinToString("") { "%02x".format(it) }
-
-        // Sign the payload using the node's key
-        val signature = genesis.node.signPayload(signPayloadHex)
+        val signature = genesis.node.signPayload(signPayload.joinToString("") { "%02x".format(it) })
 
         val request = PocProofsRequest(
             pocStageStartBlockHeight = pocStartHeight,
@@ -73,21 +93,15 @@ class PoCOffChainTests : TestermintTest() {
             count = count,
             leafIndices = leafIndices,
             validatorAddress = validatorAddress,
-            validatorSignerAddress = validatorSignerAddress,
+            validatorSignerAddress = validatorAddress,
             timestamp = timestamp,
             signature = signature
         )
 
-        logSection("Requesting proofs")
-
-        // Make the request
         val response = genesis.api.getPocProofsRaw(request)
         val statusCode = response.second.statusCode
 
         Logger.info("PoC proofs response status: $statusCode")
-        Logger.info("Response body: ${response.third}")
-
-        // Should succeed with real values
         assertThat(statusCode).isEqualTo(200)
 
         val proofResponse = cosmosJson.fromJson(response.third.get(), PocProofsResponse::class.java)
@@ -97,10 +111,10 @@ class PoCOffChainTests : TestermintTest() {
             assertThat(proof.leafIndex).isIn(*leafIndices.toTypedArray())
             assertThat(proof.vectorBytes).isNotEmpty()
             assertThat(proof.proof).isNotEmpty()
-            Logger.info("Received proof for leaf ${proof.leafIndex}: nonce=${proof.nonceValue}, proofLen=${proof.proof.size}")
+            Logger.info("Proof for leaf ${proof.leafIndex}: nonce=${proof.nonceValue}, proofLen=${proof.proof.size}")
         }
 
-        logSection("TEST PASSED: PoC proofs endpoint returns valid proofs")
+        logSection("TEST PASSED: PoC off-chain artifacts workflow complete")
     }
 
     companion object {

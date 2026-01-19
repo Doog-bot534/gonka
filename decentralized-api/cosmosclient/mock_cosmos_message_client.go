@@ -130,6 +130,16 @@ func (m *MockCosmosMessageClient) SubmitPocValidationsV2(transaction *inference.
 	return args.Error(0)
 }
 
+func (m *MockCosmosMessageClient) SubmitPoCV2StoreCommit(transaction *inference.MsgPoCV2StoreCommit) error {
+	args := m.Called(transaction)
+	return args.Error(0)
+}
+
+func (m *MockCosmosMessageClient) SubmitMLNodeWeightDistribution(transaction *inference.MsgMLNodeWeightDistribution) error {
+	args := m.Called(transaction)
+	return args.Error(0)
+}
+
 func (m *MockCosmosMessageClient) SubmitSeed(transaction *inference.MsgSubmitSeed) error {
 	args := m.Called(transaction)
 	return args.Error(0)

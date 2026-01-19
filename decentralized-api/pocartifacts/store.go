@@ -3,6 +3,7 @@ package pocartifacts
 import (
 	"bufio"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -33,7 +34,8 @@ type ArtifactStore struct {
 	dir    string
 	closed bool
 
-	dataFile *os.File // artifacts.data: [LE32 len][LE32 nonce][vector]...
+	dataFile  *os.File // artifacts.data: [LE32 len][LE32 nonce][vector]...
+	nodesFile *os.File // nodes.data: JSON map of node_id -> count
 
 	buffer           []bufferedArtifact
 	offsets          []uint64
@@ -43,11 +45,16 @@ type ArtifactStore struct {
 
 	flushedLeafCount  uint32
 	flushedDataOffset uint64
+
+	// Node distribution tracking
+	nodeCounts        map[string]uint32 // node_id -> artifact count (in-memory, includes unflushed)
+	flushedNodeCounts map[string]uint32 // persisted node counts
 }
 
 type bufferedArtifact struct {
 	nonce  int32
 	vector []byte
+	nodeId string
 }
 
 func Open(dir string) (*ArtifactStore, error) {
@@ -56,23 +63,34 @@ func Open(dir string) (*ArtifactStore, error) {
 	}
 
 	dataPath := filepath.Join(dir, "artifacts.data")
+	nodesPath := filepath.Join(dir, "nodes.json")
 
 	dataFile, err := os.OpenFile(dataPath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("open data file: %w", err)
 	}
 
+	nodesFile, err := os.OpenFile(nodesPath, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		dataFile.Close()
+		return nil, fmt.Errorf("open nodes file: %w", err)
+	}
+
 	s := &ArtifactStore{
-		dir:              dir,
-		dataFile:         dataFile,
-		buffer:           make([]bufferedArtifact, 0, 1024),
-		offsets:          make([]uint64, 0, 1024),
-		nonceToLeafIndex: make(map[int32]uint32),
-		mmrNodes:         make([][]byte, 0, 1024),
+		dir:               dir,
+		dataFile:          dataFile,
+		nodesFile:         nodesFile,
+		buffer:            make([]bufferedArtifact, 0, 1024),
+		offsets:           make([]uint64, 0, 1024),
+		nonceToLeafIndex:  make(map[int32]uint32),
+		mmrNodes:          make([][]byte, 0, 1024),
+		nodeCounts:        make(map[string]uint32),
+		flushedNodeCounts: make(map[string]uint32),
 	}
 
 	if err := s.recover(); err != nil {
 		s.dataFile.Close()
+		s.nodesFile.Close()
 		return nil, fmt.Errorf("recover: %w", err)
 	}
 
@@ -128,11 +146,49 @@ func (s *ArtifactStore) recover() error {
 	s.flushedLeafCount = s.nextLeafIndex
 	s.flushedDataOffset = offset
 
+	// Recover node counts from nodes.json
+	if err := s.recoverNodeCounts(); err != nil {
+		return fmt.Errorf("recover node counts: %w", err)
+	}
+
+	return nil
+}
+
+func (s *ArtifactStore) recoverNodeCounts() error {
+	info, err := s.nodesFile.Stat()
+	if err != nil {
+		return fmt.Errorf("stat nodes file: %w", err)
+	}
+
+	if info.Size() == 0 {
+		return nil
+	}
+
+	if _, err := s.nodesFile.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("seek nodes file: %w", err)
+	}
+
+	decoder := json.NewDecoder(s.nodesFile)
+	if err := decoder.Decode(&s.flushedNodeCounts); err != nil {
+		return fmt.Errorf("decode nodes file: %w", err)
+	}
+
+	// Copy flushed counts to current counts
+	for k, v := range s.flushedNodeCounts {
+		s.nodeCounts[k] = v
+	}
+
 	return nil
 }
 
 // Add appends an artifact if nonce is not already in the store.
+// Deprecated: Use AddWithNode to track per-node distribution.
 func (s *ArtifactStore) Add(nonce int32, vector []byte) error {
+	return s.AddWithNode(nonce, vector, "")
+}
+
+// AddWithNode appends an artifact and tracks which node contributed it.
+func (s *ArtifactStore) AddWithNode(nonce int32, vector []byte, nodeId string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -155,11 +211,16 @@ func (s *ArtifactStore) Add(nonce int32, vector []byte) error {
 	}
 
 	s.nonceToLeafIndex[nonce] = s.nextLeafIndex
-	s.buffer = append(s.buffer, bufferedArtifact{nonce: nonce, vector: vector})
+	s.buffer = append(s.buffer, bufferedArtifact{nonce: nonce, vector: vector, nodeId: nodeId})
 
 	leafHash := hashLeaf(encodeLeaf(nonce, vector))
 	appendToMMR(&s.mmrNodes, leafHash, s.nextLeafIndex)
 	s.nextLeafIndex++
+
+	// Track node contribution
+	if nodeId != "" {
+		s.nodeCounts[nodeId]++
+	}
 
 	return nil
 }
@@ -204,9 +265,40 @@ func (s *ArtifactStore) flushLocked() error {
 		return fmt.Errorf("sync data file: %w", err)
 	}
 
+	// Persist node counts
+	if err := s.flushNodeCountsLocked(); err != nil {
+		return fmt.Errorf("flush node counts: %w", err)
+	}
+
 	s.flushedLeafCount = s.nextLeafIndex
 	s.flushedDataOffset = offset
 	s.buffer = s.buffer[:0]
+
+	return nil
+}
+
+func (s *ArtifactStore) flushNodeCountsLocked() error {
+	// Copy current counts to flushed
+	for k, v := range s.nodeCounts {
+		s.flushedNodeCounts[k] = v
+	}
+
+	// Truncate and rewrite
+	if err := s.nodesFile.Truncate(0); err != nil {
+		return fmt.Errorf("truncate nodes file: %w", err)
+	}
+	if _, err := s.nodesFile.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("seek nodes file: %w", err)
+	}
+
+	encoder := json.NewEncoder(s.nodesFile)
+	if err := encoder.Encode(s.flushedNodeCounts); err != nil {
+		return fmt.Errorf("encode nodes file: %w", err)
+	}
+
+	if err := s.nodesFile.Sync(); err != nil {
+		return fmt.Errorf("sync nodes file: %w", err)
+	}
 
 	return nil
 }
@@ -263,6 +355,18 @@ func (s *ArtifactStore) Count() uint32 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.nextLeafIndex
+}
+
+// GetNodeDistribution returns a copy of the flushed node distribution.
+func (s *ArtifactStore) GetNodeDistribution() map[string]uint32 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make(map[string]uint32, len(s.flushedNodeCounts))
+	for k, v := range s.flushedNodeCounts {
+		result[k] = v
+	}
+	return result
 }
 
 func (s *ArtifactStore) GetArtifact(leafIndex uint32) (nonce int32, vector []byte, err error) {
@@ -332,6 +436,10 @@ func (s *ArtifactStore) Close() error {
 
 	if err := s.dataFile.Close(); err != nil {
 		return fmt.Errorf("close data file: %w", err)
+	}
+
+	if err := s.nodesFile.Close(); err != nil {
+		return fmt.Errorf("close nodes file: %w", err)
 	}
 
 	return nil

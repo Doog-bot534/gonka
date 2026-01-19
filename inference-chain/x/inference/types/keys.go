@@ -60,6 +60,8 @@ var (
 	ParticipantAllowListPrefix        = collections.NewPrefix(36)
 	PoCBatchV2Prefix                  = collections.NewPrefix(37)
 	PoCValidationV2Prefix             = collections.NewPrefix(38)
+	PoCV2StoreCommitPrefix            = collections.NewPrefix(39)
+	MLNodeWeightDistributionPrefix    = collections.NewPrefix(40)
 	ParamsKey                         = []byte("p_inference")
 )
 

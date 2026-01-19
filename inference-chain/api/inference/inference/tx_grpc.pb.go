@@ -32,6 +32,8 @@ const (
 	Msg_SubmitPocValidation_FullMethodName              = "/inference.inference.Msg/SubmitPocValidation"
 	Msg_SubmitPocBatchesV2_FullMethodName               = "/inference.inference.Msg/SubmitPocBatchesV2"
 	Msg_SubmitPocValidationsV2_FullMethodName           = "/inference.inference.Msg/SubmitPocValidationsV2"
+	Msg_PoCV2StoreCommit_FullMethodName                 = "/inference.inference.Msg/PoCV2StoreCommit"
+	Msg_MLNodeWeightDistribution_FullMethodName         = "/inference.inference.Msg/MLNodeWeightDistribution"
 	Msg_SubmitSeed_FullMethodName                       = "/inference.inference.Msg/SubmitSeed"
 	Msg_SubmitUnitOfComputePriceProposal_FullMethodName = "/inference.inference.Msg/SubmitUnitOfComputePriceProposal"
 	Msg_RegisterModel_FullMethodName                    = "/inference.inference.Msg/RegisterModel"
@@ -82,6 +84,9 @@ type MsgClient interface {
 	// PoC v2 (batch-based) messages
 	SubmitPocBatchesV2(ctx context.Context, in *MsgSubmitPocBatchesV2, opts ...grpc.CallOption) (*MsgSubmitPocBatchesV2Response, error)
 	SubmitPocValidationsV2(ctx context.Context, in *MsgSubmitPocValidationsV2, opts ...grpc.CallOption) (*MsgSubmitPocValidationsV2Response, error)
+	// PoC v2 off-chain commit messages
+	PoCV2StoreCommit(ctx context.Context, in *MsgPoCV2StoreCommit, opts ...grpc.CallOption) (*MsgPoCV2StoreCommitResponse, error)
+	MLNodeWeightDistribution(ctx context.Context, in *MsgMLNodeWeightDistribution, opts ...grpc.CallOption) (*MsgMLNodeWeightDistributionResponse, error)
 	SubmitSeed(ctx context.Context, in *MsgSubmitSeed, opts ...grpc.CallOption) (*MsgSubmitSeedResponse, error)
 	SubmitUnitOfComputePriceProposal(ctx context.Context, in *MsgSubmitUnitOfComputePriceProposal, opts ...grpc.CallOption) (*MsgSubmitUnitOfComputePriceProposalResponse, error)
 	RegisterModel(ctx context.Context, in *MsgRegisterModel, opts ...grpc.CallOption) (*MsgRegisterModelResponse, error)
@@ -231,6 +236,24 @@ func (c *msgClient) SubmitPocBatchesV2(ctx context.Context, in *MsgSubmitPocBatc
 func (c *msgClient) SubmitPocValidationsV2(ctx context.Context, in *MsgSubmitPocValidationsV2, opts ...grpc.CallOption) (*MsgSubmitPocValidationsV2Response, error) {
 	out := new(MsgSubmitPocValidationsV2Response)
 	err := c.cc.Invoke(ctx, Msg_SubmitPocValidationsV2_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) PoCV2StoreCommit(ctx context.Context, in *MsgPoCV2StoreCommit, opts ...grpc.CallOption) (*MsgPoCV2StoreCommitResponse, error) {
+	out := new(MsgPoCV2StoreCommitResponse)
+	err := c.cc.Invoke(ctx, Msg_PoCV2StoreCommit_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) MLNodeWeightDistribution(ctx context.Context, in *MsgMLNodeWeightDistribution, opts ...grpc.CallOption) (*MsgMLNodeWeightDistributionResponse, error) {
+	out := new(MsgMLNodeWeightDistributionResponse)
+	err := c.cc.Invoke(ctx, Msg_MLNodeWeightDistribution_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -509,6 +532,9 @@ type MsgServer interface {
 	// PoC v2 (batch-based) messages
 	SubmitPocBatchesV2(context.Context, *MsgSubmitPocBatchesV2) (*MsgSubmitPocBatchesV2Response, error)
 	SubmitPocValidationsV2(context.Context, *MsgSubmitPocValidationsV2) (*MsgSubmitPocValidationsV2Response, error)
+	// PoC v2 off-chain commit messages
+	PoCV2StoreCommit(context.Context, *MsgPoCV2StoreCommit) (*MsgPoCV2StoreCommitResponse, error)
+	MLNodeWeightDistribution(context.Context, *MsgMLNodeWeightDistribution) (*MsgMLNodeWeightDistributionResponse, error)
 	SubmitSeed(context.Context, *MsgSubmitSeed) (*MsgSubmitSeedResponse, error)
 	SubmitUnitOfComputePriceProposal(context.Context, *MsgSubmitUnitOfComputePriceProposal) (*MsgSubmitUnitOfComputePriceProposalResponse, error)
 	RegisterModel(context.Context, *MsgRegisterModel) (*MsgRegisterModelResponse, error)
@@ -582,6 +608,12 @@ func (UnimplementedMsgServer) SubmitPocBatchesV2(context.Context, *MsgSubmitPocB
 }
 func (UnimplementedMsgServer) SubmitPocValidationsV2(context.Context, *MsgSubmitPocValidationsV2) (*MsgSubmitPocValidationsV2Response, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SubmitPocValidationsV2 not implemented")
+}
+func (UnimplementedMsgServer) PoCV2StoreCommit(context.Context, *MsgPoCV2StoreCommit) (*MsgPoCV2StoreCommitResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PoCV2StoreCommit not implemented")
+}
+func (UnimplementedMsgServer) MLNodeWeightDistribution(context.Context, *MsgMLNodeWeightDistribution) (*MsgMLNodeWeightDistributionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method MLNodeWeightDistribution not implemented")
 }
 func (UnimplementedMsgServer) SubmitSeed(context.Context, *MsgSubmitSeed) (*MsgSubmitSeedResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SubmitSeed not implemented")
@@ -910,6 +942,42 @@ func _Msg_SubmitPocValidationsV2_Handler(srv interface{}, ctx context.Context, d
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(MsgServer).SubmitPocValidationsV2(ctx, req.(*MsgSubmitPocValidationsV2))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_PoCV2StoreCommit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgPoCV2StoreCommit)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).PoCV2StoreCommit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_PoCV2StoreCommit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).PoCV2StoreCommit(ctx, req.(*MsgPoCV2StoreCommit))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_MLNodeWeightDistribution_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgMLNodeWeightDistribution)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).MLNodeWeightDistribution(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_MLNodeWeightDistribution_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).MLNodeWeightDistribution(ctx, req.(*MsgMLNodeWeightDistribution))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1476,6 +1544,14 @@ var Msg_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SubmitPocValidationsV2",
 			Handler:    _Msg_SubmitPocValidationsV2_Handler,
+		},
+		{
+			MethodName: "PoCV2StoreCommit",
+			Handler:    _Msg_PoCV2StoreCommit_Handler,
+		},
+		{
+			MethodName: "MLNodeWeightDistribution",
+			Handler:    _Msg_MLNodeWeightDistribution_Handler,
 		},
 		{
 			MethodName: "SubmitSeed",

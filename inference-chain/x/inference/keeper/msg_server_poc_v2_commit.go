@@ -1,0 +1,147 @@
+package keeper
+
+import (
+	"context"
+	"fmt"
+
+	"cosmossdk.io/collections"
+	sdkerrors "cosmossdk.io/errors"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/productscience/inference/x/inference/types"
+)
+
+// PoCV2StoreCommit handles submission of off-chain artifact store commits.
+func (k msgServer) PoCV2StoreCommit(goCtx context.Context, msg *types.MsgPoCV2StoreCommit) (*types.MsgPoCV2StoreCommitResponse, error) {
+	ctx := sdk.UnwrapSDKContext(goCtx)
+	currentBlockHeight := ctx.BlockHeight()
+	startBlockHeight := msg.PocStageStartBlockHeight
+
+	// Validate count and root_hash
+	if msg.Count == 0 {
+		return nil, sdkerrors.Wrap(types.ErrIllegalState, "count must be greater than 0")
+	}
+	if len(msg.RootHash) != 32 {
+		return nil, sdkerrors.Wrap(types.ErrIllegalState, fmt.Sprintf("root_hash must be 32 bytes, got %d", len(msg.RootHash)))
+	}
+
+	// Check for active confirmation PoC event first
+	activeEvent, isActive, err := k.Keeper.GetActiveConfirmationPoCEvent(ctx)
+	if err != nil {
+		k.LogError(PocFailureTag+"[PoCV2StoreCommit] Error checking confirmation PoC event", types.PoC, "error", err)
+	}
+
+	// Validate PoC window (same as SubmitPocBatchesV2)
+	if isActive && activeEvent != nil && activeEvent.Phase == types.ConfirmationPoCPhase_CONFIRMATION_POC_GENERATION {
+		if startBlockHeight != activeEvent.TriggerHeight {
+			return nil, sdkerrors.Wrap(types.ErrPocWrongStartBlockHeight,
+				fmt.Sprintf("confirmation PoC: start block height %d doesn't match event trigger %d", startBlockHeight, activeEvent.TriggerHeight))
+		}
+		epochParams := k.GetParams(ctx).EpochParams
+		if !activeEvent.IsInBatchSubmissionWindow(currentBlockHeight, epochParams) {
+			return nil, sdkerrors.Wrap(types.ErrPocTooLate, "confirmation PoC batch submission window closed")
+		}
+	} else {
+		epochParams := k.Keeper.GetParams(goCtx).EpochParams
+		upcomingEpoch, found := k.Keeper.GetUpcomingEpoch(ctx)
+		if !found {
+			return nil, sdkerrors.Wrap(types.ErrUpcomingEpochNotFound, "failed to get upcoming epoch")
+		}
+		epochContext := types.NewEpochContext(*upcomingEpoch, *epochParams)
+
+		if !epochContext.IsStartOfPocStage(startBlockHeight) {
+			return nil, sdkerrors.Wrap(types.ErrPocWrongStartBlockHeight,
+				fmt.Sprintf("start block height %d doesn't match PoC stage start %d", startBlockHeight, epochContext.PocStartBlockHeight))
+		}
+		if !epochContext.IsPoCExchangeWindow(currentBlockHeight) {
+			return nil, sdkerrors.Wrap(types.ErrPocTooLate, "PoC exchange window closed")
+		}
+	}
+
+	// Store commit (overwrites previous - latest wins)
+	addr := sdk.MustAccAddressFromBech32(msg.Creator)
+	commit := types.PoCV2StoreCommit{
+		ParticipantAddress:       msg.Creator,
+		PocStageStartBlockHeight: startBlockHeight,
+		Count:                    msg.Count,
+		RootHash:                 msg.RootHash,
+	}
+
+	pk := collections.Join(startBlockHeight, addr)
+	if err := k.PoCV2StoreCommits.Set(ctx, pk, commit); err != nil {
+		return nil, sdkerrors.Wrap(types.ErrIllegalState, fmt.Sprintf("failed to store commit: %v", err))
+	}
+
+	k.LogInfo("[PoCV2StoreCommit] Stored", types.PoC,
+		"participant", msg.Creator,
+		"startBlockHeight", startBlockHeight,
+		"count", msg.Count)
+
+	return &types.MsgPoCV2StoreCommitResponse{}, nil
+}
+
+// MLNodeWeightDistribution handles submission of per-node weight distribution.
+func (k msgServer) MLNodeWeightDistribution(goCtx context.Context, msg *types.MsgMLNodeWeightDistribution) (*types.MsgMLNodeWeightDistributionResponse, error) {
+	ctx := sdk.UnwrapSDKContext(goCtx)
+	currentBlockHeight := ctx.BlockHeight()
+	startBlockHeight := msg.PocStageStartBlockHeight
+
+	if len(msg.Weights) == 0 {
+		return nil, sdkerrors.Wrap(types.ErrIllegalState, "weights must not be empty")
+	}
+
+	// Check for active confirmation PoC event first
+	activeEvent, isActive, err := k.Keeper.GetActiveConfirmationPoCEvent(ctx)
+	if err != nil {
+		k.LogError(PocFailureTag+"[MLNodeWeightDistribution] Error checking confirmation PoC event", types.PoC, "error", err)
+	}
+
+	// Validate window: accept from exchange window through end of validation
+	if isActive && activeEvent != nil {
+		if startBlockHeight != activeEvent.TriggerHeight {
+			return nil, sdkerrors.Wrap(types.ErrPocWrongStartBlockHeight,
+				fmt.Sprintf("confirmation PoC: start block height %d doesn't match event trigger %d", startBlockHeight, activeEvent.TriggerHeight))
+		}
+		epochParams := k.GetParams(ctx).EpochParams
+		validationEnd := activeEvent.GetValidationEnd(epochParams)
+		if currentBlockHeight > validationEnd {
+			return nil, sdkerrors.Wrap(types.ErrPocTooLate, "confirmation PoC validation window closed")
+		}
+	} else {
+		epochParams := k.Keeper.GetParams(goCtx).EpochParams
+		upcomingEpoch, found := k.Keeper.GetUpcomingEpoch(ctx)
+		if !found {
+			return nil, sdkerrors.Wrap(types.ErrUpcomingEpochNotFound, "failed to get upcoming epoch")
+		}
+		epochContext := types.NewEpochContext(*upcomingEpoch, *epochParams)
+
+		if !epochContext.IsStartOfPocStage(startBlockHeight) {
+			return nil, sdkerrors.Wrap(types.ErrPocWrongStartBlockHeight,
+				fmt.Sprintf("start block height %d doesn't match PoC stage start %d", startBlockHeight, epochContext.PocStartBlockHeight))
+		}
+		// Accept through end of validation phase
+		validationEnd := epochContext.EndOfPoCValidation()
+		if currentBlockHeight > validationEnd {
+			return nil, sdkerrors.Wrap(types.ErrPocTooLate, "PoC validation window closed")
+		}
+	}
+
+	// Store distribution (overwrites previous - latest wins)
+	addr := sdk.MustAccAddressFromBech32(msg.Creator)
+	distribution := types.MLNodeWeightDistribution{
+		ParticipantAddress:       msg.Creator,
+		PocStageStartBlockHeight: startBlockHeight,
+		Weights:                  msg.Weights,
+	}
+
+	pk := collections.Join(startBlockHeight, addr)
+	if err := k.MLNodeWeightDistributions.Set(ctx, pk, distribution); err != nil {
+		return nil, sdkerrors.Wrap(types.ErrIllegalState, fmt.Sprintf("failed to store distribution: %v", err))
+	}
+
+	k.LogInfo("[MLNodeWeightDistribution] Stored", types.PoC,
+		"participant", msg.Creator,
+		"startBlockHeight", startBlockHeight,
+		"nodeCount", len(msg.Weights))
+
+	return &types.MsgMLNodeWeightDistributionResponse{}, nil
+}

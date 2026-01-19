@@ -23,6 +23,7 @@ import (
 	"decentralized-api/pocartifacts"
 
 	coretypes "github.com/cometbft/cometbft/rpc/core/types"
+	"github.com/productscience/inference/api/inference/inference"
 	"github.com/productscience/inference/x/inference/types"
 	"google.golang.org/grpc"
 )
@@ -71,6 +72,7 @@ type OnNewBlockDispatcher struct {
 	validator             *validation.InferenceValidator
 	epochGroupDataCache   *internal.EpochGroupDataCache
 	artifactStore         *pocartifacts.ManagedArtifactStore
+	recorder              cosmosclient.CosmosMessageClient
 }
 
 // StatusResponse matches the structure expected by getStatus function
@@ -159,6 +161,7 @@ func NewOnNewBlockDispatcherFromCosmosClient(
 		validator,
 	)
 	dispatcher.epochGroupDataCache = epochGroupDataCache
+	dispatcher.recorder = cosmosClient
 	return dispatcher
 }
 
@@ -179,6 +182,49 @@ func (d *OnNewBlockDispatcher) stopArtifactFlush() {
 		d.artifactStore.StopPeriodicFlush()
 		logging.Info("Stopped artifact flush", types.PoC)
 	}
+}
+
+func (d *OnNewBlockDispatcher) submitNodeWeightDistribution(pocStageStartHeight int64) {
+	if d.artifactStore == nil || d.recorder == nil {
+		return
+	}
+
+	store, err := d.artifactStore.GetOrCreateStore(pocStageStartHeight)
+	if err != nil {
+		logging.Warn("Failed to get artifact store for weight distribution", types.PoC,
+			"pocStageStartHeight", pocStageStartHeight, "error", err)
+		return
+	}
+
+	distribution := store.GetNodeDistribution()
+	if len(distribution) == 0 {
+		logging.Debug("No node distribution to submit", types.PoC,
+			"pocStageStartHeight", pocStageStartHeight)
+		return
+	}
+
+	weights := make([]*inference.MLNodeWeight, 0, len(distribution))
+	for nodeId, count := range distribution {
+		weights = append(weights, &inference.MLNodeWeight{
+			NodeId: nodeId,
+			Weight: count,
+		})
+	}
+
+	msg := &inference.MsgMLNodeWeightDistribution{
+		PocStageStartBlockHeight: pocStageStartHeight,
+		Weights:                  weights,
+	}
+
+	if err := d.recorder.SubmitMLNodeWeightDistribution(msg); err != nil {
+		logging.Warn("Failed to submit node weight distribution", types.PoC,
+			"pocStageStartHeight", pocStageStartHeight, "error", err)
+		return
+	}
+
+	logging.Info("Submitted node weight distribution", types.PoC,
+		"pocStageStartHeight", pocStageStartHeight,
+		"nodeCount", len(weights))
 }
 
 // ProcessNewBlock is the main entry point for processing new block events
@@ -355,6 +401,8 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 		logging.Info("DapiStage:IsEndOfPoCStage. Calling MoveToValidationStage", types.Stages,
 			"blockHeigh", blockHeight, "blockHash", blockHash)
 		d.stopArtifactFlush()
+		// Submit weight distribution after flush stops (data is now persisted)
+		go d.submitNodeWeightDistribution(epochContext.PocStartBlockHeight)
 		command := broker.NewInitValidateCommand()
 		err := d.nodeBroker.QueueMessage(command)
 		if err != nil {

@@ -131,6 +131,17 @@ service Query {
 
   }
 
+  // PoC v2 off-chain commit queries
+  rpc PoCV2StoreCommit (QueryPoCV2StoreCommitRequest) returns (QueryPoCV2StoreCommitResponse) {
+    option (google.api.http).get = "/productscience/inference/inference/poc_v2_store_commit/{poc_stage_start_block_height}/{participant_address}";
+
+  }
+
+  rpc MLNodeWeightDistribution (QueryMLNodeWeightDistributionRequest) returns (QueryMLNodeWeightDistributionResponse) {
+    option (google.api.http).get = "/productscience/inference/inference/mlnode_weight_distribution/{poc_stage_start_block_height}/{participant_address}";
+
+  }
+
   // Queries a list of GetCurrentEpoch items.
   rpc GetCurrentEpoch (QueryGetCurrentEpochRequest) returns (QueryGetCurrentEpochResponse) {
     option (google.api.http).get = "/productscience/inference/inference/get_current_epoch";
@@ -624,6 +635,28 @@ message PoCValidationsWithParticipantsV2 {
            string           pub_key        = 2;
            string           hex_pub_key    = 3;
   repeated PoCValidationV2  poc_validation = 4 [(gogoproto.nullable) = false];
+}
+
+// PoC v2 off-chain commit query messages
+message QueryPoCV2StoreCommitRequest {
+  int64  poc_stage_start_block_height = 1;
+  string participant_address = 2;
+}
+
+message QueryPoCV2StoreCommitResponse {
+  uint32 count = 1;
+  bytes  root_hash = 2;
+  bool   found = 3;
+}
+
+message QueryMLNodeWeightDistributionRequest {
+  int64  poc_stage_start_block_height = 1;
+  string participant_address = 2;
+}
+
+message QueryMLNodeWeightDistributionResponse {
+  repeated MLNodeWeight weights = 1;
+  bool found = 2;
 }
 
 message QueryGetCurrentEpochRequest {}
