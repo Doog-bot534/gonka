@@ -15,6 +15,17 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 
 	k.LogInfo("FinishInference", types.Inferences, "inference_id", msg.InferenceId, "executed_by", msg.ExecutedBy, "created_by", msg.Creator)
 
+	// We rely on the tx-level signature (cosmos.msg.v1.signer = "creator") for executor authorization.
+	// Therefore the tx signer must be the executor.
+	if msg.Creator != msg.ExecutedBy {
+		k.LogError("FinishInference: creator must equal executed_by", types.Inferences,
+			"creator", msg.Creator,
+			"executed_by", msg.ExecutedBy,
+			"inference_id", msg.InferenceId,
+		)
+		return failedFinish(ctx, sdkerrors.Wrapf(types.ErrInvalidSignature, "creator must equal executed_by"), msg), nil
+	}
+
 	if msg.PromptTokenCount > types.MaxAllowedTokens {
 		return failedFinish(ctx, sdkerrors.Wrapf(types.ErrTokenCountOutOfRange, "prompt_token_count exceeds limit (%d > %d)", msg.PromptTokenCount, types.MaxAllowedTokens), msg), nil
 	}
@@ -29,8 +40,8 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 		return failedFinish(ctx, sdkerrors.Wrap(types.ErrDeveloperNotAllowlisted, msg.RequestedBy), msg), nil
 	}
 
-	executor, found := k.GetParticipant(ctx, msg.ExecutedBy)
-	if !found {
+	// Executor must still be a registered participant (used for stats, payments, and epoch group logic).
+	if _, found := k.GetParticipant(ctx, msg.ExecutedBy); !found {
 		k.LogError("FinishInference: executor not found", types.Inferences, "executed_by", msg.ExecutedBy)
 		return failedFinish(ctx, sdkerrors.Wrap(types.ErrParticipantNotFound, msg.ExecutedBy), msg), nil
 	}
@@ -47,7 +58,7 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 		return failedFinish(ctx, sdkerrors.Wrap(types.ErrParticipantNotFound, msg.TransferredBy), msg), nil
 	}
 
-	err := k.verifyFinishKeys(ctx, msg, &transferAgent, &requestor, &executor)
+	err := k.verifyFinishKeys(ctx, msg, &transferAgent, &requestor)
 	if err != nil {
 		k.LogError("FinishInference: verifyKeys failed", types.Inferences, "error", err)
 		return failedFinish(ctx, sdkerrors.Wrap(types.ErrInvalidSignature, err.Error()), msg), nil
@@ -122,11 +133,10 @@ func failedFinish(ctx sdk.Context, err error, msg *types.MsgFinishInference) *ty
 	}
 }
 
-func (k msgServer) verifyFinishKeys(ctx sdk.Context, msg *types.MsgFinishInference, transferAgent *types.Participant, requestor *types.Participant, executor *types.Participant) error {
+func (k msgServer) verifyFinishKeys(ctx sdk.Context, msg *types.MsgFinishInference, transferAgent *types.Participant, requestor *types.Participant) error {
 	// Hash-based signature verification (post-upgrade flow)
 	// Dev signs: original_prompt_hash + timestamp + ta_address
 	// TA signs: prompt_hash + timestamp + ta_address + executor_address
-	// Executor signs: prompt_hash + timestamp + ta_address + executor_address
 	devComponents := getFinishDevSignatureComponents(msg)
 	taComponents := getFinishTASignatureComponents(msg)
 
@@ -135,24 +145,16 @@ func (k msgServer) verifyFinishKeys(ctx sdk.Context, msg *types.MsgFinishInferen
 		return err
 	}
 
-	// Verify dev signature (original_prompt_hash)
-	if err := calculations.VerifyKeys(ctx, devComponents, calculations.SignatureData{
+	// Verify dev signature (original_prompt_hash) using optimized Eth path
+	if err := calculations.VerifyKeysEth(ctx, devComponents, calculations.SignatureData{
 		DevSignature: msg.InferenceId, Dev: requestor,
 	}, k); err != nil {
 		k.LogError("FinishInference: dev signature failed", types.Inferences, "error", err)
 		return err
 	}
 
-	// Verify TA signature (prompt_hash)
+	// Verify TA signature (prompt_hash) using optimized Eth path
 	if err := k.verifyTASignature(ctx, msg, taComponents, transferAgent); err != nil {
-		return err
-	}
-
-	// Verify Executor signature (prompt_hash)
-	if err := calculations.VerifyKeys(ctx, taComponents, calculations.SignatureData{
-		ExecutorSignature: msg.ExecutorSignature, Executor: executor,
-	}, k); err != nil {
-		k.LogError("FinishInference: Executor signature failed", types.Inferences, "error", err)
 		return err
 	}
 
@@ -162,7 +164,7 @@ func (k msgServer) verifyFinishKeys(ctx sdk.Context, msg *types.MsgFinishInferen
 // verifyTASignature verifies TA signature using prompt_hash.
 // Includes upgrade-epoch fallback for inferences started before hash-based signing.
 func (k msgServer) verifyTASignature(ctx sdk.Context, msg *types.MsgFinishInference, taComponents calculations.SignatureComponents, transferAgent *types.Participant) error {
-	err := calculations.VerifyKeys(ctx, taComponents, calculations.SignatureData{
+	err := calculations.VerifyKeysEth(ctx, taComponents, calculations.SignatureData{
 		TransferSignature: msg.TransferSignature, TransferAgent: transferAgent,
 	}, k)
 	if err == nil {
@@ -177,7 +179,7 @@ func (k msgServer) verifyTASignature(ctx sdk.Context, msg *types.MsgFinishInfere
 		TransferAddress: msg.TransferredBy,
 		ExecutorAddress: msg.ExecutedBy,
 	}
-	if fallbackErr := calculations.VerifyKeys(ctx, directComponents, calculations.SignatureData{
+	if fallbackErr := calculations.VerifyKeysEth(ctx, directComponents, calculations.SignatureData{
 		TransferSignature: msg.TransferSignature, TransferAgent: transferAgent,
 	}, k); fallbackErr != nil {
 		k.LogError("FinishInference: TA signature failed", types.Inferences, "promptHashErr", err, "fallbackErr", fallbackErr)

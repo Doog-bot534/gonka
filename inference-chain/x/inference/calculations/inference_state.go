@@ -74,6 +74,7 @@ func ProcessStartInference(
 	currentInference.TransferredBy = startMessage.Creator
 	currentInference.TransferSignature = startMessage.TransferSignature
 	currentInference.PromptHash = startMessage.PromptHash
+	currentInference.OriginalPromptHash = startMessage.OriginalPromptHash
 	if currentInference.PromptTokenCount == 0 {
 		currentInference.PromptTokenCount = startMessage.PromptTokenCount
 	}
@@ -146,6 +147,21 @@ func ProcessFinishInference(
 		}
 	}
 	currentInference.Status = types.InferenceStatus_FINISHED
+	// Store hashes/ids so StartInference can later verify consistency if FinishInference arrived first.
+	// NOTE: StartProcessed() is based on StartBlockHeight, so storing PromptHash here won't block out-of-order StartInference.
+	if currentInference.PromptHash == "" {
+		currentInference.PromptHash = finishMessage.PromptHash
+	}
+	if currentInference.OriginalPromptHash == "" {
+		currentInference.OriginalPromptHash = finishMessage.OriginalPromptHash
+	}
+	if currentInference.RequestedBy == "" {
+		currentInference.RequestedBy = finishMessage.RequestedBy
+	}
+	if currentInference.AssignedTo == "" {
+		// If FinishInference arrived first, treat the executor as the assigned-to for later consistency checks.
+		currentInference.AssignedTo = finishMessage.ExecutedBy
+	}
 	currentInference.ResponseHash = finishMessage.ResponseHash
 	// PromptTokenCount for Finish can be set to 0 if the inference was streamed and interrupted
 	// before the end of the response. Then we should default to the value set in StartInference.
@@ -187,7 +203,7 @@ func ProcessFinishInference(
 }
 
 func startProcessed(inference *types.Inference) bool {
-	return inference.PromptHash != ""
+	return inference.StartBlockHeight != 0 || inference.StartBlockTimestamp != 0
 }
 
 func finishedProcessed(inference *types.Inference) bool {

@@ -42,17 +42,46 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 	k.LogInfo("DevPubKey", types.Inferences, "DevPubKey", dev.WorkerPublicKey, "DevAddress", dev.Address)
 	k.LogInfo("TransferAgentPubKey", types.Inferences, "TransferAgentPubKey", transferAgent.WorkerPublicKey, "TransferAgentAddress", transferAgent.Address)
 
-	err := k.verifyKeys(ctx, msg, transferAgent, dev)
-	if err != nil {
-		k.LogError("StartInference: verifyKeys failed", types.Inferences, "error", err)
-		return failedStart(ctx, sdkerrors.Wrap(types.ErrInvalidSignature, err.Error()), msg), nil
-	}
-
 	existingInference, found := k.GetInference(ctx, msg.InferenceId)
 
 	if found && existingInference.StartProcessed() {
 		k.LogError("StartInference: inference already started", types.Inferences, "inferenceId", msg.InferenceId)
 		return failedStart(ctx, sdkerrors.Wrap(types.ErrInferenceStartProcessed, "inference has already start processed"), msg), nil
+	}
+
+	// If FinishInference arrived first, avoid re-verifying the developer signature.
+	// Instead, enforce strict consistency with what FinishInference already stored.
+	if found && existingInference.FinishedProcessed() {
+		// Dev signature binds request_timestamp and ta address (creator/transferred_by), so these must match.
+		if existingInference.RequestTimestamp != 0 && msg.RequestTimestamp != existingInference.RequestTimestamp {
+			err := sdkerrors.Wrapf(types.ErrInvalidSignature, "request_timestamp mismatch between Start and Finish")
+			return failedStart(ctx, err, msg), nil
+		}
+		if existingInference.TransferredBy != "" && msg.Creator != existingInference.TransferredBy {
+			err := sdkerrors.Wrapf(types.ErrInvalidSignature, "creator/ta address mismatch between Start and Finish")
+			return failedStart(ctx, err, msg), nil
+		}
+		if existingInference.OriginalPromptHash != "" && msg.OriginalPromptHash != existingInference.OriginalPromptHash {
+			err := sdkerrors.Wrapf(types.ErrInvalidSignature, "original_prompt_hash mismatch between Start and Finish")
+			return failedStart(ctx, err, msg), nil
+		}
+		if existingInference.RequestedBy != "" && msg.RequestedBy != existingInference.RequestedBy {
+			err := sdkerrors.Wrapf(types.ErrInvalidSignature, "requested_by mismatch between Start and Finish")
+			return failedStart(ctx, err, msg), nil
+		}
+		// Prompt hash must be consistent across Start/Finish.
+		if existingInference.PromptHash != "" && msg.PromptHash != existingInference.PromptHash {
+			// Attribute to TA (start message creator) since StartInference is signed by creator at tx-level.
+			_ = k.invalidateInferenceForMismatch(ctx, &existingInference, msg.Creator, "prompt_hash mismatch between Start and Finish")
+			return failedStart(ctx, sdkerrors.Wrapf(types.ErrIllegalState, "prompt_hash mismatch; inference invalidated"), msg), nil
+		}
+	} else {
+		// Normal path: verify dev signature + timestamp freshness.
+		err := k.verifyKeys(ctx, msg, dev)
+		if err != nil {
+			k.LogError("StartInference: verifyKeys failed", types.Inferences, "error", err)
+			return failedStart(ctx, sdkerrors.Wrap(types.ErrInvalidSignature, err.Error()), msg), nil
+		}
 	}
 
 	// Record the current price only if this is the first message (FinishInference not processed yet)
@@ -104,26 +133,18 @@ func failedStart(ctx sdk.Context, error error, message *types.MsgStartInference)
 	}
 }
 
-func (k msgServer) verifyKeys(ctx sdk.Context, msg *types.MsgStartInference, agent types.Participant, dev types.Participant) error {
+func (k msgServer) verifyKeys(ctx sdk.Context, msg *types.MsgStartInference, dev types.Participant) error {
 	devComponents := getDevSignatureComponents(msg)
 
 	if err := k.validateTimestamp(ctx, devComponents, msg.InferenceId, 60); err != nil {
 		return err
 	}
 
-	// Verify dev signature (original_prompt_hash)
-	if err := calculations.VerifyKeys(ctx, devComponents, calculations.SignatureData{
+	// Verify dev signature (original_prompt_hash) using optimized Eth path
+	if err := calculations.VerifyKeysEth(ctx, devComponents, calculations.SignatureData{
 		DevSignature: msg.InferenceId, Dev: &dev,
 	}, k); err != nil {
 		k.LogError("StartInference: dev signature failed", types.Inferences, "error", err)
-		return err
-	}
-
-	// Verify TA signature (prompt_hash)
-	if err := calculations.VerifyKeys(ctx, getTASignatureComponents(msg), calculations.SignatureData{
-		TransferSignature: msg.TransferSignature, TransferAgent: &agent,
-	}, k); err != nil {
-		k.LogError("StartInference: TA signature failed", types.Inferences, "error", err)
 		return err
 	}
 

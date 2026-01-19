@@ -2,6 +2,7 @@ package calculations
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	sdkerrors "cosmossdk.io/errors"
 	"github.com/cometbft/cometbft/crypto"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
+	eth_secp256k1 "github.com/ethereum/go-ethereum/crypto/secp256k1"
 	"github.com/productscience/inference/x/inference/types"
 )
 
@@ -38,7 +40,7 @@ type SignatureData struct {
 	Executor          *types.Participant `json:"executor"`
 }
 
-// VerifyKeys verifies signatures for each non-null participant in SignatureData
+// VerifyKeys verifies signatures for each non-null participant in SignatureData using standard Cosmos validation.
 func VerifyKeys(ctx context.Context, components SignatureComponents, sigData SignatureData, pubKeyGetter PubKeyGetter) error {
 	// Check developer signature if developer participant is provided
 	if sigData.Dev != nil && sigData.DevSignature != "" {
@@ -74,6 +76,92 @@ func VerifyKeys(ctx context.Context, components SignatureComponents, sigData Sig
 		}
 
 		err = ValidateSignatureWithGrantees(components, ExecutorAgent, executorKeys, sigData.ExecutorSignature)
+		if err != nil {
+			return sdkerrors.Wrap(types.ErrInvalidSignature, "executor signature validation failed")
+		}
+	}
+
+	return nil
+}
+
+// VerifyKeysEth verifies signatures for each non-null participant in SignatureData using optimized libsecp256k1.
+func VerifyKeysEth(ctx context.Context, components SignatureComponents, sigData SignatureData, pubKeyGetter PubKeyGetter) error {
+	// Check developer signature if developer participant is provided
+	if sigData.Dev != nil && sigData.DevSignature != "" {
+		devKey, err := pubKeyGetter.GetAccountPubKey(ctx, sigData.Dev.Address)
+		if err != nil {
+			return sdkerrors.Wrap(types.ErrParticipantNotFound, sigData.Dev.Address)
+		}
+
+		bytes := getSignatureBytes(components, Developer)
+		err = ValidateSignatureEth(bytes, devKey, sigData.DevSignature)
+		if err != nil {
+			return sdkerrors.Wrap(types.ErrInvalidSignature, "dev signature validation failed")
+		}
+	}
+
+	// Check transfer agent signature if transfer agent participant is provided
+	if sigData.TransferAgent != nil && sigData.TransferSignature != "" {
+		agentKeys, err := pubKeyGetter.GetAccountPubKeysWithGrantees(ctx, sigData.TransferAgent.Address)
+		if err != nil {
+			return sdkerrors.Wrap(types.ErrParticipantNotFound, sigData.TransferAgent.Address)
+		}
+
+		err = ValidateSignatureWithGranteesEth(components, TransferAgent, agentKeys, sigData.TransferSignature)
+		if err != nil {
+			return sdkerrors.Wrap(types.ErrInvalidSignature, "transfer signature validation failed")
+		}
+	}
+
+	// Check executor signature if executor participant is provided
+	if sigData.Executor != nil && sigData.ExecutorSignature != "" {
+		executorKeys, err := pubKeyGetter.GetAccountPubKeysWithGrantees(ctx, sigData.Executor.Address)
+		if err != nil {
+			return sdkerrors.Wrap(types.ErrParticipantNotFound, sigData.Executor.Address)
+		}
+
+		err = ValidateSignatureWithGranteesEth(components, ExecutorAgent, executorKeys, sigData.ExecutorSignature)
+		if err != nil {
+			return sdkerrors.Wrap(types.ErrInvalidSignature, "executor signature validation failed")
+		}
+	}
+
+	return nil
+}
+
+// VerifyKeysWithParticipantsEth verifies signatures using already loaded Participant objects to avoid redundant lookups.
+func VerifyKeysWithParticipantsEth(ctx context.Context, components SignatureComponents, sigData SignatureData, pubKeyGetter PubKeyGetter) error {
+	// Check developer signature using the provided Dev participant's key
+	if sigData.Dev != nil && sigData.DevSignature != "" {
+		bytes := getSignatureBytes(components, Developer)
+		// Use the WorkerPublicKey already present in the Participant struct
+		err := ValidateSignatureEth(bytes, sigData.Dev.WorkerPublicKey, sigData.DevSignature)
+		if err != nil {
+			return sdkerrors.Wrap(types.ErrInvalidSignature, "dev signature validation failed")
+		}
+	}
+
+	// Check transfer agent signature (must use getter for grantees)
+	if sigData.TransferAgent != nil && sigData.TransferSignature != "" {
+		agentKeys, err := pubKeyGetter.GetAccountPubKeysWithGrantees(ctx, sigData.TransferAgent.Address)
+		if err != nil {
+			return sdkerrors.Wrap(types.ErrParticipantNotFound, sigData.TransferAgent.Address)
+		}
+
+		err = ValidateSignatureWithGranteesEth(components, TransferAgent, agentKeys, sigData.TransferSignature)
+		if err != nil {
+			return sdkerrors.Wrap(types.ErrInvalidSignature, "transfer signature validation failed")
+		}
+	}
+
+	// Check executor signature (must use getter for grantees)
+	if sigData.Executor != nil && sigData.ExecutorSignature != "" {
+		executorKeys, err := pubKeyGetter.GetAccountPubKeysWithGrantees(ctx, sigData.Executor.Address)
+		if err != nil {
+			return sdkerrors.Wrap(types.ErrParticipantNotFound, sigData.Executor.Address)
+		}
+
+		err = ValidateSignatureWithGranteesEth(components, ExecutorAgent, executorKeys, sigData.ExecutorSignature)
 		if err != nil {
 			return sdkerrors.Wrap(types.ErrInvalidSignature, "executor signature validation failed")
 		}
@@ -172,6 +260,62 @@ func validateSignature(bytes []byte, pubKey string, signature string) error {
 	valid := actualKey.VerifySignature(bytes, signatureBytes)
 	if !valid {
 		return errors.New("invalid signature")
+	}
+	return nil
+}
+
+// ValidateSignatureEth verifies a signature using the highly optimized libsecp256k1 (CGO).
+func ValidateSignatureEth(bytes []byte, pubKey string, signature string) error {
+	pubKeyBytes, err := base64.StdEncoding.DecodeString(pubKey)
+	if err != nil {
+		return err
+	}
+
+	signatureBytes, err := base64.StdEncoding.DecodeString(signature)
+	if err != nil {
+		return err
+	}
+
+	// eth_secp256k1 expects a 32-byte hash
+	digest := sha256.Sum256(bytes)
+
+	// VerifySignature(pubkey, hash, signature)
+	valid := eth_secp256k1.VerifySignature(pubKeyBytes, digest[:], signatureBytes)
+	if !valid {
+		return errors.New("invalid signature")
+	}
+	return nil
+}
+
+func ValidateSignatureWithGranteesEth(components SignatureComponents, signatureType SignatureType, pubKeys []string, signature string) error {
+	slog.Info("Validating signature with grantees (Eth)", "type", signatureType, "pubKeys", pubKeys, "signature", signature)
+	slog.Debug("Components", "payload", components.Payload, "epochId", components.EpochId, "timestamp", components.Timestamp, "transferAddress", components.TransferAddress, "executorAddress", components.ExecutorAddress)
+	bytes := getSignatureBytes(components, signatureType)
+
+	signatureBytes, err := base64.StdEncoding.DecodeString(signature)
+	if err != nil {
+		return err
+	}
+
+	digest := sha256.Sum256(bytes)
+
+	errorsMap := map[string]error{}
+	for _, pubKey := range pubKeys {
+		pubKeyBytes, err := base64.StdEncoding.DecodeString(pubKey)
+		if err != nil {
+			errorsMap[pubKey] = err
+			continue
+		}
+
+		if eth_secp256k1.VerifySignature(pubKeyBytes, digest[:], signatureBytes) {
+			return nil
+		}
+		errorsMap[pubKey] = errors.New("invalid signature")
+	}
+
+	if len(errorsMap) > 0 {
+		// Return the first error for compatibility with original behavior
+		return errorsMap[pubKeys[0]]
 	}
 	return nil
 }

@@ -32,9 +32,16 @@ func TestStartProcessed(t *testing.T) {
 			expected:  false,
 		},
 		{
-			name: "Inference with PromptHash",
+			name: "Inference with PromptHash (not sufficient anymore)",
 			inference: &types.Inference{
 				PromptHash: "hash",
+			},
+			expected: false,
+		},
+		{
+			name: "Inference with StartBlockHeight",
+			inference: &types.Inference{
+				StartBlockHeight: 123,
 			},
 			expected: true,
 		},

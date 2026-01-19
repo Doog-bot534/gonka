@@ -27,9 +27,11 @@ func TestMsgServer_OutOfOrderInference(t *testing.T) {
 
 	// For escrow calls
 	mocks.BankKeeper.ExpectAny(ctx)
-	mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), mockRequester.GetBechAddress()).Return(mockRequester).Times(2)
-	mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), mockTransferAgent.GetBechAddress()).Return(mockTransferAgent).Times(2)
-	mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), mockExecutor.GetBechAddress()).Return(mockExecutor).Times(1)
+	// FinishInference verifies the dev signature (needs requester's pubkey) but StartInference may skip
+	// re-verifying the dev signature when FinishInference already stored matching fields.
+	mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), mockRequester.GetBechAddress()).Return(mockRequester).Times(1)
+	mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), mockTransferAgent.GetBechAddress()).Return(mockTransferAgent).Times(1)
+	// ExecutorSignature is no longer verified on-chain; FinishInference no longer needs executor pubkey lookups.
 
 	// For GranteesByMessageType calls (used by both FinishInference and StartInference)
 	mocks.AuthzKeeper.EXPECT().GranterGrants(gomock.Any(), gomock.Any()).Return(&authztypes.QueryGranterGrantsResponse{Grants: []*authztypes.GrantAuthorization{}}, nil).AnyTimes()
@@ -74,6 +76,7 @@ func TestMsgServer_OutOfOrderInference(t *testing.T) {
 	// First, try to finish an inference that hasn't been started yet
 	// With our fix, this should now succeed
 	_, err = ms.FinishInference(ctx, &types.MsgFinishInference{
+		Creator:              mockExecutor.address,
 		InferenceId:          inferenceId,
 		ResponseHash:         "responseHash",
 		ResponsePayload:      "responsePayload",
