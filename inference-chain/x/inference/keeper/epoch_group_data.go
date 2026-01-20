@@ -2,8 +2,10 @@ package keeper
 
 import (
 	"context"
+	"time"
 
 	"cosmossdk.io/collections"
+	"github.com/cosmos/cosmos-sdk/runtime"
 	"github.com/productscience/inference/x/inference/types"
 )
 
@@ -18,9 +20,36 @@ func (k Keeper) GetEpochGroupData(
 	epochIndex uint64,
 	modelId string,
 ) (val types.EpochGroupData, found bool) {
-	val, err := k.EpochGroupDataMap.Get(ctx, collections.Join(epochIndex, modelId))
-
+	key := collections.Join(epochIndex, modelId)
+	keyBytes, err := collections.EncodeKeyWithPrefix(k.EpochGroupDataMap.GetPrefix(), k.EpochGroupDataMap.KeyCodec(), key)
 	if err != nil {
+		k.LogError("GetEpochGroupData: key encode failed", types.EpochGroup, "epoch_index", epochIndex, "model_id", modelId, "error", err)
+		return val, false
+	}
+
+	storeAdapter := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
+	fetchStart := time.Now()
+	valueBytes := storeAdapter.Get(keyBytes)
+	k.LogInfo("GetEpochGroupData: storage fetch complete", types.EpochGroup,
+		"epoch_index", epochIndex,
+		"model_id", modelId,
+		"found", valueBytes != nil,
+		"duration_ms", durationMs(fetchStart),
+	)
+	if valueBytes == nil {
+		return val, false
+	}
+
+	decodeStart := time.Now()
+	val, err = k.EpochGroupDataMap.ValueCodec().Decode(valueBytes)
+	k.LogInfo("GetEpochGroupData: decode complete", types.EpochGroup,
+		"epoch_index", epochIndex,
+		"model_id", modelId,
+		"duration_ms", durationMs(decodeStart),
+		"success", err == nil,
+	)
+	if err != nil {
+		k.LogError("GetEpochGroupData: decode failed", types.EpochGroup, "epoch_index", epochIndex, "model_id", modelId, "error", err)
 		return val, false
 	}
 	return val, true

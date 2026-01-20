@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"time"
 
 	sdkerrors "cosmossdk.io/errors"
 	"cosmossdk.io/math"
@@ -13,40 +14,48 @@ import (
 func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishInference) (*types.MsgFinishInferenceResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
+	startTime := time.Now()
 	k.LogInfo("FinishInference", types.Inferences, "inference_id", msg.InferenceId, "executed_by", msg.ExecutedBy, "created_by", msg.Creator)
 
 	// Developer access gating: until cutoff height only allowlisted developers may run inference flows.
 	// We gate by the original requester (developer), not the executor/TA.
 	if k.IsDeveloperAccessRestricted(ctx, ctx.BlockHeight()) && !k.IsAllowedDeveloper(ctx, msg.RequestedBy) {
-		k.LogError("FinishInference: developer is not allowlisted at this height", types.Inferences, "developer", msg.RequestedBy, "blockHeight", ctx.BlockHeight())
+		k.LogError("FinishInference: developer is not allowlisted at this height", types.Inferences, "inference_id", msg.InferenceId, "developer", msg.RequestedBy, "blockHeight", ctx.BlockHeight())
 		return failedFinish(ctx, sdkerrors.Wrap(types.ErrDeveloperNotAllowlisted, msg.RequestedBy), msg), nil
 	}
+	k.LogInfo("FinishInference: developer access check complete", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(startTime))
 
+	participantsStart := time.Now()
 	executor, found := k.GetParticipant(ctx, msg.ExecutedBy)
 	if !found {
-		k.LogError("FinishInference: executor not found", types.Inferences, "executed_by", msg.ExecutedBy)
+		k.LogError("FinishInference: executor not found", types.Inferences, "inference_id", msg.InferenceId, "executed_by", msg.ExecutedBy)
 		return failedFinish(ctx, sdkerrors.Wrap(types.ErrParticipantNotFound, msg.ExecutedBy), msg), nil
 	}
 
 	requestor, found := k.GetParticipant(ctx, msg.RequestedBy)
 	if !found {
-		k.LogError("FinishInference: requestor not found", types.Inferences, "requested_by", msg.RequestedBy)
+		k.LogError("FinishInference: requestor not found", types.Inferences, "inference_id", msg.InferenceId, "requested_by", msg.RequestedBy)
 		return failedFinish(ctx, sdkerrors.Wrap(types.ErrParticipantNotFound, msg.RequestedBy), msg), nil
 	}
 
 	transferAgent, found := k.GetParticipant(ctx, msg.TransferredBy)
 	if !found {
-		k.LogError("FinishInference: transfer agent not found", types.Inferences, "transferred_by", msg.TransferredBy)
+		k.LogError("FinishInference: transfer agent not found", types.Inferences, "inference_id", msg.InferenceId, "transferred_by", msg.TransferredBy)
 		return failedFinish(ctx, sdkerrors.Wrap(types.ErrParticipantNotFound, msg.TransferredBy), msg), nil
 	}
+	k.LogInfo("FinishInference: participants fetched", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(participantsStart))
 
+	verifyStart := time.Now()
 	err := k.verifyFinishKeys(ctx, msg, &transferAgent, &requestor, &executor)
 	if err != nil {
-		k.LogError("FinishInference: verifyKeys failed", types.Inferences, "error", err)
+		k.LogError("FinishInference: verifyKeys failed", types.Inferences, "inference_id", msg.InferenceId, "error", err)
 		return failedFinish(ctx, sdkerrors.Wrap(types.ErrInvalidSignature, err.Error()), msg), nil
 	}
+	k.LogInfo("FinishInference: verifyKeys complete", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(verifyStart))
 
+	getInferenceStart := time.Now()
 	existingInference, found := k.GetInference(ctx, msg.InferenceId)
+	k.LogInfo("FinishInference: GetInference complete", types.Inferences, "inference_id", msg.InferenceId, "found", found, "duration_ms", durationMs(getInferenceStart))
 
 	if found && existingInference.FinishedProcessed() {
 		k.LogError("FinishInference: inference already finished", types.Inferences, "inferenceId", msg.InferenceId)
@@ -64,8 +73,10 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 	// Record the current price only if this is the first message (StartInference not processed yet)
 	// This ensures consistent pricing regardless of message arrival order
 	if !existingInference.StartProcessed() {
+		priceStart := time.Now()
 		existingInference.Model = msg.Model
 		k.RecordInferencePrice(goCtx, &existingInference, msg.InferenceId)
+		k.LogInfo("FinishInference: RecordInferencePrice complete", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(priceStart))
 	} else if existingInference.Model == "" {
 		k.LogError("FinishInference: model not set by the processed start message", types.Inferences,
 			"inferenceId", msg.InferenceId,
@@ -82,22 +93,31 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 		BlockTimestamp: ctx.BlockTime().UnixMilli(),
 	}
 
+	processStart := time.Now()
 	inference, payments := calculations.ProcessFinishInference(&existingInference, msg, blockContext, k)
+	k.LogInfo("FinishInference: ProcessFinishInference complete", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(processStart))
 
+	paymentsStart := time.Now()
 	finalInference, err := k.processInferencePayments(ctx, inference, payments)
 	if err != nil {
 		return failedFinish(ctx, err, msg), nil
 	}
+	k.LogInfo("FinishInference: processInferencePayments complete", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(paymentsStart))
+	setInferenceStart := time.Now()
 	err = k.SetInference(ctx, *finalInference)
 	if err != nil {
 		return failedFinish(ctx, err, msg), nil
 	}
+	k.LogInfo("FinishInference: SetInference complete", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(setInferenceStart))
 	if existingInference.IsCompleted() {
-		err := k.handleInferenceCompleted(ctx, finalInference)
+		completedStart := time.Now()
+		err := k.handleInferenceCompleted(ctx, finalInference, "FinishInference")
 		if err != nil {
 			return failedFinish(ctx, err, msg), nil
 		}
+		k.LogInfo("FinishInference: handleInferenceCompleted complete", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(completedStart))
 	}
+	k.LogInfo("FinishInference: completed", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(startTime))
 
 	return &types.MsgFinishInferenceResponse{InferenceIndex: msg.InferenceId}, nil
 }
@@ -126,10 +146,19 @@ func (k msgServer) verifyFinishKeys(ctx sdk.Context, msg *types.MsgFinishInferen
 	}
 
 	// Verify dev signature (original_prompt_hash)
-	if err := calculations.VerifyKeys(ctx, devComponents, calculations.SignatureData{
-		DevSignature: msg.InferenceId, Dev: requestor,
-	}, k); err != nil {
-		k.LogError("FinishInference: dev signature failed", types.Inferences, "error", err)
+	if err := k.verifySignatureWithTiming(
+		ctx,
+		devComponents,
+		calculations.Developer,
+		msg.InferenceId,
+		requestor,
+		false,
+		"inference_id",
+		msg.InferenceId,
+		"FinishInference",
+		"dev",
+	); err != nil {
+		k.LogError("FinishInference: dev signature failed", types.Inferences, "inference_id", msg.InferenceId, "error", err)
 		return err
 	}
 
@@ -139,10 +168,19 @@ func (k msgServer) verifyFinishKeys(ctx sdk.Context, msg *types.MsgFinishInferen
 	}
 
 	// Verify Executor signature (prompt_hash)
-	if err := calculations.VerifyKeys(ctx, taComponents, calculations.SignatureData{
-		ExecutorSignature: msg.ExecutorSignature, Executor: executor,
-	}, k); err != nil {
-		k.LogError("FinishInference: Executor signature failed", types.Inferences, "error", err)
+	if err := k.verifySignatureWithTiming(
+		ctx,
+		taComponents,
+		calculations.ExecutorAgent,
+		msg.ExecutorSignature,
+		executor,
+		true,
+		"inference_id",
+		msg.InferenceId,
+		"FinishInference",
+		"executor",
+	); err != nil {
+		k.LogError("FinishInference: Executor signature failed", types.Inferences, "inference_id", msg.InferenceId, "error", err)
 		return err
 	}
 
@@ -152,9 +190,35 @@ func (k msgServer) verifyFinishKeys(ctx sdk.Context, msg *types.MsgFinishInferen
 // verifyTASignature verifies TA signature using prompt_hash.
 // Includes upgrade-epoch fallback for inferences started before hash-based signing.
 func (k msgServer) verifyTASignature(ctx sdk.Context, msg *types.MsgFinishInference, taComponents calculations.SignatureComponents, transferAgent *types.Participant) error {
-	err := calculations.VerifyKeys(ctx, taComponents, calculations.SignatureData{
-		TransferSignature: msg.TransferSignature, TransferAgent: transferAgent,
-	}, k)
+	if transferAgent == nil || msg.TransferSignature == "" {
+		return nil
+	}
+
+	fetchStart := time.Now()
+	pubKeys, err := k.GetAccountPubKeysWithGrantees(ctx, transferAgent.Address)
+	if err != nil {
+		k.LogError("FinishInference: verifyKeys transfer pubkey fetch failed", types.Inferences,
+			"inference_id", msg.InferenceId,
+			"participant", transferAgent.Address,
+			"error", err,
+		)
+		return sdkerrors.Wrap(types.ErrParticipantNotFound, transferAgent.Address)
+	}
+	k.LogInfo("FinishInference: verifyKeys transfer pubkey fetch complete", types.Inferences,
+		"inference_id", msg.InferenceId,
+		"participant", transferAgent.Address,
+		"key_count", len(pubKeys),
+		"duration_ms", durationMs(fetchStart),
+	)
+
+	validateStart := time.Now()
+	err = calculations.ValidateSignatureWithGrantees(taComponents, calculations.TransferAgent, pubKeys, msg.TransferSignature)
+	k.LogInfo("FinishInference: verifyKeys transfer signature validation complete", types.Inferences,
+		"inference_id", msg.InferenceId,
+		"participant", transferAgent.Address,
+		"duration_ms", durationMs(validateStart),
+		"success", err == nil,
+	)
 	if err == nil {
 		return nil
 	}
@@ -167,14 +231,20 @@ func (k msgServer) verifyTASignature(ctx sdk.Context, msg *types.MsgFinishInfere
 		TransferAddress: msg.TransferredBy,
 		ExecutorAddress: msg.ExecutedBy,
 	}
-	if fallbackErr := calculations.VerifyKeys(ctx, directComponents, calculations.SignatureData{
-		TransferSignature: msg.TransferSignature, TransferAgent: transferAgent,
-	}, k); fallbackErr != nil {
-		k.LogError("FinishInference: TA signature failed", types.Inferences, "promptHashErr", err, "fallbackErr", fallbackErr)
-		return err
+	fallbackStart := time.Now()
+	fallbackErr := calculations.ValidateSignatureWithGrantees(directComponents, calculations.TransferAgent, pubKeys, msg.TransferSignature)
+	k.LogInfo("FinishInference: verifyKeys transfer signature fallback validation complete", types.Inferences,
+		"inference_id", msg.InferenceId,
+		"participant", transferAgent.Address,
+		"duration_ms", durationMs(fallbackStart),
+		"success", fallbackErr == nil,
+	)
+	if fallbackErr != nil {
+		k.LogError("FinishInference: TA signature failed", types.Inferences, "inference_id", msg.InferenceId, "promptHashErr", err, "fallbackErr", fallbackErr)
+		return sdkerrors.Wrap(types.ErrInvalidSignature, "transfer signature validation failed")
 	}
 
-	k.LogDebug("FinishInference: Using upgrade-epoch fallback for TA signature", types.Inferences, "inferenceId", msg.InferenceId)
+	k.LogDebug("FinishInference: Using upgrade-epoch fallback for TA signature", types.Inferences, "inference_id", msg.InferenceId)
 	return nil
 }
 
@@ -200,42 +270,64 @@ func getFinishTASignatureComponents(msg *types.MsgFinishInference) calculations.
 	}
 }
 
-func (k msgServer) handleInferenceCompleted(ctx sdk.Context, existingInference *types.Inference) error {
+func (k msgServer) handleInferenceCompleted(ctx sdk.Context, existingInference *types.Inference, source string) error {
+	startTime := time.Now()
+
 	ctx.EventManager().EmitEvent(
 		sdk.NewEvent(
 			"inference_finished",
 			sdk.NewAttribute("inference_id", existingInference.InferenceId),
 		),
 	)
+	k.LogInfo("handleInferenceCompleted: emit event complete", types.Inferences,
+		"inference_id", existingInference.InferenceId, "source", source,
+		"duration_ms", durationMs(startTime),
+	)
 
+	executorStart := time.Now()
 	executedBy := existingInference.ExecutedBy
 	executor, found := k.GetParticipant(ctx, executedBy)
 	if !found {
-		k.LogError("handleInferenceCompleted: executor not found", types.Inferences, "executed_by", executedBy)
+		k.LogError("handleInferenceCompleted: executor not found", types.Inferences, "inference_id", existingInference.InferenceId, "source", source, "executed_by", executedBy)
 	} else {
 		executor.CurrentEpochStats.InferenceCount++
 		executor.LastInferenceTime = existingInference.EndBlockTimestamp
 		if err := k.SetParticipant(ctx, executor); err != nil {
 			return err
 		}
-
 	}
+	k.LogInfo("handleInferenceCompleted: executor update complete", types.Inferences,
+		"inference_id", existingInference.InferenceId, "source", source,
+		"duration_ms", durationMs(executorStart),
+	)
 
+	effectiveEpochStart := time.Now()
 	effectiveEpoch, found := k.GetEffectiveEpoch(ctx)
 	if !found {
-		k.LogError("Effective Epoch Index not found", types.EpochGroup)
+		k.LogError("Effective Epoch Index not found", types.EpochGroup, "inference_id", existingInference.InferenceId, "source", source)
 		return types.ErrEffectiveEpochNotFound.Wrapf("handleInferenceCompleted: Effective Epoch Index not found")
 	}
+	k.LogInfo("handleInferenceCompleted: GetEffectiveEpoch complete", types.Inferences,
+		"inference_id", existingInference.InferenceId, "source", source,
+		"duration_ms", durationMs(effectiveEpochStart),
+	)
+
+	epochGroupStart := time.Now()
 	currentEpochGroup, err := k.GetEpochGroupForEpoch(ctx, *effectiveEpoch)
 	if err != nil {
-		k.LogError("Unable to get current Epoch Group", types.EpochGroup, "err", err)
+		k.LogError("Unable to get current Epoch Group", types.EpochGroup, "inference_id", existingInference.InferenceId, "source", source, "err", err)
 		return err
 	}
+	k.LogInfo("handleInferenceCompleted: GetEpochGroupForEpoch complete", types.Inferences,
+		"inference_id", existingInference.InferenceId, "source", source,
+		"duration_ms", durationMs(epochGroupStart),
+	)
 
 	existingInference.EpochPocStartBlockHeight = uint64(effectiveEpoch.PocStartBlockHeight)
 	existingInference.EpochId = effectiveEpoch.Index
 	currentEpochGroup.GroupData.NumberOfRequests++
 
+	subGroupStart := time.Now()
 	executorPower := uint64(0)
 	executorReputation := int32(0)
 	for _, weight := range currentEpochGroup.GroupData.ValidationWeights {
@@ -248,9 +340,13 @@ func (k msgServer) handleInferenceCompleted(ctx sdk.Context, existingInference *
 
 	modelEpochGroup, err := currentEpochGroup.GetSubGroup(ctx, existingInference.Model)
 	if err != nil {
-		k.LogError("Unable to get model Epoch Group", types.EpochGroup, "err", err)
+		k.LogError("Unable to get model Epoch Group", types.EpochGroup, "inference_id", existingInference.InferenceId, "source", source, "err", err)
 		return err
 	}
+	k.LogInfo("handleInferenceCompleted: executor power and GetSubGroup complete", types.Inferences,
+		"inference_id", existingInference.InferenceId, "source", source,
+		"duration_ms", durationMs(subGroupStart),
+	)
 
 	inferenceDetails := types.InferenceValidationDetails{
 		InferenceId:          existingInference.InferenceId,
@@ -270,6 +366,7 @@ func (k msgServer) handleInferenceCompleted(ctx sdk.Context, existingInference *
 			"epoch_start_block_height", currentEpochGroup.GroupData.PocStartBlockHeight,
 			"group_id", modelEpochGroup.GroupData.EpochGroupId,
 			"inference_id", existingInference.InferenceId,
+			"source", source,
 			"executor_id", inferenceDetails.ExecutorId,
 			"executor_power", inferenceDetails.ExecutorPower,
 		)
@@ -278,17 +375,41 @@ func (k msgServer) handleInferenceCompleted(ctx sdk.Context, existingInference *
 		"Adding Inference Validation Details",
 		types.Validation,
 		"inference_id", inferenceDetails.InferenceId,
+		"source", source,
 		"epoch_id", inferenceDetails.EpochId,
 		"executor_id", inferenceDetails.ExecutorId,
 		"executor_power", inferenceDetails.ExecutorPower,
 		"executor_reputation", inferenceDetails.ExecutorReputation,
 		"traffic_basis", inferenceDetails.TrafficBasis,
 	)
+
+	validationDetailsStart := time.Now()
 	k.SetInferenceValidationDetails(ctx, inferenceDetails)
+	k.LogInfo("handleInferenceCompleted: SetInferenceValidationDetails complete", types.Inferences,
+		"inference_id", existingInference.InferenceId, "source", source,
+		"duration_ms", durationMs(validationDetailsStart),
+	)
+
+	setInferenceStart := time.Now()
 	err = k.SetInference(ctx, *existingInference)
 	if err != nil {
 		return err
 	}
+	k.LogInfo("handleInferenceCompleted: SetInference complete", types.Inferences,
+		"inference_id", existingInference.InferenceId, "source", source,
+		"duration_ms", durationMs(setInferenceStart),
+	)
+
+	setEpochGroupStart := time.Now()
 	k.SetEpochGroupData(ctx, *currentEpochGroup.GroupData)
+	k.LogInfo("handleInferenceCompleted: SetEpochGroupData complete", types.Inferences,
+		"inference_id", existingInference.InferenceId, "source", source,
+		"duration_ms", durationMs(setEpochGroupStart),
+	)
+
+	k.LogInfo("handleInferenceCompleted: complete", types.Inferences,
+		"inference_id", existingInference.InferenceId, "source", source,
+		"duration_ms", durationMs(startTime),
+	)
 	return nil
 }

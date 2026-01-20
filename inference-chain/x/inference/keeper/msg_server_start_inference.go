@@ -14,34 +14,42 @@ import (
 
 func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInference) (*types.MsgStartInferenceResponse, error) {
 	var ctx sdk.Context = sdk.UnwrapSDKContext(goCtx)
+	startTime := time.Now()
 	k.LogInfo("StartInference", types.Inferences, "inferenceId", msg.InferenceId, "creator", msg.Creator, "requestedBy", msg.RequestedBy, "model", msg.Model)
 
 	// Developer access gating: before the cutoff height, only allowlisted developers may request inferences.
 	if k.IsDeveloperAccessRestricted(ctx, ctx.BlockHeight()) && !k.IsAllowedDeveloper(ctx, msg.RequestedBy) {
 		return failedStart(ctx, sdkerrors.Wrap(types.ErrDeveloperNotAllowlisted, msg.RequestedBy), msg), nil
 	}
+	k.LogInfo("StartInference: developer access check complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(startTime))
 
+	participantsStart := time.Now()
 	transferAgent, found := k.GetParticipant(ctx, msg.Creator)
 	if !found {
-		k.LogError("Creator not found", types.Inferences, "creator", msg.Creator, "msg", "StartInference")
+		k.LogError("Creator not found", types.Inferences, "inferenceId", msg.InferenceId, "creator", msg.Creator, "msg", "StartInference")
 		return failedStart(ctx, sdkerrors.Wrap(types.ErrParticipantNotFound, msg.Creator), msg), nil
 	}
 	dev, found := k.GetParticipant(ctx, msg.RequestedBy)
 	if !found {
-		k.LogError("RequestedBy not found", types.Inferences, "requestedBy", msg.RequestedBy, "msg", "StartInference")
+		k.LogError("RequestedBy not found", types.Inferences, "inferenceId", msg.InferenceId, "requestedBy", msg.RequestedBy, "msg", "StartInference")
 		return failedStart(ctx, sdkerrors.Wrap(types.ErrParticipantNotFound, msg.RequestedBy), msg), nil
 	}
 
-	k.LogInfo("DevPubKey", types.Inferences, "DevPubKey", dev.WorkerPublicKey, "DevAddress", dev.Address)
-	k.LogInfo("TransferAgentPubKey", types.Inferences, "TransferAgentPubKey", transferAgent.WorkerPublicKey, "TransferAgentAddress", transferAgent.Address)
+	k.LogInfo("DevPubKey", types.Inferences, "inferenceId", msg.InferenceId, "DevPubKey", dev.WorkerPublicKey, "DevAddress", dev.Address)
+	k.LogInfo("TransferAgentPubKey", types.Inferences, "inferenceId", msg.InferenceId, "TransferAgentPubKey", transferAgent.WorkerPublicKey, "TransferAgentAddress", transferAgent.Address)
+	k.LogInfo("StartInference: participants fetched", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(participantsStart))
 
+	verifyStart := time.Now()
 	err := k.verifyKeys(ctx, msg, transferAgent, dev)
 	if err != nil {
-		k.LogError("StartInference: verifyKeys failed", types.Inferences, "error", err)
+		k.LogError("StartInference: verifyKeys failed", types.Inferences, "inferenceId", msg.InferenceId, "error", err)
 		return failedStart(ctx, sdkerrors.Wrap(types.ErrInvalidSignature, err.Error()), msg), nil
 	}
+	k.LogInfo("StartInference: verifyKeys complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(verifyStart))
 
+	getInferenceStart := time.Now()
 	existingInference, found := k.GetInference(ctx, msg.InferenceId)
+	k.LogInfo("StartInference: GetInference complete", types.Inferences, "inferenceId", msg.InferenceId, "found", found, "duration_ms", durationMs(getInferenceStart))
 
 	if found && existingInference.StartProcessed() {
 		k.LogError("StartInference: inference already started", types.Inferences, "inferenceId", msg.InferenceId)
@@ -51,8 +59,10 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 	// Record the current price only if this is the first message (FinishInference not processed yet)
 	// This ensures consistent pricing regardless of message arrival order
 	if !existingInference.FinishedProcessed() {
+		priceStart := time.Now()
 		existingInference.Model = msg.Model
 		k.RecordInferencePrice(goCtx, &existingInference, msg.InferenceId)
+		k.LogInfo("StartInference: RecordInferencePrice complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(priceStart))
 	}
 
 	blockContext := calculations.BlockContext{
@@ -60,27 +70,38 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 		BlockTimestamp: ctx.BlockTime().UnixMilli(),
 	}
 
+	processStart := time.Now()
 	inference, payments, err := calculations.ProcessStartInference(&existingInference, msg, blockContext, k)
 	if err != nil {
 		return failedStart(ctx, err, msg), nil
 	}
+	k.LogInfo("StartInference: ProcessStartInference complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(processStart))
 
+	paymentsStart := time.Now()
 	finalInference, err := k.processInferencePayments(ctx, inference, payments)
 	if err != nil {
 		return failedStart(ctx, err, msg), nil
 	}
+	k.LogInfo("StartInference: processInferencePayments complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(paymentsStart))
+	setInferenceStart := time.Now()
 	err = k.SetInference(ctx, *finalInference)
 	if err != nil {
 		return failedStart(ctx, err, msg), nil
 	}
+	k.LogInfo("StartInference: SetInference complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(setInferenceStart))
+	timeoutStart := time.Now()
 	k.addTimeout(ctx, inference)
+	k.LogInfo("StartInference: addTimeout complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(timeoutStart))
 
 	if inference.IsCompleted() {
-		err := k.handleInferenceCompleted(ctx, inference)
+		completedStart := time.Now()
+		err := k.handleInferenceCompleted(ctx, inference, "StartInference")
 		if err != nil {
 			return failedStart(ctx, err, msg), nil
 		}
+		k.LogInfo("StartInference: handleInferenceCompleted complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(completedStart))
 	}
+	k.LogInfo("StartInference: completed", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(startTime))
 
 	return &types.MsgStartInferenceResponse{
 		InferenceIndex: msg.InferenceId,
@@ -105,18 +126,36 @@ func (k msgServer) verifyKeys(ctx sdk.Context, msg *types.MsgStartInference, age
 	}
 
 	// Verify dev signature (original_prompt_hash)
-	if err := calculations.VerifyKeys(ctx, devComponents, calculations.SignatureData{
-		DevSignature: msg.InferenceId, Dev: &dev,
-	}, k); err != nil {
-		k.LogError("StartInference: dev signature failed", types.Inferences, "error", err)
+	if err := k.verifySignatureWithTiming(
+		ctx,
+		devComponents,
+		calculations.Developer,
+		msg.InferenceId,
+		&dev,
+		false,
+		"inferenceId",
+		msg.InferenceId,
+		"StartInference",
+		"dev",
+	); err != nil {
+		k.LogError("StartInference: dev signature failed", types.Inferences, "inferenceId", msg.InferenceId, "error", err)
 		return err
 	}
 
 	// Verify TA signature (prompt_hash)
-	if err := calculations.VerifyKeys(ctx, getTASignatureComponents(msg), calculations.SignatureData{
-		TransferSignature: msg.TransferSignature, TransferAgent: &agent,
-	}, k); err != nil {
-		k.LogError("StartInference: TA signature failed", types.Inferences, "error", err)
+	if err := k.verifySignatureWithTiming(
+		ctx,
+		getTASignatureComponents(msg),
+		calculations.TransferAgent,
+		msg.TransferSignature,
+		&agent,
+		true,
+		"inferenceId",
+		msg.InferenceId,
+		"StartInference",
+		"transfer",
+	); err != nil {
+		k.LogError("StartInference: TA signature failed", types.Inferences, "inferenceId", msg.InferenceId, "error", err)
 		return err
 	}
 
@@ -150,7 +189,7 @@ func (k msgServer) validateTimestamp(
 		extraSeconds*int64(time.Second),
 	)
 	if err != nil {
-		k.LogError("StartInference: validateTimestamp failed", types.Inferences, "error", err)
+		k.LogError("StartInference: validateTimestamp failed", types.Inferences, "inferenceId", inferenceId, "error", err)
 		return err
 	}
 	return err
@@ -166,7 +205,7 @@ func (k msgServer) addTimeout(ctx sdk.Context, inference *types.Inference) {
 
 	if err != nil {
 		// Not fatal, we try to continue
-		k.LogError("Unable to set inference timeout", types.Inferences, err)
+		k.LogError("Unable to set inference timeout", types.Inferences, "inferenceId", inference.InferenceId, "error", err)
 	}
 
 	k.LogInfo("Inference Timeout Set:", types.Inferences,
@@ -179,23 +218,52 @@ func (k msgServer) processInferencePayments(
 	inference *types.Inference,
 	payments *calculations.Payments,
 ) (*types.Inference, error) {
+	startTime := time.Now()
 	if payments.EscrowAmount > 0 {
+		escrowStart := time.Now()
 		escrowAmount, err := k.PutPaymentInEscrow(ctx, inference, payments.EscrowAmount)
 		if err != nil {
+			k.LogError("processInferencePayments: PutPaymentInEscrow failed", types.Payments,
+				"inferenceId", inference.InferenceId,
+				"duration_ms", durationMs(escrowStart),
+				"error", err,
+			)
 			return nil, err
 		}
 		inference.EscrowAmount = escrowAmount
+		k.LogInfo("processInferencePayments: PutPaymentInEscrow complete", types.Payments,
+			"inferenceId", inference.InferenceId,
+			"amount", payments.EscrowAmount,
+			"duration_ms", durationMs(escrowStart),
+		)
 	}
 	if payments.EscrowAmount < 0 {
+		refundStart := time.Now()
 		err := k.IssueRefund(ctx, -payments.EscrowAmount, inference.RequestedBy, "inference_refund:"+inference.InferenceId)
 		if err != nil {
-			k.LogError("Unable to Issue Refund for started inference", types.Payments, err)
+			k.LogError("processInferencePayments: IssueRefund failed", types.Payments,
+				"inferenceId", inference.InferenceId,
+				"duration_ms", durationMs(refundStart),
+				"error", err,
+			)
+		} else {
+			k.LogInfo("processInferencePayments: IssueRefund complete", types.Payments,
+				"inferenceId", inference.InferenceId,
+				"amount", -payments.EscrowAmount,
+				"duration_ms", durationMs(refundStart),
+			)
 		}
 	}
 	if payments.ExecutorPayment > 0 {
+		executorStart := time.Now()
 		executedBy := inference.ExecutedBy
 		executor, found := k.GetParticipant(ctx, executedBy)
 		if !found {
+			k.LogError("processInferencePayments: executor not found", types.Payments,
+				"inferenceId", inference.InferenceId,
+				"executedBy", executedBy,
+				"duration_ms", durationMs(executorStart),
+			)
 			return nil, sdkerrors.Wrap(types.ErrParticipantNotFound, executedBy)
 		}
 		executor.CoinBalance += payments.ExecutorPayment
@@ -203,9 +271,25 @@ func (k msgServer) processInferencePayments(
 		k.SafeLogSubAccountTransaction(ctx, executor.Address, types.ModuleName, types.OwedSubAccount, executor.CoinBalance, "inference_started:"+inference.InferenceId)
 		err := k.SetParticipant(ctx, executor)
 		if err != nil {
+			k.LogError("processInferencePayments: SetParticipant failed", types.Payments,
+				"inferenceId", inference.InferenceId,
+				"executedBy", executedBy,
+				"duration_ms", durationMs(executorStart),
+				"error", err,
+			)
 			return nil, err
 		}
+		k.LogInfo("processInferencePayments: executor payment complete", types.Payments,
+			"inferenceId", inference.InferenceId,
+			"executedBy", executedBy,
+			"amount", payments.ExecutorPayment,
+			"duration_ms", durationMs(executorStart),
+		)
 	}
+	k.LogInfo("processInferencePayments: complete", types.Payments,
+		"inferenceId", inference.InferenceId,
+		"duration_ms", durationMs(startTime),
+	)
 	return inference, nil
 
 }
