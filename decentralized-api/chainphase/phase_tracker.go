@@ -82,7 +82,7 @@ func (t *ChainPhaseTracker) GetCurrentEpochState() *EpochState {
 	}
 }
 
-// To de deleted once you refactor validation
+// To be deleted once you refactor validation
 func (t *ChainPhaseTracker) GetEpochParams() *types.EpochParams {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
@@ -105,9 +105,9 @@ func (t *ChainPhaseTracker) UpdatePocV2Enabled(enabled bool) {
 	t.pocV2Enabled = enabled
 }
 
-// IsPocV2Enabled returns the cached poc_v2_enabled flag.
+// IsPoCv2Enabled returns the cached poc_v2_enabled flag.
 // Returns true by default if not explicitly set.
-func (t *ChainPhaseTracker) IsPocV2Enabled() bool {
+func (t *ChainPhaseTracker) IsPoCv2Enabled() bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 

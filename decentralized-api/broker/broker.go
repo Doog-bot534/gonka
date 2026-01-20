@@ -139,18 +139,18 @@ func (b *Broker) IsPoCv2Enabled() bool {
 	if b == nil || b.phaseTracker == nil {
 		return true // default V2
 	}
-	return b.phaseTracker.IsPocV2Enabled()
+	return b.phaseTracker.IsPoCv2Enabled()
 }
 
-const PoCv2BatchesBasePath = "/v2/poc-batches"
-const PoCv1BatchesBasePath = "/v1/poc-batches"
+const PoCBatchesBasePathV2 = "/v2/poc-batches"
+const PoCBatchesBasePathV1 = "/v1/poc-batches"
 
-func GetPoCv2CallbackBaseURL(callbackUrl string) string {
-	return fmt.Sprintf("%s%s", callbackUrl, PoCv2BatchesBasePath)
+func GetPoCCallbackBaseURLV2(callbackUrl string) string {
+	return fmt.Sprintf("%s%s", callbackUrl, PoCBatchesBasePathV2)
 }
 
-func GetPoCv1CallbackBaseURL(callbackUrl string) string {
-	return fmt.Sprintf("%s%s", callbackUrl, PoCv1BatchesBasePath)
+func GetPoCCallbackBaseURLV1(callbackUrl string) string {
+	return fmt.Sprintf("%s%s", callbackUrl, PoCBatchesBasePathV1)
 }
 
 type ModelArgs struct {
@@ -1141,7 +1141,7 @@ func (b *Broker) getCommandForState(nodeState *NodeState, pocGenParams *pocParam
 						BlockHeight: pocGenParams.startPoCBlockHeight,
 						BlockHash:   pocGenParams.startPoCBlockHash,
 						PubKey:      b.participantInfo.GetPubKey(),
-						CallbackUrl: GetPoCv2CallbackBaseURL(b.callbackUrl),
+						CallbackUrl: GetPoCCallbackBaseURLV2(b.callbackUrl),
 						TotalNodes:  totalNodes,
 						Model:       pocGenParams.modelId,
 						SeqLen:      pocGenParams.seqLen,
@@ -1151,7 +1151,7 @@ func (b *Broker) getCommandForState(nodeState *NodeState, pocGenParams *pocParam
 					BlockHeight: pocGenParams.startPoCBlockHeight,
 					BlockHash:   pocGenParams.startPoCBlockHash,
 					PubKey:      b.participantInfo.GetPubKey(),
-					CallbackUrl: GetPoCv1CallbackBaseURL(b.callbackUrl),
+					CallbackUrl: GetPoCCallbackBaseURLV1(b.callbackUrl),
 					TotalNodes:  totalNodes,
 					ModelParams: nil, // V1 uses chain-stored model params
 				}
@@ -1162,13 +1162,13 @@ func (b *Broker) getCommandForState(nodeState *NodeState, pocGenParams *pocParam
 			if pocGenParams != nil && pocGenParams.startPoCBlockHeight > 0 {
 				// Dispatch V1 or V2 based on governance parameter
 				if b.IsPoCv2Enabled() {
-					return TransitionPoCToValidatingV2Command{}
+					return TransitionPoCToValidatingCommandV2{}
 				}
 				return InitValidateNodeCommandV1{
 					BlockHeight: pocGenParams.startPoCBlockHeight,
 					BlockHash:   pocGenParams.startPoCBlockHash,
 					PubKey:      b.participantInfo.GetPubKey(),
-					CallbackUrl: GetPoCv1CallbackBaseURL(b.callbackUrl),
+					CallbackUrl: GetPoCCallbackBaseURLV1(b.callbackUrl),
 					TotalNodes:  totalNodes,
 					ModelParams: nil, // V1 uses chain-stored model params
 				}

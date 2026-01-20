@@ -8,7 +8,6 @@ import (
 )
 
 // UpdateConfirmationWeightsV1 calculates confirmation weights using on-chain PoCBatch (V1 flow).
-// This is the V1 logic restored from main for backward compatibility.
 func (am AppModule) UpdateConfirmationWeightsV1(
 	ctx context.Context,
 	event *types.ConfirmationPoCEvent,

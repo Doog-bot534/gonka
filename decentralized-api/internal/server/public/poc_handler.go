@@ -107,7 +107,7 @@ func (s *Server) postPocProofs(ctx echo.Context) error {
 	}
 
 	// V1 mode: proof API is not available (batches are on-chain)
-	if s.phaseTracker != nil && !s.phaseTracker.IsPocV2Enabled() {
+	if s.phaseTracker != nil && !s.phaseTracker.IsPoCv2Enabled() {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "proof API requires poc_v2_enabled=true")
 	}
 
@@ -265,7 +265,7 @@ func (s *Server) getPocArtifactsState(ctx echo.Context) error {
 	}
 
 	// V1 mode: artifact state API is not available (batches are on-chain)
-	if s.phaseTracker != nil && !s.phaseTracker.IsPocV2Enabled() {
+	if s.phaseTracker != nil && !s.phaseTracker.IsPoCv2Enabled() {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "artifact state API requires poc_v2_enabled=true")
 	}
 

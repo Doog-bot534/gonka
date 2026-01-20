@@ -286,14 +286,14 @@ func (c StartPoCNodeCommandV2) Execute(ctx context.Context, worker *NodeWorker) 
 	return result
 }
 
-// TransitionPoCToValidatingV2Command is a no-network command that transitions the broker's
+// TransitionPoCToValidatingCommandV2 is a no-network command that transitions the broker's
 // internal node state to POC/Validating when PoC v2 is enabled.
 // Actual v2 validation is handled by the v2 orchestrator (not the broker), which calls
 // StopPowV2 once and then sends GenerateV2 validation requests with artifacts.
 // This command ensures broker state consistency without making any v1 PoW API calls.
-type TransitionPoCToValidatingV2Command struct{}
+type TransitionPoCToValidatingCommandV2 struct{}
 
-func (c TransitionPoCToValidatingV2Command) Execute(ctx context.Context, worker *NodeWorker) NodeResult {
+func (c TransitionPoCToValidatingCommandV2) Execute(ctx context.Context, worker *NodeWorker) NodeResult {
 	result := NodeResult{
 		OriginalTarget:    types.HardwareNodeStatus_POC,
 		OriginalPocTarget: PocStatusValidating,
@@ -312,7 +312,7 @@ func (c TransitionPoCToValidatingV2Command) Execute(ctx context.Context, worker 
 	result.Succeeded = true
 	result.FinalStatus = types.HardwareNodeStatus_POC
 	result.FinalPocStatus = PocStatusValidating
-	logging.Info("[TransitionPoCToValidatingV2Command] Transitioned broker state to POC/Validating (no network call)", types.PoC,
+	logging.Info("[TransitionPoCToValidatingCommandV2] Transitioned broker state to POC/Validating (no network call)", types.PoC,
 		"node_id", worker.nodeId)
 	return result
 }

@@ -10,20 +10,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestTransitionPoCToValidatingV2Command_Success verifies that the v2 validation
+// TestTransitionPoCToValidatingCommandV2_Success verifies that the v2 validation
 // transition command returns the correct state without making any network calls.
-func TestTransitionPoCToValidatingV2Command_Success(t *testing.T) {
+func TestTransitionPoCToValidatingCommandV2_Success(t *testing.T) {
 	node := createTestNode("test-node-v2")
 	mockClient := mlnodeclient.NewMockClient()
 	broker := NewTestBroker2(1)
 	worker := NewNodeWorkerWithClient("test-node-v2", node, mockClient, broker)
 	defer worker.Shutdown()
 
-	cmd := TransitionPoCToValidatingV2Command{}
+	cmd := TransitionPoCToValidatingCommandV2{}
 	result := cmd.Execute(context.Background(), worker)
 
 	// Verify the command succeeds
-	assert.True(t, result.Succeeded, "TransitionPoCToValidatingV2Command should succeed")
+	assert.True(t, result.Succeeded, "TransitionPoCToValidatingCommandV2 should succeed")
 	assert.Equal(t, types.HardwareNodeStatus_POC, result.FinalStatus, "FinalStatus should be POC")
 	assert.Equal(t, PocStatusValidating, result.FinalPocStatus, "FinalPocStatus should be Validating")
 	assert.Equal(t, types.HardwareNodeStatus_POC, result.OriginalTarget, "OriginalTarget should be POC")
@@ -35,9 +35,9 @@ func TestTransitionPoCToValidatingV2Command_Success(t *testing.T) {
 	assert.Equal(t, 0, mockClient.StopCalled, "Stop() should not be called")
 }
 
-// TestTransitionPoCToValidatingV2Command_CancelledContext verifies that the command
+// TestTransitionPoCToValidatingCommandV2_CancelledContext verifies that the command
 // respects context cancellation.
-func TestTransitionPoCToValidatingV2Command_CancelledContext(t *testing.T) {
+func TestTransitionPoCToValidatingCommandV2_CancelledContext(t *testing.T) {
 	node := createTestNode("test-node-v2")
 	mockClient := mlnodeclient.NewMockClient()
 	broker := NewTestBroker2(1)
@@ -52,7 +52,7 @@ func TestTransitionPoCToValidatingV2Command_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	cmd := TransitionPoCToValidatingV2Command{}
+	cmd := TransitionPoCToValidatingCommandV2{}
 	result := cmd.Execute(ctx, worker)
 
 	// Verify the command fails due to cancelled context

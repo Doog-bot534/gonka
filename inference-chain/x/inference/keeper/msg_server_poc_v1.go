@@ -10,7 +10,6 @@ import (
 )
 
 // submitPocBatchV1 handles V1 batch submission (on-chain PoCBatch storage).
-// This is the V1 logic restored from main for backward compatibility.
 func (k msgServer) submitPocBatchV1(goCtx context.Context, msg *types.MsgSubmitPocBatch) (*types.MsgSubmitPocBatchResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 

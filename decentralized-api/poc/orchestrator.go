@@ -60,7 +60,7 @@ func NewOrchestrator(
 		if phaseTracker == nil {
 			return true // default V2
 		}
-		return phaseTracker.IsPocV2Enabled()
+		return phaseTracker.IsPoCv2Enabled()
 	}
 
 	return &orchestratorImpl{

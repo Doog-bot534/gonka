@@ -18,7 +18,6 @@ import (
 )
 
 // OnChainValidator handles V1 PoC validation by querying on-chain batches.
-// This is the V1 counterpart to OffChainValidator.
 type OnChainValidator struct {
 	recorder     cosmosclient.CosmosMessageClient
 	nodeBroker   *broker.Broker

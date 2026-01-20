@@ -10,7 +10,6 @@ import (
 )
 
 // submitPocValidationV1 handles V1 validation submission (on-chain PoCValidation storage).
-// This is the V1 logic restored from main for backward compatibility.
 func (k msgServer) submitPocValidationV1(goCtx context.Context, msg *types.MsgSubmitPocValidation) (*types.MsgSubmitPocValidationResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
