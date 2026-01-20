@@ -39,6 +39,10 @@ type MockClient struct {
 	DeleteModelError      error
 	ListModelsError       error
 	GetDiskSpaceError     error
+	InitGenerateV1Error   error
+	InitValidateV1Error   error
+	ValidateBatchV1Error  error
+	GetPowStatusV1Error   error
 
 	// Call tracking
 	StopCalled             int
@@ -54,14 +58,23 @@ type MockClient struct {
 	ListModelsCalled       int
 	GetDiskSpaceCalled     int
 
+	// PoC v1 call tracking
+	InitGenerateV1Called  int
+	InitValidateV1Called  int
+	ValidateBatchV1Called int
+	GetPowStatusV1Called  int
+
 	// PoC v2 call tracking
 	InitGenerateV2Called int
 	GenerateV2Called     int
 	GetPowStatusV2Called int
 	StopPowV2Called      int
 
-	// Track Init/Validate attempts (for testing, always returns 0 since v1 is removed)
+	// Track Init/Validate attempts (for testing)
 	InitValidateCalled int
+
+	// PoC v1 state
+	PowStatusV1 PowStateV1 // V1 status enum
 
 	// PoC v2 state
 	PowStatusV2 string // "IDLE", "GENERATING", etc.
@@ -175,6 +188,68 @@ func (m *MockClient) GetTrainingStatus(ctx context.Context) error {
 	defer m.Mu.Unlock()
 	// Not implemented for now
 	return nil
+}
+
+// PoC v1 mock methods
+
+func (m *MockClient) InitGenerateV1(ctx context.Context, dto InitDtoV1) error {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+
+	m.InitGenerateV1Called++
+	if m.InitGenerateV1Error != nil {
+		return m.InitGenerateV1Error
+	}
+
+	m.CurrentState = MlNodeState_POW
+	m.PowStatusV1 = PowStateV1Generating
+	m.InferenceIsHealthy = false
+	return nil
+}
+
+func (m *MockClient) InitValidateV1(ctx context.Context, dto InitDtoV1) error {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+
+	m.InitValidateV1Called++
+	m.InitValidateCalled++
+	if m.InitValidateV1Error != nil {
+		return m.InitValidateV1Error
+	}
+
+	m.CurrentState = MlNodeState_POW
+	m.PowStatusV1 = PowStateV1Validating
+	return nil
+}
+
+func (m *MockClient) ValidateBatchV1(ctx context.Context, batch ProofBatchV1) error {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+
+	m.ValidateBatchV1Called++
+	if m.ValidateBatchV1Error != nil {
+		return m.ValidateBatchV1Error
+	}
+	return nil
+}
+
+func (m *MockClient) GetPowStatusV1(ctx context.Context) (*PowStatusResponseV1, error) {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+
+	m.GetPowStatusV1Called++
+	if m.GetPowStatusV1Error != nil {
+		return nil, m.GetPowStatusV1Error
+	}
+
+	status := m.PowStatusV1
+	if status == "" {
+		status = PowStateV1Idle
+	}
+	return &PowStatusResponseV1{
+		Status:             status,
+		IsModelInitialized: m.CurrentState == MlNodeState_POW,
+	}, nil
 }
 
 // GPU operations
