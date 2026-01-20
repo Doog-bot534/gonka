@@ -381,7 +381,7 @@ func (icc *InferenceCosmosClient) SubmitPoCV2StoreCommit(transaction *inference.
 
 func (icc *InferenceCosmosClient) SubmitMLNodeWeightDistribution(transaction *inference.MsgMLNodeWeightDistribution) error {
 	transaction.Creator = icc.Address
-	_, err := icc.manager.SendTransactionAsyncNoRetry(transaction)
+	_, err := icc.manager.SendTransactionAsyncWithRetry(transaction)
 	return err
 }
 

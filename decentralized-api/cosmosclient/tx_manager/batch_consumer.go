@@ -9,7 +9,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/nats-io/nats.go"
-	"github.com/productscience/inference/api/inference/inference"
 	"github.com/productscience/inference/x/inference/types"
 )
 
@@ -421,10 +420,10 @@ func (c *BatchConsumer) flushPocValidation() {
 // N messages with 1 validation each to 1 message with N validations (per height).
 func (c *BatchConsumer) aggregateValidationV2Messages(batch []pendingMsg) []sdk.Msg {
 	// Group validations by height
-	byHeight := make(map[int64]*inference.MsgSubmitPocValidationsV2)
+	byHeight := make(map[int64]*types.MsgSubmitPocValidationsV2)
 
 	for _, p := range batch {
-		msg, ok := p.msg.(*inference.MsgSubmitPocValidationsV2)
+		msg, ok := p.msg.(*types.MsgSubmitPocValidationsV2)
 		if !ok {
 			logging.Warn("Unexpected message type in validation V2 batch", types.Messages)
 			continue
@@ -434,7 +433,7 @@ func (c *BatchConsumer) aggregateValidationV2Messages(batch []pendingMsg) []sdk.
 		existing, found := byHeight[height]
 		if !found {
 			// First message for this height - clone it
-			byHeight[height] = &inference.MsgSubmitPocValidationsV2{
+			byHeight[height] = &types.MsgSubmitPocValidationsV2{
 				Creator:                  msg.Creator,
 				PocStageStartBlockHeight: height,
 				Validations:              msg.Validations,
@@ -458,7 +457,7 @@ func (c *BatchConsumer) aggregateValidationV2Messages(batch []pendingMsg) []sdk.
 func (c *BatchConsumer) broadcastAggregatedValidationV2(aggregated []sdk.Msg, originalBatch []pendingMsg) {
 	totalValidations := 0
 	for _, msg := range aggregated {
-		if v, ok := msg.(*inference.MsgSubmitPocValidationsV2); ok {
+		if v, ok := msg.(*types.MsgSubmitPocValidationsV2); ok {
 			totalValidations += len(v.Validations)
 		}
 	}

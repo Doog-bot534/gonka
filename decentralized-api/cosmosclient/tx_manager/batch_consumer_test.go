@@ -114,6 +114,21 @@ func startTestNatsServer(t *testing.T) (*server.Server, nats.JetStreamContext) {
 	})
 	require.NoError(t, err)
 
+	// V1 PoC streams
+	_, err = js.AddStream(&nats.StreamConfig{
+		Name:     "txs_batch_poc_batch",
+		Subjects: []string{"txs_batch_poc_batch"},
+		Storage:  nats.MemoryStorage,
+	})
+	require.NoError(t, err)
+
+	_, err = js.AddStream(&nats.StreamConfig{
+		Name:     "txs_batch_poc_validation",
+		Subjects: []string{"txs_batch_poc_validation"},
+		Storage:  nats.MemoryStorage,
+	})
+	require.NoError(t, err)
+
 	t.Cleanup(func() {
 		nc.Close()
 		ns.Shutdown()
@@ -295,8 +310,8 @@ func TestBatchConsumer_ValidationV2Batching(t *testing.T) {
 	err := consumer.Start()
 	require.NoError(t, err)
 
-	// Publish 3 validation V2 messages (should trigger flush)
-	for i := 0; i < 3; i++ {
+	// Publish 10 validation V2 messages (validationV2FlushSize = 10)
+	for i := 0; i < 10; i++ {
 		msg := &inference.MsgSubmitPocValidationsV2{
 			Creator:                  "creator",
 			PocStageStartBlockHeight: int64(i),
@@ -316,7 +331,7 @@ func TestBatchConsumer_ValidationV2Batching(t *testing.T) {
 
 	calls := mockMgr.getBatchCalls()
 	require.Len(t, calls, 1)
-	assert.Len(t, calls[0], 3)
+	assert.Len(t, calls[0], 10)
 }
 
 func TestBatchConsumer_AllQueuesIndependent(t *testing.T) {
@@ -334,7 +349,8 @@ func TestBatchConsumer_AllQueuesIndependent(t *testing.T) {
 	err := consumer.Start()
 	require.NoError(t, err)
 
-	// Publish 2 messages to each queue type (should trigger 3 independent flushes)
+	// Publish 2 messages to start/finish queues (triggers 2 flushes at FlushSize=2)
+	// Validation V2 uses hardcoded validationV2FlushSize=10, so we send 10 to trigger flush
 	for i := 0; i < 2; i++ {
 		consumer.PublishStartInference(&inference.MsgStartInference{
 			Creator:     "creator",
@@ -344,6 +360,8 @@ func TestBatchConsumer_AllQueuesIndependent(t *testing.T) {
 			Creator:     "creator",
 			InferenceId: uuid.New().String(),
 		})
+	}
+	for i := 0; i < 10; i++ {
 		consumer.PublishPocValidationV2(&inference.MsgSubmitPocValidationsV2{
 			Creator:                  "creator",
 			PocStageStartBlockHeight: 100,

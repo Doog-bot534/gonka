@@ -134,8 +134,8 @@ func (ppd PocPeriodValidationDecorator) checkPocMessageTooLate(ctx sdk.Context, 
 			)
 			return inferencetypes.ErrNotSupported
 		}
-		// V2 mode: check timing (batch window)
-		if err := ppd.inferenceKeeper.CheckPoCMessageTooLate(ctx, m.PocStageStartBlockHeight, inferencemodulekeeper.PoCWindowBatch); err != nil {
+		// V2 mode: check timing (validation window - distribution happens during validation phase)
+		if err := ppd.inferenceKeeper.CheckPoCMessageTooLate(ctx, m.PocStageStartBlockHeight, inferencemodulekeeper.PoCWindowValidation); err != nil {
 			ppd.inferenceKeeper.LogDebug(
 				"AnteHandle: PocPeriodValidation - rejecting MsgMLNodeWeightDistribution as too late",
 				inferencetypes.PoC,
