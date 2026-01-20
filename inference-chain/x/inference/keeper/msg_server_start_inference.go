@@ -21,7 +21,7 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 	if k.IsDeveloperAccessRestricted(ctx, ctx.BlockHeight()) && !k.IsAllowedDeveloper(ctx, msg.RequestedBy) {
 		return failedStart(ctx, sdkerrors.Wrap(types.ErrDeveloperNotAllowlisted, msg.RequestedBy), msg), nil
 	}
-	k.LogInfo("StartInference: developer access check complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", time.Since(startTime).Milliseconds())
+	k.LogInfo("StartInference: developer access check complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(startTime))
 
 	participantsStart := time.Now()
 	transferAgent, found := k.GetParticipant(ctx, msg.Creator)
@@ -37,7 +37,7 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 
 	k.LogInfo("DevPubKey", types.Inferences, "inferenceId", msg.InferenceId, "DevPubKey", dev.WorkerPublicKey, "DevAddress", dev.Address)
 	k.LogInfo("TransferAgentPubKey", types.Inferences, "inferenceId", msg.InferenceId, "TransferAgentPubKey", transferAgent.WorkerPublicKey, "TransferAgentAddress", transferAgent.Address)
-	k.LogInfo("StartInference: participants fetched", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", time.Since(participantsStart).Milliseconds())
+	k.LogInfo("StartInference: participants fetched", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(participantsStart))
 
 	verifyStart := time.Now()
 	err := k.verifyKeys(ctx, msg, transferAgent, dev)
@@ -45,11 +45,11 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 		k.LogError("StartInference: verifyKeys failed", types.Inferences, "inferenceId", msg.InferenceId, "error", err)
 		return failedStart(ctx, sdkerrors.Wrap(types.ErrInvalidSignature, err.Error()), msg), nil
 	}
-	k.LogInfo("StartInference: verifyKeys complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", time.Since(verifyStart).Milliseconds())
+	k.LogInfo("StartInference: verifyKeys complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(verifyStart))
 
 	getInferenceStart := time.Now()
 	existingInference, found := k.GetInference(ctx, msg.InferenceId)
-	k.LogInfo("StartInference: GetInference complete", types.Inferences, "inferenceId", msg.InferenceId, "found", found, "duration_ms", time.Since(getInferenceStart).Milliseconds())
+	k.LogInfo("StartInference: GetInference complete", types.Inferences, "inferenceId", msg.InferenceId, "found", found, "duration_ms", durationMs(getInferenceStart))
 
 	if found && existingInference.StartProcessed() {
 		k.LogError("StartInference: inference already started", types.Inferences, "inferenceId", msg.InferenceId)
@@ -62,7 +62,7 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 		priceStart := time.Now()
 		existingInference.Model = msg.Model
 		k.RecordInferencePrice(goCtx, &existingInference, msg.InferenceId)
-		k.LogInfo("StartInference: RecordInferencePrice complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", time.Since(priceStart).Milliseconds())
+		k.LogInfo("StartInference: RecordInferencePrice complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(priceStart))
 	}
 
 	blockContext := calculations.BlockContext{
@@ -75,23 +75,23 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 	if err != nil {
 		return failedStart(ctx, err, msg), nil
 	}
-	k.LogInfo("StartInference: ProcessStartInference complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", time.Since(processStart).Milliseconds())
+	k.LogInfo("StartInference: ProcessStartInference complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(processStart))
 
 	paymentsStart := time.Now()
 	finalInference, err := k.processInferencePayments(ctx, inference, payments)
 	if err != nil {
 		return failedStart(ctx, err, msg), nil
 	}
-	k.LogInfo("StartInference: processInferencePayments complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", time.Since(paymentsStart).Milliseconds())
+	k.LogInfo("StartInference: processInferencePayments complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(paymentsStart))
 	setInferenceStart := time.Now()
 	err = k.SetInference(ctx, *finalInference)
 	if err != nil {
 		return failedStart(ctx, err, msg), nil
 	}
-	k.LogInfo("StartInference: SetInference complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", time.Since(setInferenceStart).Milliseconds())
+	k.LogInfo("StartInference: SetInference complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(setInferenceStart))
 	timeoutStart := time.Now()
 	k.addTimeout(ctx, inference)
-	k.LogInfo("StartInference: addTimeout complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", time.Since(timeoutStart).Milliseconds())
+	k.LogInfo("StartInference: addTimeout complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(timeoutStart))
 
 	if inference.IsCompleted() {
 		completedStart := time.Now()
@@ -99,9 +99,9 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 		if err != nil {
 			return failedStart(ctx, err, msg), nil
 		}
-		k.LogInfo("StartInference: handleInferenceCompleted complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", time.Since(completedStart).Milliseconds())
+		k.LogInfo("StartInference: handleInferenceCompleted complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(completedStart))
 	}
-	k.LogInfo("StartInference: completed", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", time.Since(startTime).Milliseconds())
+	k.LogInfo("StartInference: completed", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(startTime))
 
 	return &types.MsgStartInferenceResponse{
 		InferenceIndex: msg.InferenceId,
