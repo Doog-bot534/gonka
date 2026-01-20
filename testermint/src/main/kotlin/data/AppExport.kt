@@ -253,7 +253,7 @@ data class PocParams(
     @SerializedName("seq_len")
     val seqLen: Long? = null,
     @SerializedName("poc_v2_enabled")
-    val pocV2Enabled: Boolean = true,  // V2 enabled by default
+    val pocV2Enabled: Boolean = false,  // V2 enabled by default
 )
 
 data class PoCModelParams(
