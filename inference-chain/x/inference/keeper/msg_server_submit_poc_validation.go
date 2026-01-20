@@ -11,7 +11,10 @@ const PocFailureTag = "[PoC Failure]"
 
 func (k msgServer) SubmitPocValidation(goCtx context.Context, msg *types.MsgSubmitPocValidation) (*types.MsgSubmitPocValidationResponse, error) {
 	// V1 dispatch: route to V1 handler when poc_v2_enabled=false
-	params := k.GetParams(goCtx)
+	params, err := k.GetParams(goCtx)
+	if err != nil {
+		return nil, err
+	}
 	if !params.PocParams.PocV2Enabled {
 		return k.submitPocValidationV1(goCtx, msg)
 	}

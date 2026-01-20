@@ -20,7 +20,7 @@ func (am AppModule) handleConfirmationPoC(ctx context.Context, blockHeight int64
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
 	// Get current parameters
-	params, err := am.keeper.GetParamsSafe(ctx)
+	params, err := am.keeper.GetParams(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get params: %w", err)
 	}
@@ -359,7 +359,10 @@ func (am AppModule) updateConfirmationWeights(ctx context.Context, event *types.
 		return fmt.Errorf("failed to get current validator weights: %w", err)
 	}
 
-	params := am.keeper.GetParams(ctx)
+	params, err := am.keeper.GetParams(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get params: %w", err)
+	}
 	weightScaleFactor := params.PocParams.GetWeightScaleFactorDec()
 
 	// Dispatch to V1 or V2 confirmation weight calculation based on poc_v2_enabled flag

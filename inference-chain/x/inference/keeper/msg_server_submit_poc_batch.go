@@ -9,7 +9,10 @@ import (
 
 func (k msgServer) SubmitPocBatch(goCtx context.Context, msg *types.MsgSubmitPocBatch) (*types.MsgSubmitPocBatchResponse, error) {
 	// V1 dispatch: route to V1 handler when poc_v2_enabled=false
-	params := k.GetParams(goCtx)
+	params, err := k.GetParams(goCtx)
+	if err != nil {
+		return nil, err
+	}
 	if !params.PocParams.PocV2Enabled {
 		return k.submitPocBatchV1(goCtx, msg)
 	}

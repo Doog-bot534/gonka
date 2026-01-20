@@ -730,7 +730,14 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 	}
 
 	// Create weight calculator and calculate
-	params := am.keeper.GetParams(ctx)
+	params, err := am.keeper.GetParams(ctx)
+	if err != nil {
+		am.LogError("ComputeNewWeights: Error getting params", types.PoC,
+			"upcomingEpoch.Index", upcomingEpoch.Index,
+			"upcomingEpoch.PocStartBlockHeight", upcomingEpoch.PocStartBlockHeight,
+			"error", err)
+		return nil
+	}
 	weightScaleFactor := params.PocParams.GetWeightScaleFactorDec()
 	calculator := NewWeightCalculator(
 		currentValidatorWeights,

@@ -13,7 +13,7 @@ func TestParticipantAccess_SubmitNewParticipant_NewRegistrationClosed(t *testing
 	k, ms, ctx := setupMsgServer(t)
 	sdkCtx := sdk.UnwrapSDKContext(ctx).WithBlockHeight(100)
 
-	params := k.GetParams(sdkCtx)
+	params, _ := k.GetParams(sdkCtx)
 	params.ParticipantAccessParams = &types.ParticipantAccessParams{
 		NewParticipantRegistrationStartHeight: 150, // closed until 150 (opens at 150)
 	}
@@ -33,7 +33,7 @@ func TestParticipantAccess_SubmitPocBatch_Deprecated(t *testing.T) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx).WithBlockHeight(100)
 
 	// Enable V2 mode so V1 handlers return ErrDeprecated
-	params := k.GetParams(sdkCtx)
+	params, _ := k.GetParams(sdkCtx)
 	params.PocParams.PocV2Enabled = true
 	require.NoError(t, k.SetParams(sdkCtx, params))
 
@@ -55,7 +55,7 @@ func TestParticipantAccess_SubmitPocValidation_Deprecated(t *testing.T) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx).WithBlockHeight(100)
 
 	// Enable V2 mode so V1 handlers return ErrDeprecated
-	params := k.GetParams(sdkCtx)
+	params, _ := k.GetParams(sdkCtx)
 	params.PocParams.PocV2Enabled = true
 	require.NoError(t, k.SetParams(sdkCtx, params))
 
