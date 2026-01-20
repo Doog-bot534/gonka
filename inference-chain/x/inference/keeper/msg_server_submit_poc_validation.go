@@ -10,5 +10,12 @@ import (
 const PocFailureTag = "[PoC Failure]"
 
 func (k msgServer) SubmitPocValidation(goCtx context.Context, msg *types.MsgSubmitPocValidation) (*types.MsgSubmitPocValidationResponse, error) {
-	return nil, sdkerrors.Wrap(types.ErrDeprecated, "MsgSubmitPocValidation is deprecated, use MsgSubmitPocValidationsV2 instead")
+	// V1 dispatch: route to V1 handler when poc_v2_enabled=false
+	params := k.GetParams(goCtx)
+	if !params.PocParams.PocV2Enabled {
+		return k.submitPocValidationV1(goCtx, msg)
+	}
+
+	// V2 mode: this message type is deprecated
+	return nil, sdkerrors.Wrap(types.ErrDeprecated, "MsgSubmitPocValidation is deprecated when poc_v2_enabled=true, use MsgSubmitPocValidationsV2 instead")
 }
