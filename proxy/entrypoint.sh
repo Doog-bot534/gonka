@@ -259,6 +259,17 @@ export CORS_CONFIG="
             add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
             add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;"
 
+# Streaming Configuration (Gonka API)
+# Enables real-time token streaming by disabling buffering and enforcing HTTP/1.1
+export STREAMING_CONFIG="
+            # Streaming Support
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade \$http_upgrade;
+            proxy_set_header Connection \$connection_upgrade;
+            proxy_buffering off;
+            proxy_request_buffering off;
+            gzip off;"
+
 # Configure DNS resolver for dynamic upstream re-resolution
 if [ -n "${RESOLVER:-}" ]; then
     export RESOLVER_DIRECTIVE="resolver ${RESOLVER} valid=10s ipv6=off;"
@@ -309,22 +320,28 @@ CHAIN_GRPC_BURST=${CHAIN_GRPC_BURST:-200}
 
 # Timeout Configuration (Seconds)
 # Gonka API (Inference/Chat)
-# Connect: 120s (Generous handshake)
+# Connect: 75s (Generous handshake)
 # Transfer: 20m (Long inference)
-GONKA_API_CONNECT_TIMEOUT=${GONKA_API_CONNECT_TIMEOUT:-120}
-GONKA_API_TRANSFER_TIMEOUT=${GONKA_API_TRANSFER_TIMEOUT:-1200}
+export GONKA_API_CONNECT_TIMEOUT=${GONKA_API_CONNECT_TIMEOUT:-75}
+export GONKA_API_TRANSFER_TIMEOUT=${GONKA_API_TRANSFER_TIMEOUT:-1200}
 
 # Chain API/RPC/gRPC
 # Connect: 30s (Standard)
 # Transfer: 2m (Standard)
-CHAIN_API_CONNECT_TIMEOUT=${CHAIN_API_CONNECT_TIMEOUT:-30}
-CHAIN_API_TRANSFER_TIMEOUT=${CHAIN_API_TRANSFER_TIMEOUT:-120}
+export CHAIN_API_CONNECT_TIMEOUT=${CHAIN_API_CONNECT_TIMEOUT:-30}
+export CHAIN_API_TRANSFER_TIMEOUT=${CHAIN_API_TRANSFER_TIMEOUT:-120}
 
-CHAIN_RPC_CONNECT_TIMEOUT=${CHAIN_RPC_CONNECT_TIMEOUT:-30}
-CHAIN_RPC_TRANSFER_TIMEOUT=${CHAIN_RPC_TRANSFER_TIMEOUT:-120}
+export CHAIN_RPC_CONNECT_TIMEOUT=${CHAIN_RPC_CONNECT_TIMEOUT:-30}
+export CHAIN_RPC_TRANSFER_TIMEOUT=${CHAIN_RPC_TRANSFER_TIMEOUT:-120}
 
-CHAIN_GRPC_CONNECT_TIMEOUT=${CHAIN_GRPC_CONNECT_TIMEOUT:-30}
-CHAIN_GRPC_TRANSFER_TIMEOUT=${CHAIN_GRPC_TRANSFER_TIMEOUT:-120}
+export CHAIN_GRPC_CONNECT_TIMEOUT=${CHAIN_GRPC_CONNECT_TIMEOUT:-30}
+export CHAIN_GRPC_TRANSFER_TIMEOUT=${CHAIN_GRPC_TRANSFER_TIMEOUT:-120}
+
+echo "   ⏱️  Timeouts (Connect/Transfer):"
+echo "      App API: ${GONKA_API_CONNECT_TIMEOUT}s / ${GONKA_API_TRANSFER_TIMEOUT}s"
+echo "      Chain API: ${CHAIN_API_CONNECT_TIMEOUT}s / ${CHAIN_API_TRANSFER_TIMEOUT}s"
+echo "      Chain RPC: ${CHAIN_RPC_CONNECT_TIMEOUT}s / ${CHAIN_RPC_TRANSFER_TIMEOUT}s"
+echo "      Chain gRPC: ${CHAIN_GRPC_CONNECT_TIMEOUT}s / ${CHAIN_GRPC_TRANSFER_TIMEOUT}s"
 
 # Route Blocking Configuration
 GONKA_API_BLOCKED_ROUTES=${GONKA_API_BLOCKED_ROUTES:-"poc-batches"}
@@ -429,17 +446,12 @@ append_exempt_location() {
         proxy_set_header Authorization \$\$http_authorization;
         ${CORS_CONFIG}
         
+        ${extra_config}
+        
         # Timeouts corresponding to zone
         proxy_connect_timeout ${connect_timeout}s;
         proxy_read_timeout ${transfer_timeout}s;
         proxy_send_timeout ${transfer_timeout}s;
-        "
-        fi
-
-        # Append extra config (e.g., websocket headers)
-        if [ -n "$extra_config" ]; then
-            EXEMPT_ROUTES_CONFIG="${EXEMPT_ROUTES_CONFIG}
-        ${extra_config}
         "
         fi
 
@@ -469,9 +481,9 @@ for v in $API_VERSIONS; do
     APP_BLOCKED_PREFIXES="${APP_BLOCKED_PREFIXES} /api/${v}/ /${v}/"
     
     # 2. Append Exempt Locations (Gonka API) using helper
-    # We call append_exempt_location for each version prefix to ensure correct regex generation
-    append_exempt_location "$GONKA_API_EXEMPT_ROUTES" "/api/${v}/" "http://api_backend/${v}/" "${API_STATUS}" "http" "$GONKA_API_CONNECT_TIMEOUT" "$GONKA_API_TRANSFER_TIMEOUT" ""
-    append_exempt_location "$GONKA_API_EXEMPT_ROUTES" "/${v}/" "http://api_backend/${v}/" "${API_STATUS}" "http" "$GONKA_API_CONNECT_TIMEOUT" "$GONKA_API_TRANSFER_TIMEOUT" ""
+    # We pass STREAMING_CONFIG as the extra_config argument
+    append_exempt_location "$GONKA_API_EXEMPT_ROUTES" "/api/${v}/" "http://api_backend/${v}/" "${API_STATUS}" "http" "$GONKA_API_CONNECT_TIMEOUT" "$GONKA_API_TRANSFER_TIMEOUT" "${STREAMING_CONFIG}"
+    append_exempt_location "$GONKA_API_EXEMPT_ROUTES" "/${v}/" "http://api_backend/${v}/" "${API_STATUS}" "http" "$GONKA_API_CONNECT_TIMEOUT" "$GONKA_API_TRANSFER_TIMEOUT" "${STREAMING_CONFIG}"
 
     # 3. Generate Core Routing Location Block (to be injected into template)
     # We use explicit variable expansion here because these values are known at startup
@@ -488,11 +500,7 @@ for v in $API_VERSIONS; do
             proxy_set_header Authorization \$\$http_authorization;
 
             ${CORS_CONFIG}
-
-            # Handle WebSocket connections if needed
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade \$\$http_upgrade;
-            proxy_set_header Connection \"upgrade\";
+            ${STREAMING_CONFIG}
 
             # Extended timeouts for inference API
             proxy_connect_timeout ${GONKA_API_CONNECT_TIMEOUT}s;
@@ -512,11 +520,7 @@ for v in $API_VERSIONS; do
             proxy_set_header Authorization \$\$http_authorization;
 
             ${CORS_CONFIG}
-
-            # Handle WebSocket connections if needed
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade \$\$http_upgrade;
-            proxy_set_header Connection \"upgrade\";
+            ${STREAMING_CONFIG}
 
             # Extended timeouts for inference API
             proxy_connect_timeout ${GONKA_API_CONNECT_TIMEOUT}s;
@@ -563,7 +567,9 @@ export EXEMPT_ROUTES_CONFIG
 
 # Construct envsubst variable list for readability
 # Group 1: Core Configuration & Naming
-ENVSUBST_VARS='$KEY_NAME,$KEY_NAME_PREFIX,$SERVER_NAME,$DOMAIN_NAME,$RESOLVER_DIRECTIVE,$CORS_CONFIG'
+# Construct envsubst variable list for readability
+# Group 1: Core Configuration & Naming
+ENVSUBST_VARS='$KEY_NAME,$KEY_NAME_PREFIX,$SERVER_NAME,$DOMAIN_NAME,$RESOLVER_DIRECTIVE,$CORS_CONFIG,$STREAMING_CONFIG'
 
 # Group 2: Ports & Services
 ENVSUBST_VARS="${ENVSUBST_VARS},\$GONKA_API_PORT,\$CHAIN_RPC_PORT,\$CHAIN_API_PORT,\$CHAIN_GRPC_PORT"
@@ -616,6 +622,9 @@ else
         fi
     else
         echo "ERROR: Nginx configuration is invalid and no fallback available"
+        echo "💥 DEBUG: showing lines around failure (check line number from error above):"
+        grep -nC 5 "proxy_http_version" /etc/nginx/nginx.conf | head -n 20
+        echo "--- End Debug ---"
         exit 1
     fi
 fi
