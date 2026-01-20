@@ -16,6 +16,8 @@ func (k msgServer) SubmitPocValidation(goCtx context.Context, msg *types.MsgSubm
 		return k.submitPocValidationV1(goCtx, msg)
 	}
 
+	k.logger.Info("SubmitPocValidation", "poc_v2_enabled", params.PocParams.PocV2Enabled)
+
 	// V2 mode: this message type is deprecated
 	return nil, sdkerrors.Wrap(types.ErrDeprecated, "MsgSubmitPocValidation is deprecated when poc_v2_enabled=true, use MsgSubmitPocValidationsV2 instead")
 }

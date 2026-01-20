@@ -24,18 +24,52 @@ func (ppd PocPeriodValidationDecorator) checkPocMessageTooLate(ctx sdk.Context, 
 
 	switch m := msg.(type) {
 	case *inferencetypes.MsgSubmitPocBatch:
-		// V1 PoC batch is deprecated - reject early in ante
+		// V1/V2 dispatch: check poc_v2_enabled
+		params := ppd.inferenceKeeper.GetParams(ctx)
+		if !params.PocParams.PocV2Enabled {
+			// V1 mode: check timing like main
+			if err := ppd.inferenceKeeper.CheckPoCMessageTooLate(ctx, m.PocStageStartBlockHeight, inferencemodulekeeper.PoCWindowBatch); err != nil {
+				ppd.inferenceKeeper.LogDebug(
+					"AnteHandle: PocPeriodValidation - rejecting MsgSubmitPocBatch as too late",
+					inferencetypes.PoC,
+					"msg_type_url", sdk.MsgTypeURL(msg),
+					"pocStageStartBlockHeight", m.PocStageStartBlockHeight,
+					"currentBlockHeight", ctx.BlockHeight(),
+					"error", err,
+				)
+				return err
+			}
+			return nil
+		}
+		// V2 mode: V1 batch is deprecated
 		ppd.inferenceKeeper.LogDebug(
-			"AnteHandle: PocPeriodValidation - rejecting deprecated MsgSubmitPocBatch",
+			"AnteHandle: PocPeriodValidation - rejecting deprecated MsgSubmitPocBatch (V2 mode)",
 			inferencetypes.PoC,
 			"msg_type_url", sdk.MsgTypeURL(msg),
 		)
 		return inferencetypes.ErrDeprecated
 
 	case *inferencetypes.MsgSubmitPocValidation:
-		// V1 PoC validation is deprecated - reject early in ante
+		// V1/V2 dispatch: check poc_v2_enabled
+		params := ppd.inferenceKeeper.GetParams(ctx)
+		if !params.PocParams.PocV2Enabled {
+			// V1 mode: check timing like main
+			if err := ppd.inferenceKeeper.CheckPoCMessageTooLate(ctx, m.PocStageStartBlockHeight, inferencemodulekeeper.PoCWindowValidation); err != nil {
+				ppd.inferenceKeeper.LogDebug(
+					"AnteHandle: PocPeriodValidation - rejecting MsgSubmitPocValidation as too late",
+					inferencetypes.PoC,
+					"msg_type_url", sdk.MsgTypeURL(msg),
+					"pocStageStartBlockHeight", m.PocStageStartBlockHeight,
+					"currentBlockHeight", ctx.BlockHeight(),
+					"error", err,
+				)
+				return err
+			}
+			return nil
+		}
+		// V2 mode: V1 validation is deprecated
 		ppd.inferenceKeeper.LogDebug(
-			"AnteHandle: PocPeriodValidation - rejecting deprecated MsgSubmitPocValidation",
+			"AnteHandle: PocPeriodValidation - rejecting deprecated MsgSubmitPocValidation (V2 mode)",
 			inferencetypes.PoC,
 			"msg_type_url", sdk.MsgTypeURL(msg),
 		)
