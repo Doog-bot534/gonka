@@ -18,18 +18,15 @@ const (
 	batchValidationV2Consumer = "batch-validation-v2-consumer"
 	batchAckWait              = time.Minute // must exceed FlushTimeout to prevent redelivery
 
-	// TODO: define timing based on production load
-	validationV2FlushSize    = 10               // flush after N validations
-	validationV2FlushTimeout = 30 * time.Second // flush after this duration
-
 	// V1 PoC batch consumers
 	batchPocBatchConsumer      = "batch-poc-batch-consumer"
 	batchPocValidationConsumer = "batch-poc-validation-consumer"
 )
 
 type BatchConfig struct {
-	FlushSize    int
-	FlushTimeout time.Duration
+	FlushSize                int
+	FlushTimeout             time.Duration
+	ValidationV2FlushTimeout time.Duration
 }
 
 type pendingMsg struct {
@@ -188,7 +185,7 @@ func (c *BatchConsumer) handleValidationV2Msg(msg *nats.Msg) {
 		c.validationV2CreatedAt = time.Now()
 	}
 	c.validationV2Batch = append(c.validationV2Batch, pendingMsg{msg: sdkMsg, natsMsg: msg})
-	shouldFlush = len(c.validationV2Batch) >= validationV2FlushSize
+	shouldFlush = len(c.validationV2Batch) >= c.config.FlushSize
 	c.validationV2Mu.Unlock()
 
 	if shouldFlush {
@@ -314,7 +311,7 @@ func (c *BatchConsumer) checkAndFlushFinish() {
 
 func (c *BatchConsumer) checkAndFlushValidationV2() {
 	c.validationV2Mu.Lock()
-	shouldFlush := len(c.validationV2Batch) > 0 && time.Since(c.validationV2CreatedAt) >= validationV2FlushTimeout
+	shouldFlush := len(c.validationV2Batch) > 0 && time.Since(c.validationV2CreatedAt) >= c.config.ValidationV2FlushTimeout
 	c.validationV2Mu.Unlock()
 
 	if shouldFlush {
@@ -377,7 +374,7 @@ func (c *BatchConsumer) flushValidationV2() {
 		c.validationV2Mu.Unlock()
 		return
 	}
-	c.validationV2Batch = make([]pendingMsg, 0, validationV2FlushSize)
+	c.validationV2Batch = make([]pendingMsg, 0, c.config.FlushSize)
 	c.validationV2CreatedAt = time.Time{} // reset timer
 	c.validationV2Mu.Unlock()
 

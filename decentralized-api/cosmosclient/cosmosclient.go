@@ -174,8 +174,9 @@ func NewInferenceCosmosClient(ctx context.Context, addressPrefix string, config 
 	batchingCfg := config.GetTxBatchingConfig()
 	if !batchingCfg.Disabled {
 		batchConfig := tx_manager.BatchConfig{
-			FlushSize:    batchingCfg.FlushSize,
-			FlushTimeout: time.Duration(batchingCfg.FlushTimeoutSeconds) * time.Second,
+			FlushSize:                batchingCfg.FlushSize,
+			FlushTimeout:             time.Duration(batchingCfg.FlushTimeoutSeconds) * time.Second,
+			ValidationV2FlushTimeout: time.Duration(batchingCfg.ValidationV2FlushTimeoutSeconds) * time.Second,
 		}
 		batchConsumer := tx_manager.NewBatchConsumer(
 			mn.GetJetStream(),
@@ -190,7 +191,8 @@ func NewInferenceCosmosClient(ctx context.Context, addressPrefix string, config 
 		client.batchingEnabled = true
 		logging.Info("Transaction batching enabled", types.Messages,
 			"flushSize", batchingCfg.FlushSize,
-			"flushTimeoutSeconds", batchingCfg.FlushTimeoutSeconds)
+			"flushTimeoutSeconds", batchingCfg.FlushTimeoutSeconds,
+			"validationV2FlushTimeoutSeconds", batchingCfg.ValidationV2FlushTimeoutSeconds)
 	}
 
 	success = true
