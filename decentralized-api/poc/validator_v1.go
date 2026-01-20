@@ -132,6 +132,7 @@ func (v *OnChainValidator) ValidateAll(pocStageStartBlockHeight int64) {
 
 		workItems = append(workItems, v1ValidateWork{
 			participantAddress: participantBatches.Participant,
+			hexPubKey:          participantBatches.HexPubKey,
 			nonces:             allNonces,
 			dist:               allDist,
 			blockHeight:        pocStageStartBlockHeight,
@@ -197,6 +198,7 @@ func (v *OnChainValidator) ValidateAll(pocStageStartBlockHeight int64) {
 // v1ValidateWork represents a single participant to validate in V1 mode.
 type v1ValidateWork struct {
 	participantAddress string
+	hexPubKey          string // hex-encoded public key for MLNode callback
 	nonces             []int64
 	dist               []float64
 	blockHeight        int64
@@ -232,8 +234,9 @@ func (v *OnChainValidator) v1Worker(
 		)
 
 		// Build V1 proof batch for MLNode
+		// PublicKey must be hex-encoded pubkey (not address) so callback can convert back to address
 		batch := mlnodeclient.ProofBatchV1{
-			PublicKey:   work.participantAddress,
+			PublicKey:   work.hexPubKey,
 			BlockHash:   work.blockHash,
 			BlockHeight: work.blockHeight,
 			Nonces:      sampledBatch.nonces,
