@@ -12,6 +12,7 @@ on:
   push:
     branches:
       - main
+      - upgrade-v*
     paths:
       - 'inference-chain/**'
       - 'decentralized-api/**'
