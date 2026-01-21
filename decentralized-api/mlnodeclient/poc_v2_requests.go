@@ -62,7 +62,7 @@ func DefaultStatTestParamsV2() *StatTestParamsV2 {
 	return &StatTestParamsV2{
 		DistThreshold:  0.02,
 		PMismatch:      0.075,
-		FraudThreshold: 0.01,
+		FraudThreshold: 0.2,
 	}
 }
 
