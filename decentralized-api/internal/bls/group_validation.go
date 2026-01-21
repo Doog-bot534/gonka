@@ -183,6 +183,9 @@ func (bm *BlsManager) computeValidationMessageHash(groupPublicKey []byte, previo
 }
 
 // createPartialSignature creates per-slot BLS partial signatures for the validation message.
+//
+// Deprecated: use createPartialSignatureBlst. The gnark-crypto implementation is kept only
+// for legacy/reference purposes and is intended to be removed in a future cleanup.
 // Returns a concatenation of 48-byte compressed G1 signatures (one per slot, in SlotIndices order),
 // and the corresponding absolute SlotIndices.
 func (bm *BlsManager) createPartialSignature(messageHash []byte, previousEpochResult *VerificationResult) ([]byte, []uint32, error) {

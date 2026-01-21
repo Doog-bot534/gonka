@@ -360,6 +360,10 @@ func (k Keeper) ComputeGroupPublicKey(epochBLSData *types.EpochBLSData, validDea
 		commitmentsToAggregate = append(commitmentsToAggregate, dealerPart.Commitments[0])
 	}
 
+	if len(commitmentsToAggregate) == 0 {
+		return nil, fmt.Errorf("no dealer commitments available to compute group public key for epoch %d", epochBLSData.EpochId)
+	}
+
 	// Use helper function to aggregate commitments
 	groupPublicKeyBytes, err := k.aggregateG2PointsBlst(commitmentsToAggregate)
 	if err != nil {

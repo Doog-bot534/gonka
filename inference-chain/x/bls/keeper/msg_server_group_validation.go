@@ -148,21 +148,35 @@ func (ms msgServer) SubmitGroupKeyValidationSignature(goCtx context.Context, msg
 			seen[idx] = struct{}{}
 		}
 	}
+
+	// The partial signature payload is a concatenation of 48-byte G1 signatures, one per slot index.
+	// Ensure the payload shape matches the submitted slot list so we can filter both in lockstep.
+	if len(msg.PartialSignature)%48 != 0 {
+		return nil, fmt.Errorf("invalid partial signature length: %d (must be multiple of 48)", len(msg.PartialSignature))
+	}
+	if len(msg.PartialSignature)/48 != len(msg.SlotIndices) {
+		return nil, fmt.Errorf("signature count mismatch: got %d signatures for %d slots", len(msg.PartialSignature)/48, len(msg.SlotIndices))
+	}
+
 	filteredSlots := make([]uint32, 0, len(msg.SlotIndices))
-	for _, idx := range msg.SlotIndices {
+	filteredSig := make([]byte, 0, len(msg.PartialSignature))
+	for i, idx := range msg.SlotIndices {
 		if _, ok := seen[idx]; ok {
 			ms.Keeper.LogWarn("Ignoring duplicate slot submission", "slot_index", idx, "creator", msg.Creator)
 			continue
 		}
 		seen[idx] = struct{}{}
 		filteredSlots = append(filteredSlots, idx)
+		start := i * 48
+		end := start + 48
+		filteredSig = append(filteredSig, msg.PartialSignature[start:end]...)
 	}
 	if len(filteredSlots) == 0 {
 		return nil, fmt.Errorf("no new slots in submission")
 	}
 
 	// Verify BLS partial signature against participant's computed individual public key
-	if !ms.verifyBLSPartialSignatureBlst(msg.PartialSignature, validationState.MessageHash, &previousEpochBLSData, filteredSlots) {
+	if !ms.verifyBLSPartialSignatureBlst(filteredSig, validationState.MessageHash, &previousEpochBLSData, filteredSlots) {
 		ms.Keeper.LogError("Invalid BLS signature verification", "creator", msg.Creator)
 		return nil, fmt.Errorf("invalid BLS signature verification failed for participant %s", msg.Creator)
 	}
@@ -172,7 +186,7 @@ func (ms msgServer) SubmitGroupKeyValidationSignature(goCtx context.Context, msg
 	partialSignature := &types.PartialSignature{
 		ParticipantAddress: msg.Creator,
 		SlotIndices:        filteredSlots,
-		Signature:          msg.PartialSignature,
+		Signature:          filteredSig,
 	}
 	validationState.PartialSignatures = append(validationState.PartialSignatures, *partialSignature)
 

@@ -16,7 +16,10 @@ import (
 // Thanks for this optimizations inspiration to prof. Dan Boneh & Ash Vardanian
 // from Alex Petrov aka sysman.
 
-// computeParticipantPublicKey computes individual BLS public key for participant's slots
+// computeParticipantPublicKey computes individual BLS public key for participant's slots.
+//
+// Deprecated: use computeParticipantPublicKeyBlst. The gnark-crypto implementation is kept only
+// for legacy/reference purposes and is intended to be removed in a future cleanup.
 func (k Keeper) computeParticipantPublicKey(epochBLSData *types.EpochBLSData, slotIndices []uint32) ([]byte, error) {
 	// Initialize aggregated public key as G2 identity
 	var aggregatedPubKey bls12381.G2Affine
@@ -66,6 +69,9 @@ func (k Keeper) computeParticipantPublicKeyBlst(epochBLSData *types.EpochBLSData
 }
 
 // PrecomputeSlotPublicKeys precomputes public keys for all slots in the epoch.
+//
+// Deprecated: use PrecomputeSlotPublicKeysBlst. The gnark-crypto implementation is kept only
+// for legacy/reference purposes and is intended to be removed in a future cleanup.
 func (k Keeper) PrecomputeSlotPublicKeys(epochBLSData *types.EpochBLSData) ([][]byte, error) {
 	totalSlots := epochBLSData.ITotalSlots
 	slotPublicKeys := make([][]byte, totalSlots)
@@ -270,6 +276,11 @@ func (k Keeper) verifyBLSPartialSignatureBlst(signature []byte, messageHash []by
 			k.Logger().Error("Failed to unmarshal per-slot G1 signature with blst", "slot", slotIndex)
 			return false
 		}
+		// Full signature validation (subgroup check + reject infinity).
+		if !g1Signature.SigValidate(true) {
+			k.Logger().Error("Invalid per-slot G1 signature with blst (SigValidate failed)", "slot", slotIndex)
+			return false
+		}
 
 		// Parse precomputed slot public key with blst
 		if len(epochBLSData.SlotPublicKeys) <= int(slotIndex) {
@@ -279,6 +290,11 @@ func (k Keeper) verifyBLSPartialSignatureBlst(signature []byte, messageHash []by
 		slotPubKey := new(blst.P2Affine).Uncompress(epochBLSData.SlotPublicKeys[slotIndex])
 		if slotPubKey == nil {
 			k.Logger().Error("Failed to unmarshal precomputed slot public key with blst", "slot", slotIndex)
+			return false
+		}
+		// Public key validation (subgroup check + reject identity).
+		if !slotPubKey.KeyValidate() {
+			k.Logger().Error("Invalid precomputed slot public key with blst (KeyValidate failed)", "slot", slotIndex)
 			return false
 		}
 
@@ -300,6 +316,9 @@ func (k Keeper) verifyBLSPartialSignatureBlst(signature []byte, messageHash []by
 }
 
 // verifyBLSPartialSignature verifies BLS partial signatures per-slot.
+//
+// Deprecated: use verifyBLSPartialSignatureBlst. The gnark-crypto implementation is kept only
+// for legacy/reference purposes and is intended to be removed in a future cleanup.
 // The signature payload may contain N concatenated 48-byte compressed G1 signatures,
 // and SlotIndices must have the same length N (1:1 mapping). Each (slot, sig)
 // is verified against the aggregated slot public key computed from commitments.
@@ -403,6 +422,10 @@ func (k Keeper) aggregateBLSPartialSignaturesBlst(partialSignatures []types.Part
 			g1 := new(blst.P1Affine).Uncompress(ps.Signature[start:end])
 			if g1 == nil {
 				return nil, fmt.Errorf("failed to uncompress signature at batch %d item %d with blst", i, j)
+			}
+			// Full signature validation (subgroup check + reject infinity).
+			if !g1.SigValidate(true) {
+				return nil, fmt.Errorf("invalid signature at batch %d item %d (SigValidate failed)", i, j)
 			}
 			slotSigs = append(slotSigs, slotSig{slot: slot, sig: g1})
 			if _, ok := slotSeen[slot]; !ok {
@@ -579,6 +602,9 @@ func (k Keeper) aggregateBLSPartialSignatures(partialSignatures []types.PartialS
 }
 
 // verifyFinalSignature verifies an aggregated signature against a group public key using gnark-crypto.
+//
+// Deprecated: use verifyFinalSignatureBlst. The gnark-crypto implementation is kept only
+// for legacy/reference purposes and is intended to be removed in a future cleanup.
 // e(signature, G2_generator) == e(message_hash_to_g1, group_public_key)
 func (k Keeper) verifyFinalSignature(signature []byte, messageHash []byte, groupPubKeyBytes []byte) bool {
 	var sigAff bls12381.G1Affine
@@ -623,10 +649,20 @@ func (k Keeper) verifyFinalSignatureBlst(signature []byte, messageHash []byte, g
 		k.Logger().Error("Failed to unmarshal final signature with blst")
 		return false
 	}
+	// Full signature validation (subgroup check + reject infinity).
+	if !g1Signature.SigValidate(true) {
+		k.Logger().Error("Invalid final signature with blst (SigValidate failed)")
+		return false
+	}
 
 	groupPubKey := new(blst.P2Affine).Uncompress(groupPubKeyBytes)
 	if groupPubKey == nil {
 		k.Logger().Error("Failed to unmarshal group public key with blst")
+		return false
+	}
+	// Public key validation (subgroup check + reject identity).
+	if !groupPubKey.KeyValidate() {
+		k.Logger().Error("Invalid group public key with blst (KeyValidate failed)")
 		return false
 	}
 
@@ -655,6 +691,9 @@ func (k Keeper) verifyFinalSignatureBlst(signature []byte, messageHash []byte, g
 }
 
 // aggregateG2Points aggregates a list of G2 points using gnark-crypto.
+//
+// Deprecated: use aggregateG2PointsBlst. The gnark-crypto implementation is kept only
+// for legacy/reference purposes and is intended to be removed in a future cleanup.
 func (k Keeper) aggregateG2Points(points [][]byte) ([]byte, error) {
 	var aggregate bls12381.G2Affine
 	aggregate.SetInfinity()
@@ -683,6 +722,11 @@ func (k Keeper) aggregateG2PointsBlst(points [][]byte) ([]byte, error) {
 		if p == nil {
 			return nil, fmt.Errorf("failed to uncompress point at index %d with blst", i)
 		}
+		// Points are untrusted inputs (dealer commitments), so enforce subgroup membership.
+		// Note: commitments may be infinity for zero coefficients; InG2 accepts infinity.
+		if !p.InG2() {
+			return nil, fmt.Errorf("point at index %d is not in G2 subgroup", i)
+		}
 		blstPoints = append(blstPoints, p)
 	}
 
@@ -692,6 +736,9 @@ func (k Keeper) aggregateG2PointsBlst(points [][]byte) ([]byte, error) {
 
 // DecompressG2To256 converts a 96-byte compressed G2 point into a 256-byte uncompressed format
 // using gnark-crypto. Format: (X.c0, X.c1, Y.c0, Y.c1) each as 64-byte big-endian limb.
+//
+// Deprecated: use DecompressG2To256Blst. The gnark-crypto implementation is kept only
+// for legacy/reference purposes and is intended to be removed in a future cleanup.
 func (k Keeper) DecompressG2To256(groupPublicKey []byte) ([]byte, error) {
 	if len(groupPublicKey) != 96 {
 		return nil, fmt.Errorf("invalid group public key length: expected 96 bytes, got %d", len(groupPublicKey))
@@ -750,6 +797,9 @@ func (k Keeper) DecompressG2To256Blst(groupPublicKey []byte) ([]byte, error) {
 
 // DecompressG1To128 converts a 48-byte compressed G1 point into a 128-byte uncompressed format
 // using gnark-crypto. Format: (X, Y) each as 64-byte big-endian limb.
+//
+// Deprecated: use DecompressG1To128Blst. The gnark-crypto implementation is kept only
+// for legacy/reference purposes and is intended to be removed in a future cleanup.
 func (k Keeper) DecompressG1To128(signature []byte) ([]byte, error) {
 	if len(signature) != 48 {
 		return nil, fmt.Errorf("invalid signature length: expected 48 bytes, got %d", len(signature))

@@ -393,7 +393,10 @@ func (bm *BlsManager) decryptShare(encryptedShare []byte) (*fr.Element, error) {
 	return share, nil
 }
 
-// verifyShareAgainstCommitments verifies a decrypted share against the dealer's polynomial commitments
+// verifyShareAgainstCommitments verifies a decrypted share against the dealer's polynomial commitments.
+//
+// Deprecated: use verifyShareAgainstCommitmentsBlst. The gnark-crypto implementation is kept only
+// for legacy/reference purposes and is intended to be removed in a future cleanup.
 func (bm *BlsManager) verifyShareAgainstCommitments(share *fr.Element, slotIndex uint32, commitments [][]byte) (bool, error) {
 	if len(commitments) == 0 {
 		return false, fmt.Errorf("no commitments provided")
@@ -454,9 +457,20 @@ func (bm *BlsManager) verifyShareAgainstCommitmentsBlst(share *fr.Element, slotI
 	// 1. Prepare points (commitments) in blst format
 	points := make([]*blst.P2Affine, len(commitments))
 	for j, cb := range commitments {
+		// Commitments are compressed G2 points (96 bytes)
+		if len(cb) != 96 {
+			return false, fmt.Errorf("invalid commitment length at index %d: %d, expected 96", j, len(cb))
+		}
+
 		p := new(blst.P2Affine).Uncompress(cb)
 		if p == nil {
 			return false, fmt.Errorf("failed to uncompress commitment at index %d", j)
+		}
+		// blst.Uncompress verifies encoding + on-curve, but does NOT enforce subgroup membership.
+		// For untrusted inputs, ensure points are in the correct G2 subgroup.
+		// Note: InG2 returns true for infinity (which can be a valid commitment for zero coefficients).
+		if !p.InG2() {
+			return false, fmt.Errorf("commitment at index %d is not in G2 subgroup", j)
 		}
 		points[j] = p
 	}

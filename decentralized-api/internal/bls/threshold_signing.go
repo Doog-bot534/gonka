@@ -118,6 +118,9 @@ func (bm *BlsManager) submitPartialSignatures(epochId uint64, requestId []byte, 
 }
 
 // computePartialSignature computes per-slot BLS partial signatures for the given message hash.
+//
+// Deprecated: use computePartialSignatureBlst. The gnark-crypto implementation is kept only
+// for legacy/reference purposes and is intended to be removed in a future cleanup.
 // Returns a concatenation of 48-byte compressed G1 signatures (one per slot in our assigned range).
 func (bm *BlsManager) computePartialSignature(messageHash []byte, result *VerificationResult) ([]byte, error) {
 	if len(result.AggregatedShares) == 0 {

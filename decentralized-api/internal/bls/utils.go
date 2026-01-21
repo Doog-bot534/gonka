@@ -16,6 +16,10 @@ func DecompressG1To128Blst(signature []byte) ([]byte, error) {
 	if p == nil {
 		return nil, fmt.Errorf("failed to uncompress signature with blst")
 	}
+	// Full signature validation for untrusted inputs (subgroup check + optional infinity rejection).
+	if !p.SigValidate(true) {
+		return nil, fmt.Errorf("invalid signature: failed blst SigValidate")
+	}
 
 	// blst.Serialize() returns [X, Y] (big-endian 48-byte elements)
 	raw := p.Serialize()
@@ -38,6 +42,10 @@ func DecompressG2To256Blst(groupPublicKey []byte) ([]byte, error) {
 	p := new(blst.P2Affine).Uncompress(groupPublicKey)
 	if p == nil {
 		return nil, fmt.Errorf("failed to uncompress G2 key with blst")
+	}
+	// Public key validation for untrusted inputs (subgroup check + non-identity policy).
+	if !p.KeyValidate() {
+		return nil, fmt.Errorf("invalid G2 public key: failed blst KeyValidate")
 	}
 
 	// blst.Serialize() returns [X.c1, X.c0, Y.c1, Y.c0] (IETF standard)
