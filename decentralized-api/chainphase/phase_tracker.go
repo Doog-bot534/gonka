@@ -18,8 +18,9 @@ type ChainPhaseTracker struct {
 	latestEpoch                *types.Epoch
 	currentEpochParams         *types.EpochParams
 	currentIsSynced            bool
-	activeConfirmationPoCEvent *types.ConfirmationPoCEvent
-	pocV2Enabled               bool // cached from PocParams.PocV2Enabled, default true
+	activeConfirmationPoCEvent   *types.ConfirmationPoCEvent
+	pocV2Enabled                 bool // cached from PocParams.PocV2Enabled, default true
+	confirmationPocV2Enabled     bool // cached from PocParams.ConfirmationPocV2Enabled, default true
 }
 
 type BlockInfo struct {
@@ -30,7 +31,8 @@ type BlockInfo struct {
 // NewChainPhaseTracker creates a new ChainPhaseTracker instance.
 func NewChainPhaseTracker() *ChainPhaseTracker {
 	return &ChainPhaseTracker{
-		pocV2Enabled: true, // V2 is default going forward
+		pocV2Enabled:             true, // V2 is default going forward
+		confirmationPocV2Enabled: true, // V2 is default going forward
 	}
 }
 
@@ -48,12 +50,13 @@ func (t *ChainPhaseTracker) Update(block BlockInfo, epoch *types.Epoch, params *
 }
 
 type EpochState struct {
-	LatestEpoch                types.EpochContext
-	CurrentBlock               BlockInfo
-	CurrentPhase               types.EpochPhase
-	IsSynced                   bool
-	ActiveConfirmationPoCEvent *types.ConfirmationPoCEvent
-	PocV2Enabled               bool // true = V2 (off-chain), false = V1 (on-chain batches)
+	LatestEpoch                  types.EpochContext
+	CurrentBlock                 BlockInfo
+	CurrentPhase                 types.EpochPhase
+	IsSynced                     bool
+	ActiveConfirmationPoCEvent   *types.ConfirmationPoCEvent
+	PocV2Enabled                 bool // true = V2 (off-chain), false = V1 (on-chain batches)
+	ConfirmationPocV2Enabled     bool // true = Confirmation PoC uses V2, enables migration mode
 }
 
 func (es *EpochState) IsNilOrNotSynced() bool {
@@ -79,6 +82,7 @@ func (t *ChainPhaseTracker) GetCurrentEpochState() *EpochState {
 		IsSynced:                   t.currentIsSynced,
 		ActiveConfirmationPoCEvent: t.activeConfirmationPoCEvent,
 		PocV2Enabled:               t.pocV2Enabled,
+		ConfirmationPocV2Enabled:   t.confirmationPocV2Enabled,
 	}
 }
 
@@ -112,4 +116,21 @@ func (t *ChainPhaseTracker) IsPoCv2Enabled() bool {
 	defer t.mu.RUnlock()
 
 	return t.pocV2Enabled
+}
+
+// UpdateConfirmationPocV2Enabled updates the cached confirmation_poc_v2_enabled flag.
+func (t *ChainPhaseTracker) UpdateConfirmationPocV2Enabled(enabled bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.confirmationPocV2Enabled = enabled
+}
+
+// IsConfirmationPoCv2Enabled returns the cached confirmation_poc_v2_enabled flag.
+// Returns true by default if not explicitly set.
+func (t *ChainPhaseTracker) IsConfirmationPoCv2Enabled() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	return t.confirmationPocV2Enabled
 }

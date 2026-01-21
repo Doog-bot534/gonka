@@ -365,9 +365,10 @@ func (am AppModule) updateConfirmationWeights(ctx context.Context, event *types.
 	}
 	weightScaleFactor := params.PocParams.GetWeightScaleFactorDec()
 
-	// Dispatch to V1 or V2 confirmation weight calculation based on poc_v2_enabled flag
+	// Dispatch to V1 or V2 confirmation weight calculation based on confirmation_poc_v2_enabled flag
+	// (not poc_v2_enabled - confirmation PoC can run V2 independently during migration)
 	var confirmationParticipants []*types.ActiveParticipant
-	if params.PocParams.PocV2Enabled {
+	if params.PocParams.ConfirmationPocV2Enabled || params.PocParams.PocV2Enabled {
 		confirmationParticipants = am.updateConfirmationWeightsV2(ctx, event, currentValidatorWeights, weightScaleFactor)
 	} else {
 		confirmationParticipants = am.UpdateConfirmationWeightsV1(ctx, event, currentValidatorWeights, weightScaleFactor)
@@ -432,7 +433,72 @@ func (am AppModule) updateConfirmationWeights(ctx context.Context, event *types.
 	// Check for slashing violations
 	am.checkConfirmationSlashing(ctx, &epochGroupData)
 
+	// In migration mode, check if we should auto-switch to full V2
+	migrationState := GetMigrationStateFromParams(params.PocParams)
+	if migrationState == ModeMigration {
+		am.checkAutoSwitchToV2(ctx, event, currentValidatorWeights)
+	}
+
 	return nil
+}
+
+// checkAutoSwitchToV2 evaluates if migration mode should auto-switch to full V2.
+// Auto-switch happens when >=75% of active participants received >=75% validation coverage.
+func (am AppModule) checkAutoSwitchToV2(
+	ctx context.Context,
+	event *types.ConfirmationPoCEvent,
+	currentValidatorWeights map[string]int64,
+) {
+	am.LogInfo("checkAutoSwitchToV2: Evaluating auto-switch in migration mode", types.PoC,
+		"epochIndex", event.EpochIndex,
+		"triggerHeight", event.TriggerHeight)
+
+	// Get validations for this confirmation event
+	validationsV2, err := am.keeper.GetPoCValidationsV2ByStage(ctx, event.TriggerHeight)
+	if err != nil {
+		am.LogError("checkAutoSwitchToV2: failed to get validations", types.PoC, "error", err)
+		return
+	}
+
+	// Calculate coverages using pure migration logic
+	coverages := CalculateCoverages(validationsV2, currentValidatorWeights)
+
+	// Evaluate auto-switch condition
+	result := EvaluateAutoSwitch(
+		coverages,
+		DefaultAutoSwitchParticipantThreshold,
+		DefaultAutoSwitchCoverageThreshold,
+	)
+
+	am.LogInfo("checkAutoSwitchToV2: Auto-switch evaluation result", types.PoC,
+		"shouldSwitch", result.ShouldSwitch,
+		"totalParticipants", result.TotalParticipants,
+		"sufficientCoverage", result.SufficientCoverage,
+		"participantRatio", result.ParticipantRatio)
+
+	if !result.ShouldSwitch {
+		am.LogInfo("checkAutoSwitchToV2: Not enough coverage for auto-switch, staying in migration mode", types.PoC)
+		return
+	}
+
+	// Auto-switch: set poc_v2_enabled = true
+	am.LogInfo("checkAutoSwitchToV2: Sufficient coverage achieved, auto-switching to full V2", types.PoC)
+
+	params, err := am.keeper.GetParams(ctx)
+	if err != nil {
+		am.LogError("checkAutoSwitchToV2: failed to get params for auto-switch", types.PoC, "error", err)
+		return
+	}
+
+	params.PocParams.PocV2Enabled = true
+	if err := am.keeper.SetParams(ctx, params); err != nil {
+		am.LogError("checkAutoSwitchToV2: failed to set params for auto-switch", types.PoC, "error", err)
+		return
+	}
+
+	am.LogInfo("checkAutoSwitchToV2: Successfully auto-switched to full V2 mode", types.PoC,
+		"poc_v2_enabled", params.PocParams.PocV2Enabled,
+		"confirmation_poc_v2_enabled", params.PocParams.ConfirmationPocV2Enabled)
 }
 
 // updateConfirmationWeightsV2 calculates confirmation weights using off-chain store commits
