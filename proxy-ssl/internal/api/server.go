@@ -85,13 +85,19 @@ func (s *Server) healthHandler(c *gin.Context) {
 	}
 
 	if latestOrder := s.issuer.GetLatestOrder(); latestOrder != nil {
-		status["latest_order"] = gin.H{
+		latest := gin.H{
 			"status":       latestOrder.Status,
 			"issued_at":    latestOrder.CreatedAt,
-			"next_renewal": latestOrder.ExpiresAt.AddDate(0, 0, -30), // 30 days before expiry
 			"last_updated": latestOrder.LastUpdated,
 			"last_error":   latestOrder.LastError,
 		}
+
+		if !latestOrder.ExpiresAt.IsZero() {
+			// 30 days before expiry
+			latest["next_renewal"] = latestOrder.ExpiresAt.AddDate(0, 0, -30)
+		}
+
+		status["latest_order"] = latest
 	}
 
 	c.JSON(http.StatusOK, status)

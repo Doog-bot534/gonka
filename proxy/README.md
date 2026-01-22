@@ -67,7 +67,7 @@ Key runtime environment variables:
 | `GLOBAL_BURST` | 5000 | Burst for global limit. |
 | `GONKA_API_RATE_LIMIT_RPS` | 10 | Base rate for `/api/`. Combined with high burst for "Punisher" strategy. |
 | `GONKA_API_RATE_UNIT` | m | Rate unit (`s` or `m`). Default `m` for slow recovery. |
-| `GONKA_API_BURST` | 600 | High burst capacity allow spikes but penalize sustained spam. |
+| `GONKA_API_BURST` | 600 | High burst capacity allows spikes but penalizes sustained spam. |
 | `GONKA_API_EXEMPT_ROUTES` | `chat inference training` | List of route prefixes to exempt. Matches prefix (e.g. `chat` matches `/chat`, `/chat/`, `/chat/123`). |
 | `GONKA_API_BLOCKED_ROUTES` | `poc-batches` | List of route prefixes to BLOCK. Returns 403 Forbidden. |
 | `CHAIN_API_EXEMPT_ROUTES` | - | List of Chain API route prefixes to exempt from standard limits. |
@@ -79,13 +79,13 @@ Key runtime environment variables:
 | `EXEMPT_RATE_LIMIT_RPS` | 500 | Rate limit for exempt routes. |
 | `EXEMPT_RATE_UNIT` | s | Unit for exempt routes (`s` or `m`). |
 | `EXEMPT_BURST` | 2000 | Burst for exempt routes. |
-| `CHAIN_API_RATE_LIMIT_RPS` | 10 | Rate limit for `/chain-api/` (default: 10). |
+| `CHAIN_API_RATE_LIMIT_RPS` | 20 | Rate limit for `/chain-api/` (default: 20). |
 | `CHAIN_API_RATE_UNIT` | m | Unit for chain API (`s` or `m`). Default `m`. |
 | `CHAIN_API_BURST` | 200 | Burst for chain API. |
-| `CHAIN_RPC_RATE_LIMIT_RPS` | 10 | Rate limit for `/chain-rpc/` (default: 10). |
+| `CHAIN_RPC_RATE_LIMIT_RPS` | 20 | Rate limit for `/chain-rpc/` (default: 20). |
 | `CHAIN_RPC_RATE_UNIT` | m | Unit for chain RPC (`s` or `m`). Default `m`. |
 | `CHAIN_RPC_BURST` | 200 | Burst for chain RPC. |
-| `CHAIN_GRPC_RATE_LIMIT_RPS` | 10 | Rate limit for `/chain-grpc/` (default: 10). |
+| `CHAIN_GRPC_RATE_LIMIT_RPS` | 20 | Rate limit for `/chain-grpc/` (default: 20). |
 | `CHAIN_GRPC_RATE_UNIT` | m | Unit for chain gRPC (`s` or `m`). Default `m`. |
 | `CHAIN_GRPC_BURST` | 200 | Burst for chain gRPC. |
 
