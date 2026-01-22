@@ -1113,7 +1113,7 @@ func positionDistance(
 	validationLogprobs []completionapi.TopLogprobs,
 ) (float64, error) {
 	if len(originalLogprobs) == 0 || len(validationLogprobs) == 0 {
-		return 0.0, nil
+		return 0.0, fmt.Errorf("empty logprobs provided")
 	}
 	distance := 0.0
 
