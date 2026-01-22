@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+
+	"github.com/productscience/inference/x/inference/types"
 )
 
 // PoCParamsV2 contains model-specific parameters for PoC v2 generation/validation.
@@ -52,18 +54,44 @@ type ValidationV2 struct {
 
 // StatTestParamsV2 contains optional statistical test parameters for validation.
 type StatTestParamsV2 struct {
-	DistThreshold  float64 `json:"dist_threshold,omitempty"`
-	PMismatch      float64 `json:"p_mismatch,omitempty"`
-	FraudThreshold float64 `json:"fraud_threshold,omitempty"`
+	DistThreshold   float64 `json:"dist_threshold,omitempty"`
+	PMismatch       float64 `json:"p_mismatch,omitempty"`
+	PValueThreshold float64 `json:"p_value_threshold,omitempty"`
 }
+
+// Default stat test parameter values.
+const (
+	DefaultDistThreshold   = 0.4
+	DefaultPMismatch       = 0.1
+	DefaultPValueThreshold = 0.05
+)
 
 // DefaultStatTestParamsV2 returns the default statistical test parameters for PoC v2 validation.
 func DefaultStatTestParamsV2() *StatTestParamsV2 {
 	return &StatTestParamsV2{
-		DistThreshold:  0.02,
-		PMismatch:      0.075,
-		FraudThreshold: 0.2,
+		DistThreshold:   DefaultDistThreshold,
+		PMismatch:       DefaultPMismatch,
+		PValueThreshold: DefaultPValueThreshold,
 	}
+}
+
+// StatTestParamsFromChain converts chain PoCStatTestParams to API StatTestParamsV2.
+// Falls back to defaults for any nil or zero values.
+func StatTestParamsFromChain(chainParams *types.PoCStatTestParams) *StatTestParamsV2 {
+	result := DefaultStatTestParamsV2()
+	if chainParams == nil {
+		return result
+	}
+	if chainParams.DistThreshold != nil {
+		result.DistThreshold = chainParams.DistThreshold.ToFloat()
+	}
+	if chainParams.PMismatch != nil {
+		result.PMismatch = chainParams.PMismatch.ToFloat()
+	}
+	if chainParams.PValueThreshold != nil {
+		result.PValueThreshold = chainParams.PValueThreshold.ToFloat()
+	}
+	return result
 }
 
 // PoCStatusResponseV2 represents the response from /api/v1/inference/pow/status.

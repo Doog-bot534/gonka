@@ -164,6 +164,15 @@ func DefaultPocParams() *PocParams {
 		ModelParams:                  DefaultPoCModelParams(), // Deprecated, kept for backward compatibility
 		ModelId:                      "",                      // Model identifier for PoC
 		SeqLen:                       256,                     // Sequence length for PoC
+		StatTest:                     DefaultPoCStatTestParams(),
+	}
+}
+
+func DefaultPoCStatTestParams() *PoCStatTestParams {
+	return &PoCStatTestParams{
+		DistThreshold:   DecimalFromFloat(0.4),
+		PMismatch:       DecimalFromFloat(0.1),
+		PValueThreshold: DecimalFromFloat(0.05),
 	}
 }
 
