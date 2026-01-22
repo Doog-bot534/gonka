@@ -278,7 +278,13 @@ jobs:
       - name: Run Tests (Non-Matrix)
         if: ${{ !inputs.use_matrix }}
         run: sudo make ${{ inputs.test_command }}
-
+      - name: Archive Test Results XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-xml-${{ matrix.test_group }}
+          path: ./testermint/build/test-results/**/*.xml
+          retention-days: 30
       - name: Archive Test Logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -528,3 +534,4 @@ jobs:
           echo "*Individual test reports are available in the Checks tab above*" >> $GITHUB_STEP_SUMMARY
           
           echo "##[debug]FINAL TOTALS: Passed=$TOTAL_PASSED, Failed=$TOTAL_FAILED, Skipped=$TOTAL_SKIPPED"
+
