@@ -11,7 +11,7 @@ data class InferencePayload(
     val completionTokenCount: Int?,
     val requestedBy: String?,
     val executedBy: String?,
-    val status: Int,
+    val status: InferenceStatus,
     val startBlockHeight: Long,
     val endBlockHeight: Long?,
     val startBlockTimestamp: Long,
@@ -31,6 +31,9 @@ data class InferencePayload(
     @com.google.gson.annotations.SerializedName("epoch_id")
     val epochId: Long = 0,  // Phase 4: for offchain payload storage
 ) {
+    val statusEnum: InferenceStatus
+        get() = status
+
     companion object {
         fun empty() = InferencePayload(
             index = "",
@@ -43,7 +46,7 @@ data class InferencePayload(
             completionTokenCount = null,
             requestedBy = "",
             executedBy = null,
-            status = InferenceStatus.STARTED.value,
+            status = InferenceStatus.STARTED,
             startBlockHeight = 0L,
             endBlockHeight = null,
             startBlockTimestamp = 0L,
@@ -64,17 +67,18 @@ data class InferencePayload(
         !this.requestedBy.isNullOrEmpty() &&
                 !this.executedBy.isNullOrEmpty() &&
                 !this.model.isNullOrEmpty() &&
-                this.status > 0
+                this.statusEnum != InferenceStatus.STARTED
 }
 
+
 enum class InferenceStatus(val value: Int) {
-    STARTED(0),
-    FINISHED(1),
-    VALIDATED(2),
-    INVALIDATED(3),
-    VOTING(4),
-    EXPIRED(5),
-    UNSPECIFIED(6);
+    UNSPECIFIED(0),
+    STARTED(1),
+    FINISHED(2),
+    VALIDATED(3),
+    INVALIDATED(4),
+    VOTING(5),
+    EXPIRED(6);
 
     companion object {
         fun fromValue(value: Int): InferenceStatus =
