@@ -127,7 +127,13 @@ func (w *CommitWorker) tick() {
 	if ShouldHaveDistributedWeights(epochState) && pocHeight > 0 {
 		shouldRetry := w.lastDistributionAttempt.IsZero() ||
 			time.Since(w.lastDistributionAttempt) > distributionRetryInterval
-		if shouldRetry && !w.isDistributionOnChain(pocHeight) {
+		onChain := w.isDistributionOnChain(pocHeight)
+		logging.Debug("CommitWorker: distribution check", types.PoC,
+			"pocHeight", pocHeight,
+			"shouldRetry", shouldRetry,
+			"lastAttemptIsZero", w.lastDistributionAttempt.IsZero(),
+			"onChain", onChain)
+		if shouldRetry && !onChain {
 			w.submitWeightDistribution(pocHeight)
 		}
 	}
@@ -182,15 +188,14 @@ func (w *CommitWorker) isDistributionOnChain(pocHeight int64) bool {
 }
 
 func (w *CommitWorker) submitWeightDistribution(pocHeight int64) {
-	w.lastDistributionAttempt = time.Now()
-
 	store, err := w.store.GetStore(pocHeight)
 	if err != nil || store == nil {
+		logging.Debug("CommitWorker: no store", types.PoC, "pocHeight", pocHeight)
 		return
 	}
 
 	if w.participantAddress == "" {
-		logging.Warn("CommitWorker: no participant address, skipping distribution", types.PoC)
+		logging.Debug("CommitWorker: no participant address", types.PoC)
 		return
 	}
 
@@ -205,14 +210,13 @@ func (w *CommitWorker) submitWeightDistribution(pocHeight int64) {
 		return
 	}
 	if !resp.Found || resp.Count == 0 {
-		logging.Debug("CommitWorker: no committed snapshot found, skipping distribution", types.PoC,
-			"pocHeight", pocHeight)
+		logging.Debug("CommitWorker: no committed snapshot", types.PoC,
+			"pocHeight", pocHeight, "found", resp.Found, "count", resp.Count)
 		return
 	}
 
 	if err := store.Flush(); err != nil {
-		logging.Warn("CommitWorker: flush failed before distribution", types.PoC,
-			"pocHeight", pocHeight, "error", err)
+		logging.Warn("CommitWorker: flush failed", types.PoC, "pocHeight", pocHeight, "error", err)
 	}
 
 	distribution := store.GetNodeDistribution()
@@ -238,6 +242,8 @@ func (w *CommitWorker) submitWeightDistribution(pocHeight int64) {
 			"pocHeight", pocHeight, "error", err)
 		return
 	}
+
+	w.lastDistributionAttempt = time.Now()
 
 	logging.Info("CommitWorker: distributed weights", types.PoC,
 		"pocHeight", pocHeight, "nodes", len(weights), "count", resp.Count,
