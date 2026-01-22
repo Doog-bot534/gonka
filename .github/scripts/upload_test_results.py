@@ -263,7 +263,7 @@ def main():
     # Upload
     client = None if args.dry_run else get_bigquery_client()
     success = upload_to_bigquery(
-        client, args.project, args.dataset,
+        client, project, args.dataset,
         test_results, commit_metadata,
         dry_run=args.dry_run
     )
