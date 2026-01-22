@@ -197,7 +197,7 @@ func registerNodeAndSetInferenceStatus(t *testing.T, broker *Broker, node apicon
 	for time.Now().Before(deadline) {
 		allClients := mockFactory.GetAllClients()
 		for _, client := range allClients {
-			if client.InferenceUpCalled > 0 {
+			if client.GetInferenceUpCalled() > 0 {
 				// InferenceUp was called, wait a bit for status to propagate
 				time.Sleep(50 * time.Millisecond)
 				return
@@ -520,16 +520,16 @@ func TestImmediateClientRefreshLogic(t *testing.T) {
 	}
 	require.NotNil(t, mockClient, "Mock client should exist")
 
-	initialStopCalled := mockClient.StopCalled
+	initialStopCalled := mockClient.GetStopCalled()
 
 	// Dynamic client creation means refresh is effectively a no-op for the HTTP client.
 	worker.RefreshClientImmediate("v3.0.8", "v3.1.0")
 	time.Sleep(10 * time.Millisecond)
-	assert.Equal(t, initialStopCalled, mockClient.StopCalled, "Stop should not be invoked when clients are created per request")
+	assert.Equal(t, initialStopCalled, mockClient.GetStopCalled(), "Stop should not be invoked when clients are created per request")
 
 	worker.RefreshClientImmediate("v3.1.0", "v3.2.0")
 	time.Sleep(10 * time.Millisecond)
-	assert.Equal(t, initialStopCalled, mockClient.StopCalled, "Stop should remain unchanged on repeated refreshes")
+	assert.Equal(t, initialStopCalled, mockClient.GetStopCalled(), "Stop should remain unchanged on repeated refreshes")
 }
 
 func TestUpdateNodeConfiguration(t *testing.T) {
