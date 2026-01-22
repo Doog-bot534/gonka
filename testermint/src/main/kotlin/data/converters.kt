@@ -125,8 +125,57 @@ class ConfirmationPoCPhaseDeserializer : JsonDeserializer<ConfirmationPoCPhase> 
         typeOfT: Type?,
         context: JsonDeserializationContext?
     ): ConfirmationPoCPhase {
+        if (json.isJsonPrimitive && json.asJsonPrimitive.isString) {
+            val str = json.asString
+            return try {
+                ConfirmationPoCPhase.valueOf(str)
+            } catch (e: Exception) {
+                // Try numeric string
+                val num = str.toIntOrNull()
+                if (num != null) {
+                    ConfirmationPoCPhase.values().find { it.value == num }
+                        ?: throw IllegalArgumentException("Unknown ConfirmationPoCPhase value: $num")
+                } else {
+                    throw e
+                }
+            }
+        }
         val intValue = json.asInt
         return ConfirmationPoCPhase.values().find { it.value == intValue }
             ?: throw IllegalArgumentException("Unknown ConfirmationPoCPhase value: $intValue")
+    }
+}
+class InferenceStatusDeserializer : JsonDeserializer<InferenceStatus> {
+    override fun deserialize(
+        json: JsonElement,
+        typeOfT: Type?,
+        context: JsonDeserializationContext?
+    ): InferenceStatus {
+        return InferenceStatus.fromAny(
+            if (json.isJsonPrimitive && json.asJsonPrimitive.isString) {
+                json.asString
+            } else if (json.isJsonPrimitive && json.asJsonPrimitive.isNumber) {
+                json.asInt
+            } else {
+                null
+            }
+        )
+    }
+}
+class ProposalStatusDeserializer : JsonDeserializer<ProposalStatus> {
+    override fun deserialize(
+        json: JsonElement,
+        typeOfT: Type?,
+        context: JsonDeserializationContext?
+    ): ProposalStatus {
+        return ProposalStatus.fromAny(
+            if (json.isJsonPrimitive && json.asJsonPrimitive.isString) {
+                json.asString
+            } else if (json.isJsonPrimitive && json.asJsonPrimitive.isNumber) {
+                json.asInt
+            } else {
+                null
+            }
+        )
     }
 }
