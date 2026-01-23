@@ -124,6 +124,25 @@ http {
             proxy_read_timeout ${CHAIN_RPC_TRANSFER_TIMEOUT}s;
         }
 
+        # Status endpoint without limits
+        location /chain-rpc/status {
+            ${LIMIT_REQ_RULE_CHAIN_RPC}
+            ${CHAIN_RPC_STATUS}
+            proxy_pass http://chain_rpc_backend/status;
+            proxy_set_header Host $$host;
+            proxy_set_header X-Real-IP $$remote_addr;
+            proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $$scheme;
+
+            ${CORS_CONFIG}
+            ${STREAMING_CONFIG}
+
+            # Standard timeouts for chain API
+            proxy_connect_timeout ${CHAIN_RPC_CONNECT_TIMEOUT}s;
+            proxy_send_timeout ${CHAIN_RPC_TRANSFER_TIMEOUT}s;
+            proxy_read_timeout ${CHAIN_RPC_TRANSFER_TIMEOUT}s;
+        }
+
         # Chain API endpoint (REST API)
         location /chain-api/ {
             ${LIMIT_REQ_RULE_CHAIN_API}
