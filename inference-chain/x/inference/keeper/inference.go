@@ -12,8 +12,14 @@ import (
 func (k Keeper) SetInference(ctx context.Context, inference types.Inference) error {
 	// store via collections
 	setStart := time.Now()
-	storeStart := time.Now()
+	pruneStart := time.Now()
 	k.addInferenceToPruningList(ctx, inference)
+	k.LogInfo("SetInference: pruning list updated", types.Pruning,
+		"inference_id", inference.InferenceId,
+		"duration_ms", durationMs(pruneStart),
+	)
+
+	storeStart := time.Now()
 	if err := k.Inferences.Set(ctx, inference.Index, inference); err != nil {
 		return err
 	}
