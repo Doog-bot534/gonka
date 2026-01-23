@@ -111,7 +111,7 @@ if [ "$DASHBOARD_ENABLED" = "true" ]; then
             # WebSocket support for hot reloading
             proxy_http_version 1.1;
             proxy_set_header Upgrade \$\$http_upgrade;
-            proxy_set_header Connection \"upgrade\";
+            proxy_set_header Connection \$\$connection_upgrade;
         }"
 else
     echo "   DASHBOARD_PORT: not set (disabled)"
@@ -392,8 +392,8 @@ append_blocked_location() {
         for prefix in $prefixes; do
             BLOCKED_ROUTES_CONFIG="${BLOCKED_ROUTES_CONFIG}
     location ${prefix}${clean_route} {
-        return 403 '{\"error\": \"Access Denied\", \"message\": \"This route is currently blocked.\"}';
         add_header Content-Type application/json;
+        return 403 '{\"error\": \"Access Denied\", \"message\": \"This route is currently blocked.\"}';
     }
     "
         done
@@ -557,7 +557,7 @@ append_exempt_location "$CHAIN_API_EXEMPT_ROUTES" "/chain-api/" "http://chain_ap
 # 3. Chain RPC Exempt Routes (Needs WebSocket support)
 WS_CONFIG="proxy_http_version 1.1;
         proxy_set_header Upgrade \$\$http_upgrade;
-        proxy_set_header Connection \"upgrade\";"
+        proxy_set_header Connection \$\$connection_upgrade;"
 append_exempt_location "$CHAIN_RPC_EXEMPT_ROUTES" "/chain-rpc/" "http://chain_rpc_backend/" "${CHAIN_RPC_STATUS}" "http" "$CHAIN_RPC_CONNECT_TIMEOUT" "$CHAIN_RPC_TRANSFER_TIMEOUT" "$WS_CONFIG"
 
 # 4. Chain gRPC Exempt Routes
