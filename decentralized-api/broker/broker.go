@@ -641,6 +641,17 @@ func (b *Broker) GetNodeByNodeNum(nodeNum uint64) (*Node, bool) {
 	return nil, false
 }
 
+func (b *Broker) Wait() {
+	// 1. Wait for all pending node workers to finish their current tasks
+	b.nodeWorkGroup.Wait()
+
+	// 2. Wait for the broker to process all pending results/commands
+	// We do this by queuing a special command and waiting for its response
+	done := make(chan bool)
+	b.QueueMessage(NewNoOpCommand(done))
+	<-done
+}
+
 func (b *Broker) syncNodes() {
 	resp, err := b.chainBridge.GetHardwareNodes()
 	if err != nil {

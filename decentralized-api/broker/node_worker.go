@@ -189,3 +189,16 @@ func (g *NodeWorkGroup) GetWorker(nodeId string) (*NodeWorker, bool) {
 	worker, exists := g.workers[nodeId]
 	return worker, exists
 }
+
+func (g *NodeWorkGroup) Wait() {
+	g.mu.RLock()
+	var workers []*NodeWorker
+	for _, w := range g.workers {
+		workers = append(workers, w)
+	}
+	g.mu.RUnlock()
+
+	for _, w := range workers {
+		w.wg.Wait()
+	}
+}

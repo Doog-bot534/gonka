@@ -270,3 +270,19 @@ func (c UpdateNodeResultCommand) Execute(b *Broker) {
 
 	c.Response <- true
 }
+
+type NoOpCommand struct {
+	Response chan bool
+}
+
+func NewNoOpCommand(response chan bool) NoOpCommand {
+	return NoOpCommand{Response: response}
+}
+
+func (c NoOpCommand) GetResponseChannelCapacity() int {
+	return cap(c.Response)
+}
+
+func (c NoOpCommand) Execute(b *Broker) {
+	c.Response <- true
+}

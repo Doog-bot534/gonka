@@ -589,7 +589,8 @@ func TestRegularPocScenario(t *testing.T) {
 		i++
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	waitForAsync(100 * time.Millisecond)
+	setup.NodeBroker.Wait()
 
 	setup.assertNode("node-1", func(n broker.NodeResponse) {
 		require.Equal(t, types.HardwareNodeStatus_POC, n.State.CurrentStatus)
@@ -627,6 +628,7 @@ func TestRegularPocScenario(t *testing.T) {
 
 		if i == pocValStart {
 			waitForAsync(300 * time.Millisecond)
+			setup.NodeBroker.Wait()
 		}
 
 		expected := NodeClientAssertion{StopCalled: 2, InitGenerateCalled: 1, InitValidateCalled: 1, InferenceUpCalled: 1}
@@ -648,6 +650,7 @@ func TestRegularPocScenario(t *testing.T) {
 	err := setup.simulateBlock(i)
 	require.NoError(t, err)
 	waitForAsync(100 * time.Millisecond)
+	setup.NodeBroker.Wait()
 
 	expected = NodeClientAssertion{StopCalled: 3, InitGenerateCalled: 1, InitValidateCalled: 1, InferenceUpCalled: 2}
 	assertNodeClient(t, expected, node1Client)
@@ -1036,6 +1039,7 @@ func TestPoCRetry(t *testing.T) {
 	require.NoError(t, err)
 
 	waitForAsync(100 * time.Millisecond)
+	setup.NodeBroker.Wait()
 
 	assertNodeClient(t, NodeClientAssertion{0, 1, 0, 0}, node1Client)
 	assertNodeClient(t, NodeClientAssertion{0, 1, 0, 0}, node2Client)
@@ -1055,6 +1059,7 @@ func TestPoCRetry(t *testing.T) {
 	}
 
 	waitForAsync(100 * time.Millisecond)
+	setup.NodeBroker.Wait()
 
 	// check PoC init generate was retried
 	assertNodeClient(t, NodeClientAssertion{0, 2, 0, 0}, node1Client)
@@ -1071,18 +1076,22 @@ func TestPoCRetry(t *testing.T) {
 		node1Client.InitGenerateError = nil
 	})
 
-	for i < params.EpochLength+params.GetEndOfPoCStage() {
+	// Wait for a few more blocks to ensure retry happens and then stabilizes
+	for k := 0; k < 5; k++ {
 		err = setup.simulateBlock(i)
 		require.NoError(t, err)
 
 		waitForAsync(100 * time.Millisecond)
+		setup.NodeBroker.Wait()
 
 		i++
 	}
 
 	// waitForAsync(100 * time.Millisecond)
+	// setup.NodeBroker.Wait()
 
 	// check only 1 retry happened and then it stopped once we removed the error
+	// node1Client: 1 (start) + 1 (retry 1) + 1 (retry 2) = 3
 	assertNodeClient(t, NodeClientAssertion{0, 3, 0, 0}, node1Client)
 	assertNodeClient(t, NodeClientAssertion{0, 1, 0, 0}, node2Client)
 	setup.assertNode("node-1", func(n broker.NodeResponse) {
