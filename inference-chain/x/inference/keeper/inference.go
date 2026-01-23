@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"time"
 
 	"cosmossdk.io/collections"
 	"github.com/productscience/inference/x/inference/types"
@@ -10,17 +11,37 @@ import (
 // SetInference set a specific inference in the store from its index
 func (k Keeper) SetInference(ctx context.Context, inference types.Inference) error {
 	// store via collections
+	setStart := time.Now()
+	storeStart := time.Now()
 	k.addInferenceToPruningList(ctx, inference)
 	if err := k.Inferences.Set(ctx, inference.Index, inference); err != nil {
 		return err
 	}
+	k.LogInfo("SetInference: inference stored", types.Inferences,
+		"inference_id", inference.InferenceId,
+		"duration_ms", durationMs(storeStart),
+	)
 
+	devStatStart := time.Now()
 	err := k.SetDeveloperStats(ctx, inference)
 	if err != nil {
-		k.LogError("error setting developer stat", types.Stat, "err", err)
+		k.LogError("SetInference: developer stats update failed", types.Stat,
+			"inference_id", inference.InferenceId,
+			"duration_ms", durationMs(devStatStart),
+			"error", err,
+		)
 	} else {
-		k.LogInfo("updated developer stat", types.Stat, "inference_id", inference.InferenceId, "inference_status", inference.Status.String(), "developer", inference.RequestedBy)
+		k.LogInfo("SetInference: developer stats updated", types.Stat,
+			"inference_id", inference.InferenceId,
+			"inference_status", inference.Status.String(),
+			"developer", inference.RequestedBy,
+			"duration_ms", durationMs(devStatStart),
+		)
 	}
+	k.LogInfo("SetInference: complete", types.Inferences,
+		"inference_id", inference.InferenceId,
+		"duration_ms", durationMs(setStart),
+	)
 	return nil
 }
 

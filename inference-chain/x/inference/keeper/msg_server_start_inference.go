@@ -126,17 +126,35 @@ func (k msgServer) verifyKeys(ctx sdk.Context, msg *types.MsgStartInference, age
 	}
 
 	// Verify dev signature (original_prompt_hash)
-	if err := calculations.VerifyKeys(ctx, devComponents, calculations.SignatureData{
-		DevSignature: msg.InferenceId, Dev: &dev,
-	}, k); err != nil {
+	if err := k.verifySignatureWithTiming(
+		ctx,
+		devComponents,
+		calculations.Developer,
+		msg.InferenceId,
+		&dev,
+		false,
+		"inferenceId",
+		msg.InferenceId,
+		"StartInference",
+		"dev",
+	); err != nil {
 		k.LogError("StartInference: dev signature failed", types.Inferences, "inferenceId", msg.InferenceId, "error", err)
 		return err
 	}
 
 	// Verify TA signature (prompt_hash)
-	if err := calculations.VerifyKeys(ctx, getTASignatureComponents(msg), calculations.SignatureData{
-		TransferSignature: msg.TransferSignature, TransferAgent: &agent,
-	}, k); err != nil {
+	if err := k.verifySignatureWithTiming(
+		ctx,
+		getTASignatureComponents(msg),
+		calculations.TransferAgent,
+		msg.TransferSignature,
+		&agent,
+		true,
+		"inferenceId",
+		msg.InferenceId,
+		"StartInference",
+		"transfer",
+	); err != nil {
 		k.LogError("StartInference: TA signature failed", types.Inferences, "inferenceId", msg.InferenceId, "error", err)
 		return err
 	}

@@ -146,9 +146,18 @@ func (k msgServer) verifyFinishKeys(ctx sdk.Context, msg *types.MsgFinishInferen
 	}
 
 	// Verify dev signature (original_prompt_hash)
-	if err := calculations.VerifyKeys(ctx, devComponents, calculations.SignatureData{
-		DevSignature: msg.InferenceId, Dev: requestor,
-	}, k); err != nil {
+	if err := k.verifySignatureWithTiming(
+		ctx,
+		devComponents,
+		calculations.Developer,
+		msg.InferenceId,
+		requestor,
+		false,
+		"inference_id",
+		msg.InferenceId,
+		"FinishInference",
+		"dev",
+	); err != nil {
 		k.LogError("FinishInference: dev signature failed", types.Inferences, "inference_id", msg.InferenceId, "error", err)
 		return err
 	}
@@ -159,9 +168,18 @@ func (k msgServer) verifyFinishKeys(ctx sdk.Context, msg *types.MsgFinishInferen
 	}
 
 	// Verify Executor signature (prompt_hash)
-	if err := calculations.VerifyKeys(ctx, taComponents, calculations.SignatureData{
-		ExecutorSignature: msg.ExecutorSignature, Executor: executor,
-	}, k); err != nil {
+	if err := k.verifySignatureWithTiming(
+		ctx,
+		taComponents,
+		calculations.ExecutorAgent,
+		msg.ExecutorSignature,
+		executor,
+		true,
+		"inference_id",
+		msg.InferenceId,
+		"FinishInference",
+		"executor",
+	); err != nil {
 		k.LogError("FinishInference: Executor signature failed", types.Inferences, "inference_id", msg.InferenceId, "error", err)
 		return err
 	}
@@ -172,9 +190,35 @@ func (k msgServer) verifyFinishKeys(ctx sdk.Context, msg *types.MsgFinishInferen
 // verifyTASignature verifies TA signature using prompt_hash.
 // Includes upgrade-epoch fallback for inferences started before hash-based signing.
 func (k msgServer) verifyTASignature(ctx sdk.Context, msg *types.MsgFinishInference, taComponents calculations.SignatureComponents, transferAgent *types.Participant) error {
-	err := calculations.VerifyKeys(ctx, taComponents, calculations.SignatureData{
-		TransferSignature: msg.TransferSignature, TransferAgent: transferAgent,
-	}, k)
+	if transferAgent == nil || msg.TransferSignature == "" {
+		return nil
+	}
+
+	fetchStart := time.Now()
+	pubKeys, err := k.GetAccountPubKeysWithGrantees(ctx, transferAgent.Address)
+	if err != nil {
+		k.LogError("FinishInference: verifyKeys transfer pubkey fetch failed", types.Inferences,
+			"inference_id", msg.InferenceId,
+			"participant", transferAgent.Address,
+			"error", err,
+		)
+		return sdkerrors.Wrap(types.ErrParticipantNotFound, transferAgent.Address)
+	}
+	k.LogInfo("FinishInference: verifyKeys transfer pubkey fetch complete", types.Inferences,
+		"inference_id", msg.InferenceId,
+		"participant", transferAgent.Address,
+		"key_count", len(pubKeys),
+		"duration_ms", durationMs(fetchStart),
+	)
+
+	validateStart := time.Now()
+	err = calculations.ValidateSignatureWithGrantees(taComponents, calculations.TransferAgent, pubKeys, msg.TransferSignature)
+	k.LogInfo("FinishInference: verifyKeys transfer signature validation complete", types.Inferences,
+		"inference_id", msg.InferenceId,
+		"participant", transferAgent.Address,
+		"duration_ms", durationMs(validateStart),
+		"success", err == nil,
+	)
 	if err == nil {
 		return nil
 	}
@@ -187,11 +231,17 @@ func (k msgServer) verifyTASignature(ctx sdk.Context, msg *types.MsgFinishInfere
 		TransferAddress: msg.TransferredBy,
 		ExecutorAddress: msg.ExecutedBy,
 	}
-	if fallbackErr := calculations.VerifyKeys(ctx, directComponents, calculations.SignatureData{
-		TransferSignature: msg.TransferSignature, TransferAgent: transferAgent,
-	}, k); fallbackErr != nil {
+	fallbackStart := time.Now()
+	fallbackErr := calculations.ValidateSignatureWithGrantees(directComponents, calculations.TransferAgent, pubKeys, msg.TransferSignature)
+	k.LogInfo("FinishInference: verifyKeys transfer signature fallback validation complete", types.Inferences,
+		"inference_id", msg.InferenceId,
+		"participant", transferAgent.Address,
+		"duration_ms", durationMs(fallbackStart),
+		"success", fallbackErr == nil,
+	)
+	if fallbackErr != nil {
 		k.LogError("FinishInference: TA signature failed", types.Inferences, "inference_id", msg.InferenceId, "promptHashErr", err, "fallbackErr", fallbackErr)
-		return err
+		return sdkerrors.Wrap(types.ErrInvalidSignature, "transfer signature validation failed")
 	}
 
 	k.LogDebug("FinishInference: Using upgrade-epoch fallback for TA signature", types.Inferences, "inference_id", msg.InferenceId)
