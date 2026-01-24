@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"cosmossdk.io/collections"
+	"github.com/cosmos/cosmos-sdk/runtime"
 	"github.com/productscience/inference/x/inference/types"
 )
 
@@ -72,11 +73,36 @@ func (k Keeper) GetInference(
 	index string,
 
 ) (val types.Inference, found bool) {
-	v, err := k.Inferences.Get(ctx, index)
+	keyBytes, err := collections.EncodeKeyWithPrefix(k.Inferences.GetPrefix(), k.Inferences.KeyCodec(), index)
 	if err != nil {
+		k.LogError("GetInference: key encode failed", types.Inferences, "inference_id", index, "error", err)
 		return val, false
 	}
-	return v, true
+
+	storeAdapter := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
+	fetchStart := time.Now()
+	valueBytes := storeAdapter.Get(keyBytes)
+	k.LogInfo("GetInference: storage fetch complete", types.Inferences,
+		"inference_id", index,
+		"found", valueBytes != nil,
+		"duration_ms", durationMs(fetchStart),
+	)
+	if valueBytes == nil {
+		return val, false
+	}
+
+	decodeStart := time.Now()
+	val, err = k.Inferences.ValueCodec().Decode(valueBytes)
+	k.LogInfo("GetInference: decode complete", types.Inferences,
+		"inference_id", index,
+		"duration_ms", durationMs(decodeStart),
+		"success", err == nil,
+	)
+	if err != nil {
+		k.LogError("GetInference: decode failed", types.Inferences, "inference_id", index, "error", err)
+		return val, false
+	}
+	return val, true
 }
 
 // RemoveInference removes a inference from the store
