@@ -127,7 +127,6 @@ http {
         # Status endpoint without limits
         location /chain-rpc/status {
             ${LIMIT_REQ_RULE_CHAIN_RPC}
-            ${CHAIN_RPC_STATUS}
             proxy_pass http://chain_rpc_backend/status;
             proxy_set_header Host $$host;
             proxy_set_header X-Real-IP $$remote_addr;
