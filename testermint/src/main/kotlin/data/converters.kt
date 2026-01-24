@@ -31,6 +31,28 @@ class DurationDeserializer : JsonDeserializer<Duration> {
     }
 }
 
+
+class IntDeserializer : JsonDeserializer<Int> {
+    override fun deserialize(
+        json: JsonElement,
+        typeOfT: Type?,
+        context: JsonDeserializationContext?,
+    ): Int? {
+        if (json.asString == "") return null
+        return try {
+            json.asString.replace("_", "").toInt()
+        } catch (e: NumberFormatException) {
+            try {
+                // Handle "5000.0" case
+               json.asDouble.toInt()
+            } catch (e2: Exception) {
+               // Fallback to original parsing (w/o replace) or just let it throw
+               json.asInt
+            }
+        }
+    }
+}
+
 class LongSerializer: JsonSerializer<java.lang.Long> {
     override fun serialize(
         src: java.lang.Long?,

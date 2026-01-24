@@ -74,6 +74,27 @@ enum class InferenceStatus(val value: Int) {
     INVALIDATED(3),
     VOTING(4),
     EXPIRED(5),
+    UNSPECIFIED(6);
+
+    companion object {
+        fun fromValue(value: Int): InferenceStatus =
+            values().find { it.value == value } ?: UNSPECIFIED
+
+        fun fromAny(value: Any?): InferenceStatus {
+            return when (value) {
+                is String -> {
+                    if (value.isEmpty()) return UNSPECIFIED
+                    val normalized = value.removePrefix("INFERENCE_STATUS_")
+                    values().find { it.name == normalized } ?: run {
+                        val num = normalized.toIntOrNull()
+                        if (num != null) fromValue(num) else UNSPECIFIED
+                    }
+                }
+                is Number -> fromValue(value.toInt())
+                else -> UNSPECIFIED
+            }
+        }
+    }
 }
 
 data class InferencesWrapper(
