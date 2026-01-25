@@ -774,6 +774,18 @@ data class ApplicationCLI(
             )
         }
 
+    fun listConfirmationPoCEvents(epochIndex: Long): ConfirmationPoCEventsResponse =
+        wrapLog("listConfirmationPoCEvents", infoLevel = false) {
+            execAndParse(
+                listOf(
+                    "query",
+                    "inference",
+                    "list-confirmation-poc-events",
+                    epochIndex.toString()
+                )
+            )
+        }
+
     fun getColdPrivateKey(): String = wrapLog("getColdPrivateKey", infoLevel = false) {
         val accountName = this.getColdAccountName()
         exec(

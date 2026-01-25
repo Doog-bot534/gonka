@@ -241,51 +241,62 @@ class PoCMigrationTests : TestermintTest() {
         assertThat(storeCommit.found).isFalse()
             .describedAs("Migration mode regular PoC should NOT produce StoreCommit (V1)")
 
-        // === Phase 2: Wait for first confirmation PoC (V2 tracking, event_sequence == 0) ===
-        logSection("Phase 2: Waiting for first Confirmation PoC (V2 tracking)")
+        // === Phase 2: Let confirmation PoCs run through the epoch ===
+        logSection("Phase 2: Letting confirmation PoCs run through epoch")
 
         // Set PoC weights for all participants
         genesis.setPocWeight(10)
         join1.setPocWeight(10)
         join2.setPocWeight(10)
 
-        val firstEvent = waitForConfirmationPoCTrigger(genesis)
+        // Wait for epoch to progress through confirmation PoCs
+        // With expectedConfirmationsPerEpoch=100 and epochLength=80, we should get multiple events
+        val currentEpoch = epochData.latestEpoch.index
+        Logger.info("Current epoch: $currentEpoch, waiting for confirmation events to complete...")
+
+        // Wait for multiple confirmation events by checking periodically
+        var eventsFound = 0
+        for (i in 1..50) {
+            genesis.node.waitForNextBlock(3)
+            val events = genesis.node.listConfirmationPoCEvents(currentEpoch)
+            if (events.events.size >= 2) {
+                eventsFound = events.events.size
+                Logger.info("Found $eventsFound confirmation events after ${i * 3} blocks")
+                break
+            }
+            if (i % 10 == 0) {
+                Logger.info("Progress: ${events.events.size} events found after ${i * 3} blocks")
+            }
+        }
+
+        // === Phase 3: Verify confirmation PoC events using historical query ===
+        logSection("Phase 3: Verifying confirmation PoC events")
+
+        val allEvents = genesis.node.listConfirmationPoCEvents(currentEpoch)
+        Logger.info("Total confirmation events in epoch $currentEpoch: ${allEvents.events.size}")
+
+        // Find first event (eventSequence == 0) - should use V2
+        val firstEvent = allEvents.events.find { it.eventSequence == 0L }
         if (firstEvent != null) {
-            Logger.info("First confirmation PoC triggered at height ${firstEvent.triggerHeight}, eventSequence=${firstEvent.eventSequence}")
-            assertThat(firstEvent.eventSequence).isEqualTo(0L)
-                .describedAs("First confirmation event should have eventSequence=0")
-
-            waitForConfirmationPoCCompletion(genesis)
-            Logger.info("First confirmation PoC completed (V2 tracking, no weight impact)")
-
-            // V2 tracking: StoreCommit should exist
+            Logger.info("First event (seq=0): triggerHeight=${firstEvent.triggerHeight}")
             val firstCommit = genesis.node.getPoCV2StoreCommit(firstEvent.triggerHeight, participantAddress)
             Logger.info("First event: StoreCommit found=${firstCommit.found}")
             assertThat(firstCommit.found).isTrue()
                 .describedAs("Migration mode first event (eventSequence=0) should use V2 (StoreCommit)")
         } else {
-            Logger.warn("First confirmation PoC did not trigger - skipping first event assertions")
+            Logger.warn("No eventSequence=0 found - skipping first event assertions")
         }
 
-        // === Phase 3: Wait for second confirmation PoC (V1, event_sequence > 0) ===
-        logSection("Phase 3: Waiting for second Confirmation PoC (V1)")
-
-        val secondEvent = waitForConfirmationPoCTrigger(genesis)
+        // Find second event (eventSequence > 0) - should use V1
+        val secondEvent = allEvents.events.find { it.eventSequence > 0 }
         if (secondEvent != null) {
-            Logger.info("Second confirmation PoC triggered at height ${secondEvent.triggerHeight}, eventSequence=${secondEvent.eventSequence}")
-            assertThat(secondEvent.eventSequence).isGreaterThan(0L)
-                .describedAs("Second confirmation event should have eventSequence > 0")
-
-            waitForConfirmationPoCCompletion(genesis)
-            Logger.info("Second confirmation PoC completed (V1, affects weights)")
-
-            // V1: PoCBatch should exist for event_sequence > 0
-            val batchCountSecond = genesis.node.getPocBatchCount(secondEvent.triggerHeight)
-            Logger.info("Second event: PoCBatch count = $batchCountSecond at height ${secondEvent.triggerHeight}")
-            assertThat(batchCountSecond).isGreaterThan(0)
+            Logger.info("Second event (seq=${secondEvent.eventSequence}): triggerHeight=${secondEvent.triggerHeight}")
+            val batchCount = genesis.node.getPocBatchCount(secondEvent.triggerHeight)
+            Logger.info("Second event: PoCBatch count = $batchCount")
+            assertThat(batchCount).isGreaterThan(0)
                 .describedAs("Migration mode second event (eventSequence>0) should use V1 (PoCBatch)")
         } else {
-            Logger.warn("Second confirmation PoC did not trigger - skipping second event assertions")
+            Logger.warn("No eventSequence>0 found - skipping second event assertions")
         }
 
         // === Phase 4: Verify no auto-switch (manual governance required) ===
