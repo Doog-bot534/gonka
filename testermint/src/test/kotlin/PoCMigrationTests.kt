@@ -187,11 +187,21 @@ class PoCMigrationTests : TestermintTest() {
 
     /**
      * Migration Mode Test: poc_v2_enabled = false, confirmation_poc_v2_enabled = true
-     * Regular PoC runs V1 (on-chain batches), Confirmation PoC runs V2 (off-chain commits).
+     *
+     * In migration mode:
+     * - Regular PoC: V1
+     * - Confirmation PoC event_sequence == 0: V2 tracking only (no weight impact)
+     * - Confirmation PoC event_sequence >= 1: V1 (affects weights)
+     *
+     * This test verifies:
+     * 1. Regular PoC uses V1 (PoCBatch on chain, no StoreCommit)
+     * 2. First confirmation event (event_sequence == 0) uses V2 tracking (StoreCommit)
+     * 3. Second confirmation event (event_sequence > 0) uses V1 (PoCBatch)
+     * 4. poc_v2_enabled remains false (no auto-switch)
      */
     @Test
-    fun `migration mode - v1 regular poc with v2 confirmation poc`() {
-        logSection("=== TEST: Migration Mode (V1 Regular + V2 Confirmation) ===")
+    fun `migration mode - v2 tracking for first confirmation event`() {
+        logSection("=== TEST: Migration Mode (V2 tracking for first event) ===")
 
         val (cluster, genesis) = initCluster(
             joinCount = 2,
@@ -231,119 +241,63 @@ class PoCMigrationTests : TestermintTest() {
         assertThat(storeCommit.found).isFalse()
             .describedAs("Migration mode regular PoC should NOT produce StoreCommit (V1)")
 
-        // === Phase 2: Wait for confirmation PoC (should use V2) ===
-        logSection("Phase 2: Waiting for Confirmation PoC (V2)")
+        // === Phase 2: Wait for first confirmation PoC (V2 tracking, event_sequence == 0) ===
+        logSection("Phase 2: Waiting for first Confirmation PoC (V2 tracking)")
 
         // Set PoC weights for all participants
         genesis.setPocWeight(10)
         join1.setPocWeight(10)
         join2.setPocWeight(10)
 
-        val confirmationEvent = waitForConfirmationPoCTrigger(genesis)
-        if (confirmationEvent != null) {
-            Logger.info("Confirmation PoC triggered at height ${confirmationEvent.triggerHeight}")
-
-            waitForConfirmationPoCPhase(genesis, ConfirmationPoCPhase.CONFIRMATION_POC_GENERATION)
-            Logger.info("Confirmation PoC generation phase active")
-
-            waitForConfirmationPoCPhase(genesis, ConfirmationPoCPhase.CONFIRMATION_POC_VALIDATION)
-            Logger.info("Confirmation PoC validation phase active")
+        val firstEvent = waitForConfirmationPoCTrigger(genesis)
+        if (firstEvent != null) {
+            Logger.info("First confirmation PoC triggered at height ${firstEvent.triggerHeight}, eventSequence=${firstEvent.eventSequence}")
+            assertThat(firstEvent.eventSequence).isEqualTo(0L)
+                .describedAs("First confirmation event should have eventSequence=0")
 
             waitForConfirmationPoCCompletion(genesis)
-            Logger.info("Confirmation PoC completed")
+            Logger.info("First confirmation PoC completed (V2 tracking, no weight impact)")
 
-            // V2: StoreCommit should exist for confirmation PoC (using trigger_height as key)
-            val confirmationCommit = genesis.node.getPoCV2StoreCommit(confirmationEvent.triggerHeight, participantAddress)
-            Logger.info("Confirmation PoC: StoreCommit found=${confirmationCommit.found}, count=${confirmationCommit.count}")
-            assertThat(confirmationCommit.found).isTrue()
-                .describedAs("Migration mode confirmation PoC should produce StoreCommit (V2)")
+            // V2 tracking: StoreCommit should exist
+            val firstCommit = genesis.node.getPoCV2StoreCommit(firstEvent.triggerHeight, participantAddress)
+            Logger.info("First event: StoreCommit found=${firstCommit.found}")
+            assertThat(firstCommit.found).isTrue()
+                .describedAs("Migration mode first event (eventSequence=0) should use V2 (StoreCommit)")
         } else {
-            Logger.warn("Confirmation PoC did not trigger within timeout - skipping V2 assertion")
+            Logger.warn("First confirmation PoC did not trigger - skipping first event assertions")
         }
 
-        logSection("TEST PASSED: Migration mode works correctly (V1 regular + V2 confirmation)")
-    }
+        // === Phase 3: Wait for second confirmation PoC (V1, event_sequence > 0) ===
+        logSection("Phase 3: Waiting for second Confirmation PoC (V1)")
 
-    /**
-     * Auto-switch Test: Migration mode auto-switches to full V2 when validation coverage is sufficient.
-     * Starts in migration mode, runs confirmation PoC with good coverage, verifies auto-switch.
-     */
-    @Test
-    fun `auto-switch - migration to full v2 on sufficient validation coverage`() {
-        logSection("=== TEST: Auto-Switch from Migration to Full V2 ===")
+        val secondEvent = waitForConfirmationPoCTrigger(genesis)
+        if (secondEvent != null) {
+            Logger.info("Second confirmation PoC triggered at height ${secondEvent.triggerHeight}, eventSequence=${secondEvent.eventSequence}")
+            assertThat(secondEvent.eventSequence).isGreaterThan(0L)
+                .describedAs("Second confirmation event should have eventSequence > 0")
 
-        val (cluster, genesis) = initCluster(
-            joinCount = 2,
-            mergeSpec = migrationModeSpec,
-            reboot = true
-        )
-        cluster.allPairs.forEach { it.waitForMlNodesToLoad() }
+            waitForConfirmationPoCCompletion(genesis)
+            Logger.info("Second confirmation PoC completed (V1, affects weights)")
 
-        val join1 = cluster.joinPairs[0]
-        val join2 = cluster.joinPairs[1]
+            // V1: PoCBatch should exist for event_sequence > 0
+            val batchCountSecond = genesis.node.getPocBatchCount(secondEvent.triggerHeight)
+            Logger.info("Second event: PoCBatch count = $batchCountSecond at height ${secondEvent.triggerHeight}")
+            assertThat(batchCountSecond).isGreaterThan(0)
+                .describedAs("Migration mode second event (eventSequence>0) should use V1 (PoCBatch)")
+        } else {
+            Logger.warn("Second confirmation PoC did not trigger - skipping second event assertions")
+        }
 
-        // Verify migration mode is active
-        var params = genesis.getParams()
-        assertThat(params.pocParams.pocV2Enabled).isFalse()
-        assertThat(params.pocParams.confirmationPocV2Enabled).isTrue()
-        Logger.info("Initial: poc_v2_enabled=${params.pocParams.pocV2Enabled}, confirmation_poc_v2_enabled=${params.pocParams.confirmationPocV2Enabled}")
+        // === Phase 4: Verify no auto-switch (manual governance required) ===
+        logSection("Phase 4: Verifying no auto-switch occurred")
 
-        // === Phase 1: Run regular PoC to establish weights ===
-        logSection("Phase 1: Running initial PoC cycle")
-        genesis.waitForStage(EpochStage.END_OF_POC, offset = 1)
-        genesis.node.waitForNextBlock(3)
-
-        // Set PoC weights for all participants (good coverage)
-        genesis.setPocWeight(10)
-        join1.setPocWeight(10)
-        join2.setPocWeight(10)
-
-        // === Phase 2: Wait for confirmation PoC with good validation coverage ===
-        logSection("Phase 2: Waiting for Confirmation PoC with good coverage")
-
-        val confirmationEvent = waitForConfirmationPoCTrigger(genesis)
-        assertThat(confirmationEvent).isNotNull
-        Logger.info("Confirmation PoC triggered at height ${confirmationEvent!!.triggerHeight}")
-
-        waitForConfirmationPoCPhase(genesis, ConfirmationPoCPhase.CONFIRMATION_POC_GENERATION)
-        Logger.info("Confirmation PoC generation phase active")
-
-        waitForConfirmationPoCPhase(genesis, ConfirmationPoCPhase.CONFIRMATION_POC_VALIDATION)
-        Logger.info("Confirmation PoC validation phase active")
-
-        waitForConfirmationPoCCompletion(genesis)
-        Logger.info("Confirmation PoC completed")
-
-        // Wait a few blocks for auto-switch to take effect
         genesis.node.waitForNextBlock(5)
+        val paramsAfter = genesis.getParams()
+        assertThat(paramsAfter.pocParams.pocV2Enabled).isFalse()
+            .describedAs("Migration mode should NOT auto-switch - manual governance required")
+        Logger.info("After confirmation PoC: poc_v2_enabled=${paramsAfter.pocParams.pocV2Enabled} (no auto-switch)")
 
-        // === Phase 3: Verify auto-switch occurred ===
-        logSection("Phase 3: Verifying auto-switch to full V2")
-
-        params = genesis.getParams()
-        Logger.info("After confirmation PoC: poc_v2_enabled=${params.pocParams.pocV2Enabled}")
-
-        // Auto-switch should have set poc_v2_enabled = true
-        assertThat(params.pocParams.pocV2Enabled).isTrue()
-            .describedAs("Auto-switch should enable poc_v2_enabled after sufficient coverage")
-
-        // === Phase 4: Verify next regular PoC uses V2 ===
-        logSection("Phase 4: Running next regular PoC cycle (should use V2)")
-
-        genesis.waitForStage(EpochStage.END_OF_POC, offset = 1)
-        genesis.node.waitForNextBlock(3)
-
-        val newEpochData = genesis.getEpochData()
-        val newPocHeight = newEpochData.latestEpoch.pocStartBlockHeight
-        val participantAddress = genesis.node.getColdAddress()
-
-        // V2: StoreCommit should exist for regular PoC now
-        val storeCommit = genesis.node.getPoCV2StoreCommit(newPocHeight, participantAddress)
-        Logger.info("Post-switch regular PoC: StoreCommit found=${storeCommit.found}, count=${storeCommit.count}")
-        assertThat(storeCommit.found).isTrue()
-            .describedAs("After auto-switch, regular PoC should produce StoreCommit (V2)")
-
-        logSection("TEST PASSED: Auto-switch from migration to full V2 works correctly")
+        logSection("TEST PASSED: Migration mode works correctly (V2 tracking for event 0, V1 for event 1+)")
     }
 
     // === Test Configurations ===
@@ -386,12 +340,14 @@ class PoCMigrationTests : TestermintTest() {
     )
 
     // Migration mode: poc_v2_enabled=false, confirmation_poc_v2_enabled=true
-    // Regular PoC uses V1 (on-chain batches), Confirmation PoC uses V2 (off-chain commits)
+    // Regular PoC: V1
+    // Confirmation PoC: event 0 = V2 tracking, event 1+ = V1
+    // Longer epoch (80 blocks) to allow multiple confirmation events
     private val migrationModeSpec = spec {
         this[AppState::inference] = spec<InferenceState> {
             this[InferenceState::params] = spec<InferenceParams> {
                 this[InferenceParams::epochParams] = spec<EpochParams> {
-                    this[EpochParams::epochLength] = 40L
+                    this[EpochParams::epochLength] = 80L
                     this[EpochParams::pocStageDuration] = 5L
                     this[EpochParams::pocValidationDuration] = 4L
                     this[EpochParams::pocExchangeDuration] = 2L

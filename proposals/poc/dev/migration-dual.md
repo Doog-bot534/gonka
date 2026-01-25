@@ -1,127 +1,126 @@
-# Phase 4: Dual Migration Mode
+# Phase 4: Dual Migration Mode (V2 Tracking)
 
 ## Motivation
 
-Enable a migration period where Confirmation PoC runs V2 while regular PoC remains V1. This allows testing V2 validation in production via confirmation PoC events before fully switching. Once V2 validation coverage is proven sufficient, the system auto-switches to full V2 mode.
+Enable a migration period to measure mlnode V2 adoption before fully switching. In migration mode, one confirmation PoC per epoch uses V2 (tracking only), while the rest use V1.
+
+Key properties:
+- **No new trigger mechanism**: reuse existing probabilistic confirmation PoC triggers.
+- **V2 tracking**: first confirmation event per epoch (`event_sequence == 0`) uses V2 for tracking only, no weight impact.
+- **V1**: all other confirmation events use V1 with weight/slashing enforcement.
+- **Manual switch**: governance sets `poc_v2_enabled=true` once adoption is sufficient (no auto-switch).
 
 ## Parameter Design
 
-Added `confirmation_poc_v2_enabled` to `PocParams` alongside existing `poc_v2_enabled`:
-
 ```protobuf
 message PocParams {
-  // ... existing fields ...
   bool poc_v2_enabled = 8;
-  bool confirmation_poc_v2_enabled = 9;  // NEW
+  bool confirmation_poc_v2_enabled = 9;  // enables migration mode
 }
 ```
 
 ### Mode Matrix
 
-| `poc_v2_enabled` | `confirmation_poc_v2_enabled` | Mode | Regular PoC | Confirmation PoC |
-|------------------|------------------------------|------|-------------|------------------|
-| false | false | Full V1 | V1 (on-chain batches) | V1 (on-chain batches) |
-| false | true | Migration | V1 (on-chain batches) | V2 (off-chain commits) |
-| true | true | Full V2 | V2 (off-chain commits) | V2 (off-chain commits) |
-| true | false | Invalid | Treated as Full V2 | Treated as Full V2 |
+| poc_v2 | confirm_v2 | Regular PoC | Confirmation PoC |
+|--------|------------|-------------|------------------|
+| false | false | V1 | V1 (all events) |
+| false | true | V1 | event 0: V2 tracking, event 1+: V1 |
+| true | true | V2 | V2 (all events) |
+| true | false | Invalid | Treated as Full V2 |
 
-Default for new deployments: `poc_v2_enabled=true, confirmation_poc_v2_enabled=true` (full V2).
+## Event Dispatch Rules
 
-## Auto-Switch Logic
+In migration mode (`poc_v2_enabled=false, confirmation_poc_v2_enabled=true`):
 
-At the end of Confirmation PoC validation (in `updateConfirmationWeights`), the system evaluates:
+- `event_sequence == 0`: V2 tracking only (no weight impact)
+- `event_sequence >= 1`: V1 (affects weights/slashing)
 
-```
-if migration_mode (poc_v2_enabled=false, confirmation_poc_v2_enabled=true):
-    count participants with >= 75% validation vote coverage
-    if >= 75% of active participants have sufficient coverage:
-        set poc_v2_enabled = true  // direct param modification
-```
-
-### Thresholds
-
-- `DefaultAutoSwitchParticipantThreshold = 0.75` - 75% of participants must pass
-- `DefaultAutoSwitchCoverageThreshold = 0.75` - Each participant needs 75% vote coverage
+Notes:
+- At most 1 V2 tracking event per epoch (best-effort, probabilistic).
+- V2 tracking logs coverage metrics but does NOT modify weights.
 
 ## Implementation
 
-### Chain Changes
+### DAPI Changes
 
-#### 1. Parameter (`params.proto`)
+#### broker/broker.go
 
-```protobuf
-message PocParams {
-  bool poc_v2_enabled = 8;
-  bool confirmation_poc_v2_enabled = 9;  // Enables V2 for Confirmation PoC only
+```go
+func (b *Broker) IsV2EndpointsEnabled() bool {
+    return b.phaseTracker.IsPoCv2Enabled() || b.phaseTracker.IsConfirmationPoCv2Enabled()
+}
+
+func (b *Broker) IsMigrationMode() bool {
+    return !b.phaseTracker.IsPoCv2Enabled() && b.phaseTracker.IsConfirmationPoCv2Enabled()
+}
+
+func (b *Broker) shouldUseV2ForPoC(confirmationEvent *types.ConfirmationPoCEvent) bool {
+    if b.IsPoCv2Enabled() {
+        return true
+    }
+    if b.IsMigrationMode() && confirmationEvent != nil && confirmationEvent.EventSequence == 0 {
+        return true
+    }
+    return false
 }
 ```
 
-#### 2. Migration Logic (`module/poc_migration.go`)
+#### mlnode/post_generated_artifacts_v2_handler.go
 
-Pure functions for migration state and auto-switch evaluation:
+```go
+if s.broker != nil && !s.broker.IsV2EndpointsEnabled() {
+    return echo.NewHTTPError(http.StatusServiceUnavailable, "V2 endpoints disabled")
+}
+```
 
-- `MigrationState` - enum: `ModeFullV1`, `ModeMigration`, `ModeFullV2`
-- `GetMigrationState(pocV2Enabled, confirmationPocV2Enabled)` - determines current mode
-- `ValidationCoverage` - struct with participant address, total/voted weight, coverage ratio
-- `CalculateCoverages(validations, validatorWeights)` - computes coverage for all participants
-- `ShouldAutoSwitch(coverages, participantThreshold, coverageThreshold)` - returns bool
-- `EvaluateAutoSwitch(coverages, ...)` - returns detailed `AutoSwitchResult`
+### Chain Changes
 
-#### 3. Confirmation PoC Updates (`module/confirmation_poc.go`)
+#### module/confirmation_poc.go
 
-- Changed dispatch logic to use `confirmation_poc_v2_enabled || poc_v2_enabled`
-- Added `checkAutoSwitchToV2()` function called when in migration mode
-- Auto-switch directly modifies params via `keeper.SetParams()`
+```go
+func (am AppModule) updateConfirmationWeights(...) error {
+    migrationState := GetMigrationStateFromParams(params.PocParams)
 
-### DAPI Changes
+    switch migrationState {
+    case ModeFullV2:
+        am.evaluateConfirmation(ctx, event, ..., useV2: true)
+    case ModeMigration:
+        // event_sequence == 0: V2 tracking (event stored, skip weight evaluation)
+        // event_sequence >= 1: V1 (affects weights)
+        if event.EventSequence > 0 {
+            am.evaluateConfirmation(ctx, event, ..., useV2: false)
+        }
+    default:
+        am.evaluateConfirmation(ctx, event, ..., useV2: false)
+    }
+    return nil
+}
+```
 
-#### 1. Phase Tracker (`chainphase/phase_tracker.go`)
-
-- Added `confirmationPocV2Enabled` field
-- Added `UpdateConfirmationPocV2Enabled(enabled bool)` method
-- Added `IsConfirmationPoCv2Enabled() bool` method
-- Updated `EpochState` struct with `ConfirmationPocV2Enabled` field
-
-#### 2. Event Listener (`event_listener/new_block_dispatcher.go`)
-
-- Updated to call `UpdateConfirmationPocV2Enabled()` on each block
-
-### Testermint Changes
-
-#### 1. Types (`data/AppExport.kt`)
-
-- Added `confirmationPocV2Enabled` to `PocParams` data class
-
-#### 2. Tests (`PoCMigrationTests.kt`)
-
-Added two new tests:
-
-- `migration mode - v1 regular poc with v2 confirmation poc`: Verifies migration mode behavior
-- `auto-switch - migration to full v2 on sufficient validation coverage`: Verifies auto-switch
-
-## File Changes Summary
+## Files Summary
 
 | File | Change |
 |------|--------|
-| `proto/inference/inference/params.proto` | Added `confirmation_poc_v2_enabled` field |
-| `module/poc_migration.go` | NEW: Pure migration logic functions |
-| `module/confirmation_poc.go` | Updated dispatch + auto-switch logic |
-| `chainphase/phase_tracker.go` | Added `confirmationPocV2Enabled` field + methods |
-| `event_listener/new_block_dispatcher.go` | Update tracker on block |
-| `data/AppExport.kt` | Added `confirmationPocV2Enabled` to `PocParams` |
-| `PoCMigrationTests.kt` | Added migration mode + auto-switch tests |
+| `broker/broker.go` | Add `IsV2EndpointsEnabled()`, `IsMigrationMode()`, `shouldUseV2ForPoC()` |
+| `mlnode/post_generated_artifacts_v2_handler.go` | Use `IsV2EndpointsEnabled()` |
+| `chainphase/phase_tracker.go` | `IsConfirmationPoCv2Enabled()` (existing) |
+| `module/confirmation_poc.go` | Switch on event_sequence in migration mode |
+| `keeper/query_confirmation_poc_events.go` | Query to list confirmation PoC events by epoch |
 
 ## Migration Sequence
 
-1. **Deploy** with `poc_v2_enabled=false, confirmation_poc_v2_enabled=false` (Full V1)
-2. **Enable migration** via governance: set `confirmation_poc_v2_enabled=true`
-3. **Monitor** confirmation PoC events using V2
-4. **Auto-switch** happens when validation coverage is sufficient
-5. **Full V2** mode active (`poc_v2_enabled=true`)
+1. **Deploy** with `poc_v2_enabled=false, confirmation_poc_v2_enabled=false` (Full V1).
+2. **Enable migration** via governance: set `confirmation_poc_v2_enabled=true`.
+3. **Monitor** V2 tracking results (first confirmation event per epoch):
+   - Query `ListConfirmationPoCEvents` to get trigger heights.
+   - Query V2 data (StoreCommits) at trigger heights off-chain.
+   - V1 continues for other events.
+4. **Manual switch**: submit governance proposal to set `poc_v2_enabled=true` once adoption is sufficient.
+5. **Full V2 active**: all PoC (regular + confirmation) uses V2.
 
 ## Rollback
 
-If issues arise after auto-switch:
-- Submit governance proposal to set `poc_v2_enabled=false`
-- Can keep `confirmation_poc_v2_enabled=true` to stay in migration mode
-- Or set both to `false` for full V1 rollback
+If issues arise after enabling full V2:
+- Submit governance proposal to set `poc_v2_enabled=false`.
+- Keep `confirmation_poc_v2_enabled=true` to stay in migration mode (optional).
+- Or set both to `false` for full V1 rollback.

@@ -142,6 +142,38 @@ func (b *Broker) IsPoCv2Enabled() bool {
 	return b.phaseTracker.IsPoCv2Enabled()
 }
 
+// IsV2EndpointsEnabled returns whether V2 endpoints should be enabled.
+// True when poc_v2_enabled=true OR confirmation_poc_v2_enabled=true (migration mode).
+func (b *Broker) IsV2EndpointsEnabled() bool {
+	if b == nil || b.phaseTracker == nil {
+		return true
+	}
+	return b.phaseTracker.IsPoCv2Enabled() || b.phaseTracker.IsConfirmationPoCv2Enabled()
+}
+
+// IsMigrationMode returns whether we're in migration mode.
+// Migration mode: poc_v2_enabled=false, confirmation_poc_v2_enabled=true.
+func (b *Broker) IsMigrationMode() bool {
+	if b == nil || b.phaseTracker == nil {
+		return false
+	}
+	return !b.phaseTracker.IsPoCv2Enabled() && b.phaseTracker.IsConfirmationPoCv2Enabled()
+}
+
+// shouldUseV2ForPoC determines if V2 should be used for PoC based on mode and event.
+// - Full V2 mode: always V2
+// - Migration mode + confirmation PoC event_sequence == 0: V2
+// - Otherwise: V1
+func (b *Broker) shouldUseV2ForPoC(confirmationEvent *types.ConfirmationPoCEvent) bool {
+	if b.IsPoCv2Enabled() {
+		return true
+	}
+	if b.IsMigrationMode() && confirmationEvent != nil && confirmationEvent.EventSequence == 0 {
+		return true
+	}
+	return false
+}
+
 const PoCBatchesBasePathV2 = "/v2/poc-batches"
 const PoCBatchesBasePathV1 = "/v1/poc-batches"
 
@@ -1051,7 +1083,7 @@ func (b *Broker) reconcile(epochState chainphase.EpochState) {
 		// TODO: we should make reindexing as some indexes might be skipped
 		totalNumNodes := b.curMaxNodesNum.Load() + 1
 		// Create and dispatch the command
-		cmd := b.getCommandForState(&node.State, currentPoCParams, pocParamsErr, int(totalNumNodes))
+		cmd := b.getCommandForState(&node.State, currentPoCParams, pocParamsErr, int(totalNumNodes), epochState.ActiveConfirmationPoCEvent)
 		if cmd != nil {
 			logging.Info("Dispatching reconciliation command", types.Nodes,
 				"node_id", id, "target_status", node.State.IntendedStatus, "target_poc_status", node.State.PocIntendedStatus, "blockHeight", blockHeight)
@@ -1127,7 +1159,7 @@ func (b *Broker) enrichWithPocParams(params *pocParams) {
 	}
 }
 
-func (b *Broker) getCommandForState(nodeState *NodeState, pocGenParams *pocParams, pocGenErr error, totalNodes int) NodeWorkerCommand {
+func (b *Broker) getCommandForState(nodeState *NodeState, pocGenParams *pocParams, pocGenErr error, totalNodes int, confirmationEvent *types.ConfirmationPoCEvent) NodeWorkerCommand {
 	switch nodeState.IntendedStatus {
 	case types.HardwareNodeStatus_INFERENCE:
 		return InferenceUpNodeCommand{}
@@ -1135,8 +1167,8 @@ func (b *Broker) getCommandForState(nodeState *NodeState, pocGenParams *pocParam
 		switch nodeState.PocIntendedStatus {
 		case PocStatusGenerating:
 			if pocGenParams != nil && pocGenParams.startPoCBlockHeight > 0 {
-				// Dispatch V1 or V2 based on governance parameter
-				if b.IsPoCv2Enabled() {
+				// Dispatch V1 or V2 based on governance parameter and migration mode
+				if b.shouldUseV2ForPoC(confirmationEvent) {
 					return StartPoCNodeCommandV2{
 						BlockHeight: pocGenParams.startPoCBlockHeight,
 						BlockHash:   pocGenParams.startPoCBlockHash,
@@ -1160,8 +1192,8 @@ func (b *Broker) getCommandForState(nodeState *NodeState, pocGenParams *pocParam
 			return nil
 		case PocStatusValidating:
 			if pocGenParams != nil && pocGenParams.startPoCBlockHeight > 0 {
-				// Dispatch V1 or V2 based on governance parameter
-				if b.IsPoCv2Enabled() {
+				// Dispatch V1 or V2 based on governance parameter and migration mode
+				if b.shouldUseV2ForPoC(confirmationEvent) {
 					return TransitionPoCToValidatingCommandV2{}
 				}
 				return InitValidateNodeCommandV1{

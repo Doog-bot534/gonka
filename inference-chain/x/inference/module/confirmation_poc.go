@@ -365,47 +365,69 @@ func (am AppModule) updateConfirmationWeights(ctx context.Context, event *types.
 	}
 	weightScaleFactor := params.PocParams.GetWeightScaleFactorDec()
 
-	// Dispatch to V1 or V2 confirmation weight calculation based on confirmation_poc_v2_enabled flag
-	// (not poc_v2_enabled - confirmation PoC can run V2 independently during migration)
+	// Dispatch to V1 or V2 confirmation weight calculation based on migration state:
+	// - Full V1: V1 (all events)
+	// - Migration: event_sequence == 0 → V2 tracking only, event_sequence >= 1 → V1
+	// - Full V2: V2 (all events)
+	migrationState := GetMigrationStateFromParams(params.PocParams)
+
+	switch migrationState {
+	case ModeFullV2:
+		am.evaluateConfirmation(ctx, event, &epochGroupData, currentValidatorWeights, weightScaleFactor, true)
+	case ModeMigration:
+		// event_sequence == 0: V2 tracking only (event already stored, skip weight evaluation)
+		// event_sequence >= 1: V1 (affects weights)
+		if event.EventSequence > 0 {
+			am.evaluateConfirmation(ctx, event, &epochGroupData, currentValidatorWeights, weightScaleFactor, false)
+		}
+	default:
+		am.evaluateConfirmation(ctx, event, &epochGroupData, currentValidatorWeights, weightScaleFactor, false)
+	}
+
+	return nil
+}
+
+// evaluateConfirmation evaluates confirmation PoC and updates weights.
+// useV2: true for V2 flow, false for V1 flow.
+func (am AppModule) evaluateConfirmation(
+	ctx context.Context,
+	event *types.ConfirmationPoCEvent,
+	epochGroupData *types.EpochGroupData,
+	currentValidatorWeights map[string]int64,
+	weightScaleFactor mathsdk.LegacyDec,
+	useV2 bool,
+) {
 	var confirmationParticipants []*types.ActiveParticipant
-	if params.PocParams.ConfirmationPocV2Enabled || params.PocParams.PocV2Enabled {
+	if useV2 {
 		confirmationParticipants = am.updateConfirmationWeightsV2(ctx, event, currentValidatorWeights, weightScaleFactor)
 	} else {
 		confirmationParticipants = am.UpdateConfirmationWeightsV1(ctx, event, currentValidatorWeights, weightScaleFactor)
 	}
 
-	// Convert to map for easy lookup
 	confirmationWeights := make(map[string]int64)
 	for _, cp := range confirmationParticipants {
 		confirmationWeights[cp.Index] = cp.Weight
 	}
 
-	am.LogInfo("updateConfirmationWeights: Confirmation weights", types.PoC,
-		"confirmationWeights", confirmationWeights)
+	am.LogInfo("evaluateConfirmation: Confirmation weights", types.PoC,
+		"useV2", useV2, "confirmationWeights", confirmationWeights)
 
 	notPreservedWeights, err := am.GetNotPreservedTotalWeightByParticipant(ctx, event.EpochIndex)
 	if err != nil {
-		am.LogError("updateConfirmationWeights: Failed to get not preserved weights", types.PoC, "error", err)
+		am.LogError("evaluateConfirmation: Failed to get not preserved weights", types.PoC, "error", err)
 	}
 
-	// Update ValidationWeights: confirmation_weight = min(current, calculated)
 	updated := false
 	for i, vw := range epochGroupData.ValidationWeights {
 		if calculatedWeight, found := confirmationWeights[vw.MemberAddress]; found {
-			// Take minimum across all confirmation events (simple min, no special case for zero)
 			if calculatedWeight < vw.ConfirmationWeight {
 				previousWeight := vw.ConfirmationWeight
 				epochGroupData.ValidationWeights[i].ConfirmationWeight = calculatedWeight
 				updated = true
-				am.LogInfo("updateConfirmationWeights: Updated confirmation weight", types.PoC,
+				am.LogInfo("evaluateConfirmation: Updated confirmation weight", types.PoC,
 					"participant", vw.MemberAddress,
-					"previousConfirmationWeight", previousWeight,
-					"newConfirmationWeight", calculatedWeight)
-			} else {
-				am.LogInfo("updateConfirmationWeights: Keeping current confirmation weight (minimum)", types.PoC,
-					"participant", vw.MemberAddress,
-					"currentConfirmationWeight", vw.ConfirmationWeight,
-					"calculatedWeight", calculatedWeight)
+					"previousWeight", previousWeight,
+					"newWeight", calculatedWeight)
 			}
 		} else {
 			pocWeight := notPreservedWeights[vw.MemberAddress]
@@ -413,92 +435,20 @@ func (am AppModule) updateConfirmationWeights(ctx context.Context, event *types.
 				previousWeight := vw.ConfirmationWeight
 				epochGroupData.ValidationWeights[i].ConfirmationWeight = 0
 				updated = true
-				am.LogInfo("updateConfirmationWeights: PoC miner did not submit batches, setting confirmation weight to 0", types.PoC,
+				am.LogInfo("evaluateConfirmation: No batches submitted, setting weight to 0", types.PoC,
 					"participant", vw.MemberAddress,
-					"previousConfirmationWeight", previousWeight,
-					"pocMiningWeight", pocWeight)
+					"previousWeight", previousWeight)
 			}
 		}
 	}
 
 	if updated {
-		am.keeper.SetEpochGroupData(ctx, epochGroupData)
-		am.LogInfo("updateConfirmationWeights: Saved updated EpochGroupData", types.PoC,
-			"epochIndex", event.EpochIndex)
-	} else {
-		am.LogInfo("updateConfirmationWeights: No update needed", types.PoC,
+		am.keeper.SetEpochGroupData(ctx, *epochGroupData)
+		am.LogInfo("evaluateConfirmation: Saved updated EpochGroupData", types.PoC,
 			"epochIndex", event.EpochIndex)
 	}
 
-	// Check for slashing violations
-	am.checkConfirmationSlashing(ctx, &epochGroupData)
-
-	// In migration mode, check if we should auto-switch to full V2
-	migrationState := GetMigrationStateFromParams(params.PocParams)
-	if migrationState == ModeMigration {
-		am.checkAutoSwitchToV2(ctx, event, currentValidatorWeights)
-	}
-
-	return nil
-}
-
-// checkAutoSwitchToV2 evaluates if migration mode should auto-switch to full V2.
-// Auto-switch happens when >=75% of active participants received >=75% validation coverage.
-func (am AppModule) checkAutoSwitchToV2(
-	ctx context.Context,
-	event *types.ConfirmationPoCEvent,
-	currentValidatorWeights map[string]int64,
-) {
-	am.LogInfo("checkAutoSwitchToV2: Evaluating auto-switch in migration mode", types.PoC,
-		"epochIndex", event.EpochIndex,
-		"triggerHeight", event.TriggerHeight)
-
-	// Get validations for this confirmation event
-	validationsV2, err := am.keeper.GetPoCValidationsV2ByStage(ctx, event.TriggerHeight)
-	if err != nil {
-		am.LogError("checkAutoSwitchToV2: failed to get validations", types.PoC, "error", err)
-		return
-	}
-
-	// Calculate coverages using pure migration logic
-	coverages := CalculateCoverages(validationsV2, currentValidatorWeights)
-
-	// Evaluate auto-switch condition
-	result := EvaluateAutoSwitch(
-		coverages,
-		DefaultAutoSwitchParticipantThreshold,
-		DefaultAutoSwitchCoverageThreshold,
-	)
-
-	am.LogInfo("checkAutoSwitchToV2: Auto-switch evaluation result", types.PoC,
-		"shouldSwitch", result.ShouldSwitch,
-		"totalParticipants", result.TotalParticipants,
-		"sufficientCoverage", result.SufficientCoverage,
-		"participantRatio", result.ParticipantRatio)
-
-	if !result.ShouldSwitch {
-		am.LogInfo("checkAutoSwitchToV2: Not enough coverage for auto-switch, staying in migration mode", types.PoC)
-		return
-	}
-
-	// Auto-switch: set poc_v2_enabled = true
-	am.LogInfo("checkAutoSwitchToV2: Sufficient coverage achieved, auto-switching to full V2", types.PoC)
-
-	params, err := am.keeper.GetParams(ctx)
-	if err != nil {
-		am.LogError("checkAutoSwitchToV2: failed to get params for auto-switch", types.PoC, "error", err)
-		return
-	}
-
-	params.PocParams.PocV2Enabled = true
-	if err := am.keeper.SetParams(ctx, params); err != nil {
-		am.LogError("checkAutoSwitchToV2: failed to set params for auto-switch", types.PoC, "error", err)
-		return
-	}
-
-	am.LogInfo("checkAutoSwitchToV2: Successfully auto-switched to full V2 mode", types.PoC,
-		"poc_v2_enabled", params.PocParams.PocV2Enabled,
-		"confirmation_poc_v2_enabled", params.PocParams.ConfirmationPocV2Enabled)
+	am.checkConfirmationSlashing(ctx, epochGroupData)
 }
 
 // updateConfirmationWeightsV2 calculates confirmation weights using off-chain store commits
