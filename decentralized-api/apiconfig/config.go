@@ -23,6 +23,7 @@ type Config struct {
 	LastUsedVersion     string                `koanf:"last_used_version" json:"last_used_version"`
 	ValidationParams    ValidationParamsCache `koanf:"validation_params" json:"validation_params"`
 	BandwidthParams     BandwidthParamsCache  `koanf:"bandwidth_params" json:"bandwidth_params"`
+	PocPropagation      PocPropagationConfig  `koanf:"poc_propagation" json:"poc_propagation"`
 }
 
 type NatsServerConfig struct {
@@ -172,4 +173,10 @@ type BandwidthParamsCache struct {
 	KbPerInputToken           float64 `koanf:"kb_per_input_token" json:"kb_per_input_token"`
 	KbPerOutputToken          float64 `koanf:"kb_per_output_token" json:"kb_per_output_token"`
 	MaxInferencesPerBlock     uint64  `koanf:"max_inferences_per_block" json:"max_inferences_per_block"`
+}
+
+type PocPropagationConfig struct {
+	Enabled bool `koanf:"enabled" json:"enabled"`
+	Trees   int  `koanf:"trees" json:"trees"`
+	Fanout  int  `koanf:"fanout" json:"fanout"`
 }

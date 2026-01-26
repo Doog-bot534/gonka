@@ -5,6 +5,7 @@ import (
 	"decentralized-api/chainphase"
 	cosmosclient "decentralized-api/cosmosclient"
 	"decentralized-api/logging"
+	"decentralized-api/poc/propagation"
 
 	"github.com/productscience/inference/x/inference/types"
 )
@@ -30,6 +31,7 @@ func NewOrchestrator(
 	chainNodeUrl string,
 	cosmosClient cosmosclient.CosmosMessageClient,
 	phaseTracker *chainphase.ChainPhaseTracker,
+	propagationCache *propagation.Cache,
 ) Orchestrator {
 	config := DefaultValidationConfig()
 
@@ -42,6 +44,7 @@ func NewOrchestrator(
 		pubKey,
 		chainNodeUrl,
 		config,
+		propagationCache,
 	)
 
 	// V1 validator (on-chain batches)

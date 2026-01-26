@@ -32,6 +32,7 @@ type Server struct {
 	epochGroupDataCache *internal.EpochGroupDataCache
 	artifactStore       *artifacts.ManagedArtifactStore
 	authzCache          *authzcache.AuthzCache
+	propagationHandlers *PropagationHandlers
 }
 
 // ServerOption configures optional Server dependencies.
@@ -41,6 +42,13 @@ type ServerOption func(*Server)
 func WithArtifactStore(store *artifacts.ManagedArtifactStore) ServerOption {
 	return func(s *Server) {
 		s.artifactStore = store
+	}
+}
+
+// WithPropagationHandlers enables off-chain proof propagation endpoints.
+func WithPropagationHandlers(handlers *PropagationHandlers) ServerOption {
+	return func(s *Server) {
+		s.propagationHandlers = handlers
 	}
 }
 
@@ -141,6 +149,12 @@ func NewServer(
 
 	// PoC artifact state endpoint (for testermint/validators to get real count and root_hash)
 	g.GET("poc/artifacts/state", s.getPocArtifactsState)
+
+	// Off-chain proof propagation endpoints (if enabled)
+	if s.propagationHandlers != nil {
+		apiGroup := e.Group("/api")
+		s.propagationHandlers.RegisterRoutes(apiGroup)
+	}
 
 	return s
 }

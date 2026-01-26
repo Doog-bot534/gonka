@@ -1,0 +1,361 @@
+package propagation
+
+import (
+	"crypto/sha256"
+	"testing"
+)
+
+func TestDeterministicShuffle(t *testing.T) {
+	participants := []string{"A", "B", "C", "D", "E"}
+	seed := []byte{1, 2, 3, 4, 5, 6, 7, 8}
+	
+	result1 := deterministicShuffle(participants, seed)
+	result2 := deterministicShuffle(participants, seed)
+	
+	if len(result1) != len(participants) {
+		t.Errorf("shuffle changed length: got %d, want %d", len(result1), len(participants))
+	}
+	
+	for i := range result1 {
+		if result1[i] != result2[i] {
+			t.Errorf("shuffle not deterministic at index %d: %s != %s", i, result1[i], result2[i])
+		}
+	}
+	
+	seen := make(map[string]bool)
+	for _, addr := range result1 {
+		if seen[addr] {
+			t.Errorf("duplicate address in shuffle: %s", addr)
+		}
+		seen[addr] = true
+	}
+	
+	for _, addr := range participants {
+		if !seen[addr] {
+			t.Errorf("missing address in shuffle: %s", addr)
+		}
+	}
+}
+
+func TestDeterministicShuffleWithDifferentSeeds(t *testing.T) {
+	participants := []string{"A", "B", "C", "D", "E"}
+	seed1 := []byte{1, 2, 3, 4, 5, 6, 7, 8}
+	seed2 := []byte{8, 7, 6, 5, 4, 3, 2, 1}
+	
+	result1 := deterministicShuffle(participants, seed1)
+	result2 := deterministicShuffle(participants, seed2)
+	
+	different := false
+	for i := range result1 {
+		if result1[i] != result2[i] {
+			different = true
+			break
+		}
+	}
+	
+	if !different {
+		t.Error("different seeds produced same shuffle order")
+	}
+}
+
+func TestIndexOf(t *testing.T) {
+	list := []string{"A", "B", "C", "D", "E"}
+	
+	tests := []struct {
+		target string
+		want   int
+	}{
+		{"A", 0},
+		{"C", 2},
+		{"E", 4},
+		{"F", -1},
+		{"", -1},
+	}
+	
+	for _, tt := range tests {
+		got := indexOf(list, tt.target)
+		if got != tt.want {
+			t.Errorf("indexOf(%q) = %d, want %d", tt.target, got, tt.want)
+		}
+	}
+}
+
+func TestBuildTree(t *testing.T) {
+	participants := []string{"A", "B", "C", "D", "E", "F", "G"}
+	fanout := 2
+	
+	tree := buildTree(0, participants, fanout)
+	
+	if tree.Index != 0 {
+		t.Errorf("tree.Index = %d, want 0", tree.Index)
+	}
+	
+	if tree.Fanout != fanout {
+		t.Errorf("tree.Fanout = %d, want %d", tree.Fanout, fanout)
+	}
+	
+	if len(tree.Nodes) != len(participants) {
+		t.Errorf("len(tree.Nodes) = %d, want %d", len(tree.Nodes), len(participants))
+	}
+	
+	if tree.Root == nil {
+		t.Fatal("tree.Root is nil")
+	}
+	
+	if tree.Root.Address != participants[0] {
+		t.Errorf("tree.Root.Address = %s, want %s", tree.Root.Address, participants[0])
+	}
+	
+	if tree.Root.Parent != nil {
+		t.Error("root should not have parent")
+	}
+}
+
+func TestNodeRelationships(t *testing.T) {
+	participants := []string{"A", "B", "C", "D", "E", "F", "G"}
+	fanout := 2
+	tree := buildTree(0, participants, fanout)
+	
+	nodeA := tree.GetNode("A")
+	if nodeA == nil {
+		t.Fatal("node A not found")
+	}
+	
+	if nodeA.Index != 0 {
+		t.Errorf("nodeA.Index = %d, want 0", nodeA.Index)
+	}
+	
+	if nodeA.Parent != nil {
+		t.Error("A (root) should not have parent")
+	}
+	
+	if len(nodeA.Children) != 2 {
+		t.Errorf("A should have 2 children, got %d", len(nodeA.Children))
+	}
+	
+	if len(nodeA.Siblings) != 0 {
+		t.Errorf("A (root) should have 0 siblings, got %d", len(nodeA.Siblings))
+	}
+	
+	nodeB := tree.GetNode("B")
+	if nodeB == nil {
+		t.Fatal("node B not found")
+	}
+	
+	if nodeB.Parent == nil {
+		t.Error("B should have parent")
+	} else if nodeB.Parent.Address != "A" {
+		t.Errorf("B's parent = %s, want A", nodeB.Parent.Address)
+	}
+	
+	if len(nodeB.Siblings) != 1 {
+		t.Errorf("B should have 1 sibling, got %d", len(nodeB.Siblings))
+	} else if nodeB.Siblings[0].Address != "C" {
+		t.Errorf("B's sibling = %s, want C", nodeB.Siblings[0].Address)
+	}
+}
+
+func TestTreeRole(t *testing.T) {
+	participants := []string{"A", "B", "C", "D", "E", "F", "G"}
+	fanout := 2
+	tree := buildTree(0, participants, fanout)
+	
+	tests := []struct {
+		addr           string
+		wantParent     string
+		wantChildCount int
+	}{
+		{"A", "", 2},
+		{"B", "A", 2},
+		{"C", "A", 2},
+		{"D", "B", 0},
+		{"E", "B", 0},
+		{"F", "C", 0},
+		{"G", "C", 0},
+	}
+	
+	for _, tt := range tests {
+		parent, children := tree.Role(tt.addr)
+		
+		if parent != tt.wantParent {
+			t.Errorf("%s: parent = %s, want %s", tt.addr, parent, tt.wantParent)
+		}
+		
+		if len(children) != tt.wantChildCount {
+			t.Errorf("%s: children count = %d, want %d", tt.addr, len(children), tt.wantChildCount)
+		}
+	}
+	
+	parent, children := tree.Role("UNKNOWN")
+	if parent != "" || children != nil {
+		t.Errorf("unknown address should return empty parent and nil children")
+	}
+}
+
+func TestBuildTreesMultiple(t *testing.T) {
+	participants := []string{"A", "B", "C", "D", "E"}
+	blockHash := sha256.Sum256([]byte("test-block"))
+	numTrees := 3
+	fanout := 2
+	
+	trees := BuildTrees(participants, blockHash[:], numTrees, fanout)
+	
+	if len(trees) != numTrees {
+		t.Errorf("len(trees) = %d, want %d", len(trees), numTrees)
+	}
+	
+	for i, tree := range trees {
+		if tree.Index != i {
+			t.Errorf("tree[%d].Index = %d, want %d", i, tree.Index, i)
+		}
+		
+		if tree.Fanout != fanout {
+			t.Errorf("tree[%d].Fanout = %d, want %d", i, tree.Fanout, fanout)
+		}
+		
+		if len(tree.Nodes) != len(participants) {
+			t.Errorf("tree[%d] has %d nodes, want %d", i, len(tree.Nodes), len(participants))
+		}
+		
+		if tree.Root == nil {
+			t.Errorf("tree[%d] has no root", i)
+		}
+	}
+	
+	if trees[0].Root.Address == trees[1].Root.Address && 
+	   trees[1].Root.Address == trees[2].Root.Address {
+		t.Error("all trees have same root (shuffles should differ)")
+	}
+}
+
+func TestTreeWithSingleNode(t *testing.T) {
+	participants := []string{"A"}
+	tree := buildTree(0, participants, 2)
+	
+	if tree.Root == nil {
+		t.Fatal("root is nil")
+	}
+	
+	if tree.Root.Address != "A" {
+		t.Errorf("root address = %s, want A", tree.Root.Address)
+	}
+	
+	if tree.Root.Parent != nil {
+		t.Error("single node should not have parent")
+	}
+	
+	if len(tree.Root.Children) != 0 {
+		t.Error("single node should not have children")
+	}
+	
+	if len(tree.Root.Siblings) != 0 {
+		t.Error("single node should not have siblings")
+	}
+}
+
+func TestTreeFanoutOne(t *testing.T) {
+	participants := []string{"A", "B", "C", "D"}
+	tree := buildTree(0, participants, 1)
+	
+	nodeA := tree.GetNode("A")
+	if len(nodeA.Children) != 1 {
+		t.Errorf("A should have 1 child with fanout=1, got %d", len(nodeA.Children))
+	}
+	
+	nodeB := tree.GetNode("B")
+	if len(nodeB.Children) != 1 {
+		t.Errorf("B should have 1 child with fanout=1, got %d", len(nodeB.Children))
+	}
+	
+	nodeC := tree.GetNode("C")
+	if len(nodeC.Children) != 1 {
+		t.Errorf("C should have 1 child with fanout=1, got %d", len(nodeC.Children))
+	}
+	
+	nodeD := tree.GetNode("D")
+	if len(nodeD.Children) != 0 {
+		t.Errorf("D (leaf) should have 0 children, got %d", len(nodeD.Children))
+	}
+}
+
+func TestTreeLargeFanout(t *testing.T) {
+	participants := []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J"}
+	fanout := 5
+	tree := buildTree(0, participants, fanout)
+	
+	root := tree.Root
+	if len(root.Children) != 5 {
+		t.Errorf("root should have 5 children, got %d", len(root.Children))
+	}
+	
+	for _, child := range root.Children {
+		if child.Parent != root {
+			t.Errorf("child %s parent mismatch", child.Address)
+		}
+	}
+}
+
+func TestSiblingCalculation(t *testing.T) {
+	participants := []string{"A", "B", "C", "D", "E"}
+	fanout := 3
+	tree := buildTree(0, participants, fanout)
+	
+	nodeB := tree.GetNode("B")
+	nodeE := tree.GetNode("E")
+	
+	if len(nodeB.Siblings) != 2 {
+		t.Errorf("B should have 2 siblings, got %d", len(nodeB.Siblings))
+	}
+	
+	siblingAddrs := make(map[string]bool)
+	for _, sib := range nodeB.Siblings {
+		siblingAddrs[sib.Address] = true
+	}
+	
+	if !siblingAddrs["C"] || !siblingAddrs["D"] {
+		t.Error("B's siblings should be C and D")
+	}
+	
+	if len(nodeE.Siblings) != 0 {
+		t.Errorf("E should have 0 siblings (only child of C), got %d", len(nodeE.Siblings))
+	}
+}
+
+func TestDeterministicTreeConstruction(t *testing.T) {
+	participants := []string{"A", "B", "C", "D", "E"}
+	blockHash := sha256.Sum256([]byte("test"))
+	
+	trees1 := BuildTrees(participants, blockHash[:], 2, 2)
+	trees2 := BuildTrees(participants, blockHash[:], 2, 2)
+	
+	for i := range trees1 {
+		if trees1[i].Root.Address != trees2[i].Root.Address {
+			t.Errorf("tree %d roots differ: %s vs %s", 
+				i, trees1[i].Root.Address, trees2[i].Root.Address)
+		}
+		
+		for addr := range trees1[i].Nodes {
+			node1 := trees1[i].GetNode(addr)
+			node2 := trees2[i].GetNode(addr)
+			
+			parent1 := ""
+			if node1.Parent != nil {
+				parent1 = node1.Parent.Address
+			}
+			
+			parent2 := ""
+			if node2.Parent != nil {
+				parent2 = node2.Parent.Address
+			}
+			
+			if parent1 != parent2 {
+				t.Errorf("tree %d node %s: parent differs: %s vs %s",
+					i, addr, parent1, parent2)
+			}
+			
+			if len(node1.Children) != len(node2.Children) {
+				t.Errorf("tree %d node %s: children count differs", i, addr)
+			}
+		}
+	}
+}

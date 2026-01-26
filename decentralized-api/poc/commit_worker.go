@@ -12,6 +12,7 @@ import (
 	"decentralized-api/cosmosclient"
 	"decentralized-api/logging"
 	"decentralized-api/poc/artifacts"
+	"decentralized-api/poc/propagation"
 
 	"github.com/productscience/inference/api/inference/inference"
 	"github.com/productscience/inference/x/inference/types"
@@ -38,6 +39,10 @@ type CommitWorker struct {
 	currentPocHeight        int64
 	lastDistributionAttempt time.Time
 	lastCommitted           map[int64]commitState
+
+	propagationEnabled bool
+	bundler            *propagation.Bundler
+	privKey            []byte
 }
 
 // NewCommitWorker creates and starts a new commit worker.
@@ -48,6 +53,9 @@ func NewCommitWorker(
 	tracker *chainphase.ChainPhaseTracker,
 	participantAddress string,
 	interval time.Duration,
+	propagationEnabled bool,
+	bundler *propagation.Bundler,
+	privKey []byte,
 ) *CommitWorker {
 	w := &CommitWorker{
 		store:              store,
@@ -58,13 +66,16 @@ func NewCommitWorker(
 		stop:               make(chan struct{}),
 		done:               make(chan struct{}),
 		lastCommitted:      make(map[int64]commitState),
+		propagationEnabled: propagationEnabled,
+		bundler:            bundler,
+		privKey:            privKey,
 	}
 
 	// Start flush - always on (same interval as commits)
 	store.StartPeriodicFlush(interval)
 
 	go w.run()
-	logging.Info("CommitWorker started", types.PoC, "interval", interval)
+	logging.Info("CommitWorker started", types.PoC, "interval", interval, "propagationEnabled", propagationEnabled)
 	return w
 }
 
@@ -152,12 +163,28 @@ func (w *CommitWorker) maybeSubmitCommit(pocHeight int64) {
 		return
 	}
 
-	// Skip if unchanged since last commit
+	// Skip if unchanged since last commit/publish
 	last := w.lastCommitted[pocHeight]
 	if last.count == count && bytes.Equal(last.rootHash, rootHash) {
 		return
 	}
 
+	// If propagation is enabled, publish proofs off-chain
+	if w.propagationEnabled && w.bundler != nil {
+		epochState := w.tracker.GetCurrentEpochState()
+		if epochState != nil && epochState.IsSynced {
+			blockHash := []byte(fmt.Sprintf("%d", pocHeight))
+			if err := w.bundler.Publish(pocHeight, blockHash, w.participantAddress, w.privKey); err != nil {
+				logging.Warn("CommitWorker: propagation publish failed", types.PoC,
+					"pocHeight", pocHeight, "error", err)
+			} else {
+				logging.Info("CommitWorker: proofs published via propagation", types.PoC,
+					"pocHeight", pocHeight, "count", count)
+			}
+		}
+	}
+
+	// Submit on-chain commit (always done for now, can be feature-flagged later)
 	msg := &inference.MsgPoCV2StoreCommit{
 		PocStageStartBlockHeight: pocHeight,
 		Count:                    count,

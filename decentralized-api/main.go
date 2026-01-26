@@ -17,8 +17,10 @@ import (
 	"decentralized-api/payloadstorage"
 	"decentralized-api/poc"
 	"decentralized-api/poc/artifacts"
+	"decentralized-api/poc/propagation"
 	"net"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/productscience/inference/api/inference/inference"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -38,6 +40,22 @@ import (
 
 	"github.com/productscience/inference/x/inference/types"
 )
+
+// chainPubKeyProvider adapts the chain query client to implement propagation.PubKeyProvider
+type chainPubKeyProvider struct {
+	queryClient types.QueryClient
+}
+
+func (p *chainPubKeyProvider) GetPubKey(participantAddr string) (string, error) {
+	resp, err := p.queryClient.Participant(context.Background(), &types.QueryGetParticipantRequest{Index: participantAddr})
+	if err != nil {
+		return "", fmt.Errorf("query participant %s: %w", participantAddr, err)
+	}
+	if resp.Participant.WorkerPublicKey == "" {
+		return "", fmt.Errorf("public key not found for address %s", participantAddr)
+	}
+	return resp.Participant.WorkerPublicKey, nil
+}
 
 func main() {
 	if len(os.Args) >= 2 && os.Args[1] == "status" {
@@ -121,22 +139,6 @@ func main() {
 		return
 	}
 
-	logging.Debug("Initializing PoC orchestrator",
-		types.PoC, "name", recorder.GetApiAccount().SignerAccount.Name,
-		"address", participantInfo.GetAddress(),
-		"pubkey", participantInfo.GetPubKey())
-
-	// Create v2 orchestrator for artifact-based PoC
-	pocOrchestrator := poc.NewOrchestrator(
-		participantInfo.GetPubKey(),
-		nodeBroker,
-		config.GetApiConfig().PoCCallbackUrl,
-		config.GetChainNodeConfig().Url,
-		recorder,
-		chainPhaseTracker,
-	)
-	logging.Info("PoC orchestrator initialized", types.PoC)
-
 	tendermintClient := cosmosclient.TendermintClient{
 		ChainNodeUrl: config.GetChainNodeConfig().Url,
 	}
@@ -152,9 +154,6 @@ func main() {
 
 	validator := validation.NewInferenceValidator(nodeBroker, config, recorder, chainPhaseTracker)
 	blsManager := bls.NewBlsManager(*recorder)
-	listener := event_listener.NewEventListener(config, pocOrchestrator, nodeBroker, validator, *recorder, trainingExecutor, chainPhaseTracker, cancel, blsManager)
-	// TODO: propagate trainingExecutor
-	go listener.Start(ctx)
 
 	mlnodeBackgroundManager := modelmanager.NewMLNodeBackgroundManager(
 		config,
@@ -185,14 +184,134 @@ func main() {
 	artifactStore := artifacts.NewManagedArtifactStore("/root/.dapi/data/poc-artifacts", 10)
 	defer artifactStore.Close()
 
+	// Initialize propagation infrastructure (if enabled)
+	var propagationCache *propagation.Cache
+	var propagationBundler *propagation.Bundler
+	var propagationTransport *propagation.HTTPTransport
+	var propagationReceiver *propagation.Receiver
+	var propagationHandlers *pserver.PropagationHandlers
+	var propagationPool *pgxpool.Pool
+
+	propConfig := config.GetConfig().PocPropagation
+	if propConfig.Enabled {
+		logging.Info("Initializing off-chain propagation system", types.PoC,
+			"trees", propConfig.Trees, "fanout", propConfig.Fanout)
+
+		var err error
+		propagationConnString := os.Getenv("PROPAGATION_DATABASE_URL")
+		propagationPool, err = pgxpool.New(ctx, propagationConnString)
+		if err != nil {
+			logging.Error("Failed to create propagation pool", types.PoC, "error", err)
+			panic(fmt.Sprintf("propagation pool init failed: %v", err))
+		}
+		if err := propagationPool.Ping(ctx); err != nil {
+			logging.Error("Failed to ping propagation pool", types.PoC, "error", err)
+			panic(fmt.Sprintf("propagation pool ping failed: %v", err))
+		}
+		propagationCache, err = propagation.NewCache(ctx, propagationPool, participantInfo.GetAddress())
+		if err != nil {
+			logging.Error("Failed to create propagation cache", types.PoC, "error", err)
+			panic(fmt.Sprintf("propagation cache init failed: %v", err))
+		}
+
+		propagationTransport = propagation.NewHTTPTransport(
+			participantInfo.GetAddress(),
+			30*time.Second,
+		)
+
+		treeCount := propConfig.Trees
+		if treeCount <= 0 {
+			treeCount = 1
+		}
+		treeFanout := propConfig.Fanout
+		if treeFanout <= 0 {
+			treeFanout = 1
+		}
+		bootstrapHash := []byte(participantInfo.GetAddress())
+		trees := propagation.BuildTrees([]string{participantInfo.GetAddress()}, bootstrapHash, treeCount, treeFanout)
+
+		pubKeyProvider := &chainPubKeyProvider{queryClient: recorder.NewInferenceQueryClient()}
+
+		propagationReceiver = propagation.NewReceiver(
+			propagationCache,
+			trees,
+			pubKeyProvider,
+			participantInfo.GetAddress(),
+			propagationTransport,
+		)
+
+		propagationTransport.RegisterReceiver(participantInfo.GetAddress(), propagationReceiver)
+
+		dummyStore, _ := artifactStore.GetStore(0)
+		propagationBundler = propagation.NewBundler(
+			dummyStore,
+			trees,
+			propagationTransport,
+			participantInfo.GetAddress(),
+		)
+
+		propagationHandlers = pserver.NewPropagationHandlers(propagationTransport)
+
+		logging.Info("Propagation system initialized", types.PoC)
+	} else {
+		logging.Info("Off-chain propagation disabled", types.PoC)
+	}
+
+	if propagationPool != nil {
+		defer propagationPool.Close()
+	}
+
+	// Create v2 orchestrator for artifact-based PoC (after propagation init)
+	logging.Debug("Initializing PoC orchestrator",
+		types.PoC, "name", recorder.GetApiAccount().SignerAccount.Name,
+		"address", participantInfo.GetAddress(),
+		"pubkey", participantInfo.GetPubKey())
+
+	pocOrchestrator := poc.NewOrchestrator(
+		participantInfo.GetPubKey(),
+		nodeBroker,
+		config.GetApiConfig().PoCCallbackUrl,
+		config.GetChainNodeConfig().Url,
+		recorder,
+		chainPhaseTracker,
+		propagationCache, // nil if propagation disabled
+	)
+	logging.Info("PoC orchestrator initialized", types.PoC)
+
+	// Wire up event listener with pocOrchestrator
+	listener := event_listener.NewEventListener(config, pocOrchestrator, nodeBroker, validator, *recorder, trainingExecutor, chainPhaseTracker, cancel, blsManager)
+	go listener.Start(ctx)
+
 	// Create commit worker for time-based artifact commits and weight distribution
 	// Worker owns flush lifecycle, commits periodically (not per-request), and handles distribution
 	batchingCfg := config.GetTxBatchingConfig()
 	commitInterval := time.Duration(batchingCfg.PocCommitIntervalSeconds) * time.Second
-	commitWorker := poc.NewCommitWorker(artifactStore, recorder, chainPhaseTracker, participantInfo.GetAddress(), commitInterval)
+
+	// Get private key for signing bundles (if propagation enabled)
+	var privKey []byte
+	if propConfig.Enabled {
+		logging.Warn("Propagation bundle signing key unavailable", types.PoC, "reason", "signer private key access not supported yet")
+	}
+
+	commitWorker := poc.NewCommitWorker(
+		artifactStore,
+		recorder,
+		chainPhaseTracker,
+		participantInfo.GetAddress(),
+		commitInterval,
+		propConfig.Enabled,
+		propagationBundler,
+		privKey,
+	)
 	defer commitWorker.Close()
 
-	publicServer := pserver.NewServer(nodeBroker, config, recorder, trainingExecutor, blockQueue, chainPhaseTracker, payloadStore, pserver.WithArtifactStore(artifactStore))
+	// Build server options
+	serverOpts := []pserver.ServerOption{pserver.WithArtifactStore(artifactStore)}
+	if propagationHandlers != nil {
+		serverOpts = append(serverOpts, pserver.WithPropagationHandlers(propagationHandlers))
+	}
+
+	publicServer := pserver.NewServer(nodeBroker, config, recorder, trainingExecutor, blockQueue, chainPhaseTracker, payloadStore, serverOpts...)
 	publicServer.Start(addr)
 
 	addr = fmt.Sprintf(":%v", config.GetApiConfig().MLServerPort)

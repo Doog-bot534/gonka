@@ -459,6 +459,14 @@ data class ApplicationAPI(
         get<ApiConfig>(url, "admin/v1/config")
     }
 
+    fun sendPropagationHeader(header: PropagationHeaderMessage) = wrapLog("SendPropagationHeader", true) {
+        val url = urlFor(SERVER_TYPE_PUBLIC)
+        val response = Fuel.post("$url/v1/propagation/header")
+            .jsonBody(header, cosmosJson)
+            .response()
+        logResponse(response)
+    }
+
 }
 
 

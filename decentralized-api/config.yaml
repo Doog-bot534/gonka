@@ -16,3 +16,7 @@ chain_node:
   keyring_backend: "test"
   keyring_dir: "~/.inference" # We use a custom function to expand ~ to /root
   is_genesis: false
+poc_propagation:
+  enabled: true  # Feature flag: enable off-chain commit metadata propagation
+  trees: 5        # Number of redundant propagation trees
+  fanout: 16      # Children per node in each tree
