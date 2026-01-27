@@ -112,6 +112,8 @@ func CreateUpgradeHandler(
 			return nil, err
 		}
 
+		removeObsoleteModels(ctx, k)
+
 		if err := setV0_2_8Params(ctx, k); err != nil {
 			return nil, err
 		}
@@ -219,6 +221,19 @@ func setV0_2_8Params(ctx context.Context, k keeper.Keeper) error {
 	}
 
 	return k.SetParams(ctx, params)
+}
+
+var obsoleteModels = []string{
+	"Qwen/QwQ-32B",
+	"Qwen/Qwen2.5-7B-Instruct",
+	"RedHatAI/Qwen2.5-7B-Instruct-quantized.w8a16",
+}
+
+func removeObsoleteModels(ctx context.Context, k keeper.Keeper) {
+	for _, modelId := range obsoleteModels {
+		k.DeleteGovernanceModel(ctx, modelId)
+		k.Logger().Info("removed obsolete governance model", "model_id", modelId)
+	}
 }
 
 func distributeBountyRewards(ctx context.Context, k keeper.Keeper, distrKeeper distrkeeper.Keeper) error {
