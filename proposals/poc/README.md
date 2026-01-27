@@ -90,11 +90,21 @@ Setting `poc_v2_enabled=true` requires no software upgrade - just a governance p
 
 ## Status
 
-Current version of code passes testermint tests for both PoC v1 and PoC v2 
+Implementation complete. All testermint tests pass for PoC v1, v2, and migration mode.
 
-- [testing, separate branch]: enable PoC v2 for Confirmation PoC only
-- [todo]: weight validation during the epoch when PoC v2 becomes main source of weight
-- [need review]: sending batches to validate for PoC v1 and PoC v2
-- [need review]: cancelling existing inference requests at mlnode when PoC starts
-- [need review]: MMR behaviour when > 1000 MLNodes
+### Completed
+
+- PoC v2 integration with vLLM (`v0.9.1-poc-v2-blackwell`)
+- Off-chain artifact storage with MMR proofs
+- Migration mode: V1 enforcement + V2 tracking for confirmation PoC
+- Grace epoch: dry-run mode when switching to full V2
+- Governance-controlled V1/V2 switching via `poc_v2_enabled` and `confirmation_poc_v2_enabled`
+- V1/V2 dispatch in chain and DAPI based on migration state
+- `ListConfirmationPoCEvents` query for monitoring V2 adoption
+- Validation retries with dynamic node count and backoff
+
+### Pending
+
 - [to define]: PoC phase length for PoC v2
+
+See [migration-dual.md](./dev/migration-dual.md) for detailed migration design.

@@ -213,8 +213,10 @@ func setV0_2_8Params(ctx context.Context, k keeper.Keeper) error {
 		params.PocParams.SeqLen = 1024
 		params.PocParams.PocV2Enabled = false
 		params.PocParams.ConfirmationPocV2Enabled = true
+		// PoC v2 stat test params. Conservative values based on PoC_V2_Validation_Report.md.
+		// Might be tightened when enabling full PoC v2.
 		params.PocParams.StatTest = &types.PoCStatTestParams{
-			DistThreshold:   types.DecimalFromFloat(0.4),
+			DistThreshold:   types.DecimalFromFloat(0.2),
 			PMismatch:       types.DecimalFromFloat(0.1),
 			PValueThreshold: types.DecimalFromFloat(0.05),
 		}
