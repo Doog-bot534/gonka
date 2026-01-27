@@ -14,6 +14,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.time.Duration
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionException
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 import kotlin.io.path.ExperimentalPathApi
@@ -426,7 +428,18 @@ fun initializeCluster(joinCount: Int = 0, config: ApplicationConfig, currentClus
         genesisGroup.init()
         // TODO: can we wait here by querying the genesis API?
         Thread.sleep(Duration.ofSeconds(30L))
-        joinGroups.forEach { it.init() }
+
+        // Initializes join groups in parallel; throws aggregated exceptions
+        if (joinGroups.isNotEmpty()) {
+            val futures = joinGroups.map { group ->
+                CompletableFuture.runAsync { group.init() }
+            }
+            try {
+                futures.forEach { it.join() }
+            } catch (e: CompletionException) {
+                throw (e.cause ?: e)
+            }
+        }
         return allGroups
     } finally {
         TestState.rebooting = false
