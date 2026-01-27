@@ -43,9 +43,9 @@ type ValidationConfig struct {
 func DefaultValidationConfig() ValidationConfig {
 	return ValidationConfig{
 		WorkerCount:    10,
-		RequestTimeout: 30 * time.Second,
-		MaxRetries:     3,
-		RetryBackoff:   5 * time.Second,
+		RequestTimeout: 20 * time.Second,
+		MaxRetries:     15,
+		RetryBackoff:   3 * time.Second,
 	}
 }
 
@@ -60,12 +60,13 @@ const (
 
 // participantWork represents a single participant to validate.
 type participantWork struct {
-	address  string
-	url      string
-	pubKey   string
-	count    uint32
-	rootHash []byte
-	attempt  int // current attempt number (0-based)
+	address    string
+	url        string
+	pubKey     string
+	count      uint32
+	rootHash   []byte
+	attempt    int       // current attempt number (0-based)
+	retryAfter time.Time // don't process before this time
 }
 
 // NewOffChainValidator creates a new off-chain validator.
@@ -299,6 +300,12 @@ func (v *OffChainValidator) worker(
 				return
 			}
 
+			// Not ready yet? Put back at end of queue
+			if time.Now().Before(work.retryAfter) {
+				workChan <- work
+				continue
+			}
+
 			result := v.validateParticipant(
 				workerID,
 				work,
@@ -324,6 +331,7 @@ func (v *OffChainValidator) worker(
 				// Re-queue for retry if under max attempts
 				if work.attempt < v.config.MaxRetries-1 {
 					work.attempt++
+					work.retryAfter = time.Now().Add(v.config.RetryBackoff)
 					// Non-blocking send - if channel is full, count as failed
 					select {
 					case workChan <- work:

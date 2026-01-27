@@ -269,8 +269,13 @@ func (v *OnChainValidator) v1Worker(
 		}
 
 		// Send to ML node with retry
+		// Extend retries if more nodes available to maximize success probability
 		validationSucceeded := false
-		for attempt := 0; attempt < POC_VALIDATE_BATCH_RETRIES; attempt++ {
+		retries := POC_VALIDATE_BATCH_RETRIES
+		if len(nodes) > retries {
+			retries = len(nodes)
+		}
+		for attempt := 0; attempt < retries; attempt++ {
 			node := nodes[nodeCounter%len(nodes)]
 			nodeCounter++
 
@@ -305,7 +310,7 @@ func (v *OnChainValidator) v1Worker(
 		} else {
 			logging.Error("OnChainValidator: failed to validate batch after all retry attempts", types.PoC,
 				"participant", work.participantAddress,
-				"maxAttempts", POC_VALIDATE_BATCH_RETRIES)
+				"maxAttempts", retries)
 			*failCount++
 		}
 		statsMu.Unlock()
