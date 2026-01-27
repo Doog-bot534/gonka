@@ -63,7 +63,7 @@ func TestTransitionPoCToValidatingCommandV2_CancelledContext(t *testing.T) {
 	assert.Equal(t, PocStatusGenerating, result.FinalPocStatus, "FinalPocStatus should remain Generating")
 }
 
-// TestStartPoCNodeCommandV2_Success verifies that v2 generation start works without Stop().
+// TestStartPoCNodeCommandV2_Success verifies that v2 generation calls StopPowV2 before InitGenerateV2.
 func TestStartPoCNodeCommandV2_Success(t *testing.T) {
 	node := createTestNode("test-node-v2-gen")
 	mockClient := mlnodeclient.NewMockClient()
@@ -83,52 +83,15 @@ func TestStartPoCNodeCommandV2_Success(t *testing.T) {
 
 	result := cmd.Execute(context.Background(), worker)
 
-	// Verify the command succeeds
 	assert.True(t, result.Succeeded, "StartPoCNodeCommandV2 should succeed")
 	assert.Equal(t, types.HardwareNodeStatus_POC, result.FinalStatus, "FinalStatus should be POC")
 	assert.Equal(t, PocStatusGenerating, result.FinalPocStatus, "FinalPocStatus should be Generating")
 
-	// Verify Stop() was NOT called (v2 requirement)
 	mockClient.Mu.Lock()
 	defer mockClient.Mu.Unlock()
-	assert.Equal(t, 0, mockClient.StopCalled, "Stop() should NOT be called in v2 mode")
-
-	// Verify InitGenerateV2 was called
+	assert.Equal(t, 0, mockClient.StopCalled, "Stop() should NOT be called (only StopPowV2)")
+	assert.Equal(t, 1, mockClient.StopPowV2Called, "StopPowV2() should be called once")
 	assert.Equal(t, 1, mockClient.InitGenerateV2Called, "InitGenerateV2() should be called once")
-}
-
-// TestStartPoCNodeCommandV2_AlreadyGenerating verifies idempotency when already generating.
-func TestStartPoCNodeCommandV2_AlreadyGenerating(t *testing.T) {
-	node := createTestNode("test-node-v2-gen")
-	mockClient := mlnodeclient.NewMockClient()
-	broker := NewTestBroker2(1)
-	worker := NewNodeWorkerWithClient("test-node-v2-gen", node, mockClient, broker)
-	defer worker.Shutdown()
-
-	// Set mock to return GENERATING status
-	mockClient.SetV2Status("GENERATING")
-
-	cmd := StartPoCNodeCommandV2{
-		BlockHeight: 1000,
-		BlockHash:   "test-block-hash",
-		PubKey:      "test-pub-key",
-		CallbackUrl: "http://localhost:8080/callback",
-		TotalNodes:  5,
-		Model:       "test-model",
-		SeqLen:      256,
-	}
-
-	result := cmd.Execute(context.Background(), worker)
-
-	// Verify the command succeeds (idempotent)
-	assert.True(t, result.Succeeded, "StartPoCNodeCommandV2 should succeed (idempotent)")
-	assert.Equal(t, types.HardwareNodeStatus_POC, result.FinalStatus, "FinalStatus should be POC")
-	assert.Equal(t, PocStatusGenerating, result.FinalPocStatus, "FinalPocStatus should be Generating")
-
-	// Verify InitGenerateV2 was NOT called since already generating
-	mockClient.Mu.Lock()
-	defer mockClient.Mu.Unlock()
-	assert.Equal(t, 0, mockClient.InitGenerateV2Called, "InitGenerateV2() should NOT be called when already generating")
 }
 
 // TestStopPowV2_MockBehavior verifies the mock StopPowV2 works correctly.

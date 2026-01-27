@@ -248,17 +248,11 @@ func (c StartPoCNodeCommandV2) Execute(ctx context.Context, worker *NodeWorker) 
 		return result
 	}
 
-	// Check status for idempotency - use v2 status endpoint
-	statusV2, err := worker.GetClient().GetPowStatusV2(ctx)
-	if err == nil && statusV2.Status == "GENERATING" {
-		logging.Info("[StartPoCNodeCommandV2] Node already in PoC v2 generating state", types.PoC, "node_id", worker.nodeId)
-		result.Succeeded = true
-		result.FinalStatus = types.HardwareNodeStatus_POC
-		result.FinalPocStatus = PocStatusGenerating
-		return result
+	// Stop any existing generation (may be from previous epoch)
+	if _, err := worker.GetClient().StopPowV2(ctx); err != nil {
+		logging.Warn("[StartPoCNodeCommandV2] StopPowV2 failed, continuing", types.PoC, "node_id", worker.nodeId, "error", err)
 	}
 
-	// Start PoC v2 - NO Stop() call per plan
 	req := mlnodeclient.PoCInitGenerateRequestV2{
 		BlockHash:   c.BlockHash,
 		BlockHeight: c.BlockHeight,
