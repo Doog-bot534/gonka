@@ -338,6 +338,13 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 					Short:          "Query all PoC v2 store commits for a stage",
 					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "poc_stage_start_block_height"}},
 				},
+				// Confirmation PoC queries
+				{
+					RpcMethod:      "ListConfirmationPoCEvents",
+					Use:            "list-confirmation-poc-events [epoch-index]",
+					Short:          "Query all confirmation PoC events for an epoch",
+					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "epoch_index"}},
+				},
 				// this line is used by ignite scaffolding # autocli/query
 			},
 		},

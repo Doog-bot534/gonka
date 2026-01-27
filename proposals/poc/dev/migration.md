@@ -313,16 +313,18 @@ mlnodeclient/
 
 ## Implementation Phases
 
-The migration is split into three phases for isolated testing:
+The migration is split into four phases for isolated testing:
 
 - **Phase 1**: Restore on-chain V1 logic + add `poc_v2_enabled` param (isolated `*_v1.go` files, no dispatch) ✅ **COMPLETE**
 - **Phase 2**: Restore DAPI V1 logic (isolated `*_v1.go` files, no dispatch) ✅ **COMPLETE**
 - **Phase 3**: Add version switches and guards, wire dispatch, integration tests ✅ **COMPLETE**
+- **Phase 4**: Dual migration mode with `confirmation_poc_v2_enabled` and auto-switch logic ✅ **COMPLETE**
 
 See detailed implementation notes in:
 - `migration-phase1.md` - Phase 1 details
 - `migration-phase2.md` - Phase 2 details
 - `migration-phase3.md` - Phase 3 details
+- `migration-dual.md` - Phase 4 details (dual migration mode + auto-switch)
 
 ---
 

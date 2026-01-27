@@ -74,14 +74,18 @@ PoC v2 rollout requires coordinated updates across:
 
 If issues arise during migration, `api` fixes can be deployed off-chain without requiring a governance vote, as long as they don't change protocol behavior.
 
-Because of this coordination requirement, the migration keeps PoC v1 and PoC v2 available at the same time. During migration, PoC v1 remains the primary source of weight. PoC v2 can be enabled for Confirmation PoC only, so results are recorded on-chain for tracking but not applied to main PoC weight/slashing. Optionally, V2 can be enabled for only a fraction of Confirmation PoC events (e.g., 1/3) for gradual rollout. Once a clear majority of nodes reliably passes PoC v2, a governance proposal switches the primary PoC to v2.
+Because of this coordination requirement, the migration keeps PoC v1 and PoC v2 available at the same time. During migration:
 
-The V1/V2 switch is controlled by a governance param:
+- **Regular PoC**: V1 (on-chain batches, affects weights)
+- **Confirmation PoC**: V1 for all events, plus V2 **tracking** for the first sampled event per epoch (`event_sequence == 0`)
+
+The V2 tracking confirmation event records coverage metrics on-chain for monitoring but does **not** affect weights/slashing. This allows us to measure mlnode V2 adoption before enabling full V2.
+
+The V1/V2 switch is controlled by governance params:
 - `poc_v2_enabled` (false = PoC v1, true = PoC v2)
+- `confirmation_poc_v2_enabled` (enables migration mode when `poc_v2_enabled=false`)
 
-Setting it to `true` requires no software upgrade - just a governance proposal.
-
-`confirmation_poc_v2_enabled` exists in params but is not wired into `api`/`node` logic yet. Once implemented, it will enable the gradual rollout described above.
+Setting `poc_v2_enabled=true` requires no software upgrade - just a governance proposal. After this switch, V2 affects weights/slashing. The tracking-only mode only exists during migration.
 
 
 ## Status

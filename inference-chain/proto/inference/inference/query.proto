@@ -462,7 +462,11 @@ service Query {
   // Queries the currently active confirmation PoC event.
   rpc ActiveConfirmationPoCEvent (QueryActiveConfirmationPoCEventRequest) returns (QueryActiveConfirmationPoCEventResponse) {
     option (google.api.http).get = "/productscience/inference/inference/active_confirmation_poc_event";
+  }
 
+  // Queries confirmation PoC events for a specific epoch.
+  rpc ListConfirmationPoCEvents (QueryConfirmationPoCEventsRequest) returns (QueryConfirmationPoCEventsResponse) {
+    option (google.api.http).get = "/productscience/inference/inference/confirmation_poc_events/{epoch_index}";
   }
 
   rpc ParticipantsWithBalances (QueryParticipantsWithBalancesRequest) returns (QueryParticipantsWithBalancesResponse) {
@@ -1209,6 +1213,16 @@ message QueryActiveConfirmationPoCEventRequest {}
 message QueryActiveConfirmationPoCEventResponse {
   bool                 is_active = 1;
   ConfirmationPoCEvent event     = 2;
+}
+
+// QueryConfirmationPoCEventsRequest is request type for the Query/ConfirmationPoCEvents RPC method.
+message QueryConfirmationPoCEventsRequest {
+  uint64 epoch_index = 1;
+}
+
+// QueryConfirmationPoCEventsResponse is response type for the Query/ConfirmationPoCEvents RPC method.
+message QueryConfirmationPoCEventsResponse {
+  repeated ConfirmationPoCEvent events = 1;
 }
 
 // ParticipantWithBalance contains participant data along with their bank balance.

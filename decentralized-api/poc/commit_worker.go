@@ -97,8 +97,7 @@ func (w *CommitWorker) tick() {
 		return
 	}
 
-	// V1 mode: CommitWorker is not needed (batches go directly to chain)
-	if !epochState.PocV2Enabled {
+	if !ShouldUseV2FromEpochState(epochState) {
 		return
 	}
 
