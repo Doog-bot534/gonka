@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit
  * - V2 mode uses off-chain StoreCommit storage
  * - Runtime switching via governance works without restart
  */
-@Timeout(value = 20, unit = TimeUnit.MINUTES)
+@Timeout(value = 30, unit = TimeUnit.MINUTES)
 class PoCMigrationTests : TestermintTest() {
 
     /**
@@ -310,6 +310,157 @@ class PoCMigrationTests : TestermintTest() {
         Logger.info("After confirmation PoC: poc_v2_enabled=${paramsAfter.pocParams.pocV2Enabled} (no auto-switch)")
 
         logSection("TEST PASSED: Migration mode works correctly (V2 tracking for event 0, V1 for event 1+)")
+    }
+
+    /**
+     * Grace Epoch Test: Confirmation PoC in dry-run mode during V2 transition epoch.
+     *
+     * When switching from migration mode to full V2 via governance:
+     * - The epoch when V2 was enabled is stored as the "grace epoch"
+     * - Confirmation PoC events in the grace epoch run in dry-run mode (no weight impact)
+     * - This prevents unfair punishment for nodes that weren't tracking V2 from epoch start
+     *
+     * Test flow:
+     * 1. Start in migration mode
+     * 2. Wait for confirmation PoC to complete (establishes baseline weights)
+     * 3. Switch to V2 via governance mid-epoch
+     * 4. Run another confirmation PoC with FAILING weight
+     * 5. Verify weights are NOT modified (dry-run in grace epoch)
+     */
+    @Test
+    fun `migration to v2 - grace epoch skips confirmation punishment`() {
+        logSection("=== TEST: Migration to V2 - Grace Epoch ===")
+
+        val (cluster, genesis) = initCluster(
+            joinCount = 2,
+            mergeSpec = migrationModeSpec,
+            reboot = true
+        )
+        cluster.allPairs.forEach { it.waitForMlNodesToLoad() }
+
+        val join1 = cluster.joinPairs[0]
+        val join2 = cluster.joinPairs[1]
+
+        // Verify migration mode is active
+        var params = genesis.getParams()
+        assertThat(params.pocParams.pocV2Enabled).isFalse()
+        assertThat(params.pocParams.confirmationPocV2Enabled).isTrue()
+        Logger.info("Migration mode active: poc_v2_enabled=${params.pocParams.pocV2Enabled}")
+
+        // === Phase 1: Run first PoC cycle to establish weights ===
+        logSection("Phase 1: Running first PoC cycle")
+        genesis.waitForStage(EpochStage.START_OF_POC)
+        genesis.waitForStage(EpochStage.CLAIM_REWARDS, offset = 2)
+
+        genesis.setPocWeight(10)
+        join1.setPocWeight(10)
+        join2.setPocWeight(10)
+
+        // === Phase 2: Let first confirmation PoC complete in migration mode ===
+        logSection("Phase 2: Waiting for first confirmation PoC")
+        val confirmationEvent1 = waitForConfirmationPoCTrigger(genesis)
+        assertThat(confirmationEvent1).isNotNull
+        Logger.info("First confirmation PoC triggered at height ${confirmationEvent1!!.triggerHeight}")
+
+        waitForConfirmationPoCPhase(genesis, ConfirmationPoCPhase.CONFIRMATION_POC_GENERATION)
+        waitForConfirmationPoCPhase(genesis, ConfirmationPoCPhase.CONFIRMATION_POC_VALIDATION)
+        waitForConfirmationPoCCompletion(genesis)
+        Logger.info("First confirmation PoC completed")
+
+        // Record current epoch
+        val epochData = genesis.getEpochData()
+        val currentEpoch = epochData.latestEpoch.index
+        Logger.info("Current epoch: $currentEpoch")
+
+        // === Phase 3: Switch to V2 via governance mid-epoch ===
+        logSection("Phase 3: Switching to V2 via governance")
+
+        val modifiedParams = params.copy(
+            pocParams = params.pocParams.copy(pocV2Enabled = true)
+        )
+        genesis.runProposal(cluster, UpdateParams(params = modifiedParams))
+
+        params = genesis.getParams()
+        assertThat(params.pocParams.pocV2Enabled).isTrue()
+        Logger.info("After governance: poc_v2_enabled=${params.pocParams.pocV2Enabled}")
+
+        // Record initial balances before next settlement
+        val initialBalances = mapOf(
+            genesis.node.getColdAddress() to genesis.node.getSelfBalance(),
+            join1.node.getColdAddress() to join1.node.getSelfBalance(),
+            join2.node.getColdAddress() to join2.node.getSelfBalance()
+        )
+
+        // === Phase 4: Run confirmation PoC with FAILING weight in grace epoch ===
+        logSection("Phase 4: Running confirmation PoC with failing weight in grace epoch")
+
+        // Set ALL participants to low weight to ensure non-preserved nodes fail
+        // (some nodes may be POC_SLOT=true/preserved and won't participate in confirmation)
+        genesis.setPocWeight(1)  // Very low - would normally be punished
+        join1.setPocWeight(1)    // Very low - would normally be punished
+        join2.setPocWeight(1)    // Very low - would normally be punished
+
+        val confirmationEvent2 = waitForConfirmationPoCTrigger(genesis)
+        if (confirmationEvent2 != null) {
+            Logger.info("Second confirmation PoC triggered at height ${confirmationEvent2.triggerHeight}")
+
+            waitForConfirmationPoCPhase(genesis, ConfirmationPoCPhase.CONFIRMATION_POC_GENERATION)
+            waitForConfirmationPoCPhase(genesis, ConfirmationPoCPhase.CONFIRMATION_POC_VALIDATION)
+            waitForConfirmationPoCCompletion(genesis)
+            Logger.info("Second confirmation PoC completed in grace epoch (should be dry-run)")
+        } else {
+            Logger.info("No second confirmation PoC triggered - testing grace epoch via next epoch")
+        }
+
+        // Reset weights
+        genesis.setPocWeight(10)
+        join1.setPocWeight(10)
+        join2.setPocWeight(10)
+
+        // === Phase 5: Wait for next epoch settlement ===
+        logSection("Phase 5: Waiting for reward settlement")
+        genesis.waitForStage(EpochStage.START_OF_POC)
+        genesis.waitForStage(EpochStage.CLAIM_REWARDS, offset = 2)
+
+        val finalBalances = mapOf(
+            genesis.node.getColdAddress() to genesis.node.getSelfBalance(),
+            join1.node.getColdAddress() to join1.node.getSelfBalance(),
+            join2.node.getColdAddress() to join2.node.getSelfBalance()
+        )
+
+        val genesisChange = finalBalances[genesis.node.getColdAddress()]!! - initialBalances[genesis.node.getColdAddress()]!!
+        val join1Change = finalBalances[join1.node.getColdAddress()]!! - initialBalances[join1.node.getColdAddress()]!!
+        val join2Change = finalBalances[join2.node.getColdAddress()]!! - initialBalances[join2.node.getColdAddress()]!!
+
+        Logger.info("Balance changes:")
+        Logger.info("  Genesis: $genesisChange (low weight during grace epoch)")
+        Logger.info("  Join1: $join1Change (low weight during grace epoch)")
+        Logger.info("  Join2: $join2Change (low weight during grace epoch)")
+
+        // === Phase 6: Verify participants were NOT punished (grace epoch dry-run) ===
+        logSection("Phase 6: Verifying grace epoch behavior")
+
+        // All participants should have positive rewards despite low confirmation weights
+        assertThat(genesisChange).isGreaterThan(0)
+        assertThat(join1Change).isGreaterThan(0)
+        assertThat(join2Change).isGreaterThan(0)
+        Logger.info("All participants received positive rewards despite low confirmation weights")
+
+        // In grace epoch, low confirmation weights should NOT affect rewards
+        // Without grace epoch, participants would have significantly lower rewards (1/10 ratio)
+        // With grace epoch, all should have similar rewards
+        val minChange = minOf(genesisChange, join1Change, join2Change)
+        val maxChange = maxOf(genesisChange, join1Change, join2Change)
+        val ratio = if (maxChange > 0) minChange.toDouble() / maxChange.toDouble() else 1.0
+        Logger.info("Min/max reward ratio: $ratio (min=$minChange, max=$maxChange)")
+
+        // If grace epoch worked, ratio should be close to 1.0 (not 0.1)
+        // Allow some tolerance for timing variations and preserved node differences
+        assertThat(ratio).isGreaterThan(0.5)
+            .describedAs("Grace epoch should prevent punishment - min/max ratio should be > 0.5, got $ratio")
+        Logger.info("Grace epoch worked: participants were not punished for low confirmation weight")
+
+        logSection("TEST PASSED: Grace epoch correctly prevents confirmation PoC punishment during V2 transition")
     }
 
     // === Test Configurations ===

@@ -72,6 +72,7 @@ type (
 		ConfirmationPoCEvents          collections.Map[collections.Pair[uint64, uint64], types.ConfirmationPoCEvent]
 		ActiveConfirmationPoCEventItem collections.Item[types.ConfirmationPoCEvent]
 		LastUpgradeHeight              collections.Item[int64]
+		PocV2EnabledEpoch              collections.Item[uint64]
 		// Bridge & Wrapped Token collections
 		BridgeContractAddresses        collections.Map[collections.Pair[string, string], types.BridgeContractAddress]
 		BridgeTransactionsMap          collections.Map[collections.Triple[string, string, string], types.BridgeTransaction]
@@ -348,6 +349,12 @@ func NewKeeper(
 			types.LastUpgradeHeightPrefix,
 			"last_upgrade_height",
 			collections.Int64Value,
+		),
+		PocV2EnabledEpoch: collections.NewItem(
+			sb,
+			types.PocV2EnabledEpochPrefix,
+			"poc_v2_enabled_epoch",
+			collections.Uint64Value,
 		),
 		BridgeContractAddresses: collections.NewMap(
 			sb,

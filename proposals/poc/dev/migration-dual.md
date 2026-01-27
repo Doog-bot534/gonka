@@ -9,6 +9,7 @@ Key properties:
 - **V2 tracking**: first confirmation event per epoch (`event_sequence == 0`) uses V2 for tracking only, no weight impact.
 - **V1**: all other confirmation events use V1 with weight/slashing enforcement.
 - **Manual switch**: governance sets `poc_v2_enabled=true` once adoption is sufficient (no auto-switch).
+- **Grace epoch**: when switching to full V2, the transition epoch runs confirmation PoC in dry-run mode (no punishment).
 
 ## Parameter Design
 
@@ -38,6 +39,27 @@ In migration mode (`poc_v2_enabled=false, confirmation_poc_v2_enabled=true`):
 Notes:
 - At most 1 V2 tracking event per epoch (best-effort, probabilistic).
 - V2 tracking logs coverage metrics but does NOT modify weights.
+
+## Grace Epoch (V2 Transition Protection)
+
+When switching from migration mode to full V2 (`poc_v2_enabled=true`), nodes may not have been tracking V2 data from the start of the current epoch. To prevent unfair punishment:
+
+1. The epoch when `poc_v2_enabled` becomes true is stored as the **grace epoch**.
+2. Confirmation PoC events in the grace epoch run in **dry-run mode** (no weight impact).
+3. Starting from the next epoch, confirmation PoC applies normal weight evaluation.
+
+```
+Epoch N (migration mode)     Epoch N (grace, V2)          Epoch N+1 (V2)
+|----------------------|     |----------------------|     |----------------------|
+|  event 0: V2 dryRun  |     |  event X: V2 dryRun  |     |  event X: V2 normal  |
+|  event 1+: V1 normal |     |  (grace epoch)       |     |  (punishment active) |
+|----------------------|     |----------------------|     |----------------------|
+                        ^
+                   governance sets
+                   poc_v2_enabled=true
+```
+
+This is automatic - governance only needs to set `poc_v2_enabled=true`.
 
 ## Implementation
 
@@ -139,29 +161,69 @@ if s.phaseTracker != nil {
 
 ### Chain Changes
 
+#### keeper/poc_v2_enabled_epoch.go
+
+Tracks the epoch when `poc_v2_enabled` was first set to true (grace epoch).
+
+```go
+// SetPocV2EnabledEpoch stores the epoch when poc_v2_enabled was first set to true.
+func (k Keeper) SetPocV2EnabledEpoch(ctx context.Context, epoch uint64) error
+
+// GetPocV2EnabledEpoch returns the epoch when poc_v2_enabled was first set to true.
+func (k Keeper) GetPocV2EnabledEpoch(ctx context.Context) (uint64, bool)
+```
+
+#### keeper/params.go
+
+Auto-sets grace epoch when `poc_v2_enabled` transitions false -> true:
+
+```go
+func (k Keeper) SetParams(ctx context.Context, params types.Params) error {
+    oldParams, _ := k.GetParams(ctx)
+    // ... store params ...
+    
+    // Auto-set grace epoch when poc_v2_enabled transitions false -> true
+    if params.PocParams != nil && params.PocParams.PocV2Enabled {
+        wasV2Disabled := oldParams.PocParams == nil || !oldParams.PocParams.PocV2Enabled
+        if wasV2Disabled {
+            if _, exists := k.GetPocV2EnabledEpoch(ctx); !exists {
+                if epoch, found := k.GetEffectiveEpochIndex(ctx); found {
+                    k.SetPocV2EnabledEpoch(ctx, epoch)
+                }
+            }
+        }
+    }
+    return nil
+}
+```
+
 #### module/confirmation_poc.go
 
 ```go
 func (am AppModule) updateConfirmationWeights(...) error {
     migrationState := GetMigrationStateFromParams(params.PocParams)
 
+    useV2, dryRun := false, false
     switch migrationState {
     case ModeFullV2:
-        am.evaluateConfirmation(ctx, event, ..., useV2: true)
-    case ModeMigration:
-        // event_sequence == 0: V2 tracking (event stored, skip weight evaluation)
-        // event_sequence >= 1: V1 (affects weights)
-        if event.EventSequence > 0 {
-            am.evaluateConfirmation(ctx, event, ..., useV2: false)
+        useV2 = true
+        // Grace period: dry-run for the epoch when V2 was enabled
+        if graceEpoch, ok := am.keeper.GetPocV2EnabledEpoch(ctx); ok && event.EpochIndex == graceEpoch {
+            dryRun = true
         }
-    default:
-        am.evaluateConfirmation(ctx, event, ..., useV2: false)
+    case ModeMigration:
+        if event.EventSequence == 0 {
+            useV2, dryRun = true, true
+        }
     }
+    am.evaluateConfirmation(ctx, event, ..., useV2, dryRun)
     return nil
 }
 ```
 
 ## Files Summary
+
+### DAPI
 
 | File | Change |
 |------|--------|
@@ -172,7 +234,16 @@ func (am AppModule) updateConfirmationWeights(...) error {
 | `public/poc_handler.go` | Use `ShouldUseV2FromEpochState()` to allow V2 APIs in migration mode |
 | `mlnode/post_generated_artifacts_v2_handler.go` | Use `IsV2EndpointsEnabled()` |
 | `chainphase/phase_tracker.go` | `IsConfirmationPoCv2Enabled()` (existing) |
-| `module/confirmation_poc.go` | Switch on event_sequence in migration mode |
+
+### Chain
+
+| File | Change |
+|------|--------|
+| `types/keys.go` | Add `PocV2EnabledEpochPrefix` |
+| `keeper/keeper.go` | Add `PocV2EnabledEpoch` collection |
+| `keeper/poc_v2_enabled_epoch.go` | Get/Set for grace epoch |
+| `keeper/params.go` | Auto-set grace epoch on V2 transition |
+| `module/confirmation_poc.go` | Switch on migration state + grace epoch check |
 | `keeper/query_confirmation_poc_events.go` | Query to list confirmation PoC events by epoch |
 
 ## Migration Sequence
@@ -184,11 +255,6 @@ func (am AppModule) updateConfirmationWeights(...) error {
    - Query V2 data (StoreCommits) at trigger heights off-chain.
    - V1 continues for other events.
 4. **Manual switch**: submit governance proposal to set `poc_v2_enabled=true` once adoption is sufficient.
-5. **Full V2 active**: all PoC (regular + confirmation) uses V2.
+5. **Grace epoch**: the epoch when V2 was enabled runs confirmation PoC in dry-run mode (automatic).
+6. **Full V2 active**: starting next epoch, all PoC (regular + confirmation) uses V2 with punishment.
 
-## Rollback
-
-If issues arise after enabling full V2:
-- Submit governance proposal to set `poc_v2_enabled=false`.
-- Keep `confirmation_poc_v2_enabled=true` to stay in migration mode (optional).
-- Or set both to `false` for full V1 rollback.

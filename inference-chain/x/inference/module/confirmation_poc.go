@@ -371,6 +371,10 @@ func (am AppModule) updateConfirmationWeights(ctx context.Context, event *types.
 	switch migrationState {
 	case ModeFullV2:
 		useV2 = true
+		// Grace period: dry-run for the epoch when V2 was enabled
+		if graceEpoch, ok := am.keeper.GetPocV2EnabledEpoch(ctx); ok && event.EpochIndex == graceEpoch {
+			dryRun = true
+		}
 	case ModeMigration:
 		if event.EventSequence == 0 {
 			useV2, dryRun = true, true
