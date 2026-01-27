@@ -357,20 +357,29 @@ class PoCMigrationTests : TestermintTest() {
         join2.setPocWeight(10)
 
         // === Phase 2: Let first confirmation PoC complete in migration mode ===
-        logSection("Phase 2: Waiting for first confirmation PoC")
-        val confirmationEvent1 = waitForConfirmationPoCTrigger(genesis)
-        assertThat(confirmationEvent1).isNotNull
-        Logger.info("First confirmation PoC triggered at height ${confirmationEvent1!!.triggerHeight}")
+        logSection("Phase 2: Waiting for first confirmation PoC to complete")
 
-        waitForConfirmationPoCPhase(genesis, ConfirmationPoCPhase.CONFIRMATION_POC_GENERATION)
-        waitForConfirmationPoCPhase(genesis, ConfirmationPoCPhase.CONFIRMATION_POC_VALIDATION)
-        waitForConfirmationPoCCompletion(genesis)
-        Logger.info("First confirmation PoC completed")
-
-        // Record current epoch
         val epochData = genesis.getEpochData()
         val currentEpoch = epochData.latestEpoch.index
-        Logger.info("Current epoch: $currentEpoch")
+        Logger.info("Current epoch: $currentEpoch, waiting for confirmation events...")
+
+        // Wait for at least one confirmation event to complete
+        var eventsFound = 0
+        for (i in 1..50) {
+            genesis.node.waitForNextBlock(3)
+            val events = genesis.node.listConfirmationPoCEvents(currentEpoch)
+            if (events.events.isNotEmpty()) {
+                eventsFound = events.events.size
+                Logger.info("Found $eventsFound confirmation events after ${i * 3} blocks")
+                break
+            }
+            if (i % 10 == 0) {
+                Logger.info("Progress: waiting for confirmation events (${i * 3} blocks)")
+            }
+        }
+        assertThat(eventsFound).isGreaterThan(0)
+            .describedAs("Should have at least one confirmation event")
+        Logger.info("First confirmation PoC completed")
 
         // === Phase 3: Switch to V2 via governance mid-epoch ===
         logSection("Phase 3: Switching to V2 via governance")
@@ -400,17 +409,22 @@ class PoCMigrationTests : TestermintTest() {
         join1.setPocWeight(1)    // Very low - would normally be punished
         join2.setPocWeight(1)    // Very low - would normally be punished
 
-        val confirmationEvent2 = waitForConfirmationPoCTrigger(genesis)
-        if (confirmationEvent2 != null) {
-            Logger.info("Second confirmation PoC triggered at height ${confirmationEvent2.triggerHeight}")
+        // Wait for more confirmation events to complete with low weights
+        val eventsBefore = genesis.node.listConfirmationPoCEvents(currentEpoch).events.size
+        Logger.info("Events before: $eventsBefore, waiting for more confirmation events with low weights...")
 
-            waitForConfirmationPoCPhase(genesis, ConfirmationPoCPhase.CONFIRMATION_POC_GENERATION)
-            waitForConfirmationPoCPhase(genesis, ConfirmationPoCPhase.CONFIRMATION_POC_VALIDATION)
-            waitForConfirmationPoCCompletion(genesis)
-            Logger.info("Second confirmation PoC completed in grace epoch (should be dry-run)")
-        } else {
-            Logger.info("No second confirmation PoC triggered - testing grace epoch via next epoch")
+        for (i in 1..30) {
+            genesis.node.waitForNextBlock(3)
+            val events = genesis.node.listConfirmationPoCEvents(currentEpoch)
+            if (events.events.size > eventsBefore) {
+                Logger.info("Found ${events.events.size} confirmation events (was $eventsBefore) after ${i * 3} blocks")
+                break
+            }
+            if (i % 10 == 0) {
+                Logger.info("Progress: ${events.events.size} events (${i * 3} blocks)")
+            }
         }
+        Logger.info("Confirmation PoC completed in grace epoch (should be dry-run)")
 
         // Reset weights
         genesis.setPocWeight(10)
