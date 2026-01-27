@@ -12,6 +12,7 @@ import (
 	distrkeeper "github.com/cosmos/cosmos-sdk/x/distribution/keeper"
 	blskeeper "github.com/productscience/inference/x/bls/keeper"
 	blstypes "github.com/productscience/inference/x/bls/types"
+	bookkeepertypes "github.com/productscience/inference/x/bookkeeper/types"
 	"github.com/productscience/inference/x/inference/keeper"
 	"github.com/productscience/inference/x/inference/types"
 )
@@ -154,7 +155,15 @@ func burnExtraCommunityCoins(ctx context.Context, k *keeper.Keeper) error {
 		return nil
 	}
 
-	err := k.BankKeeper.BurnCoins(ctx, moduleName, coins, "one-time burn of pre_programmed_sale account")
+	// Step 1: Transfer coins from pre_programmed_sale to bookkeeper module
+	// (pre_programmed_sale doesn't have burner permission, but bookkeeper does)
+	err := k.BankKeeper.SendCoinsFromModuleToModule(ctx, moduleName, bookkeepertypes.ModuleName, coins, "transfer for burn")
+	if err != nil {
+		return fmt.Errorf("failed to transfer coins to bookkeeper module: %w", err)
+	}
+
+	// Step 2: Burn from bookkeeper module (which has burner permission)
+	err = k.BankKeeper.BurnCoins(ctx, bookkeepertypes.ModuleName, coins, "one-time burn of pre_programmed_sale account")
 	if err != nil {
 		return fmt.Errorf("failed to burn coins: %w", err)
 	}
