@@ -1,4 +1,4 @@
-# Proposal: PoC v2 & Offchain PoC data
+# [IMPLEMENTED] Proposal: PoC v2 & Offchain PoC data
 
 This proposal describes the current status of the PoC v2 migration, which integrates the PoC procedure into vLLM and uses `Qwen/Qwen3-235B-A22B-Instruct-2507-FP8` model.
 
