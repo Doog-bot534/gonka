@@ -64,6 +64,15 @@ func (c InferenceUpNodeCommand) Execute(ctx context.Context, worker *NodeWorker)
 	state, err := worker.GetClient().NodeState(ctx)
 	if err == nil && state.State == mlnodeclient.MlNodeState_INFERENCE {
 		if healthy, _ := worker.GetClient().InferenceHealth(ctx); healthy {
+			// Stop any running PoC V2 (runs inside inference/vLLM)
+			// Only stop if actually generating or validating
+			if pocStatus, err := worker.GetClient().GetPowStatusV2(ctx); err == nil && pocStatus != nil {
+				if pocStatus.Status == "GENERATING" || pocStatus.Status == "VALIDATING" {
+					if _, err := worker.GetClient().StopPowV2(ctx); err != nil {
+						logging.Debug("StopPowV2 during inference transition", types.Nodes, "node_id", worker.nodeId, "error", err)
+					}
+				}
+			}
 			logging.Info("Node already in healthy inference state", types.Nodes, "node_id", worker.nodeId)
 			result.Succeeded = true
 			result.FinalStatus = types.HardwareNodeStatus_INFERENCE
@@ -248,9 +257,15 @@ func (c StartPoCNodeCommandV2) Execute(ctx context.Context, worker *NodeWorker) 
 		return result
 	}
 
-	// Stop any existing generation (may be from previous epoch)
-	if _, err := worker.GetClient().StopPowV2(ctx); err != nil {
-		logging.Warn("[StartPoCNodeCommandV2] StopPowV2 failed, continuing", types.PoC, "node_id", worker.nodeId, "error", err)
+	// Idempotency check - if already generating, skip restart
+	// This is safe: any old-epoch generation was stopped during inference transition
+	status, err := worker.GetClient().GetPowStatusV2(ctx)
+	if err == nil && status != nil && status.Status == "GENERATING" {
+		logging.Info("[StartPoCNodeCommandV2] Already generating, skipping restart", types.PoC, "node_id", worker.nodeId)
+		result.Succeeded = true
+		result.FinalStatus = types.HardwareNodeStatus_POC
+		result.FinalPocStatus = PocStatusGenerating
+		return result
 	}
 
 	req := mlnodeclient.PoCInitGenerateRequestV2{
