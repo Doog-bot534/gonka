@@ -37,6 +37,10 @@ func CreateUpgradeHandler(
 			return nil, err
 		}
 
+		if err := setV0_2_8Params(ctx, k); err != nil {
+			return nil, err
+		}
+
 		toVM, err := mm.RunMigrations(ctx, configurator, fromVM)
 		if err != nil {
 			return toVM, err
@@ -115,4 +119,25 @@ func MigrateBLSData(ctx context.Context, k keeper.Keeper, bk blskeeper.Keeper) e
 	}
 
 	return nil
+}
+
+func setV0_2_8Params(ctx context.Context, k keeper.Keeper) error {
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		return err
+	}
+
+	if params.PocParams != nil {
+		params.PocParams.ModelId = "Qwen/Qwen3-235B-A22B-Instruct-2507-FP8"
+		params.PocParams.SeqLen = 1024
+		params.PocParams.PocV2Enabled = false
+		params.PocParams.ConfirmationPocV2Enabled = true
+		params.PocParams.StatTest = &types.PoCStatTestParams{
+			DistThreshold:   types.DecimalFromFloat(0.4),
+			PMismatch:       types.DecimalFromFloat(0.1),
+			PValueThreshold: types.DecimalFromFloat(0.05),
+		}
+	}
+
+	return k.SetParams(ctx, params)
 }
