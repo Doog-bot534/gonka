@@ -66,10 +66,13 @@ func (c InferenceUpNodeCommand) Execute(ctx context.Context, worker *NodeWorker)
 		if healthy, _ := worker.GetClient().InferenceHealth(ctx); healthy {
 			// Stop any running PoC V2 (runs inside inference/vLLM)
 			// Only stop if actually generating or validating
-			if pocStatus, err := worker.GetClient().GetPowStatusV2(ctx); err == nil && pocStatus != nil {
+			if pocStatus, err := worker.GetClient().GetPowStatusV2(ctx); err != nil {
+				logging.Debug("GetPowStatusV2 failed during inference transition", types.Nodes, "node_id", worker.nodeId, "error", err)
+			} else if pocStatus != nil {
+				logging.Debug("GetPowStatusV2 status during inference transition", types.Nodes, "node_id", worker.nodeId, "status", pocStatus.Status)
 				if pocStatus.Status == "GENERATING" || pocStatus.Status == "VALIDATING" {
 					if _, err := worker.GetClient().StopPowV2(ctx); err != nil {
-						logging.Debug("StopPowV2 during inference transition", types.Nodes, "node_id", worker.nodeId, "error", err)
+						logging.Debug("StopPowV2 during inference transition failed", types.Nodes, "node_id", worker.nodeId, "error", err)
 					}
 				}
 			}
@@ -260,12 +263,17 @@ func (c StartPoCNodeCommandV2) Execute(ctx context.Context, worker *NodeWorker) 
 	// Idempotency check - if already generating, skip restart
 	// This is safe: any old-epoch generation was stopped during inference transition
 	status, err := worker.GetClient().GetPowStatusV2(ctx)
-	if err == nil && status != nil && status.Status == "GENERATING" {
-		logging.Info("[StartPoCNodeCommandV2] Already generating, skipping restart", types.PoC, "node_id", worker.nodeId)
-		result.Succeeded = true
-		result.FinalStatus = types.HardwareNodeStatus_POC
-		result.FinalPocStatus = PocStatusGenerating
-		return result
+	if err != nil {
+		logging.Debug("[StartPoCNodeCommandV2] GetPowStatusV2 failed, proceeding with init", types.PoC, "node_id", worker.nodeId, "error", err)
+	} else if status != nil {
+		logging.Debug("[StartPoCNodeCommandV2] GetPowStatusV2 status", types.PoC, "node_id", worker.nodeId, "status", status.Status)
+		if status.Status == "GENERATING" {
+			logging.Info("[StartPoCNodeCommandV2] Already generating, skipping restart", types.PoC, "node_id", worker.nodeId)
+			result.Succeeded = true
+			result.FinalStatus = types.HardwareNodeStatus_POC
+			result.FinalPocStatus = PocStatusGenerating
+			return result
+		}
 	}
 
 	req := mlnodeclient.PoCInitGenerateRequestV2{
