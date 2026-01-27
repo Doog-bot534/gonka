@@ -106,6 +106,18 @@
             "value": "64",
             "exponent": "-2"
           }
+        },
+        "confirmation_poc_params": {
+          "expected_confirmations_per_epoch": "3",
+          "alpha_threshold": {
+            "value": "5",
+            "exponent": -1
+          },
+          "slash_fraction": {
+            "value": "0",
+            "exponent": 0
+          },
+          "upgrade_protection_window": "500"
         }
       },
       "model_list": [
