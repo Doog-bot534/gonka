@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"cosmossdk.io/core/store"
 	"cosmossdk.io/log"
@@ -100,13 +101,38 @@ func (k Keeper) SendCoinsFromModuleToModule(ctx context.Context, senderModule, r
 	return nil
 }
 func (k Keeper) SendCoinsFromAccountToModule(ctx context.Context, senderAddr sdk.AccAddress, recipientModule string, amt sdk.Coins, memo string) error {
+	sendStart := time.Now()
 	err := k.bankKeeper.SendCoinsFromAccountToModule(ctx, senderAddr, recipientModule, amt)
 	if err != nil {
+		k.Logger().Error("Bookkeeper: bank send from account to module failed",
+			"from", senderAddr.String(),
+			"to", recipientModule,
+			"amount", amt.String(),
+			"memo", memo,
+			"duration_ms", durationMs(sendStart),
+			"error", err,
+		)
 		return err
 	}
+	k.Logger().Info("Bookkeeper: bank send from account to module complete",
+		"from", senderAddr.String(),
+		"to", recipientModule,
+		"amount", amt.String(),
+		"memo", memo,
+		"duration_ms", durationMs(sendStart),
+	)
+	logStart := time.Now()
 	for _, coin := range amt {
 		k.logTransaction(ctx, recipientModule, senderAddr.String(), coin, memo, "")
 	}
+	k.Logger().Info("Bookkeeper: transaction logging complete",
+		"from", senderAddr.String(),
+		"to", recipientModule,
+		"amount", amt.String(),
+		"memo", memo,
+		"coins", len(amt),
+		"duration_ms", durationMs(logStart),
+	)
 	return nil
 }
 
