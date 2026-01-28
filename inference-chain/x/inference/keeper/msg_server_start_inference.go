@@ -218,23 +218,52 @@ func (k msgServer) processInferencePayments(
 	inference *types.Inference,
 	payments *calculations.Payments,
 ) (*types.Inference, error) {
+	startTime := time.Now()
 	if payments.EscrowAmount > 0 {
+		escrowStart := time.Now()
 		escrowAmount, err := k.PutPaymentInEscrow(ctx, inference, payments.EscrowAmount)
 		if err != nil {
+			k.LogError("processInferencePayments: PutPaymentInEscrow failed", types.Payments,
+				"inferenceId", inference.InferenceId,
+				"duration_ms", durationMs(escrowStart),
+				"error", err,
+			)
 			return nil, err
 		}
 		inference.EscrowAmount = escrowAmount
+		k.LogInfo("processInferencePayments: PutPaymentInEscrow complete", types.Payments,
+			"inferenceId", inference.InferenceId,
+			"amount", payments.EscrowAmount,
+			"duration_ms", durationMs(escrowStart),
+		)
 	}
 	if payments.EscrowAmount < 0 {
+		refundStart := time.Now()
 		err := k.IssueRefund(ctx, -payments.EscrowAmount, inference.RequestedBy, "inference_refund:"+inference.InferenceId)
 		if err != nil {
-			k.LogError("Unable to Issue Refund for started inference", types.Payments, err)
+			k.LogError("processInferencePayments: IssueRefund failed", types.Payments,
+				"inferenceId", inference.InferenceId,
+				"duration_ms", durationMs(refundStart),
+				"error", err,
+			)
+		} else {
+			k.LogInfo("processInferencePayments: IssueRefund complete", types.Payments,
+				"inferenceId", inference.InferenceId,
+				"amount", -payments.EscrowAmount,
+				"duration_ms", durationMs(refundStart),
+			)
 		}
 	}
 	if payments.ExecutorPayment > 0 {
+		executorStart := time.Now()
 		executedBy := inference.ExecutedBy
 		executor, found := k.GetParticipant(ctx, executedBy)
 		if !found {
+			k.LogError("processInferencePayments: executor not found", types.Payments,
+				"inferenceId", inference.InferenceId,
+				"executedBy", executedBy,
+				"duration_ms", durationMs(executorStart),
+			)
 			return nil, sdkerrors.Wrap(types.ErrParticipantNotFound, executedBy)
 		}
 		executor.CoinBalance += payments.ExecutorPayment
@@ -242,9 +271,25 @@ func (k msgServer) processInferencePayments(
 		k.SafeLogSubAccountTransaction(ctx, executor.Address, types.ModuleName, types.OwedSubAccount, executor.CoinBalance, "inference_started:"+inference.InferenceId)
 		err := k.SetParticipant(ctx, executor)
 		if err != nil {
+			k.LogError("processInferencePayments: SetParticipant failed", types.Payments,
+				"inferenceId", inference.InferenceId,
+				"executedBy", executedBy,
+				"duration_ms", durationMs(executorStart),
+				"error", err,
+			)
 			return nil, err
 		}
+		k.LogInfo("processInferencePayments: executor payment complete", types.Payments,
+			"inferenceId", inference.InferenceId,
+			"executedBy", executedBy,
+			"amount", payments.ExecutorPayment,
+			"duration_ms", durationMs(executorStart),
+		)
 	}
+	k.LogInfo("processInferencePayments: complete", types.Payments,
+		"inferenceId", inference.InferenceId,
+		"duration_ms", durationMs(startTime),
+	)
 	return inference, nil
 
 }
