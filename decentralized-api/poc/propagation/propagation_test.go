@@ -49,7 +49,9 @@ func setupPropagationPostgres(t *testing.T) (*pgxpool.Pool, func()) {
 	return pool, cleanup
 }
 
-func TestSmallPropagation(t *testing.T) {
+type bundleStorageFactory func(t *testing.T, tempDir, addr string) (BundleStorage, error)
+
+func testSmallPropagation(t *testing.T, storageFactory bundleStorageFactory) {
 	numParticipants := 5
 	numTrees := 1
 	fanout := 2
@@ -72,24 +74,11 @@ func TestSmallPropagation(t *testing.T) {
 
 	trees := BuildTrees(participants, blockHash[:], numTrees, fanout)
 
-	t.Logf("Tree topology:")
-	for _, tree := range trees {
-		t.Logf("Tree %d order: %v", tree.Index, tree.Shuffled)
-		for _, addr := range participants {
-			parent, children := tree.Role(addr)
-			t.Logf("  %s: parent=%s, children=%v", addr, parent, children)
-		}
-	}
-
 	transport := NewMockTransport()
 	pubKeyProvider := NewMockPubKeyProvider()
 	for addr, pubKey := range pubKeys {
 		pubKeyProvider.RegisterKey(addr, pubKey)
 	}
-
-	pool, cleanup := setupPropagationPostgres(t)
-	defer cleanup()
-	ctx := context.Background()
 
 	tempDir := t.TempDir()
 
@@ -99,8 +88,9 @@ func TestSmallPropagation(t *testing.T) {
 	stores := make(map[string]*artifacts.ArtifactStore)
 
 	for i, addr := range participants {
-		cache, err := NewCache(ctx, pool, addr)
+		storage, err := storageFactory(t, tempDir, addr)
 		require.NoError(t, err)
+		cache := NewCache(storage)
 		caches[addr] = cache
 
 		receiver := NewReceiver(cache, trees, pubKeyProvider, addr, transport)
@@ -134,14 +124,12 @@ func TestSmallPropagation(t *testing.T) {
 	}
 
 	sender := trees[0].Shuffled[0]
-	t.Logf("Sender (tree root): %s", sender)
 
 	if err := bundlers[sender].Publish(pocHeight, blockHash[:], sender, privKeys[sender]); err != nil {
 		t.Fatalf("failed to publish: %v", err)
 	}
 
 	bundleID := MakeBundleID(sender, pocHeight, stores[sender].GetRoot(), stores[sender].Count(), 1)
-	t.Logf("BundleID: %x", bundleID[:8])
 
 	receivedCount := 0
 	for _, addr := range participants {
@@ -151,20 +139,16 @@ func TestSmallPropagation(t *testing.T) {
 
 		header, err := caches[addr].GetHeader(bundleID)
 		if err != nil {
-			t.Logf("Participant %s did not receive header", addr)
 			continue
 		}
 
 		receivedCount++
-		t.Logf("Participant %s successfully received bundle", addr)
 
 		if header.Participant != sender {
 			t.Errorf("participant %s: wrong sender in header: got %s, want %s",
 				addr, header.Participant, sender)
 		}
 	}
-
-	t.Logf("Total participants who received: %d out of %d", receivedCount, numParticipants-1)
 
 	if receivedCount != numParticipants-1 {
 		t.Errorf("Not all participants received the bundle: got %d, want %d", receivedCount, numParticipants-1)
@@ -173,4 +157,24 @@ func TestSmallPropagation(t *testing.T) {
 	for _, store := range stores {
 		store.Close()
 	}
+}
+
+func TestSmallPropagation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping postgres tests in -short mode")
+	}
+
+	pool, cleanup := setupPropagationPostgres(t)
+	defer cleanup()
+
+	testSmallPropagation(t, func(t *testing.T, tempDir, addr string) (BundleStorage, error) {
+		return NewPostgresBundleStorage(context.Background(), pool, addr)
+	})
+}
+
+func TestSmallPropagationWithFileStorage(t *testing.T) {
+	testSmallPropagation(t, func(t *testing.T, tempDir, addr string) (BundleStorage, error) {
+		storageDir := filepath.Join(tempDir, addr, "bundles")
+		return NewFileBundleStorage(storageDir)
+	})
 }

@@ -19,9 +19,10 @@ type Receiver struct {
 	myAddr   string
 	sender   Sender
 
-	mu             sync.RWMutex
-	pendingHeaders map[[32]byte]*BundleHeader
-	lastHeaderTime map[[32]byte]time.Time
+	mu               sync.RWMutex
+	processedHeaders map[[32]byte]bool
+	pendingHeaders   map[[32]byte]*BundleHeader
+	lastHeaderTime   map[[32]byte]time.Time
 }
 
 type PubKeyProvider interface {
@@ -30,29 +31,30 @@ type PubKeyProvider interface {
 
 func NewReceiver(cache *Cache, trees []*Tree, verifier PubKeyProvider, myAddr string, sender Sender) *Receiver {
 	return &Receiver{
-		cache:          cache,
-		trees:          trees,
-		verifier:       verifier,
-		myAddr:         myAddr,
-		sender:         sender,
-		pendingHeaders: make(map[[32]byte]*BundleHeader),
-		lastHeaderTime: make(map[[32]byte]time.Time),
+		cache:            cache,
+		trees:            trees,
+		verifier:         verifier,
+		myAddr:           myAddr,
+		sender:           sender,
+		processedHeaders: make(map[[32]byte]bool),
+		pendingHeaders:   make(map[[32]byte]*BundleHeader),
+		lastHeaderTime:   make(map[[32]byte]time.Time),
 	}
 }
 
 func (r *Receiver) OnHeader(h BundleHeader, treeIdx int) error {
 	logging.Debug("Receiver: received header", types.PoC,
-		"participant", h.Participant, "pocHeight", h.PocHeight,
+		"receiver", r.myAddr, "publisher", h.Participant, "pocHeight", h.PocHeight,
 		"count", h.Count, "bundleID", fmt.Sprintf("%x", h.BundleID[:8]),
 		"tree", treeIdx)
 
 	r.mu.RLock()
-	existing := r.pendingHeaders[h.BundleID]
+	processed := r.processedHeaders[h.BundleID]
 	r.mu.RUnlock()
 
-	if existing != nil {
-		logging.Debug("Receiver: duplicate header ignored", types.PoC,
-			"bundleID", fmt.Sprintf("%x", h.BundleID[:8]))
+	if processed {
+		logging.Debug("Receiver: duplicate header ignored (already processed)", types.PoC,
+			"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", h.BundleID[:8]))
 		return nil
 	}
 
@@ -77,19 +79,28 @@ func (r *Receiver) OnHeader(h BundleHeader, treeIdx int) error {
 		return fmt.Errorf("bundle ID mismatch")
 	}
 
+	r.mu.Lock()
+	if r.processedHeaders[h.BundleID] {
+		r.mu.Unlock()
+		logging.Info("Receiver: duplicate header ignored (race detected)", types.PoC,
+			"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", h.BundleID[:8]))
+		return nil
+	}
+
 	if err := r.cache.StoreHeader(context.Background(), h); err != nil {
+		r.mu.Unlock()
 		logging.Warn("Receiver: failed to store header", types.PoC,
 			"bundleID", fmt.Sprintf("%x", h.BundleID[:8]), "error", err)
 		return fmt.Errorf("store header: %w", err)
 	}
 
-	r.mu.Lock()
+	r.processedHeaders[h.BundleID] = true
 	r.pendingHeaders[h.BundleID] = &h
 	r.lastHeaderTime[h.BundleID] = time.Now()
 	r.mu.Unlock()
 
 	logging.Info("Receiver: commit metadata verified and stored", types.PoC,
-		"participant", h.Participant, "pocHeight", h.PocHeight,
+		"receiver", r.myAddr, "publisher", h.Participant, "pocHeight", h.PocHeight,
 		"bundleID", fmt.Sprintf("%x", h.BundleID[:8]))
 
 	r.forwardHeader(h, treeIdx)
@@ -108,12 +119,18 @@ func (r *Receiver) forwardHeader(h BundleHeader, treeIdx int) {
 		return
 	}
 
+	var wg sync.WaitGroup
 	for _, child := range node.Children {
-		if err := r.sender.SendHeader(treeIdx, child.Address, h); err != nil {
-			logging.Debug("Receiver: failed to forward header", types.PoC,
-				"tree", treeIdx, "child", child.Address, "error", err)
-		}
+		wg.Add(1)
+		go func(childAddr string) {
+			defer wg.Done()
+			if err := r.sender.SendHeader(treeIdx, childAddr, h); err != nil {
+				logging.Debug("Receiver: failed to forward header", types.PoC,
+					"tree", treeIdx, "child", childAddr, "error", err)
+			}
+		}(child.Address)
 	}
+	wg.Wait()
 }
 
 func (r *Receiver) SetTrees(trees []*Tree) {

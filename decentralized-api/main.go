@@ -6,6 +6,7 @@ import (
 	"decentralized-api/broker"
 	"decentralized-api/chainphase"
 	"decentralized-api/cosmosclient"
+	"decentralized-api/internal"
 	"decentralized-api/internal/bls"
 	"decentralized-api/internal/event_listener"
 	"decentralized-api/internal/modelmanager"
@@ -191,28 +192,16 @@ func main() {
 	var propagationReceiver *propagation.Receiver
 	var propagationHandlers *pserver.PropagationHandlers
 	var propagationPool *pgxpool.Pool
+	var treeManager *propagation.TreeManager
 
 	propConfig := config.GetConfig().PocPropagation
 	if propConfig.Enabled {
 		logging.Info("Initializing off-chain propagation system", types.PoC,
 			"trees", propConfig.Trees, "fanout", propConfig.Fanout)
 
-		var err error
-		propagationConnString := os.Getenv("PROPAGATION_DATABASE_URL")
-		propagationPool, err = pgxpool.New(ctx, propagationConnString)
-		if err != nil {
-			logging.Error("Failed to create propagation pool", types.PoC, "error", err)
-			panic(fmt.Sprintf("propagation pool init failed: %v", err))
-		}
-		if err := propagationPool.Ping(ctx); err != nil {
-			logging.Error("Failed to ping propagation pool", types.PoC, "error", err)
-			panic(fmt.Sprintf("propagation pool ping failed: %v", err))
-		}
-		propagationCache, err = propagation.NewCache(ctx, propagationPool, participantInfo.GetAddress())
-		if err != nil {
-			logging.Error("Failed to create propagation cache", types.PoC, "error", err)
-			panic(fmt.Sprintf("propagation cache init failed: %v", err))
-		}
+		var bundleStorage propagation.BundleStorage
+		bundleStorage, propagationPool = propagation.NewBundleStorage(ctx, propConfig.StorageDir, participantInfo.GetAddress())
+		propagationCache = propagation.NewCache(bundleStorage)
 
 		propagationTransport = propagation.NewHTTPTransport(
 			participantInfo.GetAddress(),
@@ -227,14 +216,17 @@ func main() {
 		if treeFanout <= 0 {
 			treeFanout = 1
 		}
-		bootstrapHash := []byte(participantInfo.GetAddress())
-		trees := propagation.BuildTrees([]string{participantInfo.GetAddress()}, bootstrapHash, treeCount, treeFanout)
+
+		epochGroupDataCache := internal.NewEpochGroupDataCache(recorder)
+		treeManager = propagation.NewTreeManager(epochGroupDataCache, treeCount, treeFanout)
+
+		bootstrapTrees := []*propagation.Tree{}
 
 		pubKeyProvider := &chainPubKeyProvider{queryClient: recorder.NewInferenceQueryClient()}
 
 		propagationReceiver = propagation.NewReceiver(
 			propagationCache,
-			trees,
+			bootstrapTrees,
 			pubKeyProvider,
 			participantInfo.GetAddress(),
 			propagationTransport,
@@ -245,14 +237,15 @@ func main() {
 		dummyStore, _ := artifactStore.GetStore(0)
 		propagationBundler = propagation.NewBundler(
 			dummyStore,
-			trees,
+			bootstrapTrees,
 			propagationTransport,
 			participantInfo.GetAddress(),
 		)
 
 		propagationHandlers = pserver.NewPropagationHandlers(propagationTransport)
 
-		logging.Info("Propagation system initialized", types.PoC)
+		logging.Info("Propagation system initialized with TreeManager", types.PoC,
+			"note", "Trees will be rebuilt dynamically based on previous epoch weights")
 	} else {
 		logging.Info("Off-chain propagation disabled", types.PoC)
 	}
@@ -280,6 +273,12 @@ func main() {
 
 	// Wire up event listener with pocOrchestrator
 	listener := event_listener.NewEventListener(config, pocOrchestrator, nodeBroker, validator, *recorder, trainingExecutor, chainPhaseTracker, cancel, blsManager)
+
+	if propConfig.Enabled && treeManager != nil {
+		listener.SetPropagationComponents(treeManager, propagationReceiver, propagationBundler)
+		logging.Info("Propagation components wired to event listener", types.PoC)
+	}
+
 	go listener.Start(ctx)
 
 	// Create commit worker for time-based artifact commits and weight distribution

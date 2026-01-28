@@ -6,6 +6,11 @@ import (
 	"math/rand"
 )
 
+type WeightedParticipant struct {
+	Address string
+	Weight  uint64
+}
+
 type Node struct {
 	Address  string
 	Index    int
@@ -32,6 +37,46 @@ func BuildTrees(participants []string, blockHash []byte, numTrees, fanout int) [
 	return trees
 }
 
+func BuildTreesWithWeights(participants []WeightedParticipant, blockHash []byte, numTrees, fanout int) []*Tree {
+	participantAddrs := make([]string, 0, len(participants))
+	weightMap := make(map[string]uint64)
+	var maxWeight uint64
+
+	for _, p := range participants {
+		if p.Weight > 0 {
+			participantAddrs = append(participantAddrs, p.Address)
+			weightMap[p.Address] = p.Weight
+			if p.Weight > maxWeight {
+				maxWeight = p.Weight
+			}
+		}
+	}
+
+	if len(participantAddrs) == 0 {
+		return []*Tree{}
+	}
+
+	minRootWeight := uint64(float64(maxWeight) * 0.9)
+
+	trees := make([]*Tree, numTrees)
+	for i := 0; i < numTrees; i++ {
+		seed := sha256.Sum256(append(blockHash, byte(i)))
+		shuffled := deterministicShuffle(participantAddrs, seed[:])
+
+		if weightMap[shuffled[0]] < minRootWeight {
+			for j := 1; j < len(shuffled); j++ {
+				if weightMap[shuffled[j]] >= minRootWeight {
+					shuffled[0], shuffled[j] = shuffled[j], shuffled[0]
+					break
+				}
+			}
+		}
+
+		trees[i] = buildTree(i, shuffled, fanout)
+	}
+	return trees
+}
+
 func buildTree(treeIndex int, shuffled []string, fanout int) *Tree {
 	n := len(shuffled)
 	t := &Tree{
@@ -40,12 +85,12 @@ func buildTree(treeIndex int, shuffled []string, fanout int) *Tree {
 		Fanout:   fanout,
 		Nodes:    make(map[string]*Node, n),
 	}
-	
+
 	maxSiblings := fanout - 1
 	if maxSiblings < 0 {
 		maxSiblings = 0
 	}
-	
+
 	for i, addr := range shuffled {
 		node := &Node{
 			Address:  addr,
@@ -54,28 +99,28 @@ func buildTree(treeIndex int, shuffled []string, fanout int) *Tree {
 			Siblings: make([]*Node, 0, maxSiblings),
 		}
 		t.Nodes[addr] = node
-		
+
 		if i == 0 {
 			t.Root = node
 		}
 	}
-	
+
 	for i := 1; i < n; i++ {
 		addr := shuffled[i]
 		node := t.Nodes[addr]
 		parentIndex := (i - 1) / fanout
 		parent := t.Nodes[shuffled[parentIndex]]
-		
+
 		node.Parent = parent
-		
+
 		for _, existingSibling := range parent.Children {
 			node.Siblings = append(node.Siblings, existingSibling)
 			existingSibling.Siblings = append(existingSibling.Siblings, node)
 		}
-		
+
 		parent.Children = append(parent.Children, node)
 	}
-	
+
 	return t
 }
 
@@ -88,16 +133,16 @@ func (t *Tree) Role(addr string) (parent string, children []string) {
 	if node == nil {
 		return "", nil
 	}
-	
+
 	if node.Parent != nil {
 		parent = node.Parent.Address
 	}
-	
+
 	children = make([]string, len(node.Children))
 	for i, child := range node.Children {
 		children[i] = child.Address
 	}
-	
+
 	return
 }
 

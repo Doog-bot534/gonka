@@ -64,18 +64,23 @@ func (s *treeTrackingSender) SendHeader(treeIdx int, to string, h BundleHeader) 
 	return s.dst.SendHeader(treeIdx, to, h)
 }
 
-func TestPropagationDemo(t *testing.T) {
-	numParticipants := 1000
-	numTrees := 6
-	fanout := 4
+type propagationStorageFactory func(t *testing.T, tempDir, addr string) (BundleStorage, error)
 
-	participants := make([]string, numParticipants)
+func testPropagationDemo(t *testing.T, numParticipants int, storageFactory propagationStorageFactory) {
+	numTrees := 6
+	fanout := 32
+
+	weightedParticipants := make([]WeightedParticipant, numParticipants)
 	privKeys := make(map[string][]byte)
 	pubKeys := make(map[string]string)
 
 	for i := 0; i < numParticipants; i++ {
 		addr := fmt.Sprintf("participant%d", i)
-		participants[i] = addr
+		weight := uint64(100 + i)
+		weightedParticipants[i] = WeightedParticipant{
+			Address: addr,
+			Weight:  weight,
+		}
 
 		privKey := secp256k1.GenPrivKey()
 		privKeys[addr] = privKey.Key
@@ -85,7 +90,12 @@ func TestPropagationDemo(t *testing.T) {
 	blockHash := sha256.Sum256([]byte("test-block"))
 	pocHeight := int64(1000)
 
-	trees := BuildTrees(participants, blockHash[:], numTrees, fanout)
+	trees := BuildTreesWithWeights(weightedParticipants, blockHash[:], numTrees, fanout)
+
+	participants := make([]string, numParticipants)
+	for i, wp := range weightedParticipants {
+		participants[i] = wp.Address
+	}
 
 	transport := NewMockTransport()
 	pubKeyProvider := NewMockPubKeyProvider()
@@ -94,11 +104,6 @@ func TestPropagationDemo(t *testing.T) {
 	}
 
 	var sendLogs []string
-
-	pool, cleanup := setupPropagationPostgres(t)
-	defer cleanup()
-	ctx := context.Background()
-
 	tempDir := t.TempDir()
 
 	caches := make(map[string]*Cache)
@@ -107,8 +112,9 @@ func TestPropagationDemo(t *testing.T) {
 	stores := make(map[string]*artifacts.ArtifactStore)
 
 	for i, addr := range participants {
-		cache, err := NewCache(ctx, pool, addr)
+		storage, err := storageFactory(t, tempDir, addr)
 		require.NoError(t, err)
+		cache := NewCache(storage)
 		caches[addr] = cache
 
 		sender := newLoggingSender(addr, transport, &sendLogs)
@@ -143,14 +149,12 @@ func TestPropagationDemo(t *testing.T) {
 	}
 
 	sender := trees[0].Shuffled[0]
-	t.Logf("Sender (tree root): %s", sender)
 
 	if err := bundlers[sender].Publish(pocHeight, blockHash[:], sender, privKeys[sender]); err != nil {
 		t.Fatalf("failed to publish: %v", err)
 	}
 
 	bundleID := MakeBundleID(sender, pocHeight, stores[sender].GetRoot(), stores[sender].Count(), 1)
-	t.Logf("BundleID: %x", bundleID[:8])
 
 	receivedCount := 0
 	for _, addr := range participants {
@@ -160,7 +164,6 @@ func TestPropagationDemo(t *testing.T) {
 
 		header, err := caches[addr].GetHeader(bundleID)
 		if err != nil {
-			t.Logf("Participant %s did not receive header", addr)
 			continue
 		}
 
@@ -175,23 +178,12 @@ func TestPropagationDemo(t *testing.T) {
 		}
 
 		receivedCount++
-		t.Logf("Participant %s successfully received and verified commit metadata", addr)
 	}
 
 	for _, store := range stores {
 		store.Close()
 	}
 
-	for _, line := range sendLogs {
-		t.Logf("Send trace: %s", line)
-	}
-	t.Logf("Total sended traces: %d", len(sendLogs))
-
-	stats := pool.Stat()
-	t.Logf("Pool connections: total=%d acquired=%d idle=%d acquire_count=%d canceled_acquire=%d empty_acquire=%d max_lifetime_destroy=%d",
-		stats.TotalConns(), stats.AcquiredConns(), stats.IdleConns(), stats.AcquireCount(), stats.CanceledAcquireCount(), stats.EmptyAcquireCount(), stats.MaxLifetimeDestroyCount())
-
-	t.Logf("Demo completed!")
 	t.Logf("- Trees: %d (fanout %d)", numTrees, fanout)
 	t.Logf("- Participants: %d", numParticipants)
 	t.Logf("- Participants who received: %d out of %d", receivedCount, numParticipants-1)
@@ -201,18 +193,61 @@ func TestPropagationDemo(t *testing.T) {
 	}
 }
 
-func TestMultiPublisherPropagation(t *testing.T) {
-	numParticipants := 100
+func TestPropagationDemo(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping postgres tests in -short mode")
+	}
+
+	pool, cleanup := setupPropagationPostgres(t)
+	defer cleanup()
+
+	testPropagationDemo(t, 1000, func(t *testing.T, tempDir, addr string) (BundleStorage, error) {
+		return NewPostgresBundleStorage(context.Background(), pool, addr)
+	})
+}
+
+func TestPropagationDemoSmallPostgres(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping postgres tests in -short mode")
+	}
+
+	pool, cleanup := setupPropagationPostgres(t)
+	defer cleanup()
+
+	testPropagationDemo(t, 100, func(t *testing.T, tempDir, addr string) (BundleStorage, error) {
+		return NewPostgresBundleStorage(context.Background(), pool, addr)
+	})
+}
+
+func TestPropagationDemoWithFileStorage(t *testing.T) {
+	testPropagationDemo(t, 100, func(t *testing.T, tempDir, addr string) (BundleStorage, error) {
+		storageDir := filepath.Join(tempDir, addr, "bundles")
+		return NewFileBundleStorage(storageDir)
+	})
+}
+
+func TestPropagationDemoLargeWithFileStorage(t *testing.T) {
+	testPropagationDemo(t, 1000, func(t *testing.T, tempDir, addr string) (BundleStorage, error) {
+		storageDir := filepath.Join(tempDir, addr, "bundles")
+		return NewFileBundleStorage(storageDir)
+	})
+}
+
+func testMultiPublisherPropagation(t *testing.T, numParticipants int, storageFactory propagationStorageFactory) {
 	numTrees := 6
 	fanout := 4
 
-	participants := make([]string, numParticipants)
+	weightedParticipants := make([]WeightedParticipant, numParticipants)
 	privKeys := make(map[string][]byte)
 	pubKeys := make(map[string]string)
 
 	for i := 0; i < numParticipants; i++ {
 		addr := fmt.Sprintf("participant%d", i)
-		participants[i] = addr
+		weight := uint64(50 + i*10)
+		weightedParticipants[i] = WeightedParticipant{
+			Address: addr,
+			Weight:  weight,
+		}
 
 		privKey := secp256k1.GenPrivKey()
 		privKeys[addr] = privKey.Key
@@ -222,7 +257,12 @@ func TestMultiPublisherPropagation(t *testing.T) {
 	blockHash := sha256.Sum256([]byte("test-block"))
 	pocHeight := int64(1000)
 
-	trees := BuildTrees(participants, blockHash[:], numTrees, fanout)
+	trees := BuildTreesWithWeights(weightedParticipants, blockHash[:], numTrees, fanout)
+
+	participants := make([]string, numParticipants)
+	for i, wp := range weightedParticipants {
+		participants[i] = wp.Address
+	}
 
 	transport := NewMockTransport()
 	pubKeyProvider := NewMockPubKeyProvider()
@@ -233,11 +273,6 @@ func TestMultiPublisherPropagation(t *testing.T) {
 	treeUsage := make(map[int]int)
 	var sendLogs []string
 	var treeUsageMu sync.Mutex
-
-	pool, cleanup := setupPropagationPostgres(t)
-	defer cleanup()
-	ctx := context.Background()
-
 	tempDir := t.TempDir()
 
 	caches := make(map[string]*Cache)
@@ -246,8 +281,9 @@ func TestMultiPublisherPropagation(t *testing.T) {
 	stores := make(map[string]*artifacts.ArtifactStore)
 
 	for i, addr := range participants {
-		cache, err := NewCache(ctx, pool, addr)
+		storage, err := storageFactory(t, tempDir, addr)
 		require.NoError(t, err)
+		cache := NewCache(storage)
 		caches[addr] = cache
 
 		sender := newTreeTrackingSender(addr, transport, &sendLogs, treeUsage, &treeUsageMu)
@@ -283,8 +319,6 @@ func TestMultiPublisherPropagation(t *testing.T) {
 
 	publishers := participants
 	bundleIDs := make([][32]byte, len(publishers))
-
-	t.Logf("Publishers (all participants): %d", len(publishers))
 
 	for i, publisher := range publishers {
 		bundler := bundlers[publisher]
@@ -331,7 +365,6 @@ func TestMultiPublisherPropagation(t *testing.T) {
 		totalTreeSends += count
 		t.Logf("  Tree %d: %d sends", i, count)
 	}
-	t.Logf("Total sends: %d", len(sendLogs))
 
 	t.Logf("\nPropagation Results:")
 	t.Logf("- Participants: %d", numParticipants)
@@ -340,28 +373,52 @@ func TestMultiPublisherPropagation(t *testing.T) {
 	t.Logf("- Actual receipts: %d", actualReceipts)
 }
 
+func TestMultiPublisherPropagation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping postgres tests in -short mode")
+	}
+
+	pool, cleanup := setupPropagationPostgres(t)
+	defer cleanup()
+
+	testMultiPublisherPropagation(t, 100, func(t *testing.T, tempDir, addr string) (BundleStorage, error) {
+		return NewPostgresBundleStorage(context.Background(), pool, addr)
+	})
+}
+
+func TestMultiPublisherPropagationWithFileStorage(t *testing.T) {
+	testMultiPublisherPropagation(t, 50, func(t *testing.T, tempDir, addr string) (BundleStorage, error) {
+		storageDir := filepath.Join(tempDir, addr, "bundles")
+		return NewFileBundleStorage(storageDir)
+	})
+}
+
 func TestTreeTopology(t *testing.T) {
-	participants := []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J"}
+	weightedParticipants := []WeightedParticipant{
+		{Address: "A", Weight: 100},
+		{Address: "B", Weight: 90},
+		{Address: "C", Weight: 80},
+		{Address: "D", Weight: 70},
+		{Address: "E", Weight: 60},
+		{Address: "F", Weight: 50},
+		{Address: "G", Weight: 40},
+		{Address: "H", Weight: 30},
+		{Address: "I", Weight: 20},
+		{Address: "J", Weight: 10},
+	}
 	blockHash := sha256.Sum256([]byte("test"))
 
-	trees := BuildTrees(participants, blockHash[:], 4, 2)
+	trees := BuildTreesWithWeights(weightedParticipants, blockHash[:], 4, 2)
 
 	for _, tree := range trees {
 		t.Logf("\nTree %d:", tree.Index)
 		t.Logf("Order: %v", tree.Shuffled)
 
-		for _, addr := range participants {
-			parent, children := tree.Role(addr)
-			t.Logf("  %s: parent=%s, children=%v", addr, parent, children)
+		for _, wp := range weightedParticipants {
+			parent, children := tree.Role(wp.Address)
+			t.Logf("  %s (weight=%d): parent=%s, children=%v", wp.Address, wp.Weight, parent, children)
 		}
 	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func TestBundleSigning(t *testing.T) {
@@ -396,4 +453,132 @@ func TestBundleSigning(t *testing.T) {
 	}
 
 	t.Log("Bundle signing and verification works correctly")
+}
+
+func TestZeroWeightParticipantsExcluded(t *testing.T) {
+	weightedParticipants := []WeightedParticipant{
+		{Address: "legit1", Weight: 100},
+		{Address: "legit2", Weight: 200},
+		{Address: "legit3", Weight: 150},
+		{Address: "attacker1", Weight: 0},
+		{Address: "attacker2", Weight: 0},
+		{Address: "legit4", Weight: 50},
+	}
+
+	blockHash := sha256.Sum256([]byte("test-block"))
+	trees := BuildTreesWithWeights(weightedParticipants, blockHash[:], 3, 2)
+
+	if len(trees) == 0 {
+		t.Fatal("expected trees to be built")
+	}
+
+	for i, tree := range trees {
+		if len(tree.Nodes) != 4 {
+			t.Errorf("tree %d should have 4 nodes (excluding zero-weight), got %d", i, len(tree.Nodes))
+		}
+
+		if _, exists := tree.Nodes["attacker1"]; exists {
+			t.Errorf("tree %d should not contain zero-weight attacker1", i)
+		}
+
+		if _, exists := tree.Nodes["attacker2"]; exists {
+			t.Errorf("tree %d should not contain zero-weight attacker2", i)
+		}
+
+		if _, exists := tree.Nodes["legit1"]; !exists {
+			t.Errorf("tree %d should contain legit1 with weight", i)
+		}
+
+		if _, exists := tree.Nodes["legit2"]; !exists {
+			t.Errorf("tree %d should contain legit2 with weight", i)
+		}
+
+		t.Logf("Tree %d participants: %v", i, tree.Shuffled)
+	}
+
+	t.Log("Zero-weight participants successfully excluded from propagation trees")
+}
+
+func TestAttackerBlockingPrevention(t *testing.T) {
+	legitimateParticipants := []WeightedParticipant{
+		{Address: "validator1", Weight: 1000},
+		{Address: "validator2", Weight: 800},
+		{Address: "validator3", Weight: 600},
+		{Address: "validator4", Weight: 400},
+		{Address: "validator5", Weight: 200},
+	}
+
+	attackerNodes := []WeightedParticipant{
+		{Address: "attacker1", Weight: 0},
+		{Address: "attacker2", Weight: 0},
+		{Address: "attacker3", Weight: 0},
+		{Address: "attacker4", Weight: 0},
+		{Address: "attacker5", Weight: 0},
+		{Address: "attacker6", Weight: 0},
+		{Address: "attacker7", Weight: 0},
+		{Address: "attacker8", Weight: 0},
+		{Address: "attacker9", Weight: 0},
+		{Address: "attacker10", Weight: 0},
+	}
+
+	allParticipants := append(legitimateParticipants, attackerNodes...)
+
+	blockHash := sha256.Sum256([]byte("test-block"))
+	trees := BuildTreesWithWeights(allParticipants, blockHash[:], 3, 2)
+
+	if len(trees) == 0 {
+		t.Fatal("expected trees to be built")
+	}
+
+	for i, tree := range trees {
+		if len(tree.Nodes) != len(legitimateParticipants) {
+			t.Errorf("tree %d should have %d nodes (only legitimate participants), got %d",
+				i, len(legitimateParticipants), len(tree.Nodes))
+		}
+
+		attackerFound := false
+		for _, attacker := range attackerNodes {
+			if _, exists := tree.Nodes[attacker.Address]; exists {
+				attackerFound = true
+				t.Errorf("tree %d contains attacker node %s", i, attacker.Address)
+			}
+		}
+
+		if attackerFound {
+			t.Errorf("tree %d contains attacker nodes - security vulnerability!", i)
+		}
+
+		legitimateCount := 0
+		for _, legit := range legitimateParticipants {
+			if _, exists := tree.Nodes[legit.Address]; exists {
+				legitimateCount++
+			}
+		}
+
+		if legitimateCount != len(legitimateParticipants) {
+			t.Errorf("tree %d should contain all %d legitimate participants, got %d",
+				i, len(legitimateParticipants), legitimateCount)
+		}
+
+		t.Logf("Tree %d: %d legitimate participants, 0 attackers (10 blocked)", i, legitimateCount)
+	}
+
+	t.Log("Attacker blocking prevention successful - new nodes without weights cannot participate")
+}
+
+func TestAllZeroWeightNoTreeCreated(t *testing.T) {
+	allZeroWeight := []WeightedParticipant{
+		{Address: "attacker1", Weight: 0},
+		{Address: "attacker2", Weight: 0},
+		{Address: "attacker3", Weight: 0},
+	}
+
+	blockHash := sha256.Sum256([]byte("test-block"))
+	trees := BuildTreesWithWeights(allZeroWeight, blockHash[:], 3, 2)
+
+	if len(trees) != 0 {
+		t.Errorf("expected no trees when all weights are zero, got %d trees", len(trees))
+	}
+
+	t.Log("No trees created when all participants have zero weight - correct behavior")
 }

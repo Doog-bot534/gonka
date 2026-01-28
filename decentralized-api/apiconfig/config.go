@@ -176,7 +176,8 @@ type BandwidthParamsCache struct {
 }
 
 type PocPropagationConfig struct {
-	Enabled bool `koanf:"enabled" json:"enabled"`
-	Trees   int  `koanf:"trees" json:"trees"`
-	Fanout  int  `koanf:"fanout" json:"fanout"`
+	Enabled    bool   `koanf:"enabled" json:"enabled"`
+	Trees      int    `koanf:"trees" json:"trees"`
+	Fanout     int    `koanf:"fanout" json:"fanout"`
+	StorageDir string `koanf:"storage_dir" json:"storage_dir"`
 }

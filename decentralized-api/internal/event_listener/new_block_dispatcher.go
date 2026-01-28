@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -20,6 +21,7 @@ import (
 	"decentralized-api/internal/validation"
 	"decentralized-api/logging"
 	"decentralized-api/poc"
+	"decentralized-api/poc/propagation"
 
 	coretypes "github.com/cometbft/cometbft/rpc/core/types"
 	"github.com/productscience/inference/x/inference/types"
@@ -69,6 +71,9 @@ type OnNewBlockDispatcher struct {
 	configManager        *apiconfig.ConfigManager
 	validator            *validation.InferenceValidator
 	epochGroupDataCache  *internal.EpochGroupDataCache
+	treeManager          *propagation.TreeManager
+	propagationReceiver  *propagation.Receiver
+	propagationBundler   *propagation.Bundler
 }
 
 // StatusResponse matches the structure expected by getStatus function
@@ -158,6 +163,16 @@ func NewOnNewBlockDispatcherFromCosmosClient(
 	)
 	dispatcher.epochGroupDataCache = epochGroupDataCache
 	return dispatcher
+}
+
+func (d *OnNewBlockDispatcher) SetPropagationComponents(
+	treeManager *propagation.TreeManager,
+	receiver *propagation.Receiver,
+	bundler *propagation.Bundler,
+) {
+	d.treeManager = treeManager
+	d.propagationReceiver = receiver
+	d.propagationBundler = bundler
 }
 
 // ProcessNewBlock is the main entry point for processing new block events
@@ -331,6 +346,30 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 	if epochContext.IsStartOfPocStage(blockHeight) {
 		logging.Info("DapiStage:IsStartOfPocStage: sending StartPoCEvent to the PoC orchestrator", types.Stages, "blockHeight", blockHeight, "blockHash", blockHash)
 		d.randomSeedManager.GenerateSeedInfo(epochContext.EpochIndex)
+
+		if d.treeManager != nil && d.propagationReceiver != nil && d.propagationBundler != nil {
+			logging.Info("Rebuilding propagation trees with weights from previous epoch", types.PoC,
+				"epoch", epochContext.EpochIndex, "blockHeight", blockHeight)
+
+			blockHashBytes, err := hex.DecodeString(blockHash)
+			if err != nil {
+				logging.Error("Failed to decode block hash for tree building", types.PoC,
+					"blockHash", blockHash, "error", err)
+			} else {
+				ctx := context.Background()
+				trees, err := d.treeManager.RebuildTreesForEpoch(ctx, epochContext.EpochIndex, blockHashBytes)
+				if err != nil {
+					logging.Error("Failed to rebuild propagation trees", types.PoC,
+						"epoch", epochContext.EpochIndex, "error", err)
+				} else if len(trees) > 0 {
+					d.propagationReceiver.SetTrees(trees)
+					d.propagationBundler.SetTrees(trees)
+					logging.Info("Propagation trees updated successfully", types.PoC,
+						"epoch", epochContext.EpochIndex, "treeCount", len(trees))
+				}
+			}
+		}
+
 		return
 	}
 

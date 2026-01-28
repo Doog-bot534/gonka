@@ -12,6 +12,7 @@ import (
 	"decentralized-api/internal/validation"
 	"decentralized-api/logging"
 	"decentralized-api/poc"
+	"decentralized-api/poc/propagation"
 	"decentralized-api/training"
 	"decentralized-api/upgrade"
 	"encoding/json"
@@ -103,6 +104,16 @@ func NewEventListener(
 		eventHandlers:         eventHandlers,
 		blockObserver:         bo,
 		rewardRecoveryChecker: startup.NewRewardRecoveryChecker(phaseTracker, &transactionRecorder, validator, configManager),
+	}
+}
+
+func (el *EventListener) SetPropagationComponents(
+	treeManager *propagation.TreeManager,
+	receiver *propagation.Receiver,
+	bundler *propagation.Bundler,
+) {
+	if el.dispatcher != nil {
+		el.dispatcher.SetPropagationComponents(treeManager, receiver, bundler)
 	}
 }
 
