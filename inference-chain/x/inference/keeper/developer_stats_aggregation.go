@@ -3,6 +3,7 @@ package keeper
 import (
 	"bytes"
 	"context"
+	"time"
 
 	"cosmossdk.io/store/prefix"
 	"github.com/cosmos/cosmos-sdk/runtime"
@@ -17,13 +18,20 @@ type StatsSummary struct {
 }
 
 func (k Keeper) SetDeveloperStats(ctx context.Context, inference types.Inference) error {
+	startTime := time.Now()
 	epochId := inference.EpochId
 	if epochId == 0 {
+		epochStart := time.Now()
 		effectiveEpoch, found := k.GetEffectiveEpoch(ctx)
 		if !found {
 			k.LogError("SetDeveloperStats. failed to get effective epoch index for inference", types.Stat, "inference_id", inference.InferenceId)
 			return types.ErrEffectiveEpochNotFound.Wrapf("SetDeveloperStats. failed to get effective epoch index for inference %s", inference.InferenceId)
 		}
+		k.LogInfo("SetDeveloperStats: effective epoch fetched", types.Stat,
+			"inference_id", inference.InferenceId,
+			"duration_ms", durationMs(epochStart),
+			"epoch_id", effectiveEpoch.Index,
+		)
 		epochId = effectiveEpoch.Index
 	}
 
@@ -49,12 +57,43 @@ func (k Keeper) SetDeveloperStats(ctx context.Context, inference types.Inference
 		ActualCostInCoins: inference.ActualCost,
 	}
 
+	byTimeStart := time.Now()
 	inferencePrevEpochId, err := k.setOrUpdateInferenceStatByTime(ctx, inference.RequestedBy, inferenceStats, inferenceTime, epochId)
 	if err != nil {
 		return err
 	}
+	k.LogInfo("SetDeveloperStats: by-time update complete", types.Stat,
+		"inference_id", inference.InferenceId,
+		"inference_status", inference.Status.String(),
+		"developer", inference.RequestedBy,
+		"duration_ms", durationMs(byTimeStart),
+	)
+
+	byModelStart := time.Now()
 	k.setInferenceStatsByModel(ctx, inference.RequestedBy, inferenceStats, inferenceTime)
+	k.LogInfo("SetDeveloperStats: by-model update complete", types.Stat,
+		"inference_id", inference.InferenceId,
+		"inference_status", inference.Status.String(),
+		"developer", inference.RequestedBy,
+		"duration_ms", durationMs(byModelStart),
+	)
+
+	byEpochStart := time.Now()
 	k.setOrUpdateInferenceStatsByEpoch(ctx, inference.RequestedBy, inferenceStats, epochId, inferencePrevEpochId)
+	k.LogInfo("SetDeveloperStats: by-epoch update complete", types.Stat,
+		"inference_id", inference.InferenceId,
+		"inference_status", inference.Status.String(),
+		"developer", inference.RequestedBy,
+		"duration_ms", durationMs(byEpochStart),
+		"prev_epoch_id", inferencePrevEpochId,
+	)
+
+	k.LogInfo("SetDeveloperStats: complete", types.Stat,
+		"inference_id", inference.InferenceId,
+		"inference_status", inference.Status.String(),
+		"developer", inference.RequestedBy,
+		"duration_ms", durationMs(startTime),
+	)
 	return nil
 }
 
