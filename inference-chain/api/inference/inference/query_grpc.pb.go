@@ -97,6 +97,7 @@ const (
 	Query_ParticipantAllowList_FullMethodName                      = "/inference.inference.Query/ParticipantAllowList"
 	Query_ExcludedParticipants_FullMethodName                      = "/inference.inference.Query/ExcludedParticipants"
 	Query_ActiveConfirmationPoCEvent_FullMethodName                = "/inference.inference.Query/ActiveConfirmationPoCEvent"
+	Query_ListConfirmationPoCEvents_FullMethodName                 = "/inference.inference.Query/ListConfirmationPoCEvents"
 	Query_ParticipantsWithBalances_FullMethodName                  = "/inference.inference.Query/ParticipantsWithBalances"
 )
 
@@ -238,6 +239,8 @@ type QueryClient interface {
 	ExcludedParticipants(ctx context.Context, in *QueryExcludedParticipantsRequest, opts ...grpc.CallOption) (*QueryExcludedParticipantsResponse, error)
 	// Queries the currently active confirmation PoC event.
 	ActiveConfirmationPoCEvent(ctx context.Context, in *QueryActiveConfirmationPoCEventRequest, opts ...grpc.CallOption) (*QueryActiveConfirmationPoCEventResponse, error)
+	// Queries confirmation PoC events for a specific epoch.
+	ListConfirmationPoCEvents(ctx context.Context, in *QueryConfirmationPoCEventsRequest, opts ...grpc.CallOption) (*QueryConfirmationPoCEventsResponse, error)
 	ParticipantsWithBalances(ctx context.Context, in *QueryParticipantsWithBalancesRequest, opts ...grpc.CallOption) (*QueryParticipantsWithBalancesResponse, error)
 }
 
@@ -951,6 +954,15 @@ func (c *queryClient) ActiveConfirmationPoCEvent(ctx context.Context, in *QueryA
 	return out, nil
 }
 
+func (c *queryClient) ListConfirmationPoCEvents(ctx context.Context, in *QueryConfirmationPoCEventsRequest, opts ...grpc.CallOption) (*QueryConfirmationPoCEventsResponse, error) {
+	out := new(QueryConfirmationPoCEventsResponse)
+	err := c.cc.Invoke(ctx, Query_ListConfirmationPoCEvents_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *queryClient) ParticipantsWithBalances(ctx context.Context, in *QueryParticipantsWithBalancesRequest, opts ...grpc.CallOption) (*QueryParticipantsWithBalancesResponse, error) {
 	out := new(QueryParticipantsWithBalancesResponse)
 	err := c.cc.Invoke(ctx, Query_ParticipantsWithBalances_FullMethodName, in, out, opts...)
@@ -1098,6 +1110,8 @@ type QueryServer interface {
 	ExcludedParticipants(context.Context, *QueryExcludedParticipantsRequest) (*QueryExcludedParticipantsResponse, error)
 	// Queries the currently active confirmation PoC event.
 	ActiveConfirmationPoCEvent(context.Context, *QueryActiveConfirmationPoCEventRequest) (*QueryActiveConfirmationPoCEventResponse, error)
+	// Queries confirmation PoC events for a specific epoch.
+	ListConfirmationPoCEvents(context.Context, *QueryConfirmationPoCEventsRequest) (*QueryConfirmationPoCEventsResponse, error)
 	ParticipantsWithBalances(context.Context, *QueryParticipantsWithBalancesRequest) (*QueryParticipantsWithBalancesResponse, error)
 	mustEmbedUnimplementedQueryServer()
 }
@@ -1339,6 +1353,9 @@ func (UnimplementedQueryServer) ExcludedParticipants(context.Context, *QueryExcl
 }
 func (UnimplementedQueryServer) ActiveConfirmationPoCEvent(context.Context, *QueryActiveConfirmationPoCEventRequest) (*QueryActiveConfirmationPoCEventResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ActiveConfirmationPoCEvent not implemented")
+}
+func (UnimplementedQueryServer) ListConfirmationPoCEvents(context.Context, *QueryConfirmationPoCEventsRequest) (*QueryConfirmationPoCEventsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListConfirmationPoCEvents not implemented")
 }
 func (UnimplementedQueryServer) ParticipantsWithBalances(context.Context, *QueryParticipantsWithBalancesRequest) (*QueryParticipantsWithBalancesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ParticipantsWithBalances not implemented")
@@ -2760,6 +2777,24 @@ func _Query_ActiveConfirmationPoCEvent_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Query_ListConfirmationPoCEvents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryConfirmationPoCEventsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).ListConfirmationPoCEvents(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_ListConfirmationPoCEvents_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).ListConfirmationPoCEvents(ctx, req.(*QueryConfirmationPoCEventsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Query_ParticipantsWithBalances_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(QueryParticipantsWithBalancesRequest)
 	if err := dec(in); err != nil {
@@ -3096,6 +3131,10 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ActiveConfirmationPoCEvent",
 			Handler:    _Query_ActiveConfirmationPoCEvent_Handler,
+		},
+		{
+			MethodName: "ListConfirmationPoCEvents",
+			Handler:    _Query_ListConfirmationPoCEvents_Handler,
 		},
 		{
 			MethodName: "ParticipantsWithBalances",

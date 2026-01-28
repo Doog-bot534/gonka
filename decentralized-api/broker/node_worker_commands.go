@@ -248,17 +248,11 @@ func (c StartPoCNodeCommandV2) Execute(ctx context.Context, worker *NodeWorker) 
 		return result
 	}
 
-	// Check status for idempotency - use v2 status endpoint
-	statusV2, err := worker.GetClient().GetPowStatusV2(ctx)
-	if err == nil && statusV2.Status == "GENERATING" {
-		logging.Info("[StartPoCNodeCommandV2] Node already in PoC v2 generating state", types.PoC, "node_id", worker.nodeId)
-		result.Succeeded = true
-		result.FinalStatus = types.HardwareNodeStatus_POC
-		result.FinalPocStatus = PocStatusGenerating
-		return result
+	// Stop any existing generation (may be from previous epoch)
+	if _, err := worker.GetClient().StopPowV2(ctx); err != nil {
+		logging.Warn("[StartPoCNodeCommandV2] StopPowV2 failed, continuing", types.PoC, "node_id", worker.nodeId, "error", err)
 	}
 
-	// Start PoC v2 - NO Stop() call per plan
 	req := mlnodeclient.PoCInitGenerateRequestV2{
 		BlockHash:   c.BlockHash,
 		BlockHeight: c.BlockHeight,
@@ -304,6 +298,19 @@ func (c TransitionPoCToValidatingCommandV2) Execute(ctx context.Context, worker 
 		result.Error = ctx.Err().Error()
 		result.FinalStatus = worker.node.State.CurrentStatus
 		result.FinalPocStatus = worker.node.State.PocCurrentStatus
+		return result
+	}
+
+	// Validate node is in a state that can transition to POC/Validating.
+	// Accept only POC or INFERENCE (matching filterNodesForValidation criteria).
+	currentStatus := worker.node.State.CurrentStatus
+	if currentStatus != types.HardwareNodeStatus_POC && currentStatus != types.HardwareNodeStatus_INFERENCE {
+		result.Succeeded = false
+		result.Error = "cannot transition to POC/Validating: node is " + currentStatus.String()
+		result.FinalStatus = currentStatus
+		result.FinalPocStatus = worker.node.State.PocCurrentStatus
+		logging.Warn("[TransitionPoCToValidatingCommandV2] Rejecting transition due to invalid state", types.PoC,
+			"node_id", worker.nodeId, "current_status", currentStatus.String())
 		return result
 	}
 
