@@ -243,7 +243,7 @@ class PropagationTests : TestermintTest() {
         logSection("=== TEST: Off-Chain Propagation - 10 Node Production Simulation ===")
 
         val (cluster, genesis) = initCluster(
-            joinCount = 9,
+            joinCount = 10,
             reboot = true
         )
 
