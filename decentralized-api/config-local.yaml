@@ -15,3 +15,8 @@ chain_node:
   keyring_backend: "test"
   keyring_dir: "~/.inference" # We use a custom function to expand ~ to /root
   is_genesis: false
+poc_propagation:
+  enabled: true
+  trees: 5
+  fanout: 16
+  storage_dir: "/root/.inference/propagation/bundles"

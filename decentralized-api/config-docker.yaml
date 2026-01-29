@@ -17,3 +17,8 @@ chain_node:
   keyring_backend: "test"
   keyring_dir: "/root/.inference"
   is_genesis: false
+poc_propagation:
+  enabled: true
+  trees: 5
+  fanout: 16
+  storage_dir: "/root/.inference/propagation/bundles"

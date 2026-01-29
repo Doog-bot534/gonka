@@ -19,6 +19,7 @@ import (
 	"decentralized-api/poc"
 	"decentralized-api/poc/artifacts"
 	"decentralized-api/poc/propagation"
+	"encoding/base64"
 	"net"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -289,7 +290,18 @@ func main() {
 	// Get private key for signing bundles (if propagation enabled)
 	var privKey []byte
 	if propConfig.Enabled {
-		logging.Warn("Propagation bundle signing key unavailable", types.PoC, "reason", "signer private key access not supported yet")
+		mlKeyConfig := config.GetConfig().MLNodeKeyConfig
+		if mlKeyConfig.WorkerPrivateKey != "" {
+			var err error
+			privKey, err = base64.StdEncoding.DecodeString(mlKeyConfig.WorkerPrivateKey)
+			if err != nil {
+				logging.Error("Failed to decode worker private key for propagation signing", types.PoC, "error", err)
+			} else {
+				logging.Info("Propagation bundle signing enabled with worker private key", types.PoC)
+			}
+		} else {
+			logging.Warn("Propagation bundle signing key unavailable", types.PoC, "reason", "worker private key not configured")
+		}
 	}
 
 	commitWorker := poc.NewCommitWorker(
