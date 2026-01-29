@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
-	"time"
 
 	"decentralized-api/poc/artifacts"
 
