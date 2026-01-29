@@ -38,40 +38,14 @@ func BuildTrees(participants []string, blockHash []byte, numTrees, fanout int) [
 }
 
 func BuildTreesWithWeights(participants []WeightedParticipant, blockHash []byte, numTrees, fanout int) []*Tree {
-	participantAddrs := make([]string, 0, len(participants))
-	weightMap := make(map[string]uint64)
-	var maxWeight uint64
-
-	for _, p := range participants {
-		if p.Weight > 0 {
-			participantAddrs = append(participantAddrs, p.Address)
-			weightMap[p.Address] = p.Weight
-			if p.Weight > maxWeight {
-				maxWeight = p.Weight
-			}
-		}
-	}
-
-	if len(participantAddrs) == 0 {
+	if len(participants) == 0 {
 		return []*Tree{}
 	}
-
-	minRootWeight := uint64(float64(maxWeight) * 0.85)
 
 	trees := make([]*Tree, numTrees)
 	for i := 0; i < numTrees; i++ {
 		seed := sha256.Sum256(append(blockHash, byte(i)))
-		shuffled := deterministicShuffle(participantAddrs, seed[:])
-
-		if weightMap[shuffled[0]] < minRootWeight {
-			for j := 1; j < len(shuffled); j++ {
-				if weightMap[shuffled[j]] >= minRootWeight {
-					shuffled[0], shuffled[j] = shuffled[j], shuffled[0]
-					break
-				}
-			}
-		}
-
+		shuffled := weightedDeterministicShuffle(participants, seed[:])
 		trees[i] = buildTree(i, shuffled, fanout)
 	}
 	return trees
@@ -155,6 +129,54 @@ func deterministicShuffle(list []string, seed []byte) []string {
 		out[i], out[j] = out[j], out[i]
 	}
 	return out
+}
+
+func weightedDeterministicShuffle(participants []WeightedParticipant, seed []byte) []string {
+	n := len(participants)
+	if n == 0 {
+		return []string{}
+	}
+
+	// Deterministic weighted shuffle:
+	// - Same seed (blockHash + treeIndex) produces IDENTICAL order on all nodes
+	// - Higher weights get positions closer to root (better propagation)
+	// - 30% randomness provides variation across different trees
+	type indexed struct {
+		participant WeightedParticipant
+		randomScore float64
+	}
+
+	items := make([]indexed, n)
+	rng := rand.New(rand.NewSource(int64(binary.BigEndian.Uint64(seed[:8]))))
+
+	// Calculate weighted random scores
+	for i, p := range participants {
+		// Higher weight = higher base score
+		// Random component adds variation across trees
+		baseScore := float64(p.Weight)
+		randomComponent := rng.Float64() * float64(p.Weight) * 0.3 // 30% randomness
+		items[i] = indexed{
+			participant: p,
+			randomScore: baseScore + randomComponent,
+		}
+	}
+
+	// Sort by weighted random score (descending)
+	for i := 0; i < n-1; i++ {
+		for j := i + 1; j < n; j++ {
+			if items[j].randomScore > items[i].randomScore {
+				items[i], items[j] = items[j], items[i]
+			}
+		}
+	}
+
+	// Extract addresses in sorted order
+	result := make([]string, n)
+	for i, item := range items {
+		result[i] = item.participant.Address
+	}
+
+	return result
 }
 
 func indexOf(list []string, target string) int {
