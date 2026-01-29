@@ -232,7 +232,7 @@ type PropagationHandlers struct {
 
 **Methods:**
 - `NewPropagationHandlers(transport)` - Create handlers wrapper
-- `HandleHeader(c echo.Context)` - Handle `POST /api/propagation/header`
+- `HandleHeader(c echo.Context)` - Handle `POST /v1/propagation/header`
 - `RegisterRoutes(e *echo.Group)` - Register routes on Echo router
 
 **Route Registration:**

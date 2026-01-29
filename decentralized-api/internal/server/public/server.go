@@ -152,8 +152,7 @@ func NewServer(
 
 	// Off-chain proof propagation endpoints (if enabled)
 	if s.propagationHandlers != nil {
-		apiGroup := e.Group("/api")
-		s.propagationHandlers.RegisterRoutes(apiGroup)
+		s.propagationHandlers.RegisterRoutes(g)
 	}
 	return s
 }
