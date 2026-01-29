@@ -108,12 +108,12 @@ class PropagationTests : TestermintTest() {
             bundleId = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
             participant = genesis.node.getColdAddress(),
             pocHeight = pocHeight,
-            pocBlockHash = "fake_block_hash_for_test",
+            pocBlockHash = "aa".repeat(32),
             rootHash = genesisState.rootHash,
             count = genesisState.count.toInt(),
             version = 1,
             createdAt = System.currentTimeMillis() / 1000,
-            signature = "fake_signature_for_test" // In real system, would be secp256k1 signature
+            signature = "bb".repeat(64)
         )
 
         val headerMessage = PropagationHeaderMessage(
@@ -188,18 +188,18 @@ class PropagationTests : TestermintTest() {
             Triple(join2, "join2", join2.api)
         )
 
-        val headers = publishers.map { (pair, name, api) ->
+        val headers = publishers.mapIndexed { idx, (pair, name, api) ->
             val state = states[name]!!
             PropagationBundleHeader(
-                bundleId = "${name}_bundle_id_${System.currentTimeMillis()}",
+                bundleId = "%064x".format(idx.toLong()),
                 participant = pair.node.getColdAddress(),
                 pocHeight = pocHeight,
-                pocBlockHash = "fake_block_hash_${name}",
+                pocBlockHash = "aa".repeat(32),
                 rootHash = state.rootHash,
                 count = state.count.toInt(),
                 version = 1,
                 createdAt = System.currentTimeMillis() / 1000,
-                signature = "signature_${name}"
+                signature = "bb".repeat(64)
             )
         }
 
@@ -287,15 +287,15 @@ class PropagationTests : TestermintTest() {
                 name,
                 pair,
                 PropagationBundleHeader(
-                    bundleId = "${name}_bundle_${pocHeight}_${System.currentTimeMillis()}",
+                    bundleId = "%064x".format(idx.toLong()),
                     participant = pair.node.getColdAddress(),
                     pocHeight = pocHeight,
-                    pocBlockHash = "block_hash_${pocHeight}",
+                    pocBlockHash = "aa".repeat(32),
                     rootHash = state.rootHash,
                     count = state.count.toInt(),
                     version = 1,
                     createdAt = System.currentTimeMillis() / 1000,
-                    signature = "sig_${name}"
+                    signature = "bb".repeat(64)
                 )
             )
         }
