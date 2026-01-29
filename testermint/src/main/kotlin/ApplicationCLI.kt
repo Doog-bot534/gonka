@@ -445,7 +445,7 @@ data class ApplicationCLI(
         return cosmosJson.fromJson(output, typeToken.type)
     }
 
-    fun registerNewParticipant(nodeUrl: String, accountPubKey: String, consensusKey: String, nodeAddress: String) =
+    fun registerNewParticipant(nodeUrl: String, accountPubKey: String, consensusKey: String, nodeAddress: String, retries: Int = 10) =
         wrapLog("registerNewParticipant", false) {
             val output = exec(
                 listOf(
@@ -467,10 +467,16 @@ data class ApplicationCLI(
                     // Success - continue
                     output
                 }
+                (fullOutput.contains("connection refused") || 
+                fullOutput.contains("failed to send HTTP request")) && retries > 0 -> {
+                    Logger.warn("API not ready yet, retrying in 5 seconds (${retries} retries left)", "")
+                    Thread.sleep(Duration.ofSeconds(5))
+                    registerNewParticipant(nodeUrl, accountPubKey, consensusKey, nodeAddress, retries - 1)
+                }
                 fullOutput.contains("connection refused") || 
                 fullOutput.contains("failed to send HTTP request") ||
                 fullOutput.contains("Usage:") -> {
-                    throw IllegalStateException("Failed to register participant: $fullOutput")
+                    throw IllegalStateException("Failed to register participant after all retries: $fullOutput")
                 }
                 else -> {
                     // Unknown state - log warning but continue
