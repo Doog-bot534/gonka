@@ -16,6 +16,10 @@ func (k *Keeper) PutPaymentInEscrow(ctx context.Context, inference *types.Infere
 	if err != nil {
 		return 0, err
 	}
+	k.LogInfo("PutPaymentInEscrow: bech32 decode complete", types.Payments,
+		"inference_id", inference.InferenceId,
+		"duration_ms", durationMs(startTime),
+	)
 	k.LogDebug("Sending coins to escrow", types.Payments, "inference", inference.InferenceId, "coins", cost, "payee", payeeAddress)
 	coinsStart := time.Now()
 	coins, err := types.GetCoins(cost)
