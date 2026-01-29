@@ -211,9 +211,7 @@ func main() {
 
 		propagationTransport.RegisterReceiver(participantInfo.GetAddress(), propagationReceiver)
 
-		dummyStore, _ := artifactStore.GetStore(0)
 		propagationBundler = propagation.NewBundler(
-			dummyStore,
 			bootstrapTrees,
 			propagationTransport,
 			participantInfo.GetAddress(),

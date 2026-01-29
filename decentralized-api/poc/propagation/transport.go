@@ -5,5 +5,5 @@ type Sender interface {
 }
 
 type ReceiverHandler interface {
-	OnHeader(h BundleHeader, treeIdx int) error
+	OnHeader(h BundleHeader, treeIdx int, from string) error
 }

@@ -93,7 +93,8 @@ func testSmallPropagation(t *testing.T, storageFactory bundleStorageFactory) {
 		cache := NewCache(storage)
 		caches[addr] = cache
 
-		receiver := NewReceiver(cache, trees, pubKeyProvider, addr, transport)
+		perParticipantSender := transport.NewSenderFor(addr)
+		receiver := NewReceiver(cache, trees, pubKeyProvider, addr, perParticipantSender)
 		receivers[addr] = receiver
 		transport.RegisterReceiver(addr, receiver)
 
@@ -119,15 +120,17 @@ func testSmallPropagation(t *testing.T, storageFactory bundleStorageFactory) {
 			t.Fatalf("failed to flush store for %s: %v", addr, err)
 		}
 
-		bundler := NewBundler(store, trees, transport, addr)
+		bundler := NewBundler(trees, perParticipantSender, addr)
 		bundlers[addr] = bundler
 	}
 
 	sender := trees[0].Shuffled[0]
 
-	if err := bundlers[sender].Publish(pocHeight, blockHash[:], sender, privKeys[sender]); err != nil {
+	if err := bundlers[sender].Publish(stores[sender], pocHeight, blockHash[:], sender, privKeys[sender]); err != nil {
 		t.Fatalf("failed to publish: %v", err)
 	}
+
+	time.Sleep(100 * time.Millisecond)
 
 	bundleID := MakeBundleID(sender, pocHeight, stores[sender].GetRoot(), stores[sender].Count(), 1)
 

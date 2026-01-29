@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"decentralized-api/poc/artifacts"
 
@@ -68,7 +69,7 @@ type propagationStorageFactory func(t *testing.T, tempDir, addr string) (BundleS
 
 func testPropagationDemo(t *testing.T, numParticipants int, storageFactory propagationStorageFactory) {
 	numTrees := 6
-	fanout := 32
+	fanout := 4
 
 	weightedParticipants := make([]WeightedParticipant, numParticipants)
 	privKeys := make(map[string][]byte)
@@ -117,7 +118,8 @@ func testPropagationDemo(t *testing.T, numParticipants int, storageFactory propa
 		cache := NewCache(storage)
 		caches[addr] = cache
 
-		sender := newLoggingSender(addr, transport, &sendLogs)
+		perParticipantSender := transport.NewSenderFor(addr)
+		sender := newLoggingSender(addr, perParticipantSender, &sendLogs)
 		receiver := NewReceiver(cache, trees, pubKeyProvider, addr, sender)
 		receivers[addr] = receiver
 		transport.RegisterReceiver(addr, receiver)
@@ -144,15 +146,17 @@ func testPropagationDemo(t *testing.T, numParticipants int, storageFactory propa
 			t.Fatalf("failed to flush store for %s: %v", addr, err)
 		}
 
-		bundler := NewBundler(store, trees, sender, addr)
+		bundler := NewBundler(trees, sender, addr)
 		bundlers[addr] = bundler
 	}
 
 	sender := trees[0].Shuffled[0]
 
-	if err := bundlers[sender].Publish(pocHeight, blockHash[:], sender, privKeys[sender]); err != nil {
+	if err := bundlers[sender].Publish(stores[sender], pocHeight, blockHash[:], sender, privKeys[sender]); err != nil {
 		t.Fatalf("failed to publish: %v", err)
 	}
+
+	time.Sleep(2500 * time.Millisecond)
 
 	bundleID := MakeBundleID(sender, pocHeight, stores[sender].GetRoot(), stores[sender].Count(), 1)
 
@@ -313,7 +317,7 @@ func testMultiPublisherPropagation(t *testing.T, numParticipants int, storageFac
 			t.Fatalf("failed to flush store for %s: %v", addr, err)
 		}
 
-		bundler := NewBundler(store, trees, sender, addr)
+		bundler := NewBundler(trees, sender, addr)
 		bundlers[addr] = bundler
 	}
 
@@ -325,7 +329,7 @@ func testMultiPublisherPropagation(t *testing.T, numParticipants int, storageFac
 		if bundler == nil {
 			t.Fatalf("bundler missing for %s", publisher)
 		}
-		if err := bundler.Publish(pocHeight, blockHash[:], publisher, privKeys[publisher]); err != nil {
+		if err := bundler.Publish(stores[publisher], pocHeight, blockHash[:], publisher, privKeys[publisher]); err != nil {
 			t.Fatalf("failed to publish from %s: %v", publisher, err)
 		}
 		bundleIDs[i] = MakeBundleID(publisher, pocHeight, stores[publisher].GetRoot(), stores[publisher].Count(), 1)

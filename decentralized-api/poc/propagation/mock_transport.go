@@ -23,15 +23,35 @@ func (m *MockTransport) RegisterReceiver(addr string, handler ReceiverHandler) {
 }
 
 func (m *MockTransport) SendHeader(treeIdx int, to string, h BundleHeader) error {
+	return m.SendHeaderFrom("unknown", treeIdx, to, h)
+}
+
+func (m *MockTransport) SendHeaderFrom(from string, treeIdx int, to string, h BundleHeader) error {
 	m.mu.RLock()
 	receiver := m.receivers[to]
 	m.mu.RUnlock()
-	
+
 	if receiver == nil {
 		return fmt.Errorf("receiver not found: %s", to)
 	}
-	
-	return receiver.OnHeader(h, treeIdx)
+
+	return receiver.OnHeader(h, treeIdx, from)
+}
+
+type PerParticipantSender struct {
+	transport *MockTransport
+	fromAddr  string
+}
+
+func (m *MockTransport) NewSenderFor(addr string) Sender {
+	return &PerParticipantSender{
+		transport: m,
+		fromAddr:  addr,
+	}
+}
+
+func (p *PerParticipantSender) SendHeader(treeIdx int, to string, h BundleHeader) error {
+	return p.transport.SendHeaderFrom(p.fromAddr, treeIdx, to, h)
 }
 
 type MockPubKeyProvider struct {

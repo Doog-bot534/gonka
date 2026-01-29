@@ -15,11 +15,11 @@ import (
 )
 
 type HTTPTransport struct {
-	client            *http.Client
-	participantAddrs  map[string]string
-	mu                sync.RWMutex
-	receivers         map[string]ReceiverHandler
-	localAddr         string
+	client           *http.Client
+	participantAddrs map[string]string
+	mu               sync.RWMutex
+	receivers        map[string]ReceiverHandler
+	localAddr        string
 }
 
 func NewHTTPTransport(localAddr string, timeout time.Duration) *HTTPTransport {
@@ -47,7 +47,7 @@ func (t *HTTPTransport) RegisterReceiver(addr string, handler ReceiverHandler) {
 
 func (t *HTTPTransport) SendHeader(treeIdx int, to string, h BundleHeader) error {
 	if to == t.localAddr {
-		return t.handleLocalHeader(h, treeIdx)
+		return t.handleLocalHeader(h, treeIdx, t.localAddr)
 	}
 
 	t.mu.RLock()
@@ -61,6 +61,7 @@ func (t *HTTPTransport) SendHeader(treeIdx int, to string, h BundleHeader) error
 	payload := &HeaderMessage{
 		TreeIdx: treeIdx,
 		Header:  h,
+		From:    t.localAddr,
 	}
 
 	body, err := json.Marshal(payload)
@@ -91,7 +92,7 @@ func (t *HTTPTransport) SendHeader(treeIdx int, to string, h BundleHeader) error
 	return nil
 }
 
-func (t *HTTPTransport) handleLocalHeader(h BundleHeader, treeIdx int) error {
+func (t *HTTPTransport) handleLocalHeader(h BundleHeader, treeIdx int, from string) error {
 	t.mu.RLock()
 	handler := t.receivers[t.localAddr]
 	t.mu.RUnlock()
@@ -100,7 +101,7 @@ func (t *HTTPTransport) handleLocalHeader(h BundleHeader, treeIdx int) error {
 		return fmt.Errorf("no local receiver registered")
 	}
 
-	return handler.OnHeader(h, treeIdx)
+	return handler.OnHeader(h, treeIdx, from)
 }
 
 func (t *HTTPTransport) HandleHeaderHTTP(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +126,7 @@ func (t *HTTPTransport) HandleHeaderHTTP(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := handler.OnHeader(msg.Header, msg.TreeIdx); err != nil {
+	if err := handler.OnHeader(msg.Header, msg.TreeIdx, msg.From); err != nil {
 		logging.Warn("HTTPTransport: header handler failed", types.PoC, "error", err)
 		http.Error(w, "Handler error", http.StatusInternalServerError)
 		return
@@ -137,4 +138,5 @@ func (t *HTTPTransport) HandleHeaderHTTP(w http.ResponseWriter, r *http.Request)
 type HeaderMessage struct {
 	TreeIdx int          `json:"tree_idx"`
 	Header  BundleHeader `json:"header"`
+	From    string       `json:"from"`
 }

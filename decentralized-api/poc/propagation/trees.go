@@ -56,7 +56,7 @@ func BuildTreesWithWeights(participants []WeightedParticipant, blockHash []byte,
 		return []*Tree{}
 	}
 
-	minRootWeight := uint64(float64(maxWeight) * 0.9)
+	minRootWeight := uint64(float64(maxWeight) * 0.85)
 
 	trees := make([]*Tree, numTrees)
 	for i := 0; i < numTrees; i++ {

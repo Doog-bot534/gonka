@@ -42,9 +42,9 @@ func NewReceiver(cache *Cache, trees []*Tree, verifier PubKeyProvider, myAddr st
 	}
 }
 
-func (r *Receiver) OnHeader(h BundleHeader, treeIdx int) error {
-	logging.Debug("Receiver: received header", types.PoC,
-		"receiver", r.myAddr, "publisher", h.Participant, "pocHeight", h.PocHeight,
+func (r *Receiver) OnHeader(h BundleHeader, treeIdx int, from string) error {
+	logging.Info("Receiver: received header", types.PoC,
+		"receiver", r.myAddr, "from", from, "publisher", h.Participant, "pocHeight", h.PocHeight,
 		"count", h.Count, "bundleID", fmt.Sprintf("%x", h.BundleID[:8]),
 		"tree", treeIdx)
 
@@ -100,8 +100,8 @@ func (r *Receiver) OnHeader(h BundleHeader, treeIdx int) error {
 	r.mu.Unlock()
 
 	logging.Info("Receiver: commit metadata verified and stored", types.PoC,
-		"receiver", r.myAddr, "publisher", h.Participant, "pocHeight", h.PocHeight,
-		"bundleID", fmt.Sprintf("%x", h.BundleID[:8]))
+		"receiver", r.myAddr, "from", from, "publisher", h.Participant, "pocHeight", h.PocHeight,
+		"bundleID", fmt.Sprintf("%x", h.BundleID[:8]), "tree", treeIdx)
 
 	r.forwardHeader(h, treeIdx)
 
@@ -109,27 +109,56 @@ func (r *Receiver) OnHeader(h BundleHeader, treeIdx int) error {
 }
 
 func (r *Receiver) forwardHeader(h BundleHeader, treeIdx int) {
-	if treeIdx >= len(r.trees) {
-		return
-	}
-
-	tree := r.trees[treeIdx]
-	node := tree.GetNode(r.myAddr)
-	if node == nil {
-		return
-	}
-
 	var wg sync.WaitGroup
-	for _, child := range node.Children {
-		wg.Add(1)
-		go func(childAddr string) {
-			defer wg.Done()
-			if err := r.sender.SendHeader(treeIdx, childAddr, h); err != nil {
-				logging.Debug("Receiver: failed to forward header", types.PoC,
-					"tree", treeIdx, "child", childAddr, "error", err)
+	totalRecipients := 0
+	sent := make(map[string]bool)
+
+	for _, tree := range r.trees {
+		node := tree.GetNode(r.myAddr)
+		if node == nil {
+			continue
+		}
+
+		recipients := make([]*Node, 0)
+
+		// Forward to children (downward)
+		recipients = append(recipients, node.Children...)
+
+		// Forward to parent (upward)
+		if node.Parent != nil {
+			recipients = append(recipients, node.Parent)
+		}
+
+		// Forward to siblings (sideways)
+		recipients = append(recipients, node.Siblings...)
+
+		for _, recipient := range recipients {
+			if sent[recipient.Address] {
+				continue
 			}
-		}(child.Address)
+			sent[recipient.Address] = true
+			totalRecipients++
+
+			wg.Add(1)
+			go func(treeIndex int, recipientAddr string) {
+				defer wg.Done()
+				if err := r.sender.SendHeader(treeIndex, recipientAddr, h); err != nil {
+					logging.Warn("Receiver: failed to forward header", types.PoC,
+						"forwarder", r.myAddr, "tree", treeIndex, "to", recipientAddr, "error", err)
+				} else {
+					logging.Debug("Receiver: forwarded", types.PoC,
+						"forwarder", r.myAddr, "tree", treeIndex, "to", recipientAddr)
+				}
+			}(tree.Index, recipient.Address)
+		}
 	}
+
+	if totalRecipients > 0 {
+		logging.Info("Receiver: forwarding across all trees", types.PoC,
+			"forwarder", r.myAddr, "publisher", h.Participant,
+			"totalRecipients", totalRecipients, "trees", len(r.trees))
+	}
+
 	wg.Wait()
 }
 

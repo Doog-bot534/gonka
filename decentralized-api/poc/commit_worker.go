@@ -173,13 +173,19 @@ func (w *CommitWorker) maybeSubmitCommit(pocHeight int64) {
 	if w.propagationEnabled && w.bundler != nil {
 		epochState := w.tracker.GetCurrentEpochState()
 		if epochState != nil && epochState.IsSynced {
-			blockHash := []byte(fmt.Sprintf("%d", pocHeight))
-			if err := w.bundler.Publish(pocHeight, blockHash, w.participantAddress, w.privKey); err != nil {
-				logging.Warn("CommitWorker: propagation publish failed", types.PoC,
+			pocStore, err := w.store.GetStore(pocHeight)
+			if err != nil {
+				logging.Debug("CommitWorker: store not available for propagation", types.PoC,
 					"pocHeight", pocHeight, "error", err)
 			} else {
-				logging.Info("CommitWorker: proofs published via propagation", types.PoC,
-					"pocHeight", pocHeight, "count", count)
+				blockHash := []byte(fmt.Sprintf("%d", pocHeight))
+				if err := w.bundler.Publish(pocStore, pocHeight, blockHash, w.participantAddress, w.privKey); err != nil {
+					logging.Warn("CommitWorker: propagation publish failed", types.PoC,
+						"pocHeight", pocHeight, "error", err)
+				} else {
+					logging.Info("CommitWorker: proofs published via propagation", types.PoC,
+						"pocHeight", pocHeight, "count", count)
+				}
 			}
 		}
 	}
