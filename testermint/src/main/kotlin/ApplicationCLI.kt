@@ -445,7 +445,7 @@ data class ApplicationCLI(
         return cosmosJson.fromJson(output, typeToken.type)
     }
 
-    fun registerNewParticipant(nodeUrl: String, accountPubKey: String, consensusKey: String, nodeAddress: String, retries: Int = 10) =
+    fun registerNewParticipant(nodeUrl: String, accountPubKey: String, consensusKey: String, nodeAddress: String, retries: Int = 10): List<String> =
         wrapLog("registerNewParticipant", false) {
             val output = exec(
                 listOf(
