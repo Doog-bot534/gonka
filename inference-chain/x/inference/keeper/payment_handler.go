@@ -16,27 +16,33 @@ func (k *Keeper) PutPaymentInEscrow(ctx context.Context, inference *types.Infere
 	if err != nil {
 		return 0, err
 	}
+	addrConvEnd := time.Now()
 	k.LogInfo("PutPaymentInEscrow: bech32 decode complete", types.Payments,
 		"inference_id", inference.InferenceId,
-		"duration_ms", durationMs(startTime),
+		"duration_ms", durationMsBetween(startTime, addrConvEnd),
+		"duration_since_start_ms", durationMsBetween(startTime, addrConvEnd),
 	)
 	k.LogDebug("Sending coins to escrow", types.Payments, "inference", inference.InferenceId, "coins", cost, "payee", payeeAddress)
 	coinsStart := time.Now()
 	coins, err := types.GetCoins(cost)
+	coinsStartEnd := time.Now()
 	if err != nil {
 		return 0, err
 	}
 	k.LogInfo("PutPaymentInEscrow: coins constructed", types.Payments,
 		"inference_id", inference.InferenceId,
 		"amount", cost,
-		"duration_ms", durationMs(coinsStart),
+		"duration_ms", durationMsBetween(coinsStart, coinsStartEnd),
+		"duration_since_start_ms", durationMsBetween(startTime, coinsStartEnd),
 	)
 	sendStart := time.Now()
 	err = k.BankKeeper.SendCoinsFromAccountToModule(ctx, payeeAddress, types.ModuleName, coins, "escrow for inferenceId:"+inference.InferenceId)
+	sendEnd := time.Now()
 	if err != nil {
 		k.LogError("Error sending coins to escrow", types.Payments,
 			"inference_id", inference.InferenceId,
-			"duration_ms", durationMs(sendStart),
+			"duration_ms", durationMsBetween(sendStart, sendEnd),
+			"duration_since_start_ms", durationMsBetween(startTime, sendEnd),
 			"error", err,
 		)
 		return 0,
@@ -47,6 +53,7 @@ func (k *Keeper) PutPaymentInEscrow(ctx context.Context, inference *types.Infere
 		"coins", cost,
 		"payee", payeeAddress,
 		"duration_ms", durationMs(sendStart),
+		"duration_since_start_ms", durationMsBetween(startTime, sendEnd),
 	)
 	k.LogInfo("PutPaymentInEscrow: complete", types.Payments,
 		"inference_id", inference.InferenceId,
