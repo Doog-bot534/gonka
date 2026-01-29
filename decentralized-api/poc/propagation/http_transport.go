@@ -126,7 +126,13 @@ func (t *HTTPTransport) HandleHeaderHTTP(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := handler.OnHeader(msg.Header, msg.TreeIdx, msg.From); err != nil {
+	// Use participant address as 'from' if not specified
+	from := msg.From
+	if from == "" {
+		from = msg.Header.Participant
+	}
+
+	if err := handler.OnHeader(msg.Header, msg.TreeIdx, from); err != nil {
 		logging.Warn("HTTPTransport: header handler failed", types.PoC, "error", err)
 		http.Error(w, "Handler error", http.StatusInternalServerError)
 		return
@@ -138,5 +144,5 @@ func (t *HTTPTransport) HandleHeaderHTTP(w http.ResponseWriter, r *http.Request)
 type HeaderMessage struct {
 	TreeIdx int          `json:"tree_idx"`
 	Header  BundleHeader `json:"header"`
-	From    string       `json:"from"`
+	From    string       `json:"from,omitempty"` // Optional: defaults to header.participant
 }

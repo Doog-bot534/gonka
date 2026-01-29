@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
@@ -20,6 +21,76 @@ type BundleHeader struct {
 	Version      uint32
 	CreatedAt    int64
 	Signature    []byte
+}
+
+// bundleHeaderJSON is used for JSON marshaling/unmarshaling
+type bundleHeaderJSON struct {
+	BundleID     string `json:"bundle_id"`
+	Participant  string `json:"participant"`
+	PocHeight    int64  `json:"poc_height"`
+	PocBlockHash string `json:"poc_block_hash"`
+	RootHash     string `json:"root_hash"`
+	Count        uint32 `json:"count"`
+	Version      uint32 `json:"version"`
+	CreatedAt    int64  `json:"created_at"`
+	Signature    string `json:"signature"`
+}
+
+func (h BundleHeader) MarshalJSON() ([]byte, error) {
+	return json.Marshal(bundleHeaderJSON{
+		BundleID:     hex.EncodeToString(h.BundleID[:]),
+		Participant:  h.Participant,
+		PocHeight:    h.PocHeight,
+		PocBlockHash: hex.EncodeToString(h.PocBlockHash),
+		RootHash:     hex.EncodeToString(h.RootHash),
+		Count:        h.Count,
+		Version:      h.Version,
+		CreatedAt:    h.CreatedAt,
+		Signature:    hex.EncodeToString(h.Signature),
+	})
+}
+
+func (h *BundleHeader) UnmarshalJSON(data []byte) error {
+	var j bundleHeaderJSON
+	if err := json.Unmarshal(data, &j); err != nil {
+		return err
+	}
+
+	// Decode bundle_id
+	bundleIDBytes, err := hex.DecodeString(j.BundleID)
+	if err != nil {
+		return err
+	}
+	if len(bundleIDBytes) != 32 {
+		return errors.New("bundle_id must be 32 bytes")
+	}
+	copy(h.BundleID[:], bundleIDBytes)
+
+	// Decode poc_block_hash
+	h.PocBlockHash, err = hex.DecodeString(j.PocBlockHash)
+	if err != nil {
+		return err
+	}
+
+	// Decode root_hash
+	h.RootHash, err = hex.DecodeString(j.RootHash)
+	if err != nil {
+		return err
+	}
+
+	// Decode signature
+	h.Signature, err = hex.DecodeString(j.Signature)
+	if err != nil {
+		return err
+	}
+
+	h.Participant = j.Participant
+	h.PocHeight = j.PocHeight
+	h.Count = j.Count
+	h.Version = j.Version
+	h.CreatedAt = j.CreatedAt
+
+	return nil
 }
 
 func MakeBundleID(participant string, pocHeight int64, rootHash []byte, count uint32, version uint32) [32]byte {
