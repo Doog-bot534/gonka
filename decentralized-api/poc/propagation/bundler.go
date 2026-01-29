@@ -1,40 +1,36 @@
 package propagation
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
 
 	"decentralized-api/logging"
-	"decentralized-api/poc/artifacts"
 
 	"github.com/productscience/inference/x/inference/types"
 )
 
 type Bundler struct {
+	signer HeaderSigner
+	cache  *Cache
 	trees  []*Tree
+	mu     sync.RWMutex
 	sender Sender
 	myAddr string
 }
 
-func NewBundler(trees []*Tree, sender Sender, myAddr string) *Bundler {
+func NewBundler(signer HeaderSigner, cache *Cache, trees []*Tree, sender Sender, myAddr string) *Bundler {
 	return &Bundler{
+		signer: signer,
+		cache:  cache,
 		trees:  trees,
 		sender: sender,
 		myAddr: myAddr,
 	}
 }
 
-func (b *Bundler) Publish(store *artifacts.ArtifactStore, pocHeight int64, blockHash []byte, participant string, privKey []byte) error {
-	if store == nil {
-		logging.Debug("Bundler: store not available", types.PoC,
-			"pocHeight", pocHeight, "participant", participant)
-		return nil
-	}
-
-	count := store.Count()
-	rootHash := store.GetRoot()
-
+func (b *Bundler) Publish(pocHeight int64, blockHash []byte, participant string, count uint32, rootHash []byte) error {
 	if count == 0 || rootHash == nil {
 		logging.Debug("Bundler: no artifacts to publish", types.PoC,
 			"pocHeight", pocHeight, "participant", participant)
@@ -53,11 +49,17 @@ func (b *Bundler) Publish(store *artifacts.ArtifactStore, pocHeight int64, block
 		CreatedAt:    time.Now().Unix(),
 	}
 
-	sig, err := SignHeader(header, privKey)
+	sig, err := SignHeaderWith(header, b.signer)
 	if err != nil {
 		return fmt.Errorf("sign header: %w", err)
 	}
 	header.Signature = sig
+
+	if b.cache != nil {
+		if err := b.cache.StoreHeader(context.Background(), header); err != nil {
+			logging.Warn("Bundler: failed to cache own header", types.PoC, "error", err)
+		}
+	}
 
 	logging.Info("Bundler: publishing commit metadata", types.PoC,
 		"pocHeight", pocHeight, "participant", participant,
@@ -75,6 +77,10 @@ func (b *Bundler) Publish(store *artifacts.ArtifactStore, pocHeight int64, block
 }
 
 func (b *Bundler) sendHeader(h BundleHeader) error {
+	b.mu.RLock()
+	trees := b.trees
+	b.mu.RUnlock()
+
 	var wg sync.WaitGroup
 	totalRecipients := 0
 	sent := make(map[string]bool)
@@ -83,7 +89,7 @@ func (b *Bundler) sendHeader(h BundleHeader) error {
 		"publisher", b.myAddr, "totalTrees", len(b.trees),
 		"bundleID", fmt.Sprintf("%x", h.BundleID[:8]))
 
-	for _, tree := range b.trees {
+	for _, tree := range trees {
 		node := tree.GetNode(b.myAddr)
 		if node == nil {
 			logging.Debug("Bundler: not in tree", types.PoC,
@@ -142,5 +148,7 @@ func (b *Bundler) sendHeader(h BundleHeader) error {
 }
 
 func (b *Bundler) SetTrees(trees []*Tree) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	b.trees = trees
 }

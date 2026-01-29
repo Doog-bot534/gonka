@@ -43,11 +43,8 @@ type CommitWorker struct {
 
 	propagationEnabled bool
 	bundler            *propagation.Bundler
-	privKey            []byte
 }
 
-// NewCommitWorker creates and starts a new commit worker.
-// The worker runs until Close() is called.
 func NewCommitWorker(
 	store *artifacts.ManagedArtifactStore,
 	recorder cosmosclient.CosmosMessageClient,
@@ -56,7 +53,6 @@ func NewCommitWorker(
 	interval time.Duration,
 	propagationEnabled bool,
 	bundler *propagation.Bundler,
-	privKey []byte,
 ) *CommitWorker {
 	w := &CommitWorker{
 		store:              store,
@@ -69,7 +65,6 @@ func NewCommitWorker(
 		lastCommitted:      make(map[int64]commitState),
 		propagationEnabled: propagationEnabled,
 		bundler:            bundler,
-		privKey:            privKey,
 	}
 
 	// Start flush - always on (same interval as commits)
@@ -173,19 +168,13 @@ func (w *CommitWorker) maybeSubmitCommit(pocHeight int64) {
 	if w.propagationEnabled && w.bundler != nil {
 		epochState := w.tracker.GetCurrentEpochState()
 		if epochState != nil && epochState.IsSynced {
-			pocStore, err := w.store.GetStore(pocHeight)
-			if err != nil {
-				logging.Debug("CommitWorker: store not available for propagation", types.PoC,
+			blockHash := []byte(fmt.Sprintf("%d", pocHeight))
+			if err := w.bundler.Publish(pocHeight, blockHash, w.participantAddress, count, rootHash); err != nil {
+				logging.Warn("CommitWorker: propagation publish failed", types.PoC,
 					"pocHeight", pocHeight, "error", err)
 			} else {
-				blockHash := []byte(fmt.Sprintf("%d", pocHeight))
-				if err := w.bundler.Publish(pocStore, pocHeight, blockHash, w.participantAddress, w.privKey); err != nil {
-					logging.Warn("CommitWorker: propagation publish failed", types.PoC,
-						"pocHeight", pocHeight, "error", err)
-				} else {
-					logging.Info("CommitWorker: proofs published via propagation", types.PoC,
-						"pocHeight", pocHeight, "count", count)
-				}
+				logging.Info("CommitWorker: proofs published via propagation", types.PoC,
+					"pocHeight", pocHeight, "count", count)
 			}
 		}
 	}
