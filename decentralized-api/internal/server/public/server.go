@@ -8,6 +8,7 @@ import (
 	"decentralized-api/internal"
 	"decentralized-api/internal/authzcache"
 	"decentralized-api/internal/server/middleware"
+	"decentralized-api/logging"
 	"decentralized-api/payloadstorage"
 	"decentralized-api/poc/artifacts"
 	"decentralized-api/training"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	echomw "github.com/labstack/echo/v4/middleware"
+	"github.com/productscience/inference/x/inference/types"
 )
 
 type Server struct {
@@ -152,7 +154,10 @@ func NewServer(
 
 	// Off-chain proof propagation endpoints (if enabled)
 	if s.propagationHandlers != nil {
+		logging.Info("Registering propagation routes on /v1/propagation/*", types.PoC)
 		s.propagationHandlers.RegisterRoutes(g)
+	} else {
+		logging.Info("Propagation handlers not initialized - routes not registered", types.PoC)
 	}
 	return s
 }

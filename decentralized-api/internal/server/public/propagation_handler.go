@@ -22,5 +22,5 @@ func (h *PropagationHandlers) HandleHeader(c echo.Context) error {
 }
 
 func (h *PropagationHandlers) RegisterRoutes(e *echo.Group) {
-	e.POST("/propagation/header", h.HandleHeader)
+	e.POST("propagation/header", h.HandleHeader)
 }
