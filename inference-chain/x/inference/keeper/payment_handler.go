@@ -52,7 +52,7 @@ func (k *Keeper) PutPaymentInEscrow(ctx context.Context, inference *types.Infere
 		"inference_id", inference.InferenceId,
 		"coins", cost,
 		"payee", payeeAddress,
-		"duration_ms", durationMs(sendStart),
+		"duration_ms", durationMsBetween(sendStart, sendEnd),
 		"duration_since_start_ms", durationMsBetween(startTime, sendEnd),
 	)
 	k.LogInfo("PutPaymentInEscrow: complete", types.Payments,
