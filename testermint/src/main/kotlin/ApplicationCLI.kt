@@ -447,7 +447,7 @@ data class ApplicationCLI(
 
     fun registerNewParticipant(nodeUrl: String, accountPubKey: String, consensusKey: String, nodeAddress: String) =
         wrapLog("registerNewParticipant", false) {
-            exec(
+            val output = exec(
                 listOf(
                     config.execName,
                     "register-new-participant",
@@ -459,6 +459,25 @@ data class ApplicationCLI(
                     nodeAddress
                 )
             )
+            val fullOutput = output.joinToString("\n")
+            // Check for success or failure
+            when {
+                fullOutput.contains("Participant registration successful") || 
+                fullOutput.contains("Participant is now available") -> {
+                    // Success - continue
+                    output
+                }
+                fullOutput.contains("connection refused") || 
+                fullOutput.contains("failed to send HTTP request") ||
+                fullOutput.contains("Usage:") -> {
+                    throw IllegalStateException("Failed to register participant: $fullOutput")
+                }
+                else -> {
+                    // Unknown state - log warning but continue
+                    Logger.warn("Could not determine registration status from output", "")
+                    output
+                }
+            }
         }
 
     fun grantMlOpsPermissionsToWarmAccount(retries:Int = 3): Unit = wrapLog("grantMlOpsPermissions", false) {
@@ -489,13 +508,24 @@ data class ApplicationCLI(
         var retries = 0
         while (true) {
             val output = executor.exec(args, stdin)
+            val fullOutput = output.joinToString("")
 
-            if (output.isNotEmpty() && output.first().startsWith("Usage:")) {
-                val error = output.joinToString(separator = "").lines().last { it.isNotBlank() }
+            // Check for Usage message anywhere in output (not just first line)
+            if (fullOutput.contains("Usage:") && 
+                (fullOutput.contains("Error:") || 
+                 fullOutput.contains("failed") || 
+                 fullOutput.contains("error:"))) {
+                val error = fullOutput.lines().last { it.isNotBlank() }
                 throw getExecException(error)
             }
+            
+            // Legacy check for first line (kept for compatibility)
+            if (output.isNotEmpty() && output.first().startsWith("Usage:")) {
+                val error = fullOutput.lines().last { it.isNotBlank() }
+                throw getExecException(error)
+            }
+            
             val operation = ThreadContext.get("operation") ?: "unknown"
-            val fullOutput = output.joinToString("")
             val retryWait = retryRules.firstNotNullOfOrNull { it.retryDuration(operation, fullOutput, retries) }
             if (retryWait != null) {
                 retries++
