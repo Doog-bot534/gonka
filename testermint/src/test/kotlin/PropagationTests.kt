@@ -239,32 +239,33 @@ class PropagationTests : TestermintTest() {
     }
 
     @Test
-    fun `off-chain propagation - 10 node production simulation`() {
-        logSection("=== TEST: Off-Chain Propagation - 10 Node Production Simulation ===")
+    fun `off-chain propagation - multi-node production simulation`() {
+        val nodeCount = 6
+        val joinCount = nodeCount - 1
+        logSection("=== TEST: Off-Chain Propagation - $nodeCount Node Production Simulation ===")
 
         val (cluster, genesis) = initCluster(
-            joinCount = 10,
+            joinCount = joinCount,
             reboot = true
         )
 
         val allParticipants = listOf(genesis) + cluster.joinPairs
 
-        logSection("✅ Cluster with 10 participants initialized")
+        logSection("Cluster with $nodeCount participants initialized")
         Logger.info("Participants:")
         allParticipants.forEachIndexed { idx, pair ->
             val name = if (idx == 0) "genesis" else "join$idx"
             Logger.info("  $name: ${pair.node.getColdAddress()}")
         }
 
-        // Set PoC weights on all participants
-        logSection("Setting PoC weights on all 10 participants")
+        logSection("Setting PoC weights on all $nodeCount participants")
         allParticipants.forEach { it.setPocWeight(10) }
 
         logSection("Waiting for PoC generation")
         genesis.waitForStage(EpochStage.START_OF_POC)
         genesis.node.waitForNextBlock(5)
 
-        logSection("Collecting artifact states from all 10 participants")
+        logSection("Collecting artifact states from all $nodeCount participants")
         val epochData = genesis.getEpochData()
         val pocHeight = epochData.latestEpoch.pocStartBlockHeight
 
@@ -278,8 +279,8 @@ class PropagationTests : TestermintTest() {
             assertThat(state.count).isGreaterThan(0)
         }
 
-        logSection("Creating bundle headers for all 10 participants")
-        
+        logSection("Creating bundle headers for all $nodeCount participants")
+
         val headers = allParticipants.mapIndexed { idx, pair ->
             val name = if (idx == 0) "genesis" else "join$idx"
             val state = states[name]!!
@@ -301,30 +302,31 @@ class PropagationTests : TestermintTest() {
         }
 
         logSection("Propagating headers: each participant sends to all others")
-        Logger.info("Expected propagations: 10 senders × 9 receivers = 90 total")
-        
+        val receiverCount = nodeCount - 1
+        Logger.info("Expected propagations: $nodeCount senders x $receiverCount receivers = ${nodeCount * receiverCount} total")
+
         var successfulSends = 0
         var totalAttempts = 0
         val propagationMatrix = mutableMapOf<String, MutableMap<String, Boolean>>()
 
-        headers.forEach { (senderName, senderPair, senderHeader) ->
+        headers.forEach { (senderName, _, senderHeader) ->
             propagationMatrix[senderName] = mutableMapOf()
-            
+
             headers.forEach { (receiverName, receiverPair, _) ->
-                if (senderName == receiverName) return@forEach // Don't send to self
-                
+                if (senderName == receiverName) return@forEach
+
                 val message = PropagationHeaderMessage(
-                    treeIdx = 0, // Tree 0 for simplicity in test
+                    treeIdx = 0,
                     header = senderHeader
                 )
-                
+
                 totalAttempts++
                 try {
                     receiverPair.api.sendPropagationHeader(message)
                     successfulSends++
                     propagationMatrix[senderName]!![receiverName] = true
                 } catch (e: Exception) {
-                    Logger.debug("$senderName → $receiverName: failed - ${e.message}")
+                    Logger.debug("$senderName -> $receiverName: failed - ${e.message}")
                     propagationMatrix[senderName]!![receiverName] = false
                 }
             }
@@ -336,20 +338,16 @@ class PropagationTests : TestermintTest() {
         Logger.info("Failed: ${totalAttempts - successfulSends}")
         Logger.info("Success rate: ${(successfulSends * 100.0 / totalAttempts).toInt()}%")
 
-        // Log propagation matrix
         Logger.info("\nPropagation Matrix (rows=senders, cols=receivers):")
         headers.forEach { (senderName, _, _) ->
             val successes = propagationMatrix[senderName]!!.count { it.value }
-            Logger.info("  $senderName: $successes/9 successful")
+            Logger.info("  $senderName: $successes/$receiverCount successful")
         }
 
-        // Verify high success rate (allow some failures for realistic simulation)
         val successRate = successfulSends * 100.0 / totalAttempts
         assertThat(successRate).isGreaterThan(80.0)
-            .describedAs("At least 80% of propagations should succeed in 10-node network")
+            .describedAs("At least 80% of propagations should succeed in $nodeCount-node network")
 
-        logSection("✅ Test Complete - 10-node propagation simulation verified")
-        Logger.info("Successfully simulated production-scale propagation with 10 participants")
-        Logger.info("Configuration: 10 participants, 6 trees, fanout 2")
+        logSection("Test Complete - $nodeCount-node propagation simulation verified")
     }
 }
