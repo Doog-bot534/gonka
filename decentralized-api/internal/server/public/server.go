@@ -155,7 +155,6 @@ func NewServer(
 		apiGroup := e.Group("/api")
 		s.propagationHandlers.RegisterRoutes(apiGroup)
 	}
-
 	return s
 }
 

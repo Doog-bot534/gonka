@@ -157,30 +157,6 @@ func main() {
 	validator := validation.NewInferenceValidator(nodeBroker, config, recorder, chainPhaseTracker)
 	blsManager := bls.NewBlsManager(*recorder)
 
-	mlnodeBackgroundManager := modelmanager.NewMLNodeBackgroundManager(
-		config,
-		chainPhaseTracker,
-		nodeBroker,
-		&mlnodeclient.HttpClientFactory{},
-		30*time.Minute,
-	)
-	go mlnodeBackgroundManager.Start(ctx)
-
-	addr := fmt.Sprintf(":%v", config.GetApiConfig().PublicServerPort)
-	logging.Info("start public server on addr", types.Server, "addr", addr)
-
-	// Bridge external block queue
-	blockQueue := pserver.NewBlockQueue(recorder)
-
-	// Shared payload storage for both public and admin servers
-	// Uses PostgreSQL if PGHOST is set and accessible, otherwise file-based
-	// ManagedStorage provides read caching + automatic epoch pruning (retains last 3 epochs)
-	payloadStore := payloadstorage.NewManagedStorage(
-		payloadstorage.NewPayloadStorage(ctx, "/root/.dapi/data/inference"),
-		3,             // retain current + 2 previous epochs
-		3*time.Minute, // cache TTL
-	)
-
 	// Shared managed artifact store for off-chain PoC (used by both mlnode and public servers)
 	// Manages per-height directories with automatic pruning (retains last 10)
 	artifactStore := artifacts.NewManagedArtifactStore("/root/.dapi/data/poc-artifacts", 10)
@@ -255,7 +231,6 @@ func main() {
 		defer propagationPool.Close()
 	}
 
-	// Create v2 orchestrator for artifact-based PoC (after propagation init)
 	logging.Debug("Initializing PoC orchestrator",
 		types.PoC, "name", recorder.GetApiAccount().SignerAccount.Name,
 		"address", participantInfo.GetAddress(),
@@ -268,11 +243,10 @@ func main() {
 		config.GetChainNodeConfig().Url,
 		recorder,
 		chainPhaseTracker,
-		propagationCache, // nil if propagation disabled
+		propagationCache,
 	)
 	logging.Info("PoC orchestrator initialized", types.PoC)
 
-	// Wire up event listener with pocOrchestrator
 	listener := event_listener.NewEventListener(config, pocOrchestrator, nodeBroker, validator, *recorder, trainingExecutor, chainPhaseTracker, cancel, blsManager)
 
 	if propConfig.Enabled && treeManager != nil {
@@ -281,6 +255,30 @@ func main() {
 	}
 
 	go listener.Start(ctx)
+
+	mlnodeBackgroundManager := modelmanager.NewMLNodeBackgroundManager(
+		config,
+		chainPhaseTracker,
+		nodeBroker,
+		&mlnodeclient.HttpClientFactory{},
+		30*time.Minute,
+	)
+	go mlnodeBackgroundManager.Start(ctx)
+
+	addr := fmt.Sprintf(":%v", config.GetApiConfig().PublicServerPort)
+	logging.Info("start public server on addr", types.Server, "addr", addr)
+
+	// Bridge external block queue
+	blockQueue := pserver.NewBlockQueue(recorder)
+
+	// Shared payload storage for both public and admin servers
+	// Uses PostgreSQL if PGHOST is set and accessible, otherwise file-based
+	// ManagedStorage provides read caching + automatic epoch pruning (retains last 3 epochs)
+	payloadStore := payloadstorage.NewManagedStorage(
+		payloadstorage.NewPayloadStorage(ctx, "/root/.dapi/data/inference"),
+		3,             // retain current + 2 previous epochs
+		3*time.Minute, // cache TTL
+	)
 
 	// Create commit worker for time-based artifact commits and weight distribution
 	// Worker owns flush lifecycle, commits periodically (not per-request), and handles distribution

@@ -76,7 +76,7 @@ func NewCommitWorker(
 	store.StartPeriodicFlush(interval)
 
 	go w.run()
-	logging.Info("CommitWorker started", types.PoC, "interval", interval, "propagationEnabled", propagationEnabled)
+	logging.Info("CommitWorker started", types.PoC, "interval", interval)
 	return w
 }
 
@@ -163,7 +163,7 @@ func (w *CommitWorker) maybeSubmitCommit(pocHeight int64) {
 		return
 	}
 
-	// Skip if unchanged since last commit/publish
+	// Skip if unchanged since last commit
 	last := w.lastCommitted[pocHeight]
 	if last.count == count && bytes.Equal(last.rootHash, rootHash) {
 		return

@@ -72,15 +72,6 @@ type participantWork struct {
 	retryAfter time.Time // don't process before this time
 }
 
-// commitMetadata represents commit information from cache or chain.
-type commitMetadata struct {
-	ParticipantAddress string
-	Count              uint32
-	RootHash           []byte
-	InferenceUrl       string
-	HexPubKey          string
-}
-
 // NewOffChainValidator creates a new off-chain validator.
 func NewOffChainValidator(
 	recorder cosmosclient.CosmosMessageClient,
@@ -158,17 +149,15 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 	// Stop generation on all nodes before validation
 	v.stopGenerationOnAllNodes(nodes)
 
-	// Query commit metadata - try cache first if propagation enabled, then fall back to chain
-	var commits []commitMetadata
+	// Build work items - try cache first if propagation enabled, then fall back to chain
+	var workItems []participantWork
 	if v.propagationCache != nil {
-		// Query cache for commit metadata
 		cachedHeaders := v.propagationCache.AllBundlesForHeight(pocStageStartBlockHeight)
 		if len(cachedHeaders) > 0 {
 			logging.Info("OffChainValidator: using cached commit metadata", types.PoC,
 				"count", len(cachedHeaders))
-			commits = make([]commitMetadata, 0, len(cachedHeaders))
+			workItems = make([]participantWork, 0, len(cachedHeaders))
 			for _, header := range cachedHeaders {
-				// Still need to query participant info from chain for URL and pubkey
 				participantResp, err := queryClient.Participant(context.Background(),
 					&types.QueryGetParticipantRequest{Index: header.Participant})
 				if err != nil {
@@ -176,19 +165,32 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 						"address", header.Participant, "error", err)
 					continue
 				}
-				commits = append(commits, commitMetadata{
-					ParticipantAddress: header.Participant,
-					Count:              header.Count,
-					RootHash:           header.RootHash,
-					InferenceUrl:       participantResp.Participant.InferenceUrl,
-					HexPubKey:          participantResp.Participant.WorkerPublicKey,
+
+				if participantResp.Participant.InferenceUrl == "" {
+					logging.Warn("OffChainValidator: participant has no URL", types.PoC,
+						"address", header.Participant)
+					continue
+				}
+
+				if participantResp.Participant.WorkerPublicKey == "" {
+					logging.Warn("OffChainValidator: participant has no public key", types.PoC,
+						"address", header.Participant)
+					continue
+				}
+
+				workItems = append(workItems, participantWork{
+					address:  header.Participant,
+					url:      participantResp.Participant.InferenceUrl,
+					pubKey:   participantResp.Participant.WorkerPublicKey,
+					count:    header.Count,
+					rootHash: header.RootHash,
 				})
 			}
 		}
 	}
 
-	// Fall back to chain query if cache didn't provide commits
-	if len(commits) == 0 {
+	// Fall back to chain query if cache didn't provide work items
+	if len(workItems) == 0 {
 		commitsResp, err := queryClient.AllPoCV2StoreCommitsForStage(context.Background(),
 			&types.QueryAllPoCV2StoreCommitsForStageRequest{
 				PocStageStartBlockHeight: pocStageStartBlockHeight,
@@ -204,12 +206,11 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 			return
 		}
 
-		logging.Info("OffChainValidator: using chain commit data", types.PoC,
+		logging.Info("OffChainValidator: found participants with commits", types.PoC,
 			"count", len(commitsResp.Commits))
 
-		commits = make([]commitMetadata, 0, len(commitsResp.Commits))
+		workItems = make([]participantWork, 0, len(commitsResp.Commits))
 		for _, commit := range commitsResp.Commits {
-			// Get participant's inference URL
 			participantResp, err := queryClient.Participant(context.Background(),
 				&types.QueryGetParticipantRequest{Index: commit.ParticipantAddress})
 			if err != nil {
@@ -217,46 +218,27 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 					"address", commit.ParticipantAddress, "error", err)
 				continue
 			}
-			commits = append(commits, commitMetadata{
-				ParticipantAddress: commit.ParticipantAddress,
-				Count:              commit.Count,
-				RootHash:           commit.RootHash,
-				InferenceUrl:       participantResp.Participant.InferenceUrl,
-				HexPubKey:          commit.HexPubKey,
+
+			if participantResp.Participant.InferenceUrl == "" {
+				logging.Warn("OffChainValidator: participant has no URL", types.PoC,
+					"address", commit.ParticipantAddress)
+				continue
+			}
+
+			if commit.HexPubKey == "" {
+				logging.Warn("OffChainValidator: participant has no public key", types.PoC,
+					"address", commit.ParticipantAddress)
+				continue
+			}
+
+			workItems = append(workItems, participantWork{
+				address:  commit.ParticipantAddress,
+				url:      participantResp.Participant.InferenceUrl,
+				pubKey:   commit.HexPubKey,
+				count:    commit.Count,
+				rootHash: commit.RootHash,
 			})
 		}
-	}
-
-	if len(commits) == 0 {
-		logging.Warn("OffChainValidator: no valid commits found", types.PoC)
-		return
-	}
-
-	logging.Info("OffChainValidator: found participants with commits", types.PoC,
-		"count", len(commits))
-
-	// Build work items with participant URLs
-	workItems := make([]participantWork, 0, len(commits))
-	for _, commit := range commits {
-		if commit.InferenceUrl == "" {
-			logging.Warn("OffChainValidator: participant has no URL", types.PoC,
-				"address", commit.ParticipantAddress)
-			continue
-		}
-
-		if commit.HexPubKey == "" {
-			logging.Warn("OffChainValidator: participant has no public key", types.PoC,
-				"address", commit.ParticipantAddress)
-			continue
-		}
-
-		workItems = append(workItems, participantWork{
-			address:  commit.ParticipantAddress,
-			url:      commit.InferenceUrl,
-			pubKey:   commit.HexPubKey,
-			count:    commit.Count,
-			rootHash: commit.RootHash,
-		})
 	}
 
 	if len(workItems) == 0 {
@@ -449,7 +431,7 @@ func (v *OffChainValidator) validateParticipant(
 	// Sample leaf indices using fresh hash (anti-cheat: prevents validators from predicting sample)
 	leafIndices := sampleLeafIndices(v.pubKey, samplingBlockHash, pocHeight, work.count, sampleSize)
 
-	// Fetch and verify proofs from participant HTTP API
+	// Fetch and verify proofs
 	verified, err := proofClient.FetchAndVerifyProofs(ctx, work.url, ProofRequest{
 		PocStageStartBlockHeight: pocHeight,
 		RootHash:                 work.rootHash,
