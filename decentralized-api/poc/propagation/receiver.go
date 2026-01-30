@@ -71,7 +71,7 @@ func (r *Receiver) OnHeader(h BundleHeader, treeIdx int, from string) error {
 		return fmt.Errorf("verify header: %w", err)
 	}
 
-	expectedID := MakeBundleID(h.Participant, h.PocHeight, h.RootHash, h.Count, h.Version)
+	expectedID := MakeBundleID(h.Participant, h.PocHeight, h.RootHash, h.Count)
 	if !bytes.Equal(expectedID[:], h.BundleID[:]) {
 		logging.Warn("Receiver: bundle ID mismatch", types.PoC,
 			"expected", fmt.Sprintf("%x", expectedID[:8]),
@@ -104,60 +104,37 @@ func (r *Receiver) OnHeader(h BundleHeader, treeIdx int, from string) error {
 		"receiver", r.myAddr, "from", from, "publisher", h.Participant, "pocHeight", h.PocHeight,
 		"bundleID", fmt.Sprintf("%x", h.BundleID[:8]), "tree", treeIdx)
 
-	r.forwardHeader(h, treeIdx, trees)
+	r.forwardHeaderAllTrees(h, trees)
 
 	return nil
 }
 
-func (r *Receiver) forwardHeader(h BundleHeader, treeIdx int, trees []*Tree) {
+func (r *Receiver) forwardHeaderAllTrees(h BundleHeader, trees []*Tree) {
 	var wg sync.WaitGroup
-	totalRecipients := 0
-	sent := make(map[string]bool)
 
 	for _, tree := range trees {
 		node := tree.GetNode(r.myAddr)
-		if node == nil {
+		if node == nil || len(node.Children) == 0 {
 			continue
 		}
 
-		recipients := make([]*Node, 0)
-
-		// Forward to children (downward)
-		recipients = append(recipients, node.Children...)
-
-		// Forward to parent (upward)
-		if node.Parent != nil {
-			recipients = append(recipients, node.Parent)
-		}
-
-		// Forward to siblings (sideways)
-		recipients = append(recipients, node.Siblings...)
-
-		for _, recipient := range recipients {
-			if sent[recipient.Address] {
-				continue
-			}
-			sent[recipient.Address] = true
-			totalRecipients++
-
-			wg.Add(1)
-			go func(treeIndex int, recipientAddr string) {
-				defer wg.Done()
-				if err := r.sender.SendHeader(treeIndex, recipientAddr, h); err != nil {
-					logging.Warn("Receiver: failed to forward header", types.PoC,
-						"forwarder", r.myAddr, "tree", treeIndex, "to", recipientAddr, "error", err)
-				} else {
-					logging.Debug("Receiver: forwarded", types.PoC,
-						"forwarder", r.myAddr, "tree", treeIndex, "to", recipientAddr)
-				}
-			}(tree.Index, recipient.Address)
-		}
-	}
-
-	if totalRecipients > 0 {
-		logging.Info("Receiver: forwarding across all trees", types.PoC,
+		logging.Info("Receiver: broadcasting to children", types.PoC,
 			"forwarder", r.myAddr, "publisher", h.Participant,
-			"totalRecipients", totalRecipients, "trees", len(trees))
+			"tree", tree.Index, "children", len(node.Children))
+
+		for _, child := range node.Children {
+			wg.Add(1)
+			go func(treeIdx int, childAddr string) {
+				defer wg.Done()
+				if err := r.sender.SendHeader(treeIdx, childAddr, h); err != nil {
+					logging.Warn("Receiver: failed to forward to child", types.PoC,
+						"forwarder", r.myAddr, "tree", treeIdx, "child", childAddr, "error", err)
+				} else {
+					logging.Debug("Receiver: forwarded to child", types.PoC,
+						"forwarder", r.myAddr, "tree", treeIdx, "child", childAddr)
+				}
+			}(tree.Index, child.Address)
+		}
 	}
 
 	wg.Wait()

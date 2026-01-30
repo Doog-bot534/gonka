@@ -11,42 +11,40 @@ import (
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 )
 
+const BundleHeaderVersion = uint32(1)
+
 type BundleHeader struct {
-	BundleID     [32]byte
-	Participant  string
-	PocHeight    int64
-	PocBlockHash []byte
-	RootHash     []byte
-	Count        uint32
-	Version      uint32
-	CreatedAt    int64
-	Signature    []byte
+	BundleID    [32]byte
+	Participant string
+	PubKey      string
+	PocHeight   int64
+	RootHash    []byte
+	Count       uint32
+	CreatedAt   int64
+	Signature   []byte
 }
 
-// bundleHeaderJSON is used for JSON marshaling/unmarshaling
 type bundleHeaderJSON struct {
-	BundleID     string `json:"bundle_id"`
-	Participant  string `json:"participant"`
-	PocHeight    int64  `json:"poc_height"`
-	PocBlockHash string `json:"poc_block_hash"`
-	RootHash     string `json:"root_hash"`
-	Count        uint32 `json:"count"`
-	Version      uint32 `json:"version"`
-	CreatedAt    int64  `json:"created_at"`
-	Signature    string `json:"signature"`
+	BundleID    string `json:"bundle_id"`
+	Participant string `json:"participant"`
+	PubKey      string `json:"pub_key"`
+	PocHeight   int64  `json:"poc_height"`
+	RootHash    string `json:"root_hash"`
+	Count       uint32 `json:"count"`
+	CreatedAt   int64  `json:"created_at"`
+	Signature   string `json:"signature"`
 }
 
 func (h BundleHeader) MarshalJSON() ([]byte, error) {
 	return json.Marshal(bundleHeaderJSON{
-		BundleID:     hex.EncodeToString(h.BundleID[:]),
-		Participant:  h.Participant,
-		PocHeight:    h.PocHeight,
-		PocBlockHash: hex.EncodeToString(h.PocBlockHash),
-		RootHash:     hex.EncodeToString(h.RootHash),
-		Count:        h.Count,
-		Version:      h.Version,
-		CreatedAt:    h.CreatedAt,
-		Signature:    hex.EncodeToString(h.Signature),
+		BundleID:    hex.EncodeToString(h.BundleID[:]),
+		Participant: h.Participant,
+		PubKey:      h.PubKey,
+		PocHeight:   h.PocHeight,
+		RootHash:    hex.EncodeToString(h.RootHash),
+		Count:       h.Count,
+		CreatedAt:   h.CreatedAt,
+		Signature:   hex.EncodeToString(h.Signature),
 	})
 }
 
@@ -56,7 +54,6 @@ func (h *BundleHeader) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	// Decode bundle_id
 	bundleIDBytes, err := hex.DecodeString(j.BundleID)
 	if err != nil {
 		return err
@@ -66,34 +63,26 @@ func (h *BundleHeader) UnmarshalJSON(data []byte) error {
 	}
 	copy(h.BundleID[:], bundleIDBytes)
 
-	// Decode poc_block_hash
-	h.PocBlockHash, err = hex.DecodeString(j.PocBlockHash)
-	if err != nil {
-		return err
-	}
-
-	// Decode root_hash
 	h.RootHash, err = hex.DecodeString(j.RootHash)
 	if err != nil {
 		return err
 	}
 
-	// Decode signature
 	h.Signature, err = hex.DecodeString(j.Signature)
 	if err != nil {
 		return err
 	}
 
 	h.Participant = j.Participant
+	h.PubKey = j.PubKey
 	h.PocHeight = j.PocHeight
 	h.Count = j.Count
-	h.Version = j.Version
 	h.CreatedAt = j.CreatedAt
 
 	return nil
 }
 
-func MakeBundleID(participant string, pocHeight int64, rootHash []byte, count uint32, version uint32) [32]byte {
+func MakeBundleID(participant string, pocHeight int64, rootHash []byte, count uint32) [32]byte {
 	h := sha256.New()
 	h.Write([]byte(participant))
 	var buf [8]byte
@@ -102,7 +91,7 @@ func MakeBundleID(participant string, pocHeight int64, rootHash []byte, count ui
 	h.Write(rootHash)
 	binary.BigEndian.PutUint32(buf[:4], count)
 	h.Write(buf[:4])
-	binary.BigEndian.PutUint32(buf[:4], version)
+	binary.BigEndian.PutUint32(buf[:4], BundleHeaderVersion)
 	h.Write(buf[:4])
 	return sha256.Sum256(h.Sum(nil))
 }
@@ -144,14 +133,14 @@ func headerSigningBytes(h BundleHeader) []byte {
 	buf := bytes.NewBuffer(nil)
 	buf.Write(h.BundleID[:])
 	buf.WriteString(h.Participant)
+	buf.WriteString(h.PubKey)
 	var tmp [8]byte
 	binary.BigEndian.PutUint64(tmp[:], uint64(h.PocHeight))
 	buf.Write(tmp[:])
-	buf.Write(h.PocBlockHash)
 	buf.Write(h.RootHash)
 	binary.BigEndian.PutUint32(tmp[:4], h.Count)
 	buf.Write(tmp[:4])
-	binary.BigEndian.PutUint32(tmp[:4], h.Version)
+	binary.BigEndian.PutUint32(tmp[:4], BundleHeaderVersion)
 	buf.Write(tmp[:4])
 	binary.BigEndian.PutUint64(tmp[:], uint64(h.CreatedAt))
 	buf.Write(tmp[:])

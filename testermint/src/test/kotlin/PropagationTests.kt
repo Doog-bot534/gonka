@@ -107,11 +107,10 @@ class PropagationTests : TestermintTest() {
         val bundleHeader = PropagationBundleHeader(
             bundleId = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
             participant = genesis.node.getColdAddress(),
+            pubKey = "fake_public_key_for_test",
             pocHeight = pocHeight,
-            pocBlockHash = "fake_block_hash_for_test",
             rootHash = genesisState.rootHash,
-            count = genesisState.count.toInt(),
-            version = 1,
+            count = genesisState.count,
             createdAt = System.currentTimeMillis() / 1000,
             signature = "fake_signature_for_test" // In real system, would be secp256k1 signature
         )
@@ -193,11 +192,10 @@ class PropagationTests : TestermintTest() {
             PropagationBundleHeader(
                 bundleId = "${name}_bundle_id_${System.currentTimeMillis()}",
                 participant = pair.node.getColdAddress(),
+                pubKey = "fake_pub_key_${name}",
                 pocHeight = pocHeight,
-                pocBlockHash = "fake_block_hash_${name}",
                 rootHash = state.rootHash,
-                count = state.count.toInt(),
-                version = 1,
+                count = state.count,
                 createdAt = System.currentTimeMillis() / 1000,
                 signature = "signature_${name}"
             )
@@ -289,11 +287,10 @@ class PropagationTests : TestermintTest() {
                 PropagationBundleHeader(
                     bundleId = "${name}_bundle_${pocHeight}_${System.currentTimeMillis()}",
                     participant = pair.node.getColdAddress(),
+                    pubKey = "fake_pub_key_${name}",
                     pocHeight = pocHeight,
-                    pocBlockHash = "block_hash_${pocHeight}",
                     rootHash = state.rootHash,
-                    count = state.count.toInt(),
-                    version = 1,
+                    count = state.count,
                     createdAt = System.currentTimeMillis() / 1000,
                     signature = "sig_${name}"
                 )

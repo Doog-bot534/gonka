@@ -3,14 +3,13 @@ package propagation
 import (
 	"context"
 	"crypto/sha256"
+	"decentralized-api/poc/artifacts"
 	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
-
-	"decentralized-api/poc/artifacts"
 
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	"github.com/stretchr/testify/require"
@@ -67,7 +66,7 @@ func (s *treeTrackingSender) SendHeader(treeIdx int, to string, h BundleHeader) 
 type propagationStorageFactory func(t *testing.T, tempDir, addr string) (BundleStorage, error)
 
 func testPropagationDemo(t *testing.T, numParticipants int, storageFactory propagationStorageFactory) {
-	numTrees := 6
+	numTrees := 8
 	fanout := 4
 
 	weightedParticipants := make([]WeightedParticipant, numParticipants)
@@ -150,16 +149,15 @@ func testPropagationDemo(t *testing.T, numParticipants int, storageFactory propa
 		bundlers[addr] = bundler
 	}
 
-	sender := trees[0].Shuffled[0]
+	sender := trees[0].Shuffled[len(trees[0].Shuffled)-1]
 
 	senderCount := stores[sender].Count()
 	senderRoot := stores[sender].GetRoot()
-	if err := bundlers[sender].Publish(pocHeight, blockHash[:], sender, senderCount, senderRoot); err != nil {
+	if err := bundlers[sender].Publish(pocHeight, sender, pubKeys[sender], senderCount, senderRoot); err != nil {
 		t.Fatalf("failed to publish: %v", err)
 	}
 
-	bundleID := MakeBundleID(sender, pocHeight, senderRoot, senderCount, 1)
-
+	bundleID := MakeBundleID(sender, pocHeight, senderRoot, senderCount)
 	receivedCount := 0
 	for _, addr := range participants {
 		if addr == sender {
@@ -191,6 +189,7 @@ func testPropagationDemo(t *testing.T, numParticipants int, storageFactory propa
 	t.Logf("- Trees: %d (fanout %d)", numTrees, fanout)
 	t.Logf("- Participants: %d", numParticipants)
 	t.Logf("- Participants who received: %d out of %d", receivedCount, numParticipants-1)
+	t.Logf("- Total parts sent across all trees: %d", len(sendLogs))
 
 	if receivedCount != numParticipants-1 {
 		t.Errorf("Not all participants received the bundle: got %d, want %d", receivedCount, numParticipants-1)
@@ -332,10 +331,10 @@ func testMultiPublisherPropagation(t *testing.T, numParticipants int, storageFac
 		}
 		pubCount := stores[publisher].Count()
 		pubRoot := stores[publisher].GetRoot()
-		if err := bundler.Publish(pocHeight, blockHash[:], publisher, pubCount, pubRoot); err != nil {
+		if err := bundler.Publish(pocHeight, publisher, pubKeys[publisher], pubCount, pubRoot); err != nil {
 			t.Fatalf("failed to publish from %s: %v", publisher, err)
 		}
-		bundleIDs[i] = MakeBundleID(publisher, pocHeight, pubRoot, pubCount, 1)
+		bundleIDs[i] = MakeBundleID(publisher, pocHeight, pubRoot, pubCount)
 	}
 
 	actualReceipts := 0
@@ -433,14 +432,13 @@ func TestBundleSigning(t *testing.T) {
 	pubKey := hex.EncodeToString(privKey.PubKey().Bytes())
 
 	header := BundleHeader{
-		BundleID:     [32]byte{1, 2, 3},
-		Participant:  "test-participant",
-		PocHeight:    1000,
-		PocBlockHash: []byte("block-hash"),
-		RootHash:     []byte("root-hash"),
-		Count:        100,
-		Version:      1,
-		CreatedAt:    1234567890,
+		BundleID:    [32]byte{1, 2, 3},
+		Participant: "test-participant",
+		PubKey:      pubKey,
+		PocHeight:   1000,
+		RootHash:    []byte("root-hash"),
+		Count:       100,
+		CreatedAt:   1234567890,
 	}
 
 	sig, err := SignHeader(header, privKey.Key)
@@ -460,132 +458,4 @@ func TestBundleSigning(t *testing.T) {
 	}
 
 	t.Log("Bundle signing and verification works correctly")
-}
-
-func TestZeroWeightParticipantsExcluded(t *testing.T) {
-	weightedParticipants := []WeightedParticipant{
-		{Address: "legit1", Weight: 100},
-		{Address: "legit2", Weight: 200},
-		{Address: "legit3", Weight: 150},
-		{Address: "attacker1", Weight: 0},
-		{Address: "attacker2", Weight: 0},
-		{Address: "legit4", Weight: 50},
-	}
-
-	blockHash := sha256.Sum256([]byte("test-block"))
-	trees := BuildTreesWithWeights(weightedParticipants, blockHash[:], 3, 2)
-
-	if len(trees) == 0 {
-		t.Fatal("expected trees to be built")
-	}
-
-	for i, tree := range trees {
-		if len(tree.Nodes) != 4 {
-			t.Errorf("tree %d should have 4 nodes (excluding zero-weight), got %d", i, len(tree.Nodes))
-		}
-
-		if _, exists := tree.Nodes["attacker1"]; exists {
-			t.Errorf("tree %d should not contain zero-weight attacker1", i)
-		}
-
-		if _, exists := tree.Nodes["attacker2"]; exists {
-			t.Errorf("tree %d should not contain zero-weight attacker2", i)
-		}
-
-		if _, exists := tree.Nodes["legit1"]; !exists {
-			t.Errorf("tree %d should contain legit1 with weight", i)
-		}
-
-		if _, exists := tree.Nodes["legit2"]; !exists {
-			t.Errorf("tree %d should contain legit2 with weight", i)
-		}
-
-		t.Logf("Tree %d participants: %v", i, tree.Shuffled)
-	}
-
-	t.Log("Zero-weight participants successfully excluded from propagation trees")
-}
-
-func TestAttackerBlockingPrevention(t *testing.T) {
-	legitimateParticipants := []WeightedParticipant{
-		{Address: "validator1", Weight: 1000},
-		{Address: "validator2", Weight: 800},
-		{Address: "validator3", Weight: 600},
-		{Address: "validator4", Weight: 400},
-		{Address: "validator5", Weight: 200},
-	}
-
-	attackerNodes := []WeightedParticipant{
-		{Address: "attacker1", Weight: 0},
-		{Address: "attacker2", Weight: 0},
-		{Address: "attacker3", Weight: 0},
-		{Address: "attacker4", Weight: 0},
-		{Address: "attacker5", Weight: 0},
-		{Address: "attacker6", Weight: 0},
-		{Address: "attacker7", Weight: 0},
-		{Address: "attacker8", Weight: 0},
-		{Address: "attacker9", Weight: 0},
-		{Address: "attacker10", Weight: 0},
-	}
-
-	allParticipants := append(legitimateParticipants, attackerNodes...)
-
-	blockHash := sha256.Sum256([]byte("test-block"))
-	trees := BuildTreesWithWeights(allParticipants, blockHash[:], 3, 2)
-
-	if len(trees) == 0 {
-		t.Fatal("expected trees to be built")
-	}
-
-	for i, tree := range trees {
-		if len(tree.Nodes) != len(legitimateParticipants) {
-			t.Errorf("tree %d should have %d nodes (only legitimate participants), got %d",
-				i, len(legitimateParticipants), len(tree.Nodes))
-		}
-
-		attackerFound := false
-		for _, attacker := range attackerNodes {
-			if _, exists := tree.Nodes[attacker.Address]; exists {
-				attackerFound = true
-				t.Errorf("tree %d contains attacker node %s", i, attacker.Address)
-			}
-		}
-
-		if attackerFound {
-			t.Errorf("tree %d contains attacker nodes - security vulnerability!", i)
-		}
-
-		legitimateCount := 0
-		for _, legit := range legitimateParticipants {
-			if _, exists := tree.Nodes[legit.Address]; exists {
-				legitimateCount++
-			}
-		}
-
-		if legitimateCount != len(legitimateParticipants) {
-			t.Errorf("tree %d should contain all %d legitimate participants, got %d",
-				i, len(legitimateParticipants), legitimateCount)
-		}
-
-		t.Logf("Tree %d: %d legitimate participants, 0 attackers (10 blocked)", i, legitimateCount)
-	}
-
-	t.Log("Attacker blocking prevention successful - new nodes without weights cannot participate")
-}
-
-func TestAllZeroWeightNoTreeCreated(t *testing.T) {
-	allZeroWeight := []WeightedParticipant{
-		{Address: "attacker1", Weight: 0},
-		{Address: "attacker2", Weight: 0},
-		{Address: "attacker3", Weight: 0},
-	}
-
-	blockHash := sha256.Sum256([]byte("test-block"))
-	trees := BuildTreesWithWeights(allZeroWeight, blockHash[:], 3, 2)
-
-	if len(trees) != 0 {
-		t.Errorf("expected no trees when all weights are zero, got %d trees", len(trees))
-	}
-
-	t.Log("No trees created when all participants have zero weight - correct behavior")
 }

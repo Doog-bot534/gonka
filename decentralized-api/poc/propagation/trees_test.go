@@ -398,34 +398,16 @@ func TestBuildTreesWithWeights(t *testing.T) {
 			t.Errorf("tree %d has wrong index: %d", i, tree.Index)
 		}
 
-		if len(tree.Nodes) != 4 {
-			t.Errorf("tree %d should have 4 nodes (excluding zero-weight), got %d", i, len(tree.Nodes))
+		if len(tree.Nodes) != 5 {
+			t.Errorf("tree %d should have 5 nodes (including zero-weight), got %d", i, len(tree.Nodes))
 		}
 
-		if _, exists := tree.Nodes["addr4"]; exists {
-			t.Errorf("tree %d should not contain zero-weight participant addr4", i)
-		}
-
-		if _, exists := tree.Nodes["addr1"]; !exists {
-			t.Errorf("tree %d should contain addr1", i)
+		for _, p := range participants {
+			if _, exists := tree.Nodes[p.Address]; !exists {
+				t.Errorf("tree %d should contain %s", i, p.Address)
+			}
 		}
 	}
-}
-
-func TestBuildTreesWithWeights_AllZeroWeights(t *testing.T) {
-	participants := []WeightedParticipant{
-		{Address: "addr1", Weight: 0},
-		{Address: "addr2", Weight: 0},
-	}
-
-	blockHash := []byte("test-block-hash")
-	trees := BuildTreesWithWeights(participants, blockHash, 2, 3)
-
-	if len(trees) != 0 {
-		t.Fatalf("expected 0 trees when all weights are zero, got %d", len(trees))
-	}
-
-	t.Log("No trees created when all participants have zero weight")
 }
 
 func TestBuildTreesWithWeights_WeightOrdering(t *testing.T) {

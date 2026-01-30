@@ -297,6 +297,7 @@ func main() {
 		recorder,
 		chainPhaseTracker,
 		participantInfo.GetAddress(),
+		participantInfo.GetPubKey(),
 		commitInterval,
 		propConfig.Enabled,
 		propagationBundler,

@@ -30,23 +30,22 @@ func NewBundler(signer HeaderSigner, cache *Cache, trees []*Tree, sender Sender,
 	}
 }
 
-func (b *Bundler) Publish(pocHeight int64, blockHash []byte, participant string, count uint32, rootHash []byte) error {
+func (b *Bundler) Publish(pocHeight int64, participant string, pubKey string, count uint32, rootHash []byte) error {
 	if count == 0 || rootHash == nil {
 		logging.Debug("Bundler: no artifacts to publish", types.PoC,
 			"pocHeight", pocHeight, "participant", participant)
 		return nil
 	}
 
-	bundleID := MakeBundleID(participant, pocHeight, rootHash, count, 1)
+	bundleID := MakeBundleID(participant, pocHeight, rootHash, count)
 	header := BundleHeader{
-		BundleID:     bundleID,
-		Participant:  participant,
-		PocHeight:    pocHeight,
-		PocBlockHash: blockHash,
-		RootHash:     rootHash,
-		Count:        count,
-		Version:      1,
-		CreatedAt:    time.Now().Unix(),
+		BundleID:    bundleID,
+		Participant: participant,
+		PubKey:      pubKey,
+		PocHeight:   pocHeight,
+		RootHash:    rootHash,
+		Count:       count,
+		CreatedAt:   time.Now().Unix(),
 	}
 
 	sig, err := SignHeaderWith(header, b.signer)
@@ -83,58 +82,67 @@ func (b *Bundler) sendHeader(h BundleHeader) error {
 
 	var wg sync.WaitGroup
 	totalRecipients := 0
-	sent := make(map[string]bool)
 
 	logging.Info("Bundler: checking trees for recipients", types.PoC,
 		"publisher", b.myAddr, "totalTrees", len(b.trees),
 		"bundleID", fmt.Sprintf("%x", h.BundleID[:8]))
 
+	// Publisher sends to all roots across all trees
+	// Each tree root must receive with its own tree index for proper propagation
 	for _, tree := range trees {
-		node := tree.GetNode(b.myAddr)
-		if node == nil {
-			logging.Debug("Bundler: not in tree", types.PoC,
-				"publisher", b.myAddr, "tree", tree.Index)
+		if tree.Root == nil {
 			continue
 		}
 
-		recipients := make([]*Node, 0)
-
-		// Send to children (downward)
-		recipients = append(recipients, node.Children...)
-
-		// Send to parent (upward)
-		if node.Parent != nil {
-			recipients = append(recipients, node.Parent)
+		// Skip if we're already the root (will broadcast via receiver)
+		if tree.Root.Address == b.myAddr {
+			continue
 		}
 
-		// Send to siblings (sideways)
-		recipients = append(recipients, node.Siblings...)
+		totalRecipients++
 
-		if len(recipients) > 0 {
-			logging.Info("Bundler: sending in tree", types.PoC,
-				"publisher", b.myAddr, "tree", tree.Index,
-				"children", len(node.Children), "parent", node.Parent != nil,
-				"siblings", len(node.Siblings), "total", len(recipients))
-		}
-
-		for _, recipient := range recipients {
-			if sent[recipient.Address] {
-				continue
+		wg.Add(1)
+		go func(treeIndex int, rootAddr string) {
+			defer wg.Done()
+			if err := b.sender.SendHeader(treeIndex, rootAddr, h); err != nil {
+				logging.Warn("Bundler: failed to send to root", types.PoC,
+					"publisher", b.myAddr, "tree", treeIndex, "root", rootAddr, "error", err)
+			} else {
+				logging.Debug("Bundler: sent to root", types.PoC,
+					"publisher", b.myAddr, "tree", treeIndex, "root", rootAddr)
 			}
-			sent[recipient.Address] = true
+		}(tree.Index, tree.Root.Address)
+	}
+
+	// If we're root in any tree, also broadcast to our children in those trees
+	// Each child must receive with the correct tree index for proper propagation
+	for _, tree := range trees {
+		node := tree.GetNode(b.myAddr)
+		if node == nil || node.Parent != nil {
+			continue // Not root in this tree
+		}
+
+		// We're root - broadcast to children
+		if len(node.Children) > 0 {
+			logging.Info("Bundler: broadcasting as root", types.PoC,
+				"publisher", b.myAddr, "tree", tree.Index,
+				"children", len(node.Children))
+		}
+
+		for _, child := range node.Children {
 			totalRecipients++
 
 			wg.Add(1)
-			go func(treeIndex int, recipientAddr string) {
+			go func(treeIndex int, childAddr string) {
 				defer wg.Done()
-				if err := b.sender.SendHeader(treeIndex, recipientAddr, h); err != nil {
-					logging.Warn("Bundler: failed to send header", types.PoC,
-						"publisher", b.myAddr, "tree", treeIndex, "to", recipientAddr, "error", err)
+				if err := b.sender.SendHeader(treeIndex, childAddr, h); err != nil {
+					logging.Warn("Bundler: failed to send to child", types.PoC,
+						"publisher", b.myAddr, "tree", treeIndex, "child", childAddr, "error", err)
 				} else {
-					logging.Debug("Bundler: sent", types.PoC,
-						"publisher", b.myAddr, "tree", treeIndex, "to", recipientAddr)
+					logging.Debug("Bundler: sent to child", types.PoC,
+						"publisher", b.myAddr, "tree", treeIndex, "child", childAddr)
 				}
-			}(tree.Index, recipient.Address)
+			}(tree.Index, child.Address)
 		}
 	}
 

@@ -9,14 +9,13 @@ data class PropagationBundleHeader(
     @SerializedName("bundle_id")
     val bundleId: String,  // hex-encoded 32 bytes
     val participant: String,
+    @SerializedName("pub_key")
+    val pubKey: String,  // hex-encoded public key
     @SerializedName("poc_height")
     val pocHeight: Long,
-    @SerializedName("poc_block_hash")
-    val pocBlockHash: String,  // hex-encoded
     @SerializedName("root_hash")
     val rootHash: String,  // hex-encoded
-    val count: Int,
-    val version: Int,
+    val count: Long,
     @SerializedName("created_at")
     val createdAt: Long,  // unix timestamp
     val signature: String  // hex-encoded
@@ -28,7 +27,8 @@ data class PropagationBundleHeader(
 data class PropagationHeaderMessage(
     @SerializedName("tree_idx")
     val treeIdx: Int,
-    val header: PropagationBundleHeader
+    val header: PropagationBundleHeader,
+    val from: String? = null  // Optional: defaults to header.participant
 )
 
 /**

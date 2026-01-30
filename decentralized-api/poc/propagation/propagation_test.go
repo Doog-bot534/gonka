@@ -131,13 +131,13 @@ func testSmallPropagation(t *testing.T, storageFactory bundleStorageFactory) {
 
 	senderCount := stores[sender].Count()
 	senderRoot := stores[sender].GetRoot()
-	if err := bundlers[sender].Publish(pocHeight, blockHash[:], sender, senderCount, senderRoot); err != nil {
+	if err := bundlers[sender].Publish(pocHeight, sender, pubKeys[sender], senderCount, senderRoot); err != nil {
 		t.Fatalf("failed to publish: %v", err)
 	}
 
 	time.Sleep(100 * time.Millisecond)
 
-	bundleID := MakeBundleID(sender, pocHeight, stores[sender].GetRoot(), stores[sender].Count(), 1)
+	bundleID := MakeBundleID(sender, pocHeight, stores[sender].GetRoot(), stores[sender].Count())
 
 	receivedCount := 0
 	for _, addr := range participants {
@@ -204,7 +204,6 @@ func testAllBundlesForHeightAfterPropagation(t *testing.T, storageFactory bundle
 		pubKeys[addr] = hex.EncodeToString(privKey.PubKey().Bytes())
 	}
 
-	blockHash := sha256.Sum256([]byte("test-block"))
 	pocHeight := int64(2000)
 
 	trees := make([]*Tree, numParticipants)
@@ -264,7 +263,7 @@ func testAllBundlesForHeightAfterPropagation(t *testing.T, storageFactory bundle
 	for _, addr := range participants {
 		count := stores[addr].Count()
 		root := stores[addr].GetRoot()
-		require.NoError(t, bundlers[addr].Publish(pocHeight, blockHash[:], addr, count, root))
+		require.NoError(t, bundlers[addr].Publish(pocHeight, addr, pubKeys[addr], count, root))
 		published[addr] = publishedMeta{
 			participant: addr,
 			count:       count,
@@ -300,7 +299,7 @@ func testAllBundlesForHeightAfterPropagation(t *testing.T, storageFactory bundle
 			require.Equal(t, meta.rootHash, h.RootHash,
 				"participant %s: wrong root hash for %s", addr, h.Participant)
 
-			expectedID := MakeBundleID(h.Participant, pocHeight, meta.rootHash, meta.count, 1)
+			expectedID := MakeBundleID(h.Participant, pocHeight, meta.rootHash, meta.count)
 			require.Equal(t, expectedID, h.BundleID,
 				"participant %s: wrong bundle ID for %s", addr, h.Participant)
 		}

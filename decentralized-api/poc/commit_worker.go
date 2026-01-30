@@ -31,6 +31,7 @@ type CommitWorker struct {
 	recorder           cosmosclient.CosmosMessageClient
 	tracker            *chainphase.ChainPhaseTracker
 	participantAddress string
+	pubKey             string
 
 	interval time.Duration
 	stop     chan struct{}
@@ -50,6 +51,7 @@ func NewCommitWorker(
 	recorder cosmosclient.CosmosMessageClient,
 	tracker *chainphase.ChainPhaseTracker,
 	participantAddress string,
+	pubKey string,
 	interval time.Duration,
 	propagationEnabled bool,
 	bundler *propagation.Bundler,
@@ -59,6 +61,7 @@ func NewCommitWorker(
 		recorder:           recorder,
 		tracker:            tracker,
 		participantAddress: participantAddress,
+		pubKey:             pubKey,
 		interval:           interval,
 		stop:               make(chan struct{}),
 		done:               make(chan struct{}),
@@ -168,8 +171,7 @@ func (w *CommitWorker) maybeSubmitCommit(pocHeight int64) {
 	if w.propagationEnabled && w.bundler != nil {
 		epochState := w.tracker.GetCurrentEpochState()
 		if epochState != nil && epochState.IsSynced {
-			blockHash := []byte(fmt.Sprintf("%d", pocHeight))
-			if err := w.bundler.Publish(pocHeight, blockHash, w.participantAddress, count, rootHash); err != nil {
+			if err := w.bundler.Publish(pocHeight, w.participantAddress, w.pubKey, count, rootHash); err != nil {
 				logging.Warn("CommitWorker: propagation publish failed", types.PoC,
 					"pocHeight", pocHeight, "error", err)
 			} else {

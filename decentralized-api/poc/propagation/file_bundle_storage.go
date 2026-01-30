@@ -126,7 +126,7 @@ func (s *FileBundleStorage) LatestBundle(ctx context.Context, participant string
 
 	for _, header := range s.bundles {
 		if header.Participant == participant && header.PocHeight == pocHeight {
-			if !found || header.Version > latest.Version {
+			if !found || header.CreatedAt > latest.CreatedAt {
 				latest = header
 				found = true
 			}

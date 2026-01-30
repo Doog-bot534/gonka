@@ -50,11 +50,10 @@ func (s *PostgresBundleStorage) ensureSchema(ctx context.Context) error {
 			instance TEXT NOT NULL,
 			bundle_id BYTEA NOT NULL,
 			participant TEXT NOT NULL,
+			pub_key TEXT NOT NULL,
 			poc_height BIGINT NOT NULL,
-			poc_block_hash BYTEA NOT NULL,
 			root_hash BYTEA NOT NULL,
 			count INTEGER NOT NULL,
-			version INTEGER NOT NULL,
 			created_at BIGINT NOT NULL,
 			signature BYTEA,
 			PRIMARY KEY (instance, bundle_id)
@@ -65,7 +64,7 @@ func (s *PostgresBundleStorage) ensureSchema(ctx context.Context) error {
 
 func (s *PostgresBundleStorage) loadBundles(ctx context.Context) error {
 	rows, err := s.pool.Query(ctx, `
-		SELECT bundle_id, participant, poc_height, poc_block_hash, root_hash, count, version, created_at, signature
+		SELECT bundle_id, participant, pub_key, poc_height, root_hash, count, created_at, signature
 		FROM poc_bundle_headers
 		WHERE instance = $1
 	`, s.instance)
@@ -77,7 +76,7 @@ func (s *PostgresBundleStorage) loadBundles(ctx context.Context) error {
 	for rows.Next() {
 		var idBytes []byte
 		var h BundleHeader
-		if err := rows.Scan(&idBytes, &h.Participant, &h.PocHeight, &h.PocBlockHash, &h.RootHash, &h.Count, &h.Version, &h.CreatedAt, &h.Signature); err != nil {
+		if err := rows.Scan(&idBytes, &h.Participant, &h.PubKey, &h.PocHeight, &h.RootHash, &h.Count, &h.CreatedAt, &h.Signature); err != nil {
 			return err
 		}
 		if len(idBytes) != len(h.BundleID) {
@@ -96,18 +95,17 @@ func (s *PostgresBundleStorage) StoreHeader(ctx context.Context, h BundleHeader)
 	defer s.mu.Unlock()
 
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO poc_bundle_headers (instance, bundle_id, participant, poc_height, poc_block_hash, root_hash, count, version, created_at, signature)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO poc_bundle_headers (instance, bundle_id, participant, pub_key, poc_height, root_hash, count, created_at, signature)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (instance, bundle_id) DO UPDATE SET
 			participant = EXCLUDED.participant,
+			pub_key = EXCLUDED.pub_key,
 			poc_height = EXCLUDED.poc_height,
-			poc_block_hash = EXCLUDED.poc_block_hash,
 			root_hash = EXCLUDED.root_hash,
 			count = EXCLUDED.count,
-			version = EXCLUDED.version,
 			created_at = EXCLUDED.created_at,
 			signature = EXCLUDED.signature
-	`, s.instance, h.BundleID[:], h.Participant, h.PocHeight, h.PocBlockHash, h.RootHash, h.Count, h.Version, h.CreatedAt, h.Signature)
+	`, s.instance, h.BundleID[:], h.Participant, h.PubKey, h.PocHeight, h.RootHash, h.Count, h.CreatedAt, h.Signature)
 	if err != nil {
 		return fmt.Errorf("store header: %w", err)
 	}
@@ -136,7 +134,7 @@ func (s *PostgresBundleStorage) LatestBundle(ctx context.Context, participant st
 
 	for _, header := range s.bundles {
 		if header.Participant == participant && header.PocHeight == pocHeight {
-			if !found || header.Version > latest.Version {
+			if !found || header.CreatedAt > latest.CreatedAt {
 				latest = header
 				found = true
 			}
