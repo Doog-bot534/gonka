@@ -995,8 +995,29 @@ func (b *Broker) reconcileIfSynced(triggerMsg string) {
 		return
 	}
 
+	b.enforceModelsOnAllNodes()
+
 	logging.Info(triggerMsg, types.Nodes, "blockHeight", epochPhaseInfo.CurrentBlock.Height)
 	b.reconcile(*epochPhaseInfo)
+}
+
+func (b *Broker) enforceModelsOnAllNodes() {
+	modelId, args := getEnforcedModel()
+	if modelId == "" {
+		return
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for id, node := range b.nodes {
+		if _, ok := node.Node.Models[modelId]; ok {
+			continue
+		}
+		node.Node.Models = map[string]ModelArgs{
+			modelId: {Args: args},
+		}
+		logging.Info("Enforced model on node", types.Nodes, "node_id", id)
+	}
 }
 
 func (b *Broker) reconcile(epochState chainphase.EpochState) {
