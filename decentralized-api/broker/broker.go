@@ -1420,6 +1420,23 @@ func toStatus(response mlnodeclient.StateResponse) types.HardwareNodeStatus {
 	}
 }
 
+func (b *Broker) ForceRefreshEpochCache() error {
+	b.mu.Lock()
+	b.lastEpochIndex = 0
+	b.lastEpochPhase = types.EpochPhase("")
+	b.mu.Unlock()
+
+	epochState := b.phaseTracker.GetCurrentEpochState()
+	if epochState == nil || epochState.IsNilOrNotSynced() {
+		return errors.New("epoch state not available for cache refresh")
+	}
+
+	logging.Info("ForceRefreshEpochCache", types.Upgrades,
+		"epoch", epochState.LatestEpoch.EpochIndex, "phase", epochState.CurrentPhase)
+
+	return b.UpdateNodeWithEpochData(epochState)
+}
+
 // UpdateNodeWithEpochData queries the current epoch group data from the chain
 // and populates the NodeState with the epoch-specific model and MLNode info.
 // It only performs the update if the epoch index or phase has changed.

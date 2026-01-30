@@ -237,6 +237,16 @@ func (d *OnNewBlockDispatcher) ProcessNewBlock(ctx context.Context, blockInfo ch
 			if params.Params.PocParams != nil {
 				d.phaseTracker.UpdatePocV2Enabled(params.Params.PocParams.PocV2Enabled)
 				d.phaseTracker.UpdateConfirmationPocV2Enabled(params.Params.PocParams.ConfirmationPocV2Enabled)
+
+				if d.phaseTracker.NeedsPocV2CacheRefresh() {
+					logging.Info("poc_v2_enabled=true, refreshing epoch cache", types.Upgrades)
+					if err := d.nodeBroker.ForceRefreshEpochCache(); err != nil {
+						logging.Warn("Cache refresh failed, retry next block", types.Upgrades, "error", err)
+					} else {
+						d.phaseTracker.ConfirmPocV2CacheRefreshed()
+						logging.Info("Epoch cache refreshed", types.Upgrades)
+					}
+				}
 			}
 		}
 	}

@@ -81,6 +81,7 @@ func NewTestBroker() *Broker {
 		PubKey:  "dummyPubKey",
 	}
 	phaseTracker := chainphase.NewChainPhaseTracker()
+	phaseTracker.UpdatePocV2Enabled(true)
 	phaseTracker.Update(
 		chainphase.BlockInfo{Height: 1, Hash: "hash-1"},
 		&types.Epoch{Index: 100, PocStartBlockHeight: 100},
