@@ -304,7 +304,6 @@ class PropagationTests : TestermintTest() {
                 PropagationBundleHeader(
                     bundleId = generateBundleId(name),
                     participant = pair.node.getColdAddress(),
-                    pubKey = getPubKeyHex(pair),
                     pocHeight = pocHeight,
                     rootHash = base64ToHex(state.rootHash),
                     count = state.count,
