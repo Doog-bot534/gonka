@@ -22,10 +22,6 @@ class PropagationTests : TestermintTest() {
         return hash.joinToString("") { "%02x".format(it) }
     }
 
-    private fun getPubKeyHex(pair: LocalInferencePair): String {
-        return pair.node.getStatus().validatorInfo.pubKey.value
-    }
-
     @Test
     fun `off-chain propagation - commit metadata propagates between participants`() {
         logSection("=== TEST: Off-Chain Propagation - Commit Metadata Propagation ===")
@@ -124,7 +120,6 @@ class PropagationTests : TestermintTest() {
         val bundleHeader = PropagationBundleHeader(
             bundleId = generateBundleId("genesis"),
             participant = genesis.node.getColdAddress(),
-            pubKey = getPubKeyHex(genesis),
             pocHeight = pocHeight,
             rootHash = base64ToHex(genesisState.rootHash),
             count = genesisState.count,
@@ -209,7 +204,6 @@ class PropagationTests : TestermintTest() {
             PropagationBundleHeader(
                 bundleId = generateBundleId(name),
                 participant = pair.node.getColdAddress(),
-                pubKey = getPubKeyHex(pair),
                 pocHeight = pocHeight,
                 rootHash = base64ToHex(state.rootHash),
                 count = state.count,
