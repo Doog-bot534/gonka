@@ -92,18 +92,9 @@ class ConfirmationPoCFailTests : TestermintTest() {
             join2.node.getColdAddress() to join2.node.getSelfBalance()
         )
 
-        // Also record governance/community pool balance to verify CPoC reduction transfer
-        // Note: The governance module receives undistributed rewards
-        val govModuleName = "distribution"  
-        var initialGovBalance: Long? = null
-        var canVerifyGovernance = false
-        try {
-            initialGovBalance = genesis.node.getModuleBalance(govModuleName, "ngonka")
-            canVerifyGovernance = true
-            Logger.info("Initial governance/distribution module balance: $initialGovBalance")
-        } catch (e: Exception) {
-            Logger.warn("Could not query governance balance, will skip governance verification: ${e.message}")
-        }
+        // Record tokenomics before settlement to compute total reward minted this epoch
+        val initialSubsidies = genesis.node.getTokenomics().tokenomicsData.totalSubsidies
+
 
         logSection("Waiting for reward settlement with confirmation weights")
         genesis.waitForStage(EpochStage.CLAIM_REWARDS, offset = 2)
@@ -144,59 +135,29 @@ class ConfirmationPoCFailTests : TestermintTest() {
 
         // Verify the ratio is approximately 8:10 (allowing some tolerance for rounding)
         val actualRatio = join1Change.toDouble() / genesisChange.toDouble()
-        val expectedRatio = 8.0 / 10.0  // 0.8
-        assertThat(actualRatio).isCloseTo(expectedRatio, Offset.offset(0.05))
-        Logger.info("  Join1 reward ratio: $actualRatio (expected: $expectedRatio)")
+        val expectedJoin1Ratio = 8.0 / 10.0  // 0.8
+        assertThat(actualRatio).isCloseTo(expectedJoin1Ratio, Offset.offset(0.05))
+        Logger.info("  Join1 reward ratio: $actualRatio (expected: $expectedJoin1Ratio)")
 
-        // NEW: Verify that CPoC reduction went to governance (not redistributed to participants)
-        logSection("Verifying CPoC reduction transferred to governance")
+        // NEW: Verify CPoC reduction went to governance (not redistributed to participants)
+        logSection("Verifying CPoC reduction went to governance (not redistributed)")
 
         val totalDistributed = genesisChange + join1Change + join2Change
         Logger.info("Total distributed to participants: $totalDistributed")
 
-        // With CPoC reduction: effectiveWeight=28 (10+8+10), fullWeight=30 (10+10+10)
-        // Governance should receive: (2/30) of epoch reward ≈ 6.67%
-        // Participants receive: (28/30) of epoch reward ≈ 93.33%
+        // Compute how much reward was minted this epoch from tokenomics data
+        val finalSubsidies = genesis.node.getTokenomics().tokenomicsData.totalSubsidies
+        val mintedThisEpoch = finalSubsidies - initialSubsidies
+        Logger.info("Reward minted this epoch (tokenomics delta): $mintedThisEpoch")
+        assertThat(mintedThisEpoch).isGreaterThan(0)
 
-        // Calculate expected governance amount based on participant distribution
-        // If participants got 28/30 of reward as totalDistributed, then:
-        // Full reward = totalDistributed / (28/30) = totalDistributed × 30/28
-        // Governance should get: fullReward × (2/30) = totalDistributed × 30/28 × 2/30 = totalDistributed × 2/28
-        val expectedGovernanceAmount = (totalDistributed.toDouble() * 2.0 / 28.0).toLong()
-
-        Logger.info("Expected governance transfer: ~$expectedGovernanceAmount")
-        Logger.info("  This represents ${String.format("%.1f%%", 2.0/30.0 * 100)} of total epoch reward")
-        Logger.info("  Participants received ${String.format("%.1f%%", 28.0/30.0 * 100)} of total epoch reward")
-
-        // Verify governance balance increased if we were able to query it
-        if (canVerifyGovernance && initialGovBalance != null) {
-            val finalGovBalance = try {
-                genesis.node.getModuleBalance(govModuleName, "ngonka")
-            } catch (e: Exception) {
-                Logger.warn("Could not query final governance balance: ${e.message}")
-                null
-            }
-            
-            if (finalGovBalance != null) {
-                val govBalanceChange = finalGovBalance - initialGovBalance
-                
-                Logger.info("Governance balance change: $govBalanceChange")
-                
-                // Verify governance received the expected amount from CPoC reduction
-                // The balance MUST increase by at least the expected amount
-                assertThat(govBalanceChange).isGreaterThanOrEqualTo(expectedGovernanceAmount)
-                    .withFailMessage(
-                        "Governance should have received CPoC reduction (~$expectedGovernanceAmount) but change was $govBalanceChange. " +
-                        "This suggests CPoC reductions are being redistributed instead of going to governance!"
-                    )
-                Logger.info("  ✓ Governance received $govBalanceChange (expected: ~$expectedGovernanceAmount)")
-            } else {
-                Logger.warn("  Could not verify governance balance change")
-            }
-        } else {
-            Logger.info("  CPoC reduction (2 weight units) calculated to go to governance ✓")
-            Logger.info("  (Governance balance verification skipped - could not query balance)")
-        }
+        // With new behavior (CPoC reduction to governance), participants should receive 28/30 of minted rewards.
+        // With old behavior (redistributed), participants would receive 30/30 (100%).
+        val actualDistributionRatio = totalDistributed.toDouble() / mintedThisEpoch.toDouble()
+        val expectedDistributionRatio = 28.0 / 30.0  // 0.933...
+        assertThat(actualDistributionRatio).isCloseTo(expectedDistributionRatio, Offset.offset(0.05))
+        Logger.info("  ✓ Participants received ${String.format("%.1f%%", actualDistributionRatio * 100)} of minted reward")
+        Logger.info("  ✓ ~6.7% went to governance (not redistributed), confirming CPoC reduction behavior")
 
         logSection("TEST PASSED: Confirmation PoC correctly caps rewards AND transfers reduction to governance")
     }
