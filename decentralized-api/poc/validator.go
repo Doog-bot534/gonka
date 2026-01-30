@@ -172,7 +172,7 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 					continue
 				}
 
-				if participantResp.Participant.WorkerPublicKey == "" {
+				if header.PubKey == "" {
 					logging.Warn("OffChainValidator: participant has no public key", types.PoC,
 						"address", header.Participant)
 					continue
@@ -181,7 +181,7 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 				workItems = append(workItems, participantWork{
 					address:  header.Participant,
 					url:      participantResp.Participant.InferenceUrl,
-					pubKey:   participantResp.Participant.WorkerPublicKey,
+					pubKey:   header.PubKey,
 					count:    header.Count,
 					rootHash: header.RootHash,
 				})
