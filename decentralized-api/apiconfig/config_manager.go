@@ -30,7 +30,7 @@ type ConfigManager struct {
 	KoanProvider   koanf.Provider
 	WriterProvider WriteCloserProvider
 	sqlDb          SqlDatabase
-	mutex          sync.Mutex
+	mutex          sync.RWMutex
 	configDumpPath string
 	sqlitePath     string
 }
@@ -61,7 +61,7 @@ func LoadConfigManagerWithPaths(configPath, sqlitePath, nodeConfigPath string) (
 		KoanProvider:   file.Provider(configPath),
 		WriterProvider: NewFileWriteCloserProvider(configPath),
 		sqlDb:          db,
-		mutex:          sync.Mutex{},
+		mutex:          sync.RWMutex{},
 		configDumpPath: filepath.Join(filepath.Dir(sqlitePath), "config-dump.json"),
 		sqlitePath:     sqlitePath,
 	}
@@ -299,6 +299,8 @@ func (cm *ConfigManager) SetTransferAgentAccessCache(cache TransferAgentAccessCa
 }
 
 func (cm *ConfigManager) GetTransferAgentAccessCache() TransferAgentAccessCache {
+	cm.mutex.RLock()
+	defer cm.mutex.RUnlock()
 	return cm.currentConfig.TransferAgentAccessCache
 }
 

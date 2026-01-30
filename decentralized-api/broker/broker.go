@@ -995,13 +995,13 @@ func (b *Broker) reconcileIfSynced(triggerMsg string) {
 		return
 	}
 
-	b.enforceModelsOnAllNodes()
+	b.enforceSingleModelOnAllNodes()
 
 	logging.Info(triggerMsg, types.Nodes, "blockHeight", epochPhaseInfo.CurrentBlock.Height)
 	b.reconcile(*epochPhaseInfo)
 }
 
-func (b *Broker) enforceModelsOnAllNodes() {
+func (b *Broker) enforceSingleModelOnAllNodes() {
 	modelId, args := getEnforcedModel()
 	if modelId == "" {
 		return
@@ -1010,11 +1010,17 @@ func (b *Broker) enforceModelsOnAllNodes() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for id, node := range b.nodes {
-		if _, ok := node.Node.Models[modelId]; ok {
-			continue
-		}
-		node.Node.Models = map[string]ModelArgs{
-			modelId: {Args: args},
+		if existingArgs, ok := node.Node.Models[modelId]; ok {
+			if len(node.Node.Models) == 1 {
+				continue
+			}
+			node.Node.Models = map[string]ModelArgs{
+				modelId: existingArgs,
+			}
+		} else {
+			node.Node.Models = map[string]ModelArgs{
+				modelId: {Args: args},
+			}
 		}
 		logging.Info("Enforced model on node", types.Nodes, "node_id", id)
 	}
