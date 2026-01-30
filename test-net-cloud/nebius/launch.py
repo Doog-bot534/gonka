@@ -485,6 +485,8 @@ def create_docker_compose_override(init_only=True, node_id=None):
         override_file = working_dir / "docker-compose.genesis-override.yml"
         override_content = """services:
   node:
+    ports:
+      - "26657:26657"
     environment:
       - INIT_ONLY=true
       - IS_GENESIS=true
@@ -511,6 +513,8 @@ def create_docker_compose_override(init_only=True, node_id=None):
         
         override_content = f"""services:
   node:
+    ports:
+      - "26657:26657"
     environment:
       - INIT_ONLY=false
       - IS_GENESIS=true
