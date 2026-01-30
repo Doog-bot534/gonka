@@ -10,14 +10,14 @@ data class PropagationBundleHeader(
     val bundleId: String,  // hex-encoded 32 bytes
     val participant: String,
     @SerializedName("pub_key")
-    val pubKey: String,  // hex-encoded public key
+    val pubKey: String,  // public key string
     @SerializedName("poc_height")
-    val pocHeight: Long,
+    val pocHeight: Long,  // int64
     @SerializedName("root_hash")
     val rootHash: String,  // hex-encoded
-    val count: Long,
+    val count: Long,  // uint32 (using Long to accommodate unsigned values)
     @SerializedName("created_at")
-    val createdAt: Long,  // unix timestamp
+    val createdAt: Long,  // int64 unix timestamp
     val signature: String  // hex-encoded
 )
 

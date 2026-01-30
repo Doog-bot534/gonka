@@ -5,9 +5,26 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.tinylog.kotlin.Logger
 import java.util.concurrent.TimeUnit
+import java.util.Base64
 
 @Timeout(value = 15, unit = TimeUnit.MINUTES)
 class PropagationTests : TestermintTest() {
+
+    private fun base64ToHex(base64: String): String {
+        val bytes = Base64.getDecoder().decode(base64)
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun generateBundleId(prefix: String): String {
+        val timestamp = System.currentTimeMillis()
+        val combined = "$prefix$timestamp".toByteArray()
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(combined)
+        return hash.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun getPubKeyHex(pair: LocalInferencePair): String {
+        return pair.node.getStatus().validatorInfo.pubKey.value
+    }
 
     @Test
     fun `off-chain propagation - commit metadata propagates between participants`() {
@@ -105,14 +122,14 @@ class PropagationTests : TestermintTest() {
         
         // Create a bundle header (simulating what bundler.Publish() creates)
         val bundleHeader = PropagationBundleHeader(
-            bundleId = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            bundleId = generateBundleId("genesis"),
             participant = genesis.node.getColdAddress(),
-            pubKey = "fake_public_key_for_test",
+            pubKey = getPubKeyHex(genesis),
             pocHeight = pocHeight,
-            rootHash = genesisState.rootHash,
+            rootHash = base64ToHex(genesisState.rootHash),
             count = genesisState.count,
             createdAt = System.currentTimeMillis() / 1000,
-            signature = "fake_signature_for_test" // In real system, would be secp256k1 signature
+            signature = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         )
 
         val headerMessage = PropagationHeaderMessage(
@@ -190,14 +207,14 @@ class PropagationTests : TestermintTest() {
         val headers = publishers.map { (pair, name, api) ->
             val state = states[name]!!
             PropagationBundleHeader(
-                bundleId = "${name}_bundle_id_${System.currentTimeMillis()}",
+                bundleId = generateBundleId(name),
                 participant = pair.node.getColdAddress(),
-                pubKey = "fake_pub_key_${name}",
+                pubKey = getPubKeyHex(pair),
                 pocHeight = pocHeight,
-                rootHash = state.rootHash,
+                rootHash = base64ToHex(state.rootHash),
                 count = state.count,
                 createdAt = System.currentTimeMillis() / 1000,
-                signature = "signature_${name}"
+                signature = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
             )
         }
 
@@ -285,14 +302,14 @@ class PropagationTests : TestermintTest() {
                 name,
                 pair,
                 PropagationBundleHeader(
-                    bundleId = "${name}_bundle_${pocHeight}_${System.currentTimeMillis()}",
+                    bundleId = generateBundleId(name),
                     participant = pair.node.getColdAddress(),
-                    pubKey = "fake_pub_key_${name}",
+                    pubKey = getPubKeyHex(pair),
                     pocHeight = pocHeight,
-                    rootHash = state.rootHash,
+                    rootHash = base64ToHex(state.rootHash),
                     count = state.count,
                     createdAt = System.currentTimeMillis() / 1000,
-                    signature = "sig_${name}"
+                    signature = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
                 )
             )
         }
