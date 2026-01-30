@@ -16,7 +16,6 @@ const BundleHeaderVersion = uint32(1)
 type BundleHeader struct {
 	BundleID    [32]byte
 	Participant string
-	PubKey      string
 	PocHeight   int64
 	RootHash    []byte
 	Count       uint32
@@ -27,7 +26,6 @@ type BundleHeader struct {
 type bundleHeaderJSON struct {
 	BundleID    string `json:"bundle_id"`
 	Participant string `json:"participant"`
-	PubKey      string `json:"pub_key"`
 	PocHeight   int64  `json:"poc_height"`
 	RootHash    string `json:"root_hash"`
 	Count       uint32 `json:"count"`
@@ -39,7 +37,6 @@ func (h BundleHeader) MarshalJSON() ([]byte, error) {
 	return json.Marshal(bundleHeaderJSON{
 		BundleID:    hex.EncodeToString(h.BundleID[:]),
 		Participant: h.Participant,
-		PubKey:      h.PubKey,
 		PocHeight:   h.PocHeight,
 		RootHash:    hex.EncodeToString(h.RootHash),
 		Count:       h.Count,
@@ -74,7 +71,6 @@ func (h *BundleHeader) UnmarshalJSON(data []byte) error {
 	}
 
 	h.Participant = j.Participant
-	h.PubKey = j.PubKey
 	h.PocHeight = j.PocHeight
 	h.Count = j.Count
 	h.CreatedAt = j.CreatedAt
@@ -133,7 +129,6 @@ func headerSigningBytes(h BundleHeader) []byte {
 	buf := bytes.NewBuffer(nil)
 	buf.Write(h.BundleID[:])
 	buf.WriteString(h.Participant)
-	buf.WriteString(h.PubKey)
 	var tmp [8]byte
 	binary.BigEndian.PutUint64(tmp[:], uint64(h.PocHeight))
 	buf.Write(tmp[:])

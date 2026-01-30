@@ -242,7 +242,8 @@ data class LocalInferencePair(
         val self = InferenceParticipant(
             url = "http://$name-api:8080",
             models = models,
-            validatorKey = pubKey.value
+            validatorKey = pubKey.value,
+            workerKey = pubKey.value
         )
         api.addInferenceParticipant(self)
     }

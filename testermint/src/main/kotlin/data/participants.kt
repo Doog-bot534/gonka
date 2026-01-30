@@ -37,6 +37,7 @@ data class InferenceParticipant(
     val url: String,
     val models: List<String>? = listOf(),
     val validatorKey: String,
+    val workerKey: String? = null,
 )
 
 data class UnfundedInferenceParticipant(
@@ -44,7 +45,8 @@ data class UnfundedInferenceParticipant(
     val models: List<String>? = listOf(),
     val validatorKey: String,
     val pubKey: String,
-    val address: String
+    val address: String,
+    val workerKey: String? = null
 )
 
 data class ActiveParticipantsResponse(

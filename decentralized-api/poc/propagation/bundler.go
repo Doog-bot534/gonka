@@ -41,7 +41,6 @@ func (b *Bundler) Publish(pocHeight int64, participant string, pubKey string, co
 	header := BundleHeader{
 		BundleID:    bundleID,
 		Participant: participant,
-		PubKey:      pubKey,
 		PocHeight:   pocHeight,
 		RootHash:    rootHash,
 		Count:       count,
