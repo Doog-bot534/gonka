@@ -9,6 +9,8 @@ data class PropagationBundleHeader(
     @SerializedName("bundle_id")
     val bundleId: String,  // hex-encoded 32 bytes
     val participant: String,
+    @SerializedName("pub_key")
+    val pubKey: String,  // public key string
     @SerializedName("poc_height")
     val pocHeight: Long,  // int64
     @SerializedName("root_hash")
