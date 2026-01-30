@@ -462,7 +462,7 @@ data class ApplicationAPI(
     fun sendPropagationHeader(header: PropagationHeaderMessage) = wrapLog("SendPropagationHeader", true) {
         val url = urlFor(SERVER_TYPE_PUBLIC)
         val response = Fuel.post("$url/v1/propagation/header")
-            .jsonBody(header, cosmosJson)
+            .jsonBody(header, propagationJson)
             .response()
         logResponse(response)
     }

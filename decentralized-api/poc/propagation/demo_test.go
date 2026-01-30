@@ -186,10 +186,31 @@ func testPropagationDemo(t *testing.T, numParticipants int, storageFactory propa
 		store.Close()
 	}
 
+	connectionsPerParticipant := make(map[string]int)
+	for _, tree := range trees {
+		for _, node := range tree.Nodes {
+			if node.Parent != nil {
+				connectionsPerParticipant[node.Address]++
+			}
+			connectionsPerParticipant[node.Address] += len(node.Children)
+		}
+	}
+
+	maxConns, totalConns := 0, 0
+	for _, conns := range connectionsPerParticipant {
+		totalConns += conns
+		if conns > maxConns {
+			maxConns = conns
+		}
+	}
+	avgConns := float64(totalConns) / float64(len(connectionsPerParticipant))
+
 	t.Logf("- Trees: %d (fanout %d)", numTrees, fanout)
 	t.Logf("- Participants: %d", numParticipants)
 	t.Logf("- Participants who received: %d out of %d", receivedCount, numParticipants-1)
-	t.Logf("- Total parts sent across all trees: %d", len(sendLogs))
+	t.Logf("- Max connections per participant: %d (expected ~%d)", maxConns, numTrees*(fanout+1))
+	t.Logf("- Avg connections per participant: %.1f", avgConns)
+	t.Logf("- Total messages sent: %d", len(sendLogs))
 
 	if receivedCount != numParticipants-1 {
 		t.Errorf("Not all participants received the bundle: got %d, want %d", receivedCount, numParticipants-1)

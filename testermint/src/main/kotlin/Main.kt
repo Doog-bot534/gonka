@@ -408,6 +408,10 @@ val openAiJson: Gson = GsonBuilder()
     .registerTypeAdapter(Duration::class.java, DurationDeserializer())
     .create()
 
+val propagationJson: Gson = GsonBuilder()
+    .setFieldNamingPolicy(com.google.gson.FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
+    .create()
+
 val gsonCamelCase = createGsonWithTxMessageSerializers("com.productscience.data")
 
 fun createGsonWithTxMessageSerializers(packageName: String): Gson {
