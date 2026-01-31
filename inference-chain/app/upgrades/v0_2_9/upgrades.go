@@ -14,7 +14,7 @@ const preservedModelId = "Qwen/Qwen3-4B-Instruct-2507"
 
 // allowedTransferAgents is the list of bech32 addresses allowed to act as Transfer Agents.
 var allowedTransferAgents = []string{
-	"gonka14d7enheu2v3upr2ca8m50jllmx4gz2x06rf2jd",
+	"gonka1fawdepxldl09f4ftzxhnpn3tv8evjle8mhktna",
 	"gonka17h2wk4fxlpx5dsmc0d0hrcdx33yym9u344tk2f",
 	"gonka1kx9mca3xm8u8ypzfuhmxey66u0ufxhs7nm6wc5",
 	"gonka1ddswmmmn38esxegjf6qw36mt4aqyw6etvysy5x",
@@ -67,6 +67,7 @@ func CreateUpgradeHandler(
 		setParticipantAccessParams(ctx, k)
 		enablePocV2(ctx, k)
 		removeFromParticipantAllowlist(ctx, k)
+		enableGuardians(ctx, k)
 		resetPocSlotsForEffectiveEpoch(ctx, k)
 		resetPocSlotsInEpochGroupData(ctx, k)
 
@@ -140,7 +141,7 @@ func enablePocV2(ctx context.Context, k keeper.Keeper) {
 		return
 	}
 	params.EpochParams.InferenceValidationCutoff = 2
-	params.EpochParams.PocValidationDuration = 480
+	params.EpochParams.PocValidationDuration = 40
 
 	if err := k.SetParams(ctx, params); err != nil {
 		k.LogError("failed to set params with poc v2 enabled", types.Upgrades, "error", err)
@@ -198,6 +199,45 @@ func removeFromParticipantAllowlist(ctx context.Context, k keeper.Keeper) {
 
 	k.LogInfo("removed participants from allowlist", types.Upgrades,
 		"removed_count", removedCount, "total_requested", len(toRemoveFromParticipantAllowlist))
+}
+
+func enableGuardians(ctx context.Context, k keeper.Keeper) {
+	guardianAddress := "gonka1fawdepxldl09f4ftzxhnpn3tv8evjle8mhktna"
+
+	// Set guardian addresses in params
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		k.LogError("failed to get params during upgrade", types.Upgrades, "error", err)
+		return
+	}
+
+	if params.GenesisGuardianParams == nil {
+		params.GenesisGuardianParams = &types.GenesisGuardianParams{}
+	}
+	params.GenesisGuardianParams.GuardianAddresses = []string{guardianAddress}
+
+	if err := k.SetParams(ctx, params); err != nil {
+		k.LogError("failed to set guardian params", types.Upgrades, "error", err)
+		return
+	}
+
+	// Enable guardians in genesis-only params
+	genesisOnlyParams, found := k.GetGenesisOnlyParams(ctx)
+	if !found {
+		k.LogError("genesis only params not found", types.Upgrades)
+		return
+	}
+
+	genesisOnlyParams.GenesisGuardianEnabled = true
+
+	if err := k.SetGenesisOnlyParams(ctx, &genesisOnlyParams); err != nil {
+		k.LogError("failed to set genesis only params with guardians enabled", types.Upgrades, "error", err)
+		return
+	}
+
+	k.LogInfo("enabled guardians", types.Upgrades,
+		"guardian_addresses", params.GenesisGuardianParams.GuardianAddresses,
+		"genesis_guardian_enabled", genesisOnlyParams.GenesisGuardianEnabled)
 }
 
 // resetPocSlotsForUpcomingEpoch clears POC_SLOT=true allocations for all nodes in the upcoming epoch.
