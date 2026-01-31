@@ -12,10 +12,14 @@ import (
 const preservedModelId = "Qwen/Qwen3-235B-A22B-Instruct-2507-FP8"
 
 // allowedTransferAgents is the list of bech32 addresses allowed to act as Transfer Agents.
-// TODO: Fill in the actual addresses before deploying the upgrade.
 var allowedTransferAgents = []string{
-	// "inference1...",
-	// "inference1...",
+	"gonka1y2a9p56kv044327uycmqdexl7zs82fs5ryv5le",
+	"gonka1dkl4mah5erqggvhqkpc8j3qs5tyuetgdy552cp",
+	"gonka1kx9mca3xm8u8ypzfuhmxey66u0ufxhs7nm6wc5",
+	"gonka1ddswmmmn38esxegjf6qw36mt4aqyw6etvysy5x",
+	"gonka10fynmy2npvdvew0vj2288gz8ljfvmjs35lat8n",
+	"gonka1v8gk5z7gcv72447yfcd2y8g78qk05yc4f3nk4w",
+	"gonka1gndhek2h2y5849wf6tmw6gnw9qn4vysgljed0u",
 }
 
 func CreateUpgradeHandler(
@@ -32,6 +36,8 @@ func CreateUpgradeHandler(
 
 		removeNonQwen235BModels(ctx, k)
 		setAllowedTransferAgents(ctx, k)
+		setParticipantAccessParams(ctx, k)
+		enablePocV2(ctx, k)
 		resetPocSlotsForEffectiveEpoch(ctx, k)
 		resetPocSlotsInEpochGroupData(ctx, k)
 
@@ -82,6 +88,64 @@ func setAllowedTransferAgents(ctx context.Context, k keeper.Keeper) {
 	}
 
 	k.LogInfo("set allowed transfer agents", types.Upgrades, "count", len(allowedTransferAgents))
+}
+
+func enablePocV2(ctx context.Context, k keeper.Keeper) {
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		k.LogError("failed to get params during upgrade", types.Upgrades, "error", err)
+		return
+	}
+
+	if params.PocParams == nil {
+		k.LogError("poc params not initialized", types.Upgrades)
+		return
+	}
+
+	params.PocParams.PocV2Enabled = true
+	params.PocParams.ConfirmationPocV2Enabled = true
+	params.PocParams.WeightScaleFactor = &types.Decimal{Value: 262, Exponent: -3}
+
+	if params.EpochParams == nil {
+		k.LogError("epoch params not initialized", types.Upgrades)
+		return
+	}
+	params.EpochParams.InferenceValidationCutoff = 2
+
+	if err := k.SetParams(ctx, params); err != nil {
+		k.LogError("failed to set params with poc v2 enabled", types.Upgrades, "error", err)
+		return
+	}
+
+	k.LogInfo("enabled POC v2", types.Upgrades,
+		"poc_v2_enabled", params.PocParams.PocV2Enabled,
+		"confirmation_poc_v2_enabled", params.PocParams.ConfirmationPocV2Enabled,
+		"weight_scale_factor", 0.262,
+		"inference_validation_cutoff", params.EpochParams.InferenceValidationCutoff)
+}
+
+func setParticipantAccessParams(ctx context.Context, k keeper.Keeper) {
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		k.LogError("failed to get params during upgrade", types.Upgrades, "error", err)
+		return
+	}
+
+	if params.ParticipantAccessParams == nil {
+		params.ParticipantAccessParams = &types.ParticipantAccessParams{}
+	}
+
+	params.ParticipantAccessParams.NewParticipantRegistrationStartHeight = 2475000
+	params.ParticipantAccessParams.ParticipantAllowlistUntilBlockHeight = 2475000
+
+	if err := k.SetParams(ctx, params); err != nil {
+		k.LogError("failed to set participant access params", types.Upgrades, "error", err)
+		return
+	}
+
+	k.LogInfo("set participant access params", types.Upgrades,
+		"new_participant_registration_start_height", params.ParticipantAccessParams.NewParticipantRegistrationStartHeight,
+		"participant_allowlist_until_block_height", params.ParticipantAccessParams.ParticipantAllowlistUntilBlockHeight)
 }
 
 // resetPocSlotsForUpcomingEpoch clears POC_SLOT=true allocations for all nodes in the upcoming epoch.
