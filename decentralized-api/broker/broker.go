@@ -1028,7 +1028,7 @@ func (b *Broker) enforceSingleModelOnAllNodes() {
 
 // enforceModelToEpochStates enforces the configured model to all nodes' EpochModels.
 // Called after populating from chain to ensure correct model is used.
-// Must be called while NOT holding b.mu lock.
+// queryNodeStatus will detect model mismatch and trigger redeploy.
 func (b *Broker) enforceModelToEpochStates() {
 	enforcedModelId, enforcedArgs := getEnforcedModel()
 	if enforcedModelId == "" {
@@ -1050,6 +1050,7 @@ func (b *Broker) enforceModelToEpochStates() {
 
 // enforceModelToSingleNode enforces the configured model to a single node's EpochModels.
 // Called after populating a single node from chain.
+// queryNodeStatus will detect model mismatch and trigger redeploy.
 func (b *Broker) enforceModelToSingleNode(nodeId string) {
 	enforcedModelId, enforcedArgs := getEnforcedModel()
 	if enforcedModelId == "" {
@@ -1444,6 +1445,25 @@ func (b *Broker) queryNodeStatus(node Node, state NodeState) (*statusQueryResult
 			if !ok || err != nil {
 				currentStatus = types.HardwareNodeStatus_FAILED
 				logging.Info("queryNodeStatus. Node inference health check failed", types.Nodes, "nodeId", nodeId, "currentStatus", currentStatus.String(), "prevStatus", prevStatus.String(), "err", err)
+			}
+		}
+		// Model check only if still INFERENCE (healthy)
+		if currentStatus == types.HardwareNodeStatus_INFERENCE {
+			var expectedModel string
+			for modelId := range state.EpochModels {
+				expectedModel = modelId
+				break
+			}
+			if expectedModel != "" {
+				mctx, mcancel := context.WithTimeout(context.Background(), nodeStatusRequestTimeout)
+				defer mcancel()
+				if loadedModels, err := client.GetLoadedModels(mctx); err != nil {
+					logging.Debug("queryNodeStatus. GetLoadedModels failed", types.Nodes, "nodeId", nodeId, "error", err)
+				} else if len(loadedModels) > 0 && loadedModels[0] != expectedModel {
+					currentStatus = types.HardwareNodeStatus_FAILED
+					logging.Info("queryNodeStatus. Model mismatch detected", types.Nodes,
+						"nodeId", nodeId, "loaded", loadedModels[0], "expected", expectedModel)
+				}
 			}
 		}
 	}
