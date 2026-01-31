@@ -21,7 +21,6 @@ type ChainPhaseTracker struct {
 	activeConfirmationPoCEvent *types.ConfirmationPoCEvent
 	pocV2Enabled               bool // cached from PocParams.PocV2Enabled, default false (set from chain)
 	confirmationPocV2Enabled   bool // cached from PocParams.ConfirmationPocV2Enabled, default true
-	pocV2CacheRefreshed        bool // tracks if epoch cache was refreshed after V2 enabled
 }
 
 type BlockInfo struct {
@@ -33,7 +32,6 @@ type BlockInfo struct {
 func NewChainPhaseTracker() *ChainPhaseTracker {
 	return &ChainPhaseTracker{
 		pocV2Enabled:             false, // Start false, will be set from chain params
-		pocV2CacheRefreshed:      false, // Will be set true after cache refresh when V2 enabled
 		confirmationPocV2Enabled: true,  // V2 is default going forward
 	}
 }
@@ -135,18 +133,4 @@ func (t *ChainPhaseTracker) IsConfirmationPoCv2Enabled() bool {
 	defer t.mu.RUnlock()
 
 	return t.confirmationPocV2Enabled
-}
-
-func (t *ChainPhaseTracker) NeedsPocV2CacheRefresh() bool {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-
-	return t.pocV2Enabled && !t.pocV2CacheRefreshed
-}
-
-func (t *ChainPhaseTracker) ConfirmPocV2CacheRefreshed() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	t.pocV2CacheRefreshed = true
 }

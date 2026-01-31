@@ -1026,6 +1026,49 @@ func (b *Broker) enforceSingleModelOnAllNodes() {
 	}
 }
 
+// enforceModelToEpochStates enforces the configured model to all nodes' EpochModels.
+// Called after populating from chain to ensure correct model is used.
+// Must be called while NOT holding b.mu lock.
+func (b *Broker) enforceModelToEpochStates() {
+	enforcedModelId, enforcedArgs := getEnforcedModel()
+	if enforcedModelId == "" {
+		return
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	for id, node := range b.nodes {
+		if _, hasModel := node.State.EpochModels[enforcedModelId]; !hasModel {
+			node.State.EpochModels = map[string]types.Model{
+				enforcedModelId: {Id: enforcedModelId, ModelArgs: enforcedArgs},
+			}
+			logging.Info("Enforced model to node state", types.Upgrades, "node_id", id)
+		}
+	}
+}
+
+// enforceModelToSingleNode enforces the configured model to a single node's EpochModels.
+// Called after populating a single node from chain.
+func (b *Broker) enforceModelToSingleNode(nodeId string) {
+	enforcedModelId, enforcedArgs := getEnforcedModel()
+	if enforcedModelId == "" {
+		return
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if node, ok := b.nodes[nodeId]; ok {
+		if _, hasModel := node.State.EpochModels[enforcedModelId]; !hasModel {
+			node.State.EpochModels = map[string]types.Model{
+				enforcedModelId: {Id: enforcedModelId, ModelArgs: enforcedArgs},
+			}
+			logging.Info("Enforced model to node state", types.Upgrades, "node_id", nodeId)
+		}
+	}
+}
+
 func (b *Broker) reconcile(epochState chainphase.EpochState) {
 	blockHeight := epochState.CurrentBlock.Height
 
@@ -1426,23 +1469,6 @@ func toStatus(response mlnodeclient.StateResponse) types.HardwareNodeStatus {
 	}
 }
 
-func (b *Broker) ForceRefreshEpochCache() error {
-	b.mu.Lock()
-	b.lastEpochIndex = 0
-	b.lastEpochPhase = types.EpochPhase("")
-	b.mu.Unlock()
-
-	epochState := b.phaseTracker.GetCurrentEpochState()
-	if epochState == nil || epochState.IsNilOrNotSynced() {
-		return errors.New("epoch state not available for cache refresh")
-	}
-
-	logging.Info("ForceRefreshEpochCache", types.Upgrades,
-		"epoch", epochState.LatestEpoch.EpochIndex, "phase", epochState.CurrentPhase)
-
-	return b.UpdateNodeWithEpochData(epochState)
-}
-
 // UpdateNodeWithEpochData queries the current epoch group data from the chain
 // and populates the NodeState with the epoch-specific model and MLNode info.
 // It only performs the update if the epoch index or phase has changed.
@@ -1529,6 +1555,9 @@ func (b *Broker) UpdateNodeWithEpochData(epochState *chainphase.EpochState) erro
 		}
 	}
 
+	// Enforce model on all node states after populating from chain
+	b.enforceModelToEpochStates()
+
 	return nil
 }
 
@@ -1578,7 +1607,11 @@ func (b *Broker) PopulateSingleNodeEpochData(nodeId string) error {
 	}
 	if parentGroupResp == nil || len(parentGroupResp.EpochGroupData.SubGroupModels) == 0 {
 		logging.Warn("Parent epoch group data is empty, will use governance models", types.Nodes, "node_id", nodeId)
-		return b.populateNodeWithGovernanceModels(nodeId)
+		if err := b.populateNodeWithGovernanceModels(nodeId); err != nil {
+			return err
+		}
+		b.enforceModelToSingleNode(nodeId)
+		return nil
 	}
 
 	parentEpochData := parentGroupResp.GetEpochGroupData()
@@ -1620,8 +1653,13 @@ func (b *Broker) PopulateSingleNodeEpochData(nodeId string) error {
 	// If node not found in epoch data, populate with governance models
 	if !foundInEpoch {
 		logging.Info("Node not found in current epoch data, populating with governance models", types.Nodes, "node_id", nodeId)
-		return b.populateNodeWithGovernanceModels(nodeId)
+		if err := b.populateNodeWithGovernanceModels(nodeId); err != nil {
+			return err
+		}
 	}
+
+	// Enforce model on this node's state
+	b.enforceModelToSingleNode(nodeId)
 
 	return nil
 }
