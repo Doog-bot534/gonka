@@ -14,8 +14,8 @@ const preservedModelId = "Qwen/Qwen3-4B-Instruct-2507"
 
 // allowedTransferAgents is the list of bech32 addresses allowed to act as Transfer Agents.
 var allowedTransferAgents = []string{
-	"gonka1y2a9p56kv044327uycmqdexl7zs82fs5ryv5le",
-	"gonka1dkl4mah5erqggvhqkpc8j3qs5tyuetgdy552cp",
+	"gonka14d7enheu2v3upr2ca8m50jllmx4gz2x06rf2jd",
+	"gonka17h2wk4fxlpx5dsmc0d0hrcdx33yym9u344tk2f",
 	"gonka1kx9mca3xm8u8ypzfuhmxey66u0ufxhs7nm6wc5",
 	"gonka1ddswmmmn38esxegjf6qw36mt4aqyw6etvysy5x",
 	"gonka10fynmy2npvdvew0vj2288gz8ljfvmjs35lat8n",
