@@ -12,7 +12,6 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/productscience/inference/x/inference/calculations"
 	"github.com/productscience/inference/x/inference/types"
-	"github.com/productscience/inference/x/inference/utils"
 	"github.com/shopspring/decimal"
 )
 
@@ -503,22 +502,8 @@ func (am AppModule) updateConfirmationWeightsV2(
 	guardianAddrs := am.keeper.GetGenesisGuardianAddresses(ctx)
 	guardianSet := make(map[string]bool, len(guardianAddrs))
 	for _, addr := range guardianAddrs {
-		accAddr, err := utils.OperatorAddressToAccAddress(addr)
-		if err != nil {
-			am.LogWarn("calculateConfirmationPoCWeight: Failed to convert guardian address", types.PoC,
-				"operatorAddress", addr, "error", err)
-			continue
-		}
-		guardianSet[accAddr] = true
+		guardianSet[addr] = true
 	}
-
-	guardianAccAddrs := make([]string, 0, len(guardianSet))
-	for addr := range guardianSet {
-		guardianAccAddrs = append(guardianAccAddrs, addr)
-	}
-	am.LogInfo("calculateConfirmationPoCWeight: Resolved guardian addresses", types.PoC,
-		"guardianEnabled", guardianEnabled,
-		"guardianAccAddrs", guardianAccAddrs)
 
 	// Create WeightCalculator with store commits and distributions
 	calculator := NewWeightCalculator(
