@@ -460,14 +460,17 @@ func TestCalculateParticipantBitcoinRewards(t *testing.T) {
 		// Valid participant gets all rewards (since they have all the PoC weight)
 		p2Result := results[1]
 		require.NoError(t, p2Result.Error)
-		require.Equal(t, uint64(1000), p2Result.Settle.WorkCoins)  // Valid participant gets WorkCoins
-		require.Greater(t, p2Result.Settle.RewardCoins, uint64(0)) // Valid participant gets all RewardCoins
+		require.Equal(t, uint64(1000), p2Result.Settle.WorkCoins)                    // Valid participant gets WorkCoins
+		require.Equal(t, bitcoinResult.Amount/2, int64(p2Result.Settle.RewardCoins)) // Valid participant gets all RewardCoins
 
-		// Valid participant gets all rewards (since they have all the PoC weight)
+		// Inactive participant gets no rewards
 		p3Result := results[2]
 		require.NoError(t, p3Result.Error)
 		require.Equal(t, uint64(0), p3Result.Settle.WorkCoins)   // Valid participant gets WorkCoins
 		require.Equal(t, uint64(0), p3Result.Settle.RewardCoins) // Valid participant gets all RewardCoins
+
+		// Governance gets remainder
+		require.Equal(t, bitcoinResult.Amount/2, bitcoinResult.GovernanceAmount)
 
 	})
 
