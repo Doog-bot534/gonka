@@ -231,23 +231,6 @@ func (am AppModule) expireInferenceAndIssueRefund(ctx context.Context, inference
 	return inference
 }
 
-func (am AppModule) handleExpiredInference(ctx context.Context, inference types.Inference) {
-	executor, found := am.keeper.GetParticipant(ctx, inference.AssignedTo)
-	if !found {
-		am.LogWarn("Unable to find participant for expired inference", types.Inferences, "inferenceId", inference.InferenceId, "executedBy", inference.ExecutedBy)
-		return
-	}
-	am.LogInfo("Inference expired, not finished. Issuing refund", types.Inferences, "inferenceId", inference.InferenceId, "executor", inference.AssignedTo)
-
-	inference = am.expireInferenceAndIssueRefund(ctx, inference)
-
-	executor.CurrentEpochStats.MissedRequests++
-	err := am.keeper.SetParticipant(ctx, executor)
-	if err != nil {
-		am.LogError("Error updating participant for expired inference", types.Participants, "error", err)
-	}
-}
-
 func (am AppModule) handleExpiredInferenceWithContext(ctx context.Context, inference types.Inference, expiryCtx *InferenceExpiryContext) {
 	executor, found := am.keeper.GetParticipant(ctx, inference.AssignedTo)
 	if !found {
@@ -260,6 +243,7 @@ func (am AppModule) handleExpiredInferenceWithContext(ctx context.Context, infer
 	epochToCheck := expiryCtx.GetEpochForInference(ctx, am.keeper, inference)
 	if epochToCheck == nil {
 		am.LogWarn("No epoch available for expired inference check", types.Inferences, "inferenceId", inference.InferenceId)
+		am.expireInferenceAndIssueRefund(ctx, inference)
 		return
 	}
 
@@ -274,6 +258,7 @@ func (am AppModule) handleExpiredInferenceWithContext(ctx context.Context, infer
 	if activeParticipants == nil {
 		am.LogWarn("No active participants available for expired inference check", types.Inferences,
 			"inferenceId", inference.InferenceId, "epochIndex", epochToCheck.Index)
+		am.expireInferenceAndIssueRefund(ctx, inference)
 		return
 	}
 
