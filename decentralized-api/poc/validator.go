@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"slices"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"decentralized-api/mlnodeclient"
 
 	"github.com/productscience/inference/api/inference/inference"
+	"github.com/productscience/inference/x/inference/calculations"
 	"github.com/productscience/inference/x/inference/types"
 )
 
@@ -164,9 +166,46 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 	logging.Info("OffChainValidator: found participants with commits", types.PoC,
 		"count", len(commitsResp.Commits))
 
+	// Query validation snapshot for sampling (if enabled)
+	validationSlots := int(pocParams.ValidationSlots)
+	var snapshotWeights map[string]int64
+	var snapshotAppHash string
+	if validationSlots > 0 {
+		snapshotResp, err := queryClient.PoCValidationSnapshot(context.Background(),
+			&types.QueryPoCValidationSnapshotRequest{
+				PocStageStartHeight: pocStageStartBlockHeight,
+			})
+		if err != nil {
+			logging.Error("OffChainValidator: failed to query validation snapshot", types.PoC, "error", err)
+			return
+		}
+		if snapshotResp.Found && snapshotResp.Snapshot != nil {
+			snapshotWeights = validatorWeightsSliceToMap(snapshotResp.Snapshot.ValidatorWeights)
+			snapshotAppHash = snapshotResp.Snapshot.AppHash
+			logging.Info("OffChainValidator: using validation snapshot for sampling", types.PoC,
+				"appHash", snapshotAppHash,
+				"validationSlots", validationSlots,
+				"numValidators", len(snapshotWeights),
+			)
+		} else {
+			logging.Warn("OffChainValidator: validation snapshot not found, falling back to all participants", types.PoC)
+			validationSlots = 0 // Disable sampling
+		}
+	}
+
 	// Build work items with participant URLs
 	workItems := make([]participantWork, 0, len(commitsResp.Commits))
+	skippedNotAssigned := 0
 	for _, commit := range commitsResp.Commits {
+		// If sampling is enabled, check if we're assigned to validate this participant
+		if validationSlots > 0 && snapshotWeights != nil {
+			assignedValidators := calculations.GetSlots(snapshotAppHash, commit.ParticipantAddress, snapshotWeights, validationSlots)
+			if !slices.Contains(assignedValidators, v.pubKey) {
+				skippedNotAssigned++
+				continue
+			}
+		}
+
 		// Get participant's inference URL
 		participantResp, err := queryClient.Participant(context.Background(),
 			&types.QueryGetParticipantRequest{Index: commit.ParticipantAddress})
@@ -196,6 +235,14 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 			count:    commit.Count,
 			rootHash: commit.RootHash,
 		})
+	}
+
+	if validationSlots > 0 {
+		logging.Info("OffChainValidator: filtered work items by sampling", types.PoC,
+			"totalCommits", len(commitsResp.Commits),
+			"assignedToUs", len(workItems),
+			"skippedNotAssigned", skippedNotAssigned,
+		)
 	}
 
 	if len(workItems) == 0 {
@@ -707,4 +754,12 @@ func (v *OffChainValidator) reportInvalidParticipant(pocHeight int64, participan
 		logging.Info("OffChainValidator: reported participant as invalid", types.PoC,
 			"participant", participantAddress)
 	}
+}
+
+func validatorWeightsSliceToMap(weights []*types.ValidatorWeight) map[string]int64 {
+	result := make(map[string]int64, len(weights))
+	for _, w := range weights {
+		result[w.Address] = w.Weight
+	}
+	return result
 }

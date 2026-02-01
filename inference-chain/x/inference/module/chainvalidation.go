@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	mathsdk "cosmossdk.io/math"
+	"github.com/productscience/inference/x/inference/calculations"
 	"github.com/productscience/inference/x/inference/types"
 )
 
@@ -25,6 +26,8 @@ type WeightCalculator struct {
 	WeightScaleFactor       mathsdk.LegacyDec
 	GuardianEnabled         bool
 	GuardianAddresses       map[string]bool
+	AppHash                 string
+	ValidationSlots         int
 }
 
 // NewWeightCalculator creates a new WeightCalculator instance.
@@ -40,6 +43,8 @@ func NewWeightCalculator(
 	weightScaleFactor mathsdk.LegacyDec,
 	guardianEnabled bool,
 	guardianAddresses map[string]bool,
+	appHash string,
+	validationSlots int,
 ) *WeightCalculator {
 	return &WeightCalculator{
 		CurrentValidatorWeights: currentValidatorWeights,
@@ -53,6 +58,8 @@ func NewWeightCalculator(
 		WeightScaleFactor:       weightScaleFactor,
 		GuardianEnabled:         guardianEnabled,
 		GuardianAddresses:       guardianAddresses,
+		AppHash:                 appHash,
+		ValidationSlots:         validationSlots,
 	}
 }
 
@@ -172,108 +179,153 @@ func (wc *WeightCalculator) getParticipantValidations(participantAddress string)
 }
 
 // pocValidated checks if the participant passed validation by majority vote.
-// Uses validated_weight semantics:
-// - validated_weight > 0 -> valid vote (passed validation)
-// - validated_weight <= 0 -> invalid vote (fraud/failure detected)
+// When ValidationSlots > 0, uses sampled validator subset for O(N * N_SLOTS) complexity.
+// When ValidationSlots == 0, falls back to O(N²) all-validator validation.
 func (wc *WeightCalculator) pocValidated(vals []types.PoCValidationV2, participantAddress string) bool {
-	totalWeight := calculateTotalWeight(wc.CurrentValidatorWeights)
-	halfWeight := int64(totalWeight / 2)
-	shouldContinue := false
-
-	if len(wc.CurrentValidatorWeights) > 0 {
-		valOutcome := calculateValidationOutcome(wc.CurrentValidatorWeights, vals)
-		votedWeight := valOutcome.ValidWeight + valOutcome.InvalidWeight
-		if valOutcome.ValidWeight > halfWeight {
-			shouldContinue = true
-			wc.Logger.LogInfo("Calculate: Participant received valid validations from more than half of participants by weight. Accepting",
-				types.PoC, "participant", participantAddress,
-				"validWeight", valOutcome.ValidWeight,
-				"invalidWeight", valOutcome.InvalidWeight,
-				"votedWeight", votedWeight,
-				"totalWeight", totalWeight,
-				"halfWeight", halfWeight,
-			)
-		} else if valOutcome.InvalidWeight > halfWeight {
-			shouldContinue = false
-			wc.Logger.LogWarn("Calculate: Participant received invalid validations from more than half of participants by weight. Rejecting",
-				types.PoC, "participant", participantAddress,
-				"validWeight", valOutcome.ValidWeight,
-				"invalidWeight", valOutcome.InvalidWeight,
-				"votedWeight", votedWeight,
-				"totalWeight", totalWeight,
-				"halfWeight", halfWeight,
-			)
-		} else {
-			shouldContinue = false
-			guardianValidCount := 0
-			guardianInvalidCount := 0
-
-			if wc.GuardianEnabled && len(wc.GuardianAddresses) > 0 {
-				for _, v := range vals {
-					if wc.GuardianAddresses[v.ValidatorParticipantAddress] {
-						if v.ValidatedWeight > 0 {
-							guardianValidCount++
-						} else {
-							guardianInvalidCount++
-						}
-					}
-				}
-
-				// Guardian tiebreaker: all voting guardians must agree
-				if guardianValidCount > 0 && guardianInvalidCount == 0 {
-					shouldContinue = true
-					wc.Logger.LogInfo("Calculate: Guardian tiebreaker - unanimous valid. Accepting.",
-						types.PoC, "participant", participantAddress,
-						"validWeight", valOutcome.ValidWeight,
-						"invalidWeight", valOutcome.InvalidWeight,
-						"votedWeight", votedWeight,
-						"totalWeight", totalWeight,
-						"halfWeight", halfWeight,
-						"guardianValidCount", guardianValidCount,
-						"guardianInvalidCount", guardianInvalidCount,
-					)
-				} else if guardianInvalidCount > 0 && guardianValidCount == 0 {
-					wc.Logger.LogWarn("Calculate: Guardian tiebreaker - unanimous invalid. Rejecting.",
-						types.PoC, "participant", participantAddress,
-						"validWeight", valOutcome.ValidWeight,
-						"invalidWeight", valOutcome.InvalidWeight,
-						"votedWeight", votedWeight,
-						"totalWeight", totalWeight,
-						"halfWeight", halfWeight,
-						"guardianValidCount", guardianValidCount,
-						"guardianInvalidCount", guardianInvalidCount,
-					)
-				} else {
-					wc.Logger.LogWarn("Calculate: No majority and guardians did not reach consensus. Rejecting.",
-						types.PoC, "participant", participantAddress,
-						"validWeight", valOutcome.ValidWeight,
-						"invalidWeight", valOutcome.InvalidWeight,
-						"votedWeight", votedWeight,
-						"totalWeight", totalWeight,
-						"halfWeight", halfWeight,
-						"guardianValidCount", guardianValidCount,
-						"guardianInvalidCount", guardianInvalidCount,
-					)
-				}
-			} else {
-				wc.Logger.LogWarn("Calculate: Participant did not receive a majority of either valid or invalid validations. Rejecting.",
-					types.PoC, "participant", participantAddress,
-					"validWeight", valOutcome.ValidWeight,
-					"invalidWeight", valOutcome.InvalidWeight,
-					"votedWeight", votedWeight,
-					"totalWeight", totalWeight,
-					"halfWeight", halfWeight,
-				)
-			}
-		}
-	} else {
-		shouldContinue = true
+	if len(wc.CurrentValidatorWeights) == 0 {
 		if wc.EpochStartBlockHeight > 0 {
 			wc.Logger.LogError("Calculate: No current validator weights found. Accepting the participant.", types.PoC, "participant", participantAddress)
 		}
+		return true
 	}
 
-	return shouldContinue
+	assignedValidators := wc.getAssignedValidators(participantAddress)
+	outcome := wc.calculateAssignedOutcome(vals, assignedValidators)
+	halfWeight := outcome.TotalWeight / 2
+
+	if outcome.ValidWeight > halfWeight {
+		wc.Logger.LogInfo("Calculate: Valid majority. Accepting.", types.PoC,
+			"participant", participantAddress,
+			"validWeight", outcome.ValidWeight,
+			"invalidWeight", outcome.InvalidWeight,
+			"totalWeight", outcome.TotalWeight,
+			"sampled", assignedValidators != nil,
+		)
+		return true
+	}
+
+	if outcome.InvalidWeight > halfWeight {
+		wc.Logger.LogWarn("Calculate: Invalid majority. Rejecting.", types.PoC,
+			"participant", participantAddress,
+			"validWeight", outcome.ValidWeight,
+			"invalidWeight", outcome.InvalidWeight,
+			"totalWeight", outcome.TotalWeight,
+			"sampled", assignedValidators != nil,
+		)
+		return false
+	}
+
+	return wc.guardianProtection(vals, participantAddress, outcome)
+}
+
+// getAssignedValidators returns the sampled validator addresses for a participant.
+// Returns nil when sampling is disabled (ValidationSlots == 0), triggering O(N²) fallback.
+func (wc *WeightCalculator) getAssignedValidators(participantAddress string) []string {
+	if wc.ValidationSlots == 0 {
+		return nil
+	}
+	return calculations.GetSlots(wc.AppHash, participantAddress, wc.CurrentValidatorWeights, wc.ValidationSlots)
+}
+
+// ValidationOutcome holds aggregated vote counts.
+// When using slot-based sampling, these are slot counts (each slot = 1).
+// When using O(N²) fallback, these are weight sums.
+type ValidationOutcome struct {
+	TotalWeight   int64
+	ValidWeight   int64
+	InvalidWeight int64
+}
+
+// calculateAssignedOutcome computes vote counts from assigned slots.
+// When assignedValidators is nil, uses O(N²) fallback with weight-based counting.
+// When assignedValidators is set, counts slots (each slot = 1) since weight is
+// already encoded in how many slots each validator receives.
+func (wc *WeightCalculator) calculateAssignedOutcome(vals []types.PoCValidationV2, assignedValidators []string) ValidationOutcome {
+	if assignedValidators == nil {
+		outcome := calculateValidationOutcome(wc.CurrentValidatorWeights, vals)
+		totalWeight := calculateTotalWeight(wc.CurrentValidatorWeights)
+		return ValidationOutcome{
+			TotalWeight:   int64(totalWeight),
+			ValidWeight:   outcome.ValidWeight,
+			InvalidWeight: outcome.InvalidWeight,
+		}
+	}
+
+	// Build map of validator address -> vote (positive = valid, zero/negative = invalid)
+	voteMap := make(map[string]int64)
+	for _, v := range vals {
+		voteMap[v.ValidatorParticipantAddress] = v.ValidatedWeight
+	}
+
+	// Count slots. Each slot = 1 (weight is already in slot distribution).
+	// Same validator can appear multiple times if they have high weight.
+	var totalSlots, validSlots, invalidSlots int64
+	for _, slotValidator := range assignedValidators {
+		vote, hasVote := voteMap[slotValidator]
+		if !hasVote {
+			continue // Validator didn't submit a vote for this participant
+		}
+		totalSlots++
+		if vote > 0 {
+			validSlots++
+		} else {
+			invalidSlots++
+		}
+	}
+
+	return ValidationOutcome{
+		TotalWeight:   totalSlots,
+		ValidWeight:   validSlots,
+		InvalidWeight: invalidSlots,
+	}
+}
+
+// guardianProtection handles tie-breaking when no clear majority exists.
+// All voting guardians must agree unanimously for the decision to pass.
+func (wc *WeightCalculator) guardianProtection(vals []types.PoCValidationV2, participantAddr string, outcome ValidationOutcome) bool {
+	if !wc.GuardianEnabled || len(wc.GuardianAddresses) == 0 {
+		wc.Logger.LogWarn("Calculate: No majority and no guardians. Rejecting.", types.PoC,
+			"participant", participantAddr,
+			"validWeight", outcome.ValidWeight,
+			"invalidWeight", outcome.InvalidWeight,
+			"totalWeight", outcome.TotalWeight,
+		)
+		return false
+	}
+
+	guardianValidCount, guardianInvalidCount := 0, 0
+	for _, v := range vals {
+		if wc.GuardianAddresses[v.ValidatorParticipantAddress] {
+			if v.ValidatedWeight > 0 {
+				guardianValidCount++
+			} else {
+				guardianInvalidCount++
+			}
+		}
+	}
+
+	if guardianValidCount > 0 && guardianInvalidCount == 0 {
+		wc.Logger.LogInfo("Calculate: Guardian tiebreaker - unanimous valid. Accepting.", types.PoC,
+			"participant", participantAddr,
+			"guardianValidCount", guardianValidCount,
+		)
+		return true
+	}
+
+	if guardianInvalidCount > 0 && guardianValidCount == 0 {
+		wc.Logger.LogWarn("Calculate: Guardian tiebreaker - unanimous invalid. Rejecting.", types.PoC,
+			"participant", participantAddr,
+			"guardianInvalidCount", guardianInvalidCount,
+		)
+		return false
+	}
+
+	wc.Logger.LogWarn("Calculate: No majority and guardians split. Rejecting.", types.PoC,
+		"participant", participantAddr,
+		"guardianValidCount", guardianValidCount,
+		"guardianInvalidCount", guardianInvalidCount,
+	)
+	return false
 }
 
 type nodeWeight struct {
@@ -806,6 +858,19 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 		guardianSet[addr] = true
 	}
 
+	// Get validation snapshot for sampling (if enabled)
+	var appHash string
+	var validationSlots int
+	snapshot, snapshotFound, _ := am.keeper.GetPoCValidationSnapshot(ctx, epochStartBlockHeight)
+	if snapshotFound {
+		appHash = snapshot.AppHash
+		validationSlots = int(params.PocParams.ValidationSlots)
+		am.LogInfo("ComputeNewWeights: Using validation snapshot for sampling", types.PoC,
+			"appHash", appHash,
+			"validationSlots", validationSlots,
+		)
+	}
+
 	calculator := NewWeightCalculator(
 		currentValidatorWeights,
 		allowedCommits,
@@ -818,6 +883,8 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 		weightScaleFactor,
 		guardianEnabled,
 		guardianSet,
+		appHash,
+		validationSlots,
 	)
 	pocMiningParticipants := calculator.Calculate()
 
