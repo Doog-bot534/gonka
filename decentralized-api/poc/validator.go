@@ -176,10 +176,10 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 				PocStageStartHeight: pocStageStartBlockHeight,
 			})
 		if err != nil {
-			logging.Error("OffChainValidator: failed to query validation snapshot", types.PoC, "error", err)
-			return
-		}
-		if snapshotResp.Found && snapshotResp.Snapshot != nil {
+			logging.Warn("OffChainValidator: failed to query validation snapshot, falling back to O(N^2)", types.PoC,
+				"error", err)
+			validationSlots = 0 // Disable sampling on error
+		} else if snapshotResp.Found && snapshotResp.Snapshot != nil {
 			snapshotWeights = validatorWeightsSliceToMap(snapshotResp.Snapshot.ValidatorWeights)
 			snapshotAppHash = snapshotResp.Snapshot.AppHash
 			logging.Info("OffChainValidator: using validation snapshot for sampling", types.PoC,
@@ -188,7 +188,7 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 				"numValidators", len(snapshotWeights),
 			)
 		} else {
-			logging.Warn("OffChainValidator: validation snapshot not found, falling back to all participants", types.PoC)
+			logging.Warn("OffChainValidator: validation snapshot not found, falling back to O(N^2)", types.PoC)
 			validationSlots = 0 // Disable sampling
 		}
 	}

@@ -519,10 +519,20 @@ func (am AppModule) updateConfirmationWeightsV2(
 
 	var appHash string
 	var validationSlots int
-	snapshot, snapshotFound, _ := am.keeper.GetPoCValidationSnapshot(ctx, event.TriggerHeight)
-	if snapshotFound {
-		appHash = snapshot.AppHash
-		validationSlots = int(params.PocParams.ValidationSlots)
+	if params.PocParams.ValidationSlots > 0 {
+		snapshot, snapshotFound, _ := am.keeper.GetPoCValidationSnapshot(ctx, event.TriggerHeight)
+		if snapshotFound {
+			appHash = snapshot.AppHash
+			validationSlots = int(params.PocParams.ValidationSlots)
+			am.LogInfo("updateConfirmationWeightsV2: Using validation snapshot for sampling", types.PoC,
+				"appHash", appHash,
+				"validationSlots", validationSlots,
+			)
+		} else {
+			am.LogWarn("updateConfirmationWeightsV2: Validation snapshot not found, falling back to O(N^2)", types.PoC,
+				"triggerHeight", event.TriggerHeight,
+			)
+		}
 	}
 
 	// Create WeightCalculator with store commits and distributions

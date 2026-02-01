@@ -861,14 +861,20 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 	// Get validation snapshot for sampling (if enabled)
 	var appHash string
 	var validationSlots int
-	snapshot, snapshotFound, _ := am.keeper.GetPoCValidationSnapshot(ctx, epochStartBlockHeight)
-	if snapshotFound {
-		appHash = snapshot.AppHash
-		validationSlots = int(params.PocParams.ValidationSlots)
-		am.LogInfo("ComputeNewWeights: Using validation snapshot for sampling", types.PoC,
-			"appHash", appHash,
-			"validationSlots", validationSlots,
-		)
+	if params.PocParams.ValidationSlots > 0 {
+		snapshot, snapshotFound, _ := am.keeper.GetPoCValidationSnapshot(ctx, epochStartBlockHeight)
+		if snapshotFound {
+			appHash = snapshot.AppHash
+			validationSlots = int(params.PocParams.ValidationSlots)
+			am.LogInfo("ComputeNewWeights: Using validation snapshot for sampling", types.PoC,
+				"appHash", appHash,
+				"validationSlots", validationSlots,
+			)
+		} else {
+			am.LogWarn("ComputeNewWeights: Validation snapshot not found, falling back to O(N^2)", types.PoC,
+				"epochStartBlockHeight", epochStartBlockHeight,
+			)
+		}
 	}
 
 	calculator := NewWeightCalculator(

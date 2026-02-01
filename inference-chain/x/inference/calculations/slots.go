@@ -18,7 +18,7 @@ type slotRandom struct {
 }
 
 // GetSlots returns deterministically sampled validators for a participant using weighted random selection.
-// Matches the Python reference implementation in proposals/poc/optimize.py.
+// Returns nil if weights is empty, nSlots is 0, or all weights are non-positive.
 func GetSlots(appHash, participantAddress string, weights map[string]int64, nSlots int) []string {
 	if len(weights) == 0 || nSlots == 0 {
 		return nil
@@ -27,10 +27,13 @@ func GetSlots(appHash, participantAddress string, weights map[string]int64, nSlo
 	entries := make([]weightEntry, 0, len(weights))
 	var totalWeight int64
 	for addr, w := range weights {
+		if w <= 0 {
+			continue // Skip non-positive weights
+		}
 		entries = append(entries, weightEntry{addr, w})
 		totalWeight += w
 	}
-	if totalWeight == 0 {
+	if totalWeight == 0 || len(entries) == 0 {
 		return nil
 	}
 
@@ -65,6 +68,7 @@ func GetSlots(appHash, participantAddress string, weights map[string]int64, nSlo
 }
 
 // GetSlot returns a single slot by index.
+// Returns empty string if weights is empty or all weights are non-positive.
 func GetSlot(appHash, participantAddress string, weights map[string]int64, slotIdx int) string {
 	if len(weights) == 0 {
 		return ""
@@ -73,10 +77,13 @@ func GetSlot(appHash, participantAddress string, weights map[string]int64, slotI
 	entries := make([]weightEntry, 0, len(weights))
 	var totalWeight int64
 	for addr, w := range weights {
+		if w <= 0 {
+			continue // Skip non-positive weights
+		}
 		entries = append(entries, weightEntry{addr, w})
 		totalWeight += w
 	}
-	if totalWeight == 0 {
+	if totalWeight == 0 || len(entries) == 0 {
 		return ""
 	}
 
