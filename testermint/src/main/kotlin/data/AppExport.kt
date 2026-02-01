@@ -266,7 +266,7 @@ data class PocParams(
     @SerializedName("stat_test")
     val statTest: PoCStatTestParams? = null,
     @SerializedName("validation_slots")
-    val validationSlots: Long = 3,
+    val validationSlots: Long = 2,
 )
 
 data class PoCStatTestParams(
