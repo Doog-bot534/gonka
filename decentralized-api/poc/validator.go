@@ -24,12 +24,13 @@ import (
 
 // OffChainValidator handles off-chain PoC validation using MMR proofs.
 type OffChainValidator struct {
-	recorder     cosmosclient.CosmosMessageClient
-	nodeBroker   *broker.Broker
-	phaseTracker *chainphase.ChainPhaseTracker
-	callbackUrl  string
-	pubKey       string
-	chainNodeUrl string
+	recorder         cosmosclient.CosmosMessageClient
+	nodeBroker       *broker.Broker
+	phaseTracker     *chainphase.ChainPhaseTracker
+	callbackUrl      string
+	pubKey           string
+	validatorAddress string
+	chainNodeUrl     string
 
 	config ValidationConfig
 }
@@ -79,17 +80,19 @@ func NewOffChainValidator(
 	phaseTracker *chainphase.ChainPhaseTracker,
 	callbackUrl string,
 	pubKey string,
+	validatorAddress string,
 	chainNodeUrl string,
 	config ValidationConfig,
 ) *OffChainValidator {
 	return &OffChainValidator{
-		recorder:     recorder,
-		nodeBroker:   nodeBroker,
-		phaseTracker: phaseTracker,
-		callbackUrl:  callbackUrl,
-		pubKey:       pubKey,
-		chainNodeUrl: chainNodeUrl,
-		config:       config,
+		recorder:         recorder,
+		nodeBroker:       nodeBroker,
+		phaseTracker:     phaseTracker,
+		callbackUrl:      callbackUrl,
+		pubKey:           pubKey,
+		validatorAddress: validatorAddress,
+		chainNodeUrl:     chainNodeUrl,
+		config:           config,
 	}
 }
 
@@ -200,7 +203,7 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 		// If sampling is enabled, check if we're assigned to validate this participant
 		if validationSlots > 0 && snapshotWeights != nil {
 			assignedValidators := calculations.GetSlots(snapshotAppHash, commit.ParticipantAddress, snapshotWeights, validationSlots)
-			if !slices.Contains(assignedValidators, v.pubKey) {
+			if !slices.Contains(assignedValidators, v.validatorAddress) {
 				skippedNotAssigned++
 				continue
 			}
