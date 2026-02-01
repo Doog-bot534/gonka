@@ -431,7 +431,12 @@ func (am AppModule) EndBlock(ctx context.Context) error {
 
 	// Capture validation snapshot at poc_validation_start for deterministic sampling
 	if epochContext.IsStartOfPoCValidationStage(blockHeight) {
-		am.captureValidationSnapshot(ctx, blockHeight, currentEpoch.PocStartBlockHeight, "regular PoC")
+		upcomingEpoch, found := am.keeper.GetUpcomingEpoch(ctx)
+		if found && upcomingEpoch != nil {
+			am.captureValidationSnapshot(ctx, blockHeight, upcomingEpoch.PocStartBlockHeight, "regular PoC")
+		} else {
+			am.LogError("captureValidationSnapshot: Unable to get upcoming epoch", types.PoC)
+		}
 	}
 
 	if currentEpochGroup.IsChanged(ctx) {
