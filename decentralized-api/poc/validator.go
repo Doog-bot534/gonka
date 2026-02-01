@@ -395,14 +395,16 @@ func (v *OffChainValidator) worker(
 						*pendingCount--
 						logging.Warn("OffChainValidator: queue full, marking as failed", types.PoC,
 							"participant", work.address)
+						// Report participant as invalid to chain
+						v.reportInvalidParticipant(pocHeight, work.address)
 					}
 				} else {
 					*failCount++
 					*pendingCount--
 					logging.Warn("OffChainValidator: max retries exceeded, reporting as invalid", types.PoC,
 						"participant", work.address, "attempts", work.attempt+1)
-					// Report participant as invalid to chain. We probably should separate only to report failed network requests.
-					// reportAddr = work.address
+					// Report participant as invalid to chain
+					v.reportInvalidParticipant(pocHeight, work.address)
 				}
 			}
 
@@ -762,4 +764,25 @@ func validatorWeightsSliceToMap(weights []*types.ValidatorWeight) map[string]int
 		result[w.Address] = w.Weight
 	}
 	return result
+}
+
+// reportInvalidParticipant submits a validation result with ValidatedWeight=-1 (invalid) to chain.
+// This is called when validation fails permanently (e.g., retry exhaustion).
+func (v *OffChainValidator) reportInvalidParticipant(pocHeight int64, participantAddress string) {
+	msg := &inference.MsgSubmitPocValidationsV2{
+		PocStageStartBlockHeight: pocHeight,
+		Validations: []*inference.PoCValidationPayloadV2{
+			{
+				ParticipantAddress: participantAddress,
+				ValidatedWeight:    -1, // Invalid
+			},
+		},
+	}
+	if err := v.recorder.SubmitPocValidationsV2(msg); err != nil {
+		logging.Error("OffChainValidator: failed to report invalid participant", types.PoC,
+			"participant", participantAddress, "error", err)
+	} else {
+		logging.Info("OffChainValidator: reported participant as invalid", types.PoC,
+			"participant", participantAddress)
+	}
 }
