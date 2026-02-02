@@ -15,6 +15,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type testED25519Signer struct {
+	key []byte
+}
+
+func (s *testED25519Signer) Sign(msg []byte) ([]byte, error) {
+	if len(s.key) != 64 {
+		return nil, fmt.Errorf("invalid ed25519 private key length: %d", len(s.key))
+	}
+	privKey := ed25519.PrivKey(s.key)
+	return privKey.Sign(msg)
+}
+
 type loggingSender struct {
 	from    string
 	dst     Sender
@@ -144,7 +156,7 @@ func testPropagationDemo(t *testing.T, numParticipants int, storageFactory propa
 			t.Fatalf("failed to flush store for %s: %v", addr, err)
 		}
 
-		signer := &testKeySigner{key: privKeys[addr]}
+		signer := &testED25519Signer{key: privKeys[addr]}
 		bundler := NewBundler(signer, cache, trees, sender, addr)
 		bundlers[addr] = bundler
 	}
@@ -337,7 +349,7 @@ func testMultiPublisherPropagation(t *testing.T, numParticipants int, storageFac
 			t.Fatalf("failed to flush store for %s: %v", addr, err)
 		}
 
-		signer := &testKeySigner{key: privKeys[addr]}
+		signer := &testED25519Signer{key: privKeys[addr]}
 		bundler := NewBundler(signer, cache, trees, sender, addr)
 		bundlers[addr] = bundler
 	}

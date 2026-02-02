@@ -12,7 +12,7 @@ import (
 
 	"decentralized-api/poc/artifacts"
 
-	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
+	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -64,8 +64,8 @@ func testSmallPropagation(t *testing.T, storageFactory bundleStorageFactory) {
 		addr := fmt.Sprintf("participant%d", i)
 		participants[i] = addr
 
-		privKey := secp256k1.GenPrivKey()
-		privKeys[addr] = privKey.Key
+		privKey := ed25519.GenPrivKey()
+		privKeys[addr] = privKey.Bytes()
 		pubKeys[addr] = hex.EncodeToString(privKey.PubKey().Bytes())
 	}
 
@@ -199,8 +199,8 @@ func testAllBundlesForHeightAfterPropagation(t *testing.T, storageFactory bundle
 		addr := fmt.Sprintf("participant%d", i)
 		participants[i] = addr
 
-		privKey := secp256k1.GenPrivKey()
-		privKeys[addr] = privKey.Key
+		privKey := ed25519.GenPrivKey()
+		privKeys[addr] = privKey.Bytes()
 		pubKeys[addr] = hex.EncodeToString(privKey.PubKey().Bytes())
 	}
 
@@ -328,7 +328,9 @@ type testKeySigner struct {
 }
 
 func (s *testKeySigner) Sign(msg []byte) ([]byte, error) {
-	k := &secp256k1.PrivKey{Key: s.key}
-	return k.Sign(msg)
+	if len(s.key) != 64 {
+		return nil, fmt.Errorf("invalid ed25519 private key length: %d", len(s.key))
+	}
+	privKey := ed25519.PrivKey(s.key)
+	return privKey.Sign(msg)
 }
-
