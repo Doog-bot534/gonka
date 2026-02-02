@@ -320,6 +320,8 @@ func (v *OffChainValidator) worker(
 				sampleSize,
 			)
 
+			var reportAddr string
+
 			statsMu.Lock()
 			switch result {
 			case validateSuccess:
@@ -330,7 +332,7 @@ func (v *OffChainValidator) worker(
 				*pendingCount--
 				// Report participant as invalid to chain
 				// Uncomment when stabilized
-				// v.reportInvalidParticipant(pocHeight, work.address)
+				// reportAddr = work.address
 			case validateFailRetry:
 				// Re-queue for retry if under max attempts
 				if work.attempt < v.config.MaxRetries-1 {
@@ -346,22 +348,23 @@ func (v *OffChainValidator) worker(
 						*pendingCount--
 						logging.Warn("OffChainValidator: queue full, marking as failed", types.PoC,
 							"participant", work.address)
-						// Report participant as invalid to chain
-						v.reportInvalidParticipant(pocHeight, work.address)
 					}
 				} else {
 					*failCount++
 					*pendingCount--
 					logging.Warn("OffChainValidator: max retries exceeded, reporting as invalid", types.PoC,
 						"participant", work.address, "attempts", work.attempt+1)
-					// Report participant as invalid to chain
-					v.reportInvalidParticipant(pocHeight, work.address)
+					// Report participant as invalid to chain. We probably should separate only to report failed network requests.
+					// reportAddr = work.address
 				}
 			}
 
-			// Check if all work is done
 			done := *pendingCount <= 0
 			statsMu.Unlock()
+
+			if reportAddr != "" {
+				v.reportInvalidParticipant(pocHeight, reportAddr)
+			}
 
 			if done {
 				cancel()
