@@ -111,27 +111,27 @@ func loadGenesisWorkerKey(configManager *apiconfig.ConfigManager) error {
 		homeDir = "/root"
 	}
 	workerKeyFile := fmt.Sprintf("%s/.inference/config/worker_key.json", homeDir)
-	
+
 	data, err := os.ReadFile(workerKeyFile)
 	if err != nil {
 		return fmt.Errorf("failed to read worker key file %s: %w", workerKeyFile, err)
 	}
-	
+
 	var workerKeyData map[string]string
 	if err := json.Unmarshal(data, &workerKeyData); err != nil {
 		return fmt.Errorf("failed to unmarshal worker key data: %w", err)
 	}
-	
+
 	publicKey, ok := workerKeyData["public_key"]
 	if !ok {
 		return fmt.Errorf("public_key not found in worker key file")
 	}
-	
+
 	privateKey, ok := workerKeyData["private_key"]
 	if !ok {
 		return fmt.Errorf("private_key not found in worker key file")
 	}
-	
+
 	// Store in config
 	cfg := apiconfig.MLNodeKeyConfig{
 		WorkerPublicKey:  publicKey,
@@ -140,10 +140,10 @@ func loadGenesisWorkerKey(configManager *apiconfig.ConfigManager) error {
 	if err := configManager.SetMLNodeKeyConfig(cfg); err != nil {
 		return fmt.Errorf("failed to set ML node key config: %w", err)
 	}
-	
-	logging.Info("Successfully loaded genesis worker key", types.Participants, 
+
+	logging.Info("Successfully loaded genesis worker key", types.Participants,
 		"publicKey", publicKey, "file", workerKeyFile)
-	
+
 	return nil
 }
 
@@ -155,27 +155,27 @@ func loadJoiningWorkerKey(configManager *apiconfig.ConfigManager) error {
 		homeDir = "/root"
 	}
 	workerKeyFile := fmt.Sprintf("%s/.inference/config/worker_key.json", homeDir)
-	
+
 	data, err := os.ReadFile(workerKeyFile)
 	if err != nil {
 		return fmt.Errorf("failed to read worker key file %s: %w", workerKeyFile, err)
 	}
-	
+
 	var workerKeyData map[string]string
 	if err := json.Unmarshal(data, &workerKeyData); err != nil {
 		return fmt.Errorf("failed to unmarshal worker key data: %w", err)
 	}
-	
+
 	publicKey, ok := workerKeyData["public_key"]
 	if !ok {
 		return fmt.Errorf("public_key not found in worker key file")
 	}
-	
+
 	privateKey, ok := workerKeyData["private_key"]
 	if !ok {
 		return fmt.Errorf("private_key not found in worker key file")
 	}
-	
+
 	// Store in config
 	cfg := apiconfig.MLNodeKeyConfig{
 		WorkerPublicKey:  publicKey,
@@ -184,10 +184,10 @@ func loadJoiningWorkerKey(configManager *apiconfig.ConfigManager) error {
 	if err := configManager.SetMLNodeKeyConfig(cfg); err != nil {
 		return fmt.Errorf("failed to set ML node key config: %w", err)
 	}
-	
-	logging.Info("Successfully loaded joining participant worker key", types.Participants, 
+
+	logging.Info("Successfully loaded joining participant worker key", types.Participants,
 		"publicKey", publicKey, "file", workerKeyFile)
-	
+
 	return nil
 }
 
@@ -213,10 +213,9 @@ func registerJoiningParticipant(recorder cosmosclient.CosmosMessageClient, confi
 	if err := loadJoiningWorkerKey(configManager); err != nil {
 		return fmt.Errorf("Failed to load worker key: %w", err)
 	}
-	
+
 	// Get the loaded worker key
-	mlNodeKeyConfig := configManager.GetMLNodeKeyConfig()
-	workerKey := mlNodeKeyConfig.WorkerPublicKey
+	workerKey := configManager.GetConfig().MLNodeKeyConfig.WorkerPublicKey
 
 	address := recorder.GetAccountAddress()
 	pubKey := recorder.GetAccountPubKey()
