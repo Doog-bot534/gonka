@@ -163,9 +163,32 @@ class PropagationTests : TestermintTest() {
         assertThat(join2ReceivedFrom).contains(genesisAddr, join1Addr)
             .describedAs("Join2 should have bundles from genesis and join1")
 
+        logSection("Verifying proof propagation")
+        genesisCacheData.bundles.forEach { bundle ->
+            Logger.info("Checking proofs for bundle ${bundle.bundleId} from ${bundle.participant}")
+            val proofsResponse = genesis.api.getPropagationProofs(bundle.bundleId)
+            assertThat(proofsResponse.proofs.size).isEqualTo(bundle.count.toInt())
+                .describedAs("Genesis should have all ${bundle.count} proofs for bundle ${bundle.bundleId}")
+            Logger.info("  ✓ Genesis has ${proofsResponse.proofs.size} proofs for bundle from ${bundle.participant}")
+        }
+
+        join1CacheData.bundles.forEach { bundle ->
+            val proofsResponse = join1.api.getPropagationProofs(bundle.bundleId)
+            assertThat(proofsResponse.proofs.size).isEqualTo(bundle.count.toInt())
+                .describedAs("Join1 should have all ${bundle.count} proofs for bundle ${bundle.bundleId}")
+            Logger.info("  ✓ Join1 has ${proofsResponse.proofs.size} proofs for bundle from ${bundle.participant}")
+        }
+
+        join2CacheData.bundles.forEach { bundle ->
+            val proofsResponse = join2.api.getPropagationProofs(bundle.bundleId)
+            assertThat(proofsResponse.proofs.size).isEqualTo(bundle.count.toInt())
+                .describedAs("Join2 should have all ${bundle.count} proofs for bundle ${bundle.bundleId}")
+            Logger.info("  ✓ Join2 has ${proofsResponse.proofs.size} proofs for bundle from ${bundle.participant}")
+        }
+
         logSection("✅ Test Complete - Natural propagation verified in 3-node network")
-        Logger.info("All participants successfully propagated and received bundles automatically")
-        Logger.info("No manual header sending - bundler and tree manager handled propagation")
+        Logger.info("All participants successfully propagated and received bundles and proofs automatically")
+        Logger.info("No manual header/proof sending - bundler and tree manager handled propagation")
     }
 
     @Test
@@ -252,8 +275,22 @@ class PropagationTests : TestermintTest() {
         val totalBundles = cacheData.sumOf { it.third.bundles.size }
         Logger.info("Total bundles across all caches: $totalBundles")
 
+        logSection("Verifying proof propagation (sampling)")
+        var totalProofsVerified = 0
+        cacheData.take(3).forEach { (name, pair, cache) ->
+            Logger.info("Sampling proof verification for $name (${cache.bundles.size} bundles)")
+            cache.bundles.take(2).forEach { bundle ->
+                val proofsResponse = pair.api.getPropagationProofs(bundle.bundleId)
+                assertThat(proofsResponse.proofs.size).isEqualTo(bundle.count.toInt())
+                    .describedAs("$name should have all ${bundle.count} proofs for bundle ${bundle.bundleId}")
+                Logger.info("  ✓ $name has ${proofsResponse.proofs.size} proofs for bundle from ${bundle.participant}")
+                totalProofsVerified += proofsResponse.proofs.size
+            }
+        }
+        Logger.info("Total proofs verified (sample): $totalProofsVerified")
+
         logSection("✅ Test Complete - Natural propagation verified in 9-node network")
-        Logger.info("All participants successfully propagated and received bundles automatically")
+        Logger.info("All participants successfully propagated and received bundles and proofs automatically")
         Logger.info("Total bundles propagated: $totalBundles")
         Logger.info("Propagation handled by bundler and tree manager - no manual intervention")
     }

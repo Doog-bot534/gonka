@@ -464,6 +464,11 @@ data class ApplicationAPI(
         get(url, "v1/propagation/cache/$pocHeight")
     }
 
+    fun getPropagationProofs(bundleId: String): PropagationProofsResponse = wrapLog("GetPropagationProofs", true) {
+        val url = urlFor(SERVER_TYPE_PUBLIC)
+        get(url, "v1/propagation/proofs/$bundleId")
+    }
+
 
 }
 
