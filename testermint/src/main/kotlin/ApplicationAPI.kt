@@ -461,7 +461,7 @@ data class ApplicationAPI(
 
     fun getPropagationCache(pocHeight: Long): PropagationCacheResponse = wrapLog("GetPropagationCache", true) {
         val url = urlFor(SERVER_TYPE_PUBLIC)
-        get("$url/v1/propagation/cache/$pocHeight")
+        get(url, "v1/propagation/cache/$pocHeight")
     }
 
 
