@@ -169,7 +169,7 @@ class PropagationTests : TestermintTest() {
     }
 
     @Test
-    fun `propagation - 10 node network natural propagation`() {
+    fun `propagation - 9 node network natural propagation`() {
         logSection("=== TEST: Natural Propagation - 10 Node Network ===")
 
         val (cluster, genesis) = initCluster(
@@ -179,7 +179,7 @@ class PropagationTests : TestermintTest() {
 
         val allParticipants = listOf(genesis) + cluster.joinPairs
 
-        logSection("✅ Cluster with 10 participants initialized")
+        logSection("✅ Cluster with 9 participants initialized")
         allParticipants.forEachIndexed { idx, pair ->
             val name = if (idx == 0) "genesis" else "join$idx"
             Logger.info("  $name: ${pair.node.getColdAddress()}")
@@ -208,7 +208,7 @@ class PropagationTests : TestermintTest() {
         
         genesis.node.waitForNextBlock(8)
 
-        logSection("Querying propagation cache from all 10 nodes")
+        logSection("Querying propagation cache from all 9 nodes")
         val cacheData = allParticipants.mapIndexed { idx, pair ->
             val name = if (idx == 0) "genesis" else "join$idx"
             val cache = pair.api.getPropagationCache(pocHeight)
@@ -243,7 +243,7 @@ class PropagationTests : TestermintTest() {
             val receivedFromOthers = receivedFrom.intersect(otherParticipants)
             val coveragePercent = (receivedFromOthers.size * 100.0 / otherParticipants.size).toInt()
             
-            Logger.info("$name: received from ${receivedFromOthers.size}/9 other participants ($coveragePercent%)")
+            Logger.info("$name: received from ${receivedFromOthers.size}/8 other participants ($coveragePercent%)")
             
             assertThat(receivedFromOthers.size).isGreaterThan(0)
                 .describedAs("$name should have received bundles from at least 1 other participant")
@@ -252,7 +252,7 @@ class PropagationTests : TestermintTest() {
         val totalBundles = cacheData.sumOf { it.third.bundles.size }
         Logger.info("Total bundles across all caches: $totalBundles")
 
-        logSection("✅ Test Complete - Natural propagation verified in 10-node network")
+        logSection("✅ Test Complete - Natural propagation verified in 9-node network")
         Logger.info("All participants successfully propagated and received bundles automatically")
         Logger.info("Total bundles propagated: $totalBundles")
         Logger.info("Propagation handled by bundler and tree manager - no manual intervention")
