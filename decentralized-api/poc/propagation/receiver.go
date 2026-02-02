@@ -104,12 +104,14 @@ func (r *Receiver) OnHeader(h BundleHeader, treeIdx int, from string) error {
 		"receiver", r.myAddr, "from", from, "publisher", h.Participant, "pocHeight", h.PocHeight,
 		"bundleID", fmt.Sprintf("%x", h.BundleID[:8]), "tree", treeIdx)
 
-	r.forwardHeaderAllTrees(h, trees)
+	go r.forwardHeaderAllTrees(h, trees)
 
 	return nil
 }
 
 func (r *Receiver) forwardHeaderAllTrees(h BundleHeader, trees []*Tree) {
+	var wg sync.WaitGroup
+	
 	for _, tree := range trees {
 		node := tree.GetNode(r.myAddr)
 		if node == nil || len(node.Children) == 0 {
@@ -121,7 +123,9 @@ func (r *Receiver) forwardHeaderAllTrees(h BundleHeader, trees []*Tree) {
 			"tree", tree.Index, "children", len(node.Children))
 
 		for _, child := range node.Children {
+			wg.Add(1)
 			go func(treeIdx int, childAddr string) {
+				defer wg.Done()
 				if err := r.sender.SendHeader(treeIdx, childAddr, h); err != nil {
 					logging.Warn("Receiver: failed to forward to child", types.PoC,
 						"forwarder", r.myAddr, "tree", treeIdx, "child", childAddr, "error", err)
@@ -132,6 +136,8 @@ func (r *Receiver) forwardHeaderAllTrees(h BundleHeader, trees []*Tree) {
 			}(tree.Index, child.Address)
 		}
 	}
+	
+	wg.Wait()
 }
 
 func (r *Receiver) OnProofs(bundleID [32]byte, proofs []ProofItem, from string) error {
@@ -152,7 +158,7 @@ func (r *Receiver) OnProofs(bundleID [32]byte, proofs []ProofItem, from string) 
 	trees := r.trees
 	r.mu.RUnlock()
 
-	r.forwardProofsAllTrees(bundleID, proofs, trees)
+	go r.forwardProofsAllTrees(bundleID, proofs, trees)
 
 	return nil
 }
@@ -165,6 +171,8 @@ func (r *Receiver) forwardProofsAllTrees(bundleID [32]byte, proofs []ProofItem, 
 		return
 	}
 
+	var wg sync.WaitGroup
+	
 	for _, tree := range trees {
 		node := tree.GetNode(r.myAddr)
 		if node == nil || len(node.Children) == 0 {
@@ -176,7 +184,9 @@ func (r *Receiver) forwardProofsAllTrees(bundleID [32]byte, proofs []ProofItem, 
 			"tree", tree.Index, "children", len(node.Children))
 
 		for _, child := range node.Children {
+			wg.Add(1)
 			go func(childAddr string) {
+				defer wg.Done()
 				if err := proofSender.SendProofs(childAddr, bundleID, proofs); err != nil {
 					logging.Warn("Receiver: failed to forward proofs to child", types.PoC,
 						"forwarder", r.myAddr, "child", childAddr, "error", err)
@@ -187,6 +197,8 @@ func (r *Receiver) forwardProofsAllTrees(bundleID [32]byte, proofs []ProofItem, 
 			}(child.Address)
 		}
 	}
+	
+	wg.Wait()
 }
 
 func (r *Receiver) SetTrees(trees []*Tree) {
