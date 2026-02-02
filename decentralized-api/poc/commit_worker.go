@@ -3,6 +3,7 @@ package poc
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"sort"
 	"strings"
@@ -167,16 +168,23 @@ func (w *CommitWorker) maybeSubmitCommit(pocHeight int64) {
 		return
 	}
 
-	// If propagation is enabled, publish proofs off-chain
+	// If propagation is enabled, publish header and proofs off-chain
 	if w.propagationEnabled && w.bundler != nil {
 		epochState := w.tracker.GetCurrentEpochState()
 		if epochState != nil && epochState.IsSynced {
+			bundleID := propagation.MakeBundleID(w.participantAddress, pocHeight, rootHash, count)
+
 			if err := w.bundler.Publish(pocHeight, w.participantAddress, w.pubKey, count, rootHash); err != nil {
-				logging.Warn("CommitWorker: propagation publish failed", types.PoC,
+				logging.Warn("CommitWorker: propagation header publish failed", types.PoC,
 					"pocHeight", pocHeight, "error", err)
 			} else {
-				logging.Info("CommitWorker: proofs published via propagation", types.PoC,
+				logging.Info("CommitWorker: header published via propagation", types.PoC,
 					"pocHeight", pocHeight, "count", count)
+
+				if err := w.publishProofsViaPropagation(store, bundleID, count); err != nil {
+					logging.Warn("CommitWorker: propagation proofs publish failed", types.PoC,
+						"pocHeight", pocHeight, "error", err)
+				}
 			}
 		}
 	}
@@ -197,6 +205,52 @@ func (w *CommitWorker) maybeSubmitCommit(pocHeight int64) {
 	w.lastCommitted[pocHeight] = commitState{count, rootHash}
 	logging.Debug("CommitWorker: committed", types.PoC,
 		"pocHeight", pocHeight, "count", count)
+}
+
+func (w *CommitWorker) publishProofsViaPropagation(store *artifacts.ArtifactStore, bundleID [32]byte, count uint32) error {
+	if count == 0 {
+		return nil
+	}
+
+	proofs := make([]propagation.ProofItem, 0, count)
+
+	for leafIndex := uint32(0); leafIndex < count; leafIndex++ {
+		nonce, vector, err := store.GetArtifact(leafIndex)
+		if err != nil {
+			logging.Warn("CommitWorker: failed to get artifact for propagation", types.PoC,
+				"leafIndex", leafIndex, "error", err)
+			continue
+		}
+
+		proof, err := store.GetProof(leafIndex, count)
+		if err != nil {
+			logging.Warn("CommitWorker: failed to get proof for propagation", types.PoC,
+				"leafIndex", leafIndex, "error", err)
+			continue
+		}
+
+		proofStrings := make([]string, len(proof))
+		for i, hash := range proof {
+			proofStrings[i] = base64.StdEncoding.EncodeToString(hash)
+		}
+
+		proofs = append(proofs, propagation.ProofItem{
+			LeafIndex:   leafIndex,
+			NonceValue:  nonce,
+			VectorBytes: base64.StdEncoding.EncodeToString(vector),
+			Proof:       proofStrings,
+		})
+	}
+
+	if len(proofs) > 0 {
+		if err := w.bundler.PublishProofs(bundleID, proofs); err != nil {
+			return err
+		}
+		logging.Info("CommitWorker: proofs published via propagation", types.PoC,
+			"bundleID", fmt.Sprintf("%x", bundleID[:8]), "proofCount", len(proofs))
+	}
+
+	return nil
 }
 
 func (w *CommitWorker) isDistributionOnChain(pocHeight int64) bool {

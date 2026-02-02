@@ -30,3 +30,11 @@ func (c *Cache) AllBundlesForHeight(pocHeight int64) []BundleHeader {
 	bundles, _ := c.storage.AllBundlesForHeight(context.Background(), pocHeight)
 	return bundles
 }
+
+func (c *Cache) StoreProofs(ctx context.Context, bundleID [32]byte, proofs []ProofItem) error {
+	return c.storage.StoreProofs(ctx, bundleID, proofs)
+}
+
+func (c *Cache) GetProofs(bundleID [32]byte) ([]ProofItem, error) {
+	return c.storage.GetProofs(context.Background(), bundleID)
+}

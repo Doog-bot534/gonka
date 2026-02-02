@@ -6,4 +6,5 @@ type Sender interface {
 
 type ReceiverHandler interface {
 	OnHeader(h BundleHeader, treeIdx int, from string) error
+	OnProofs(bundleID [32]byte, proofs []ProofItem, from string) error
 }

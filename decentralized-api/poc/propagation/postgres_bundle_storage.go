@@ -2,6 +2,7 @@ package propagation
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -16,6 +17,7 @@ type PostgresBundleStorage struct {
 	instance string
 	mu       sync.RWMutex
 	bundles  map[[32]byte]BundleHeader
+	proofs   map[[32]byte][]ProofItem
 }
 
 func NewPostgresBundleStorage(ctx context.Context, pool *pgxpool.Pool, instance string) (*PostgresBundleStorage, error) {
@@ -30,6 +32,7 @@ func NewPostgresBundleStorage(ctx context.Context, pool *pgxpool.Pool, instance 
 		pool:     pool,
 		instance: instance,
 		bundles:  make(map[[32]byte]BundleHeader),
+		proofs:   make(map[[32]byte][]ProofItem),
 	}
 
 	if err := s.ensureSchema(ctx); err != nil {
@@ -57,7 +60,14 @@ func (s *PostgresBundleStorage) ensureSchema(ctx context.Context) error {
 			created_at BIGINT NOT NULL,
 			signature BYTEA,
 			PRIMARY KEY (instance, bundle_id)
-		)
+		);
+		
+		CREATE TABLE IF NOT EXISTS poc_bundle_proofs (
+			instance TEXT NOT NULL,
+			bundle_id BYTEA NOT NULL,
+			proofs JSONB NOT NULL,
+			PRIMARY KEY (instance, bundle_id)
+		);
 	`)
 	return err
 }
@@ -86,8 +96,42 @@ func (s *PostgresBundleStorage) loadBundles(ctx context.Context) error {
 		s.bundles[h.BundleID] = h
 	}
 
-	logging.Info("Loaded bundles from PostgreSQL", types.PoC, "count", len(s.bundles))
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	proofsRows, err := s.pool.Query(ctx, `
+		SELECT bundle_id, proofs
+		FROM poc_bundle_proofs
+		WHERE instance = $1
+	`, s.instance)
+	if err != nil {
+		return err
+	}
+	defer proofsRows.Close()
+
+	for proofsRows.Next() {
+		var idBytes []byte
+		var proofsJSON []byte
+		if err := proofsRows.Scan(&idBytes, &proofsJSON); err != nil {
+			return err
+		}
+		if len(idBytes) != 32 {
+			continue
+		}
+		var bundleID [32]byte
+		copy(bundleID[:], idBytes)
+
+		var proofs []ProofItem
+		if err := json.Unmarshal(proofsJSON, &proofs); err != nil {
+			logging.Warn("Failed to unmarshal proofs from PostgreSQL", types.PoC, "error", err)
+			continue
+		}
+		s.proofs[bundleID] = proofs
+	}
+
+	logging.Info("Loaded bundles from PostgreSQL", types.PoC, "count", len(s.bundles), "proofs", len(s.proofs))
+	return proofsRows.Err()
 }
 
 func (s *PostgresBundleStorage) StoreHeader(ctx context.Context, h BundleHeader) error {
@@ -158,6 +202,40 @@ func (s *PostgresBundleStorage) AllBundlesForHeight(ctx context.Context, pocHeig
 		}
 	}
 	return result, nil
+}
+
+func (s *PostgresBundleStorage) StoreProofs(ctx context.Context, bundleID [32]byte, proofs []ProofItem) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	proofsJSON, err := json.Marshal(proofs)
+	if err != nil {
+		return fmt.Errorf("marshal proofs: %w", err)
+	}
+
+	_, err = s.pool.Exec(ctx, `
+		INSERT INTO poc_bundle_proofs (instance, bundle_id, proofs)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (instance, bundle_id) DO UPDATE SET
+			proofs = EXCLUDED.proofs
+	`, s.instance, bundleID[:], proofsJSON)
+	if err != nil {
+		return fmt.Errorf("store proofs: %w", err)
+	}
+
+	s.proofs[bundleID] = proofs
+	return nil
+}
+
+func (s *PostgresBundleStorage) GetProofs(ctx context.Context, bundleID [32]byte) ([]ProofItem, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	proofs, exists := s.proofs[bundleID]
+	if !exists {
+		return nil, ErrProofsNotFound
+	}
+	return proofs, nil
 }
 
 func (s *PostgresBundleStorage) Close() error {

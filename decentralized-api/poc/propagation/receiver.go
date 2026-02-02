@@ -140,6 +140,67 @@ func (r *Receiver) forwardHeaderAllTrees(h BundleHeader, trees []*Tree) {
 	wg.Wait()
 }
 
+func (r *Receiver) OnProofs(bundleID [32]byte, proofs []ProofItem, from string) error {
+	logging.Info("Receiver: received proofs", types.PoC,
+		"receiver", r.myAddr, "from", from, "bundleID", fmt.Sprintf("%x", bundleID[:8]),
+		"proofCount", len(proofs))
+
+	if err := r.cache.StoreProofs(context.Background(), bundleID, proofs); err != nil {
+		logging.Warn("Receiver: failed to store proofs", types.PoC,
+			"bundleID", fmt.Sprintf("%x", bundleID[:8]), "error", err)
+		return fmt.Errorf("store proofs: %w", err)
+	}
+
+	logging.Info("Receiver: proofs stored", types.PoC,
+		"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", bundleID[:8]))
+
+	r.mu.RLock()
+	trees := r.trees
+	r.mu.RUnlock()
+
+	r.forwardProofsAllTrees(bundleID, proofs, trees)
+
+	return nil
+}
+
+func (r *Receiver) forwardProofsAllTrees(bundleID [32]byte, proofs []ProofItem, trees []*Tree) {
+	proofSender, ok := r.sender.(interface {
+		SendProofs(to string, bundleID [32]byte, proofs []ProofItem) error
+	})
+	if !ok {
+		return
+	}
+
+	var wg sync.WaitGroup
+
+	for _, tree := range trees {
+		node := tree.GetNode(r.myAddr)
+		if node == nil || len(node.Children) == 0 {
+			continue
+		}
+
+		logging.Info("Receiver: forwarding proofs to children", types.PoC,
+			"forwarder", r.myAddr, "bundleID", fmt.Sprintf("%x", bundleID[:8]),
+			"tree", tree.Index, "children", len(node.Children))
+
+		for _, child := range node.Children {
+			wg.Add(1)
+			go func(childAddr string) {
+				defer wg.Done()
+				if err := proofSender.SendProofs(childAddr, bundleID, proofs); err != nil {
+					logging.Warn("Receiver: failed to forward proofs to child", types.PoC,
+						"forwarder", r.myAddr, "child", childAddr, "error", err)
+				} else {
+					logging.Debug("Receiver: forwarded proofs to child", types.PoC,
+						"forwarder", r.myAddr, "child", childAddr)
+				}
+			}(child.Address)
+		}
+	}
+
+	wg.Wait()
+}
+
 func (r *Receiver) SetTrees(trees []*Tree) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

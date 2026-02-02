@@ -141,8 +141,109 @@ func (t *HTTPTransport) HandleHeaderHTTP(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusOK)
 }
 
+func (t *HTTPTransport) SendProofs(to string, bundleID [32]byte, proofs []ProofItem) error {
+	if to == t.localAddr {
+		return t.handleLocalProofs(bundleID, proofs, t.localAddr)
+	}
+
+	t.mu.RLock()
+	url := t.participantAddrs[to]
+	t.mu.RUnlock()
+
+	if url == "" {
+		return fmt.Errorf("no URL for participant %s", to)
+	}
+
+	payload := &ProofsMessage{
+		BundleID: bundleID,
+		Proofs:   proofs,
+		From:     t.localAddr,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal proofs: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url+"/v1/propagation/proofs", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := t.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("http request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("http status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+func (t *HTTPTransport) handleLocalProofs(bundleID [32]byte, proofs []ProofItem, from string) error {
+	t.mu.RLock()
+	handler := t.receivers[t.localAddr]
+	t.mu.RUnlock()
+
+	if handler == nil {
+		return fmt.Errorf("no local receiver registered")
+	}
+
+	return handler.OnProofs(bundleID, proofs, from)
+}
+
+func (t *HTTPTransport) HandleProofsHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var msg ProofsMessage
+	if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
+		logging.Warn("HTTPTransport: failed to decode proofs", types.PoC, "error", err)
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	t.mu.RLock()
+	handler := t.receivers[t.localAddr]
+	t.mu.RUnlock()
+
+	if handler == nil {
+		http.Error(w, "No receiver registered", http.StatusServiceUnavailable)
+		return
+	}
+
+	from := msg.From
+	if from == "" {
+		from = "unknown"
+	}
+
+	if err := handler.OnProofs(msg.BundleID, msg.Proofs, from); err != nil {
+		logging.Warn("HTTPTransport: proofs handler failed", types.PoC, "error", err)
+		http.Error(w, "Handler error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 type HeaderMessage struct {
 	TreeIdx int          `json:"tree_idx"`
 	Header  BundleHeader `json:"header"`
-	From    string       `json:"from,omitempty"` // Optional: defaults to header.participant
+	From    string       `json:"from,omitempty"`
+}
+
+type ProofsMessage struct {
+	BundleID [32]byte    `json:"bundle_id"`
+	Proofs   []ProofItem `json:"proofs"`
+	From     string      `json:"from,omitempty"`
 }

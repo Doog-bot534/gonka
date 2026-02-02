@@ -113,6 +113,33 @@ func (h *HybridBundleStorage) AllBundlesForHeight(ctx context.Context, pocHeight
 	return h.file.AllBundlesForHeight(ctx, pocHeight)
 }
 
+func (h *HybridBundleStorage) StoreProofs(ctx context.Context, bundleID [32]byte, proofs []ProofItem) error {
+	if pg := h.currentPg(); pg != nil {
+		err := pg.StoreProofs(ctx, bundleID, proofs)
+		if err == nil {
+			return nil
+		}
+		logging.Warn("PostgreSQL store proofs failed, falling back to file", types.PoC,
+			"bundleID", bundleID, "error", err)
+	}
+	return h.file.StoreProofs(ctx, bundleID, proofs)
+}
+
+func (h *HybridBundleStorage) GetProofs(ctx context.Context, bundleID [32]byte) ([]ProofItem, error) {
+	if pg := h.currentPg(); pg != nil {
+		proofs, err := pg.GetProofs(ctx, bundleID)
+		if err == nil {
+			return proofs, nil
+		}
+		if err != ErrProofsNotFound {
+			logging.Debug("PostgreSQL get proofs failed, checking file", types.PoC,
+				"bundleID", bundleID, "error", err)
+		}
+	}
+
+	return h.file.GetProofs(ctx, bundleID)
+}
+
 func (h *HybridBundleStorage) Close() error {
 	var pgErr, fileErr error
 

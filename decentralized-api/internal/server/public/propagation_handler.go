@@ -40,16 +40,22 @@ func (h *PropagationHandlers) HandleGetCache(c echo.Context) error {
 	}
 
 	bundles := h.cache.AllBundlesForHeight(pocHeight)
-	
+
 	response := map[string]interface{}{
 		"poc_height": pocHeight,
 		"bundles":    bundles,
 	}
-	
+
 	return c.JSON(http.StatusOK, response)
+}
+
+func (h *PropagationHandlers) HandleProofs(c echo.Context) error {
+	h.transport.HandleProofsHTTP(c.Response().Writer, c.Request())
+	return nil
 }
 
 func (h *PropagationHandlers) RegisterRoutes(e *echo.Group) {
 	e.POST("propagation/header", h.HandleHeader)
+	e.POST("propagation/proofs", h.HandleProofs)
 	e.GET("propagation/cache/:poc_height", h.HandleGetCache)
 }

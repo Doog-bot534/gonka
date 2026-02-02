@@ -18,6 +18,7 @@ type FileBundleStorage struct {
 	baseDir string
 	mu      sync.RWMutex
 	bundles map[[32]byte]BundleHeader
+	proofs  map[[32]byte][]ProofItem
 }
 
 func NewFileBundleStorage(baseDir string) (*FileBundleStorage, error) {
@@ -32,6 +33,7 @@ func NewFileBundleStorage(baseDir string) (*FileBundleStorage, error) {
 	s := &FileBundleStorage{
 		baseDir: baseDir,
 		bundles: make(map[[32]byte]BundleHeader),
+		proofs:  make(map[[32]byte][]ProofItem),
 	}
 
 	if err := s.loadBundles(); err != nil {
@@ -44,6 +46,11 @@ func NewFileBundleStorage(baseDir string) (*FileBundleStorage, error) {
 
 func (s *FileBundleStorage) bundleFilePath(bundleID [32]byte) string {
 	filename := hex.EncodeToString(bundleID[:]) + ".json"
+	return filepath.Join(s.baseDir, filename)
+}
+
+func (s *FileBundleStorage) proofsFilePath(bundleID [32]byte) string {
+	filename := hex.EncodeToString(bundleID[:]) + "_proofs.json"
 	return filepath.Join(s.baseDir, filename)
 }
 
@@ -61,23 +68,51 @@ func (s *FileBundleStorage) loadBundles() error {
 			continue
 		}
 
-		filePath := filepath.Join(s.baseDir, entry.Name())
+		name := entry.Name()
+
+		if filepath.Ext(name) == ".json" && len(name) > 11 && name[len(name)-11:] == "_proofs.json" {
+			filePath := filepath.Join(s.baseDir, name)
+			data, err := os.ReadFile(filePath)
+			if err != nil {
+				logging.Warn("Failed to read proofs file", types.PoC, "file", name, "error", err)
+				continue
+			}
+
+			var proofs []ProofItem
+			if err := json.Unmarshal(data, &proofs); err != nil {
+				logging.Warn("Failed to unmarshal proofs", types.PoC, "file", name, "error", err)
+				continue
+			}
+
+			bundleIDHex := name[:len(name)-11]
+			bundleIDBytes, err := hex.DecodeString(bundleIDHex)
+			if err != nil || len(bundleIDBytes) != 32 {
+				logging.Warn("Invalid bundle ID in proofs filename", types.PoC, "file", name)
+				continue
+			}
+			var bundleID [32]byte
+			copy(bundleID[:], bundleIDBytes)
+			s.proofs[bundleID] = proofs
+			continue
+		}
+
+		filePath := filepath.Join(s.baseDir, name)
 		data, err := os.ReadFile(filePath)
 		if err != nil {
-			logging.Warn("Failed to read bundle file", types.PoC, "file", entry.Name(), "error", err)
+			logging.Warn("Failed to read bundle file", types.PoC, "file", name, "error", err)
 			continue
 		}
 
 		var header BundleHeader
 		if err := json.Unmarshal(data, &header); err != nil {
-			logging.Warn("Failed to unmarshal bundle header", types.PoC, "file", entry.Name(), "error", err)
+			logging.Warn("Failed to unmarshal bundle header", types.PoC, "file", name, "error", err)
 			continue
 		}
 
 		s.bundles[header.BundleID] = header
 	}
 
-	logging.Info("Loaded bundles from disk", types.PoC, "count", len(s.bundles))
+	logging.Info("Loaded bundles from disk", types.PoC, "count", len(s.bundles), "proofs", len(s.proofs))
 	return nil
 }
 
@@ -150,6 +185,42 @@ func (s *FileBundleStorage) AllBundlesForHeight(ctx context.Context, pocHeight i
 		}
 	}
 	return result, nil
+}
+
+func (s *FileBundleStorage) StoreProofs(ctx context.Context, bundleID [32]byte, proofs []ProofItem) error {
+	data, err := json.Marshal(proofs)
+	if err != nil {
+		return fmt.Errorf("marshal proofs: %w", err)
+	}
+
+	filePath := s.proofsFilePath(bundleID)
+	tempPath := filePath + ".tmp"
+
+	if err := os.WriteFile(tempPath, data, 0644); err != nil {
+		return fmt.Errorf("write temp file: %w", err)
+	}
+
+	if err := os.Rename(tempPath, filePath); err != nil {
+		os.Remove(tempPath)
+		return fmt.Errorf("rename to target: %w", err)
+	}
+
+	s.mu.Lock()
+	s.proofs[bundleID] = proofs
+	s.mu.Unlock()
+
+	return nil
+}
+
+func (s *FileBundleStorage) GetProofs(ctx context.Context, bundleID [32]byte) ([]ProofItem, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	proofs, exists := s.proofs[bundleID]
+	if !exists {
+		return nil, ErrProofsNotFound
+	}
+	return proofs, nil
 }
 
 func (s *FileBundleStorage) Close() error {

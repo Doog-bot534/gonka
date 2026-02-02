@@ -155,6 +155,114 @@ func (b *Bundler) sendHeader(h BundleHeader) error {
 	return nil
 }
 
+func (b *Bundler) PublishProofs(bundleID [32]byte, proofs []ProofItem) error {
+	if len(proofs) == 0 {
+		logging.Debug("Bundler: no proofs to publish", types.PoC,
+			"bundleID", fmt.Sprintf("%x", bundleID[:8]))
+		return nil
+	}
+
+	if b.cache != nil {
+		if err := b.cache.StoreProofs(context.Background(), bundleID, proofs); err != nil {
+			logging.Warn("Bundler: failed to cache own proofs", types.PoC, "error", err)
+		}
+	}
+
+	logging.Info("Bundler: publishing proofs", types.PoC,
+		"bundleID", fmt.Sprintf("%x", bundleID[:8]), "proofCount", len(proofs))
+
+	if err := b.sendProofs(bundleID, proofs); err != nil {
+		logging.Warn("Bundler: failed to send proofs", types.PoC, "error", err)
+		return fmt.Errorf("send proofs: %w", err)
+	}
+
+	logging.Info("Bundler: proof publish complete", types.PoC,
+		"bundleID", fmt.Sprintf("%x", bundleID[:8]))
+
+	return nil
+}
+
+func (b *Bundler) sendProofs(bundleID [32]byte, proofs []ProofItem) error {
+	b.mu.RLock()
+	trees := b.trees
+	b.mu.RUnlock()
+
+	var wg sync.WaitGroup
+	totalRecipients := 0
+
+	logging.Info("Bundler: checking trees for proof recipients", types.PoC,
+		"publisher", b.myAddr, "totalTrees", len(b.trees),
+		"bundleID", fmt.Sprintf("%x", bundleID[:8]))
+
+	proofSender, ok := b.sender.(interface {
+		SendProofs(to string, bundleID [32]byte, proofs []ProofItem) error
+	})
+	if !ok {
+		return fmt.Errorf("sender does not support SendProofs")
+	}
+
+	for _, tree := range trees {
+		if tree.Root == nil {
+			continue
+		}
+
+		if tree.Root.Address == b.myAddr {
+			continue
+		}
+
+		totalRecipients++
+
+		wg.Add(1)
+		go func(rootAddr string) {
+			defer wg.Done()
+			if err := proofSender.SendProofs(rootAddr, bundleID, proofs); err != nil {
+				logging.Warn("Bundler: failed to send proofs to root", types.PoC,
+					"publisher", b.myAddr, "root", rootAddr, "error", err)
+			} else {
+				logging.Debug("Bundler: sent proofs to root", types.PoC,
+					"publisher", b.myAddr, "root", rootAddr)
+			}
+		}(tree.Root.Address)
+	}
+
+	for _, tree := range trees {
+		node := tree.GetNode(b.myAddr)
+		if node == nil || node.Parent != nil {
+			continue
+		}
+
+		if len(node.Children) > 0 {
+			logging.Info("Bundler: broadcasting proofs as root", types.PoC,
+				"publisher", b.myAddr, "tree", tree.Index,
+				"children", len(node.Children))
+		}
+
+		for _, child := range node.Children {
+			totalRecipients++
+
+			wg.Add(1)
+			go func(childAddr string) {
+				defer wg.Done()
+				if err := proofSender.SendProofs(childAddr, bundleID, proofs); err != nil {
+					logging.Warn("Bundler: failed to send proofs to child", types.PoC,
+						"publisher", b.myAddr, "child", childAddr, "error", err)
+				} else {
+					logging.Debug("Bundler: sent proofs to child", types.PoC,
+						"publisher", b.myAddr, "child", childAddr)
+				}
+			}(child.Address)
+		}
+	}
+
+	wg.Wait()
+
+	logging.Info("Bundler: sent proofs to all recipients", types.PoC,
+		"publisher", b.myAddr, "totalRecipients", totalRecipients,
+		"trees", len(b.trees), "bundleID", fmt.Sprintf("%x", bundleID[:8]))
+
+	return nil
+}
+
 func (b *Bundler) SetTrees(trees []*Tree) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
