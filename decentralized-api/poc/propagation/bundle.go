@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
+	"github.com/cometbft/cometbft/crypto/ed25519"
 )
 
 const BundleHeaderVersion = uint32(1)
@@ -101,11 +101,11 @@ type HeaderSigner interface {
 }
 
 func SignHeader(h BundleHeader, privKey []byte) ([]byte, error) {
-	if len(privKey) != 32 {
-		return nil, errors.New("invalid private key length")
+	if len(privKey) != 64 {
+		return nil, errors.New("invalid ed25519 private key length")
 	}
-	key := &secp256k1.PrivKey{Key: privKey}
 	msg := headerSigningBytes(h)
+	key := ed25519.PrivKey(privKey)
 	return key.Sign(msg)
 }
 
@@ -117,15 +117,23 @@ func VerifyHeader(h BundleHeader, hexPubKey string) error {
 	if h.Signature == nil {
 		return errors.New("signature missing")
 	}
+	
 	pubKeyBytes, err := hex.DecodeString(hexPubKey)
 	if err != nil {
 		return err
 	}
-	pubKey := &secp256k1.PubKey{Key: pubKeyBytes}
+	
+	if len(pubKeyBytes) != 32 {
+		return errors.New("invalid ed25519 public key length")
+	}
+	
 	msg := headerSigningBytes(h)
+	pubKey := ed25519.PubKey(pubKeyBytes)
+	
 	if !pubKey.VerifySignature(msg, h.Signature) {
 		return errors.New("signature verification failed")
 	}
+	
 	return nil
 }
 

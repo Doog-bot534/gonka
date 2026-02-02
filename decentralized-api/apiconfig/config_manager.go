@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"decentralized-api/logging"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"log"
@@ -388,12 +389,20 @@ func (cm *ConfigManager) SetNodes(nodes []InferenceNodeConfig) error {
 func (cm *ConfigManager) CreateWorkerKey() (string, error) {
 	workerKey := ed25519.GenPrivKey()
 	workerPublicKey := workerKey.PubKey()
-	workerPublicKeyString := base64.StdEncoding.EncodeToString(workerPublicKey.Bytes())
+	workerPublicKeyString := hex.EncodeToString(workerPublicKey.Bytes())
 	workerPrivateKey := workerKey.Bytes()
 	workerPrivateKeyString := base64.StdEncoding.EncodeToString(workerPrivateKey)
 	cfg := MLNodeKeyConfig{WorkerPublicKey: workerPublicKeyString, WorkerPrivateKey: workerPrivateKeyString}
 	cm.currentConfig.MLNodeKeyConfig = cfg
 	return workerPublicKeyString, nil
+}
+
+func (cm *ConfigManager) GetWorkerPrivateKey() ([]byte, error) {
+	privKeyStr := cm.currentConfig.MLNodeKeyConfig.WorkerPrivateKey
+	if privKeyStr == "" {
+		return nil, nil
+	}
+	return base64.StdEncoding.DecodeString(privKeyStr)
 }
 
 func getFileProvider() koanf.Provider {

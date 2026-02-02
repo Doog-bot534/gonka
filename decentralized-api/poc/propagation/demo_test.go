@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
+	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/stretchr/testify/require"
 )
 
@@ -81,8 +81,8 @@ func testPropagationDemo(t *testing.T, numParticipants int, storageFactory propa
 			Weight:  weight,
 		}
 
-		privKey := secp256k1.GenPrivKey()
-		privKeys[addr] = privKey.Key
+		privKey := ed25519.GenPrivKey()
+		privKeys[addr] = privKey.Bytes()
 		pubKeys[addr] = hex.EncodeToString(privKey.PubKey().Bytes())
 	}
 
@@ -273,8 +273,8 @@ func testMultiPublisherPropagation(t *testing.T, numParticipants int, storageFac
 			Weight:  weight,
 		}
 
-		privKey := secp256k1.GenPrivKey()
-		privKeys[addr] = privKey.Key
+		privKey := ed25519.GenPrivKey()
+		privKeys[addr] = privKey.Bytes()
 		pubKeys[addr] = hex.EncodeToString(privKey.PubKey().Bytes())
 	}
 
@@ -449,7 +449,7 @@ func TestTreeTopology(t *testing.T) {
 }
 
 func TestBundleSigning(t *testing.T) {
-	privKey := secp256k1.GenPrivKey()
+	privKey := ed25519.GenPrivKey()
 	pubKey := hex.EncodeToString(privKey.PubKey().Bytes())
 
 	header := BundleHeader{
@@ -462,7 +462,7 @@ func TestBundleSigning(t *testing.T) {
 		CreatedAt:   1234567890,
 	}
 
-	sig, err := SignHeader(header, privKey.Key)
+	sig, err := SignHeader(header, privKey.Bytes())
 	if err != nil {
 		t.Fatalf("failed to sign header: %v", err)
 	}

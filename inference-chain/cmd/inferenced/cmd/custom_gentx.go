@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/spf13/cobra"
 
 	address "cosmossdk.io/core/address"
@@ -215,12 +217,17 @@ $ %s gentx my-key-name 1000000nicoin --pubkey x+OH2yt/GC/zK/fR5ImKnlfrmE6nZO/11F
 			// === SECOND FILE: Genparticipant with MsgSubmitNewParticipant + Authz grants ===
 			genparticipantMessages := make([]sdk.Msg, 0)
 
+			// Generate ED25519 worker key
+			workerPrivKey := ed25519.GenPrivKey()
+			workerPubKey := workerPrivKey.PubKey()
+			workerPubKeyHex := hex.EncodeToString(workerPubKey.Bytes())
+			
 			// Add MsgSubmitNewParticipant
 			submitParticipantMsg := &inference.MsgSubmitNewParticipant{
 				Creator:      addr.String(),
 				Url:          urlStr,
 				ValidatorKey: utils.PubKeyToString(valPubKey),
-				WorkerKey:    "",
+				WorkerKey:    workerPubKeyHex,
 			}
 			genparticipantMessages = append(genparticipantMessages, submitParticipantMsg)
 

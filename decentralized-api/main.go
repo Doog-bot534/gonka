@@ -21,6 +21,7 @@ import (
 	"decentralized-api/poc/propagation"
 	"net"
 
+	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/productscience/inference/api/inference/inference"
 	"google.golang.org/grpc"
@@ -48,6 +49,18 @@ type cosmosHeaderSigner struct {
 
 func (s *cosmosHeaderSigner) Sign(msg []byte) ([]byte, error) {
 	return s.client.SignBytes(msg)
+}
+
+type workerKeySigner struct {
+	privateKey []byte
+}
+
+func (s *workerKeySigner) Sign(msg []byte) ([]byte, error) {
+	if len(s.privateKey) != 64 {
+		return nil, fmt.Errorf("invalid ed25519 private key length: %d", len(s.privateKey))
+	}
+	key := ed25519.PrivKey(s.privateKey)
+	return key.Sign(msg)
 }
 
 type chainPubKeyProvider struct {
@@ -217,7 +230,17 @@ func main() {
 
 		propagationTransport.RegisterReceiver(participantInfo.GetAddress(), propagationReceiver)
 
-		signer := &cosmosHeaderSigner{client: recorder}
+		workerPrivKey, err := config.GetWorkerPrivateKey()
+		if err != nil {
+			logging.Error("Failed to get worker private key", types.PoC, "error", err)
+			panic(err)
+		}
+		if workerPrivKey == nil {
+			logging.Error("Worker private key not found - please ensure participant is registered", types.PoC)
+			panic("worker private key not found")
+		}
+		
+		signer := &workerKeySigner{privateKey: workerPrivKey}
 		propagationBundler = propagation.NewBundler(
 			signer,
 			propagationCache,
