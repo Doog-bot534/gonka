@@ -231,7 +231,11 @@ Examples:
 			}
 
 			// Generate and save worker key
-			configDir := filepath.Join("/root", ".inference", "config")
+			homeDir := os.Getenv("HOME")
+			if homeDir == "" {
+				homeDir = "/root"
+			}
+			configDir := filepath.Join(homeDir, ".inference", "config")
 			workerPubKey, err := generateAndSaveWorkerKey(configDir)
 			if err != nil {
 				return fmt.Errorf("failed to generate worker key: %w", err)
