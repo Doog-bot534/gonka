@@ -145,20 +145,22 @@ func (r *Receiver) OnProofs(bundleID [32]byte, proofs []ProofItem, from string) 
 		"receiver", r.myAddr, "from", from, "bundleID", fmt.Sprintf("%x", bundleID[:8]),
 		"proofCount", len(proofs))
 
-	if err := r.cache.StoreProofs(context.Background(), bundleID, proofs); err != nil {
-		logging.Warn("Receiver: failed to store proofs", types.PoC,
-			"bundleID", fmt.Sprintf("%x", bundleID[:8]), "error", err)
-		return fmt.Errorf("store proofs: %w", err)
-	}
-
-	logging.Info("Receiver: proofs stored", types.PoC,
-		"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", bundleID[:8]))
-
 	r.mu.RLock()
 	trees := r.trees
 	r.mu.RUnlock()
 
-	go r.forwardProofsAllTrees(bundleID, proofs, trees)
+	go func() {
+		if err := r.cache.StoreProofs(context.Background(), bundleID, proofs); err != nil {
+			logging.Warn("Receiver: failed to store proofs", types.PoC,
+				"bundleID", fmt.Sprintf("%x", bundleID[:8]), "error", err)
+			return
+		}
+
+		logging.Info("Receiver: proofs stored", types.PoC,
+			"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", bundleID[:8]))
+
+		r.forwardProofsAllTrees(bundleID, proofs, trees)
+	}()
 
 	return nil
 }
