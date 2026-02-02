@@ -92,12 +92,59 @@ func RegisterParticipantIfNeeded(recorder cosmosclient.CosmosMessageClient, conf
 
 	if config.GetChainNodeConfig().IsGenesis {
 		// Genesis participants are pre-registered through the genesis ceremony process
-		// No need to register them again at runtime
-		logging.Info("Genesis participant registration disabled - participants are pre-registered in genesis", types.Participants)
+		// Load worker key from file generated during gentx
+		logging.Info("Loading genesis participant worker key from file", types.Participants)
+		if err := loadGenesisWorkerKey(config); err != nil {
+			return fmt.Errorf("Failed to load genesis worker key: %w", err)
+		}
 		return nil
 	} else {
 		return registerJoiningParticipant(recorder, config)
 	}
+}
+
+func loadGenesisWorkerKey(configManager *apiconfig.ConfigManager) error {
+	// Worker key file is created during gentx in the node's config directory
+	// Path: ~/.inference/config/worker_key.json
+	homeDir := os.Getenv("HOME")
+	if homeDir == "" {
+		homeDir = "/root"
+	}
+	workerKeyFile := fmt.Sprintf("%s/.inference/config/worker_key.json", homeDir)
+	
+	data, err := os.ReadFile(workerKeyFile)
+	if err != nil {
+		return fmt.Errorf("failed to read worker key file %s: %w", workerKeyFile, err)
+	}
+	
+	var workerKeyData map[string]string
+	if err := json.Unmarshal(data, &workerKeyData); err != nil {
+		return fmt.Errorf("failed to unmarshal worker key data: %w", err)
+	}
+	
+	publicKey, ok := workerKeyData["public_key"]
+	if !ok {
+		return fmt.Errorf("public_key not found in worker key file")
+	}
+	
+	privateKey, ok := workerKeyData["private_key"]
+	if !ok {
+		return fmt.Errorf("private_key not found in worker key file")
+	}
+	
+	// Store in config
+	cfg := apiconfig.MLNodeKeyConfig{
+		WorkerPublicKey:  publicKey,
+		WorkerPrivateKey: privateKey,
+	}
+	if err := configManager.SetMLNodeKeyConfig(cfg); err != nil {
+		return fmt.Errorf("failed to set ML node key config: %w", err)
+	}
+	
+	logging.Info("Successfully loaded genesis worker key", types.Participants, 
+		"publicKey", publicKey, "file", workerKeyFile)
+	
+	return nil
 }
 
 func registerJoiningParticipant(recorder cosmosclient.CosmosMessageClient, configManager *apiconfig.ConfigManager) error {

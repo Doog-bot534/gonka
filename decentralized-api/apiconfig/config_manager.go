@@ -404,6 +404,14 @@ func (cm *ConfigManager) GetWorkerPrivateKey() ([]byte, error) {
 	return base64.StdEncoding.DecodeString(privKeyStr)
 }
 
+func (cm *ConfigManager) SetMLNodeKeyConfig(cfg MLNodeKeyConfig) error {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+	cm.currentConfig.MLNodeKeyConfig = cfg
+	logging.Info("Setting ML node key config", types.Config, "hasPublicKey", cfg.WorkerPublicKey != "", "hasPrivateKey", cfg.WorkerPrivateKey != "")
+	return nil
+}
+
 func getFileProvider() koanf.Provider {
 	configPath := getConfigPath()
 	return file.Provider(configPath)

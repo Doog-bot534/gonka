@@ -221,6 +221,21 @@ $ %s gentx my-key-name 1000000nicoin --pubkey x+OH2yt/GC/zK/fR5ImKnlfrmE6nZO/11F
 			workerPrivKey := ed25519.GenPrivKey()
 			workerPubKey := workerPrivKey.PubKey()
 			workerPubKeyBase64 := base64.StdEncoding.EncodeToString(workerPubKey.Bytes())
+			workerPrivKeyBase64 := base64.StdEncoding.EncodeToString(workerPrivKey.Bytes())
+			
+			// Save worker key to file for API to load at startup
+			workerKeyFile := filepath.Join(config.RootDir, "config", "worker_key.json")
+			workerKeyData := map[string]string{
+				"public_key":  workerPubKeyBase64,
+				"private_key": workerPrivKeyBase64,
+			}
+			workerKeyJSON, err := json.MarshalIndent(workerKeyData, "", "  ")
+			if err != nil {
+				return errors.Wrap(err, "failed to marshal worker key data")
+			}
+			if err := os.WriteFile(workerKeyFile, workerKeyJSON, 0600); err != nil {
+				return errors.Wrapf(err, "failed to write worker key file to %s", workerKeyFile)
+			}
 			
 			// Add MsgSubmitNewParticipant
 			submitParticipantMsg := &inference.MsgSubmitNewParticipant{
