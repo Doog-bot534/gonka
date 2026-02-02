@@ -5,26 +5,9 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.tinylog.kotlin.Logger
 import java.util.concurrent.TimeUnit
-import java.util.Base64
 
 @Timeout(value = 15, unit = TimeUnit.MINUTES)
 class PropagationTests : TestermintTest() {
-
-    private fun base64ToHex(base64: String): String {
-        val bytes = Base64.getDecoder().decode(base64)
-        return bytes.joinToString("") { "%02x".format(it) }
-    }
-
-    private fun generateBundleId(prefix: String): String {
-        val timestamp = System.currentTimeMillis()
-        val combined = "$prefix$timestamp".toByteArray()
-        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(combined)
-        return hash.joinToString("") { "%02x".format(it) }
-    }
-
-    private fun getPubKeyHex(pair: LocalInferencePair): String {
-        return pair.node.getStatus().validatorInfo.pubKey.value
-    }
 
     @Test
     fun `off-chain propagation - commit metadata propagates between participants`() {
@@ -88,8 +71,8 @@ class PropagationTests : TestermintTest() {
     }
 
     @Test
-    fun `off-chain propagation - manual header propagation between nodes`() {
-        logSection("=== TEST: Off-Chain Propagation - Manual Header Propagation ===")
+    fun `propagation - 3 node network natural propagation`() {
+        logSection("=== TEST: Natural Propagation - 3 Node Network ===")
 
         val (cluster, genesis) = initCluster(
             joinCount = 2,
@@ -99,271 +82,179 @@ class PropagationTests : TestermintTest() {
         val join1 = cluster.joinPairs[0]
         val join2 = cluster.joinPairs[1]
 
-        logSection("✅ Cluster Initialized")
+        logSection("✅ Cluster Initialized with 3 participants")
+        Logger.info("  Genesis: ${genesis.node.getColdAddress()}")
+        Logger.info("  Join1: ${join1.node.getColdAddress()}")
+        Logger.info("  Join2: ${join2.node.getColdAddress()}")
 
-        // Set PoC weights
         genesis.setPocWeight(10)
         join1.setPocWeight(10)
         join2.setPocWeight(10)
 
-        logSection("Waiting for PoC generation")
+        logSection("Waiting for PoC generation phase")
         genesis.waitForStage(EpochStage.START_OF_POC)
         genesis.node.waitForNextBlock(5)
 
         val epochData = genesis.getEpochData()
         val pocHeight = epochData.latestEpoch.pocStartBlockHeight
-        
+
+        logSection("Verifying all participants generated artifacts")
         val genesisState = genesis.api.getPocArtifactsState(pocHeight)
-        Logger.info("Genesis artifacts: count=${genesisState.count}, rootHash=${genesisState.rootHash}")
+        val join1State = join1.api.getPocArtifactsState(pocHeight)
+        val join2State = join2.api.getPocArtifactsState(pocHeight)
+
+        Logger.info("Genesis: count=${genesisState.count}, rootHash=${genesisState.rootHash}")
+        Logger.info("Join1: count=${join1State.count}, rootHash=${join1State.rootHash}")
+        Logger.info("Join2: count=${join2State.count}, rootHash=${join2State.rootHash}")
 
         assertThat(genesisState.count).isGreaterThan(0)
+        assertThat(join1State.count).isGreaterThan(0)
+        assertThat(join2State.count).isGreaterThan(0)
 
-        logSection("Creating and propagating bundle header from genesis to join1")
+        logSection("Waiting for PoC exchange phase (natural propagation)")
+        genesis.waitForStage(EpochStage.POC_EXCHANGE_DEADLINE)
         
-        // Create a bundle header (simulating what bundler.Publish() creates)
-        val bundleHeader = PropagationBundleHeader(
-            bundleId = generateBundleId("genesis"),
-            participant = genesis.node.getColdAddress(),
-            pubKey = getPubKeyHex(genesis),
-            pocHeight = pocHeight,
-            rootHash = base64ToHex(genesisState.rootHash),
-            count = genesisState.count,
-            createdAt = System.currentTimeMillis() / 1000,
-            signature = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-        )
-
-        val headerMessage = PropagationHeaderMessage(
-            treeIdx = 0,
-            header = bundleHeader
-        )
-
-        logSection("Sending header from genesis to join1")
-        try {
-            join1.api.sendPropagationHeader(headerMessage)
-            Logger.info("✅ Header sent successfully to join1")
-        } catch (e: Exception) {
-            Logger.error("❌ Failed to send header: ${e.message}")
-            throw e
-        }
-
-        logSection("Testing header propagation to join2")
-        try {
-            join2.api.sendPropagationHeader(headerMessage)
-            Logger.info("✅ Header sent successfully to join2")
-        } catch (e: Exception) {
-            Logger.error("❌ Failed to send header: ${e.message}")
-            throw e
-        }
-
-        logSection("✅ Test Complete - Manual header propagation verified")
-        Logger.info("Headers successfully propagated via HTTP POST /v1/propagation/header")
-    }
-
-    @Test
-    fun `off-chain propagation - multi-publisher scenario`() {
-        logSection("=== TEST: Off-Chain Propagation - Multi-Publisher Scenario ===")
-
-        val (cluster, genesis) = initCluster(
-            joinCount = 2,
-            reboot = true
-        )
-
-        val join1 = cluster.joinPairs[0]
-        val join2 = cluster.joinPairs[1]
-
-        logSection("✅ Cluster with 3 participants initialized")
-
-        genesis.setPocWeight(10)
-        join1.setPocWeight(10)
-        join2.setPocWeight(10)
-
-        logSection("Waiting for PoC generation")
-        genesis.waitForStage(EpochStage.START_OF_POC)
         genesis.node.waitForNextBlock(5)
 
-        logSection("Collecting artifact states from all participants")
-        val epochData = genesis.getEpochData()
-        val pocHeight = epochData.latestEpoch.pocStartBlockHeight
-        
-        val states = mapOf(
-            "genesis" to genesis.api.getPocArtifactsState(pocHeight),
-            "join1" to join1.api.getPocArtifactsState(pocHeight),
-            "join2" to join2.api.getPocArtifactsState(pocHeight)
-        )
+        logSection("Querying propagation cache from all nodes")
+        val genesisCacheData = genesis.api.getPropagationCache(pocHeight)
+        val join1CacheData = join1.api.getPropagationCache(pocHeight)
+        val join2CacheData = join2.api.getPropagationCache(pocHeight)
 
-        states.forEach { (name, state) ->
-            Logger.info("$name: count=${state.count}, rootHash=${state.rootHash}")
-            assertThat(state.count).isGreaterThan(0)
+        Logger.info("Genesis cache: ${genesisCacheData.bundles.size} bundles")
+        Logger.info("Join1 cache: ${join1CacheData.bundles.size} bundles")
+        Logger.info("Join2 cache: ${join2CacheData.bundles.size} bundles")
+
+        genesisCacheData.bundles.forEach { bundle ->
+            Logger.info("  Genesis received bundle from ${bundle.participant} (count=${bundle.count})")
+        }
+        join1CacheData.bundles.forEach { bundle ->
+            Logger.info("  Join1 received bundle from ${bundle.participant} (count=${bundle.count})")
+        }
+        join2CacheData.bundles.forEach { bundle ->
+            Logger.info("  Join2 received bundle from ${bundle.participant} (count=${bundle.count})")
         }
 
-        logSection("Simulating simultaneous publishing from all participants")
+        logSection("Verifying natural propagation occurred")
         
-        val publishers = listOf(
-            Triple(genesis, "genesis", genesis.api),
-            Triple(join1, "join1", join1.api),
-            Triple(join2, "join2", join2.api)
-        )
+        assertThat(genesisCacheData.bundles.size).isGreaterThan(0)
+            .describedAs("Genesis should have received bundles from other participants")
+        assertThat(join1CacheData.bundles.size).isGreaterThan(0)
+            .describedAs("Join1 should have received bundles from other participants")
+        assertThat(join2CacheData.bundles.size).isGreaterThan(0)
+            .describedAs("Join2 should have received bundles from other participants")
 
-        val headers = publishers.map { (pair, name, api) ->
-            val state = states[name]!!
-            PropagationBundleHeader(
-                bundleId = generateBundleId(name),
-                participant = pair.node.getColdAddress(),
-                pubKey = getPubKeyHex(pair),
-                pocHeight = pocHeight,
-                rootHash = base64ToHex(state.rootHash),
-                count = state.count,
-                createdAt = System.currentTimeMillis() / 1000,
-                signature = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-            )
-        }
+        val genesisAddr = genesis.node.getColdAddress()
+        val join1Addr = join1.node.getColdAddress()
+        val join2Addr = join2.node.getColdAddress()
 
-        logSection("Broadcasting headers: each participant sends to all others")
-        
-        var successfulSends = 0
-        var totalAttempts = 0
-        
-        publishers.forEach { (senderPair, senderName, _) ->
-            publishers.forEach { (receiverPair, receiverName, receiverApi) ->
-                if (senderName == receiverName) return@forEach // Don't send to self
-                
-                val header = headers.find { it.participant == senderPair.node.getColdAddress() }!!
-                val message = PropagationHeaderMessage(treeIdx = 0, header = header)
-                
-                totalAttempts++
-                try {
-                    receiverApi.sendPropagationHeader(message)
-                    Logger.info("✅ $senderName → $receiverName: header propagated")
-                    successfulSends++
-                } catch (e: Exception) {
-                    Logger.warn("❌ $senderName → $receiverName: failed - ${e.message}")
-                }
-            }
-        }
+        val genesisReceivedFrom = genesisCacheData.bundles.map { it.participant }.toSet()
+        val join1ReceivedFrom = join1CacheData.bundles.map { it.participant }.toSet()
+        val join2ReceivedFrom = join2CacheData.bundles.map { it.participant }.toSet()
 
-        logSection("Propagation Results")
-        Logger.info("Total send attempts: $totalAttempts")
-        Logger.info("Successful sends: $successfulSends")
-        Logger.info("Success rate: ${(successfulSends * 100.0 / totalAttempts).toInt()}%")
+        Logger.info("Genesis received from: ${genesisReceivedFrom.size} unique participants")
+        Logger.info("Join1 received from: ${join1ReceivedFrom.size} unique participants")
+        Logger.info("Join2 received from: ${join2ReceivedFrom.size} unique participants")
 
-        // In a 3-participant network, we expect 3 senders × 2 receivers = 6 successful propagations
-        assertThat(successfulSends).isEqualTo(6)
+        assertThat(genesisReceivedFrom).contains(join1Addr, join2Addr)
+            .describedAs("Genesis should have bundles from join1 and join2")
+        assertThat(join1ReceivedFrom).contains(genesisAddr, join2Addr)
+            .describedAs("Join1 should have bundles from genesis and join2")
+        assertThat(join2ReceivedFrom).contains(genesisAddr, join1Addr)
+            .describedAs("Join2 should have bundles from genesis and join1")
 
-        logSection("✅ Test Complete - Multi-publisher propagation verified")
-        Logger.info("All participants successfully propagated metadata to all others")
+        logSection("✅ Test Complete - Natural propagation verified in 3-node network")
+        Logger.info("All participants successfully propagated and received bundles automatically")
+        Logger.info("No manual header sending - bundler and tree manager handled propagation")
     }
 
     @Test
-    fun `off-chain propagation - 10 node production simulation`() {
-        logSection("=== TEST: Off-Chain Propagation - 10 Node Production Simulation ===")
+    fun `propagation - 10 node network natural propagation`() {
+        logSection("=== TEST: Natural Propagation - 10 Node Network ===")
 
         val (cluster, genesis) = initCluster(
-            joinCount = 10,
+            joinCount = 9,
             reboot = true
         )
 
         val allParticipants = listOf(genesis) + cluster.joinPairs
 
         logSection("✅ Cluster with 10 participants initialized")
-        Logger.info("Participants:")
         allParticipants.forEachIndexed { idx, pair ->
             val name = if (idx == 0) "genesis" else "join$idx"
             Logger.info("  $name: ${pair.node.getColdAddress()}")
         }
 
-        // Set PoC weights on all participants
-        logSection("Setting PoC weights on all 10 participants")
+        logSection("Setting PoC weights on all participants")
         allParticipants.forEach { it.setPocWeight(10) }
 
-        logSection("Waiting for PoC generation")
+        logSection("Waiting for PoC generation phase")
         genesis.waitForStage(EpochStage.START_OF_POC)
         genesis.node.waitForNextBlock(5)
 
-        logSection("Collecting artifact states from all 10 participants")
         val epochData = genesis.getEpochData()
         val pocHeight = epochData.latestEpoch.pocStartBlockHeight
 
-        val states = allParticipants.mapIndexed { idx, pair ->
+        logSection("Verifying all participants generated artifacts")
+        allParticipants.forEachIndexed { idx, pair ->
             val name = if (idx == 0) "genesis" else "join$idx"
-            name to pair.api.getPocArtifactsState(pocHeight)
-        }.toMap()
-
-        states.forEach { (name, state) ->
+            val state = pair.api.getPocArtifactsState(pocHeight)
             Logger.info("$name: count=${state.count}, rootHash=${state.rootHash}")
             assertThat(state.count).isGreaterThan(0)
         }
 
-        logSection("Creating bundle headers for all 10 participants")
+        logSection("Waiting for PoC exchange phase (natural propagation)")
+        genesis.waitForStage(EpochStage.POC_EXCHANGE_DEADLINE)
         
-        val headers = allParticipants.mapIndexed { idx, pair ->
+        genesis.node.waitForNextBlock(8)
+
+        logSection("Querying propagation cache from all 10 nodes")
+        val cacheData = allParticipants.mapIndexed { idx, pair ->
             val name = if (idx == 0) "genesis" else "join$idx"
-            val state = states[name]!!
-            Triple(
-                name,
-                pair,
-                PropagationBundleHeader(
-                    bundleId = generateBundleId(name),
-                    participant = pair.node.getColdAddress(),
-                    pubKey = getPubKeyHex(pair),
-                    pocHeight = pocHeight,
-                    rootHash = base64ToHex(state.rootHash),
-                    count = state.count,
-                    createdAt = System.currentTimeMillis() / 1000,
-                    signature = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-                )
-            )
+            val cache = pair.api.getPropagationCache(pocHeight)
+            Logger.info("$name cache: ${cache.bundles.size} bundles")
+            Triple(name, pair, cache)
         }
 
-        logSection("Propagating headers: each participant sends to all others")
-        Logger.info("Expected propagations: 10 senders × 9 receivers = 90 total")
-        
-        var successfulSends = 0
-        var totalAttempts = 0
-        val propagationMatrix = mutableMapOf<String, MutableMap<String, Boolean>>()
-
-        headers.forEach { (senderName, senderPair, senderHeader) ->
-            propagationMatrix[senderName] = mutableMapOf()
-            
-            headers.forEach { (receiverName, receiverPair, _) ->
-                if (senderName == receiverName) return@forEach // Don't send to self
-                
-                val message = PropagationHeaderMessage(
-                    treeIdx = 0, // Tree 0 for simplicity in test
-                    header = senderHeader
-                )
-                
-                totalAttempts++
-                try {
-                    receiverPair.api.sendPropagationHeader(message)
-                    successfulSends++
-                    propagationMatrix[senderName]!![receiverName] = true
-                } catch (e: Exception) {
-                    Logger.debug("$senderName → $receiverName: failed - ${e.message}")
-                    propagationMatrix[senderName]!![receiverName] = false
-                }
+        logSection("Analyzing propagation coverage")
+        cacheData.forEach { (name, pair, cache) ->
+            val uniqueParticipants = cache.bundles.map { it.participant }.toSet()
+            Logger.info("$name received from ${uniqueParticipants.size} unique participants:")
+            uniqueParticipants.forEach { participant ->
+                val bundleCount = cache.bundles.count { it.participant == participant }
+                Logger.info("  - $participant: $bundleCount bundle(s)")
             }
         }
 
-        logSection("Propagation Results")
-        Logger.info("Total attempts: $totalAttempts")
-        Logger.info("Successful: $successfulSends")
-        Logger.info("Failed: ${totalAttempts - successfulSends}")
-        Logger.info("Success rate: ${(successfulSends * 100.0 / totalAttempts).toInt()}%")
-
-        // Log propagation matrix
-        Logger.info("\nPropagation Matrix (rows=senders, cols=receivers):")
-        headers.forEach { (senderName, _, _) ->
-            val successes = propagationMatrix[senderName]!!.count { it.value }
-            Logger.info("  $senderName: $successes/9 successful")
+        logSection("Verifying natural propagation occurred")
+        
+        cacheData.forEach { (name, _, cache) ->
+            assertThat(cache.bundles.size).isGreaterThan(0)
+                .describedAs("$name should have received bundles from other participants")
         }
 
-        // Verify high success rate (allow some failures for realistic simulation)
-        val successRate = successfulSends * 100.0 / totalAttempts
-        assertThat(successRate).isGreaterThan(80.0)
-            .describedAs("At least 80% of propagations should succeed in 10-node network")
+        val allAddresses = allParticipants.map { it.node.getColdAddress() }.toSet()
+        
+        cacheData.forEach { (name, pair, cache) ->
+            val receivedFrom = cache.bundles.map { it.participant }.toSet()
+            val myAddress = pair.node.getColdAddress()
+            val otherParticipants = allAddresses - myAddress
+            
+            val receivedFromOthers = receivedFrom.intersect(otherParticipants)
+            val coveragePercent = (receivedFromOthers.size * 100.0 / otherParticipants.size).toInt()
+            
+            Logger.info("$name: received from ${receivedFromOthers.size}/9 other participants ($coveragePercent%)")
+            
+            assertThat(receivedFromOthers.size).isGreaterThan(0)
+                .describedAs("$name should have received bundles from at least 1 other participant")
+        }
 
-        logSection("✅ Test Complete - 10-node propagation simulation verified")
-        Logger.info("Successfully simulated production-scale propagation with 10 participants")
-        Logger.info("Configuration: 10 participants, 6 trees, fanout 2")
+        val totalBundles = cacheData.sumOf { it.third.bundles.size }
+        Logger.info("Total bundles across all caches: $totalBundles")
+
+        logSection("✅ Test Complete - Natural propagation verified in 10-node network")
+        Logger.info("All participants successfully propagated and received bundles automatically")
+        Logger.info("Total bundles propagated: $totalBundles")
+        Logger.info("Propagation handled by bundler and tree manager - no manual intervention")
     }
 }

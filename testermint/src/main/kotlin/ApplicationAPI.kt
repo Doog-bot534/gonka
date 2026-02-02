@@ -459,13 +459,11 @@ data class ApplicationAPI(
         get<ApiConfig>(url, "admin/v1/config")
     }
 
-    fun sendPropagationHeader(header: PropagationHeaderMessage) = wrapLog("SendPropagationHeader", true) {
+    fun getPropagationCache(pocHeight: Long): PropagationCacheResponse = wrapLog("GetPropagationCache", true) {
         val url = urlFor(SERVER_TYPE_PUBLIC)
-        val response = Fuel.post("$url/v1/propagation/header")
-            .jsonBody(header, propagationJson)
-            .response()
-        logResponse(response)
+        get("$url/v1/propagation/cache/$pocHeight")
     }
+
 
 }
 

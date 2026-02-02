@@ -227,6 +227,7 @@ func registerJoiningParticipant(recorder cosmosclient.CosmosMessageClient, confi
 		"Url", configManager.GetApiConfig().PublicUrl,
 		"Address", address,
 		"PubKey", pubKeyString,
+		"WorkerPubKey", workerKey,
 	)
 
 	requestBody := public_entities.SubmitUnfundedNewParticipantDto{
