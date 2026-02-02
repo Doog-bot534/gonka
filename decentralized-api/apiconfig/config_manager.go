@@ -386,6 +386,9 @@ func (cm *ConfigManager) SetNodes(nodes []InferenceNodeConfig) error {
 }
 
 func (cm *ConfigManager) CreateWorkerKey() (string, error) {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+
 	workerKey := ed25519.GenPrivKey()
 	workerPublicKey := workerKey.PubKey()
 	workerPublicKeyString := base64.StdEncoding.EncodeToString(workerPublicKey.Bytes())

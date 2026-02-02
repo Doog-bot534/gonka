@@ -10,10 +10,12 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	rpcclient "github.com/cometbft/cometbft/rpc/client/http"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/spf13/cobra"
@@ -97,6 +99,31 @@ func fetchConsensusKeyFromNode() (string, error) {
 	consensusKeyBase64 := base64.StdEncoding.EncodeToString(keyBytes)
 
 	return consensusKeyBase64, nil
+}
+
+// generateAndSaveWorkerKey creates a new ED25519 worker key and saves it to disk
+func generateAndSaveWorkerKey(configDir string) (string, error) {
+	// Generate ED25519 worker key
+	workerPrivKey := ed25519.GenPrivKey()
+	workerPubKey := workerPrivKey.PubKey()
+	workerPubKeyBase64 := base64.StdEncoding.EncodeToString(workerPubKey.Bytes())
+	workerPrivKeyBase64 := base64.StdEncoding.EncodeToString(workerPrivKey.Bytes())
+
+	// Save worker key to file for API to load at startup
+	workerKeyFile := filepath.Join(configDir, "worker_key.json")
+	workerKeyData := map[string]string{
+		"public_key":  workerPubKeyBase64,
+		"private_key": workerPrivKeyBase64,
+	}
+	workerKeyJSON, err := json.MarshalIndent(workerKeyData, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal worker key data: %w", err)
+	}
+	if err := os.WriteFile(workerKeyFile, workerKeyJSON, 0600); err != nil {
+		return "", fmt.Errorf("failed to write worker key file to %s: %w", workerKeyFile, err)
+	}
+
+	return workerPubKeyBase64, nil
 }
 
 func RegisterNewParticipantCommand() *cobra.Command {
@@ -203,12 +230,20 @@ Examples:
 				cmd.Printf("Successfully auto-fetched and validated consensus key from chain node\n")
 			}
 
+			// Generate and save worker key
+			configDir := filepath.Join("/root", ".inference", "config")
+			workerPubKey, err := generateAndSaveWorkerKey(configDir)
+			if err != nil {
+				return fmt.Errorf("failed to generate worker key: %w", err)
+			}
+			cmd.Printf("Generated and saved worker key to %s/worker_key.json\n", configDir)
+
 			requestBody := RegisterParticipantDto{
 				Address:      accountAddress,
 				Url:          nodeUrl,
 				ValidatorKey: validatorConsensusKey,
 				PubKey:       accountPubKey,
-				WorkerKey:    "",
+				WorkerKey:    workerPubKey,
 			}
 
 			cmd.Printf("Registering new participant:\n")
@@ -216,6 +251,7 @@ Examples:
 			cmd.Printf("  Account Address: %s\n", accountAddress)
 			cmd.Printf("  Account Public Key: %s\n", accountPubKey)
 			cmd.Printf("  Validator Consensus Key: %s (%s)\n", validatorConsensusKey, keySource)
+			cmd.Printf("  Worker Public Key: %s\n", workerPubKey)
 			cmd.Printf("  Seed Node Address: %s\n", nodeAddress)
 
 			return sendRegisterNewParticipantRequest(cmd, nodeAddress, &requestBody)
