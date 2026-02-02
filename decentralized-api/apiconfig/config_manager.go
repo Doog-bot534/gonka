@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"decentralized-api/logging"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"log"
@@ -389,7 +388,7 @@ func (cm *ConfigManager) SetNodes(nodes []InferenceNodeConfig) error {
 func (cm *ConfigManager) CreateWorkerKey() (string, error) {
 	workerKey := ed25519.GenPrivKey()
 	workerPublicKey := workerKey.PubKey()
-	workerPublicKeyString := hex.EncodeToString(workerPublicKey.Bytes())
+	workerPublicKeyString := base64.StdEncoding.EncodeToString(workerPublicKey.Bytes())
 	workerPrivateKey := workerKey.Bytes()
 	workerPrivateKeyString := base64.StdEncoding.EncodeToString(workerPrivateKey)
 	cfg := MLNodeKeyConfig{WorkerPublicKey: workerPublicKeyString, WorkerPrivateKey: workerPrivateKeyString}

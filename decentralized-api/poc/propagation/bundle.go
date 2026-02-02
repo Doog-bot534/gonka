@@ -3,6 +3,7 @@ package propagation
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -113,12 +114,12 @@ func SignHeaderWith(h BundleHeader, signer HeaderSigner) ([]byte, error) {
 	return signer.Sign(headerSigningBytes(h))
 }
 
-func VerifyHeader(h BundleHeader, hexPubKey string) error {
+func VerifyHeader(h BundleHeader, base64PubKey string) error {
 	if h.Signature == nil {
 		return errors.New("signature missing")
 	}
 	
-	pubKeyBytes, err := hex.DecodeString(hexPubKey)
+	pubKeyBytes, err := base64.StdEncoding.DecodeString(base64PubKey)
 	if err != nil {
 		return err
 	}

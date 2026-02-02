@@ -3,7 +3,7 @@ package propagation
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -66,7 +66,7 @@ func testSmallPropagation(t *testing.T, storageFactory bundleStorageFactory) {
 
 		privKey := ed25519.GenPrivKey()
 		privKeys[addr] = privKey.Bytes()
-		pubKeys[addr] = hex.EncodeToString(privKey.PubKey().Bytes())
+		pubKeys[addr] = base64.StdEncoding.EncodeToString(privKey.PubKey().Bytes())
 	}
 
 	blockHash := sha256.Sum256([]byte("test-block"))
@@ -201,7 +201,7 @@ func testAllBundlesForHeightAfterPropagation(t *testing.T, storageFactory bundle
 
 		privKey := ed25519.GenPrivKey()
 		privKeys[addr] = privKey.Bytes()
-		pubKeys[addr] = hex.EncodeToString(privKey.PubKey().Bytes())
+		pubKeys[addr] = base64.StdEncoding.EncodeToString(privKey.PubKey().Bytes())
 	}
 
 	pocHeight := int64(2000)

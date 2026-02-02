@@ -3,7 +3,7 @@ package cmd
 import (
 	"bufio"
 	"bytes"
-	"encoding/hex"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -220,14 +220,14 @@ $ %s gentx my-key-name 1000000nicoin --pubkey x+OH2yt/GC/zK/fR5ImKnlfrmE6nZO/11F
 			// Generate ED25519 worker key
 			workerPrivKey := ed25519.GenPrivKey()
 			workerPubKey := workerPrivKey.PubKey()
-			workerPubKeyHex := hex.EncodeToString(workerPubKey.Bytes())
+			workerPubKeyBase64 := base64.StdEncoding.EncodeToString(workerPubKey.Bytes())
 			
 			// Add MsgSubmitNewParticipant
 			submitParticipantMsg := &inference.MsgSubmitNewParticipant{
 				Creator:      addr.String(),
 				Url:          urlStr,
 				ValidatorKey: utils.PubKeyToString(valPubKey),
-				WorkerKey:    workerPubKeyHex,
+				WorkerKey:    workerPubKeyBase64,
 			}
 			genparticipantMessages = append(genparticipantMessages, submitParticipantMsg)
 

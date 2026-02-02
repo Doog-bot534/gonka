@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"decentralized-api/poc/artifacts"
-	"encoding/hex"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -95,7 +95,7 @@ func testPropagationDemo(t *testing.T, numParticipants int, storageFactory propa
 
 		privKey := ed25519.GenPrivKey()
 		privKeys[addr] = privKey.Bytes()
-		pubKeys[addr] = hex.EncodeToString(privKey.PubKey().Bytes())
+		pubKeys[addr] = base64.StdEncoding.EncodeToString(privKey.PubKey().Bytes())
 	}
 
 	blockHash := sha256.Sum256([]byte("test-block"))
@@ -287,7 +287,7 @@ func testMultiPublisherPropagation(t *testing.T, numParticipants int, storageFac
 
 		privKey := ed25519.GenPrivKey()
 		privKeys[addr] = privKey.Bytes()
-		pubKeys[addr] = hex.EncodeToString(privKey.PubKey().Bytes())
+		pubKeys[addr] = base64.StdEncoding.EncodeToString(privKey.PubKey().Bytes())
 	}
 
 	blockHash := sha256.Sum256([]byte("test-block"))
@@ -462,7 +462,7 @@ func TestTreeTopology(t *testing.T) {
 
 func TestBundleSigning(t *testing.T) {
 	privKey := ed25519.GenPrivKey()
-	pubKey := hex.EncodeToString(privKey.PubKey().Bytes())
+	pubKey := base64.StdEncoding.EncodeToString(privKey.PubKey().Bytes())
 
 	header := BundleHeader{
 		BundleID:    [32]byte{1, 2, 3},
