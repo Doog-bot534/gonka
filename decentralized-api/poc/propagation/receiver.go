@@ -21,6 +21,7 @@ type Receiver struct {
 
 	mu               sync.RWMutex
 	processedHeaders map[[32]byte]bool
+	forwardedProofs  map[[32]byte]map[string]bool
 	pendingHeaders   map[[32]byte]*BundleHeader
 	lastHeaderTime   map[[32]byte]time.Time
 
@@ -39,6 +40,7 @@ func NewReceiver(cache *Cache, trees []*Tree, verifier PubKeyProvider, myAddr st
 		myAddr:           myAddr,
 		sender:           sender,
 		processedHeaders: make(map[[32]byte]bool),
+		forwardedProofs:  make(map[[32]byte]map[string]bool),
 		pendingHeaders:   make(map[[32]byte]*BundleHeader),
 		lastHeaderTime:   make(map[[32]byte]time.Time),
 	}
@@ -189,16 +191,26 @@ func (r *Receiver) forwardProofsAllTrees(bundleID [32]byte, proofs []ProofItem, 
 			continue
 		}
 
-		logging.Info("Receiver: forwarding proofs to children", types.PoC,
+		logging.Debug("Receiver: checking children for proof forwarding", types.PoC,
 			"forwarder", r.myAddr, "bundleID", fmt.Sprintf("%x", bundleID[:8]),
 			"tree", tree.Index, "children", len(node.Children))
 
 		for _, child := range node.Children {
 			if child.Address == from {
-				logging.Debug("Receiver: skipping forward to sender", types.PoC,
-					"forwarder", r.myAddr, "child", child.Address)
 				continue
 			}
+			
+			r.mu.Lock()
+			if r.forwardedProofs[bundleID] == nil {
+				r.forwardedProofs[bundleID] = make(map[string]bool)
+			}
+			if r.forwardedProofs[bundleID][child.Address] {
+				r.mu.Unlock()
+				continue
+			}
+			r.forwardedProofs[bundleID][child.Address] = true
+			r.mu.Unlock()
+			
 			wg.Add(1)
 			go func(childAddr string) {
 				defer wg.Done()

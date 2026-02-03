@@ -27,7 +27,7 @@ data class PropagationBundleHeader(
 data class PropagationCacheResponse(
     @SerializedName("poc_height")
     val pocHeight: Long,
-    val bundles: List<PropagationBundleHeader>
+    val count: Int
 )
 
 /**

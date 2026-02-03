@@ -43,7 +43,7 @@ func (h *PropagationHandlers) HandleGetCache(c echo.Context) error {
 
 	response := map[string]interface{}{
 		"poc_height": pocHeight,
-		"bundles":    bundles,
+		"count":      len(bundles),
 	}
 
 	return c.JSON(http.StatusOK, response)
