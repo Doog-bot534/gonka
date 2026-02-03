@@ -305,8 +305,8 @@ func TestPropagationDemoLargeWithFileStorage(t *testing.T) {
 }
 
 func testProofPropagation(t *testing.T, numParticipants int, storageFactory propagationStorageFactory) {
-	numTrees := 4
-	fanout := 3
+	numTrees := 8
+	fanout := 4
 
 	weightedParticipants := make([]WeightedParticipant, numParticipants)
 	privKeys := make(map[string][]byte)
@@ -523,7 +523,7 @@ func TestProofPropagationWithFileStorage(t *testing.T) {
 }
 
 func TestProofPropagationLargeWithFileStorage(t *testing.T) {
-	testProofPropagation(t, 200, func(t *testing.T, tempDir, addr string) (BundleStorage, error) {
+	testProofPropagation(t, 1000, func(t *testing.T, tempDir, addr string) (BundleStorage, error) {
 		storageDir := filepath.Join(tempDir, addr, "bundles")
 		return NewFileBundleStorage(storageDir)
 	})

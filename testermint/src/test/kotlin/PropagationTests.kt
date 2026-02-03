@@ -141,10 +141,10 @@ class PropagationTests : TestermintTest() {
 
     @Test
     fun `propagation - 9 node network natural propagation`() {
-        logSection("=== TEST: Natural Propagation - 10 Node Network ===")
+        logSection("=== TEST: Natural Propagation - 9 Node Network ===")
 
         val (cluster, genesis) = initCluster(
-            joinCount = 9,
+            joinCount = 8,
             reboot = true
         )
 
