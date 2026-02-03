@@ -23,6 +23,8 @@ type Receiver struct {
 	processedHeaders map[[32]byte]bool
 	pendingHeaders   map[[32]byte]*BundleHeader
 	lastHeaderTime   map[[32]byte]time.Time
+
+	wg sync.WaitGroup
 }
 
 type PubKeyProvider interface {
@@ -104,7 +106,11 @@ func (r *Receiver) OnHeader(h BundleHeader, treeIdx int, from string) error {
 		"receiver", r.myAddr, "from", from, "publisher", h.Participant, "pocHeight", h.PocHeight,
 		"bundleID", fmt.Sprintf("%x", h.BundleID[:8]), "tree", treeIdx)
 
-	go r.forwardHeaderAllTrees(h, trees)
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		r.forwardHeaderAllTrees(h, trees)
+	}()
 
 	return nil
 }
@@ -149,7 +155,9 @@ func (r *Receiver) OnProofs(bundleID [32]byte, proofs []ProofItem, from string) 
 	trees := r.trees
 	r.mu.RUnlock()
 
+	r.wg.Add(1)
 	go func() {
+		defer r.wg.Done()
 		if err := r.cache.StoreProofs(context.Background(), bundleID, proofs); err != nil {
 			logging.Warn("Receiver: failed to store proofs", types.PoC,
 				"bundleID", fmt.Sprintf("%x", bundleID[:8]), "error", err)
@@ -159,13 +167,13 @@ func (r *Receiver) OnProofs(bundleID [32]byte, proofs []ProofItem, from string) 
 		logging.Info("Receiver: proofs stored", types.PoC,
 			"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", bundleID[:8]))
 
-		r.forwardProofsAllTrees(bundleID, proofs, trees)
+		r.forwardProofsAllTrees(bundleID, proofs, trees, from)
 	}()
 
 	return nil
 }
 
-func (r *Receiver) forwardProofsAllTrees(bundleID [32]byte, proofs []ProofItem, trees []*Tree) {
+func (r *Receiver) forwardProofsAllTrees(bundleID [32]byte, proofs []ProofItem, trees []*Tree, from string) {
 	proofSender, ok := r.sender.(interface {
 		SendProofs(to string, bundleID [32]byte, proofs []ProofItem) error
 	})
@@ -186,6 +194,11 @@ func (r *Receiver) forwardProofsAllTrees(bundleID [32]byte, proofs []ProofItem, 
 			"tree", tree.Index, "children", len(node.Children))
 
 		for _, child := range node.Children {
+			if child.Address == from {
+				logging.Debug("Receiver: skipping forward to sender", types.PoC,
+					"forwarder", r.myAddr, "child", child.Address)
+				continue
+			}
 			wg.Add(1)
 			go func(childAddr string) {
 				defer wg.Done()
@@ -207,4 +220,12 @@ func (r *Receiver) SetTrees(trees []*Tree) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.trees = trees
+}
+
+func (r *Receiver) Wait() {
+	r.wg.Wait()
+}
+
+func (r *Receiver) Close() {
+	r.wg.Wait()
 }

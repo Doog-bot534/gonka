@@ -170,6 +170,11 @@ func testPropagationDemo(t *testing.T, numParticipants int, storageFactory propa
 	}
 
 	bundleID := MakeBundleID(sender, pocHeight, senderRoot, senderCount)
+
+	for _, receiver := range receivers {
+		receiver.Wait()
+	}
+
 	receivedCount := 0
 	for _, addr := range participants {
 		if addr == sender {
@@ -368,6 +373,10 @@ func testMultiPublisherPropagation(t *testing.T, numParticipants int, storageFac
 			t.Fatalf("failed to publish from %s: %v", publisher, err)
 		}
 		bundleIDs[i] = MakeBundleID(publisher, pocHeight, pubRoot, pubCount)
+	}
+
+	for _, receiver := range receivers {
+		receiver.Wait()
 	}
 
 	actualReceipts := 0
