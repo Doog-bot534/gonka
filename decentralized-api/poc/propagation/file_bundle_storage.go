@@ -117,26 +117,46 @@ func (s *FileBundleStorage) loadBundles() error {
 }
 
 func (s *FileBundleStorage) StoreHeader(ctx context.Context, h BundleHeader) error {
+	s.mu.Lock()
+	if _, exists := s.bundles[h.BundleID]; exists {
+		s.mu.Unlock()
+		return nil
+	}
+	s.bundles[h.BundleID] = h
+	s.mu.Unlock()
+
 	data, err := json.Marshal(h)
 	if err != nil {
+		s.mu.Lock()
+		delete(s.bundles, h.BundleID)
+		s.mu.Unlock()
 		return fmt.Errorf("marshal header: %w", err)
+	}
+
+	if err := os.MkdirAll(s.baseDir, 0755); err != nil {
+		s.mu.Lock()
+		delete(s.bundles, h.BundleID)
+		s.mu.Unlock()
+		return fmt.Errorf("ensure directory exists: %w", err)
 	}
 
 	filePath := s.bundleFilePath(h.BundleID)
 	tempPath := filePath + ".tmp"
 
 	if err := os.WriteFile(tempPath, data, 0644); err != nil {
+		s.mu.Lock()
+		delete(s.bundles, h.BundleID)
+		s.mu.Unlock()
 		return fmt.Errorf("write temp file: %w", err)
 	}
 
 	if err := os.Rename(tempPath, filePath); err != nil {
 		os.Remove(tempPath)
+		s.mu.Lock()
+		delete(s.bundles, h.BundleID)
+		s.mu.Unlock()
 		return fmt.Errorf("rename to target: %w", err)
 	}
-
-	s.mu.Lock()
-	s.bundles[h.BundleID] = h
-	s.mu.Unlock()
 
 	return nil
 }
@@ -188,26 +208,46 @@ func (s *FileBundleStorage) AllBundlesForHeight(ctx context.Context, pocHeight i
 }
 
 func (s *FileBundleStorage) StoreProofs(ctx context.Context, bundleID [32]byte, proofs []ProofItem) error {
+	s.mu.Lock()
+	if _, exists := s.proofs[bundleID]; exists {
+		s.mu.Unlock()
+		return nil
+	}
+	s.proofs[bundleID] = proofs
+	s.mu.Unlock()
+
 	data, err := json.Marshal(proofs)
 	if err != nil {
+		s.mu.Lock()
+		delete(s.proofs, bundleID)
+		s.mu.Unlock()
 		return fmt.Errorf("marshal proofs: %w", err)
+	}
+
+	if err := os.MkdirAll(s.baseDir, 0755); err != nil {
+		s.mu.Lock()
+		delete(s.proofs, bundleID)
+		s.mu.Unlock()
+		return fmt.Errorf("ensure directory exists: %w", err)
 	}
 
 	filePath := s.proofsFilePath(bundleID)
 	tempPath := filePath + ".tmp"
 
 	if err := os.WriteFile(tempPath, data, 0644); err != nil {
+		s.mu.Lock()
+		delete(s.proofs, bundleID)
+		s.mu.Unlock()
 		return fmt.Errorf("write temp file: %w", err)
 	}
 
 	if err := os.Rename(tempPath, filePath); err != nil {
 		os.Remove(tempPath)
+		s.mu.Lock()
+		delete(s.proofs, bundleID)
+		s.mu.Unlock()
 		return fmt.Errorf("rename to target: %w", err)
 	}
-
-	s.mu.Lock()
-	s.proofs[bundleID] = proofs
-	s.mu.Unlock()
 
 	return nil
 }
