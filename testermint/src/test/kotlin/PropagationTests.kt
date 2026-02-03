@@ -9,32 +9,6 @@ import java.util.concurrent.TimeUnit
 @Timeout(value = 15, unit = TimeUnit.MINUTES)
 class PropagationTests : TestermintTest() {
 
-    private fun waitForPropagation(
-        pairs: List<Pair>,
-        pocHeight: Long,
-        expectedCount: Int,
-        timeoutMs: Long = 30000,
-        pollIntervalMs: Long = 500
-    ) {
-        val startTime = System.currentTimeMillis()
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            val allReady = pairs.all { pair ->
-                try {
-                    val count = pair.api.getPropagationCache(pocHeight).count
-                    count >= expectedCount
-                } catch (e: Exception) {
-                    false
-                }
-            }
-            if (allReady) {
-                Logger.info("All ${pairs.size} participants have at least $expectedCount bundles")
-                return
-            }
-            Thread.sleep(pollIntervalMs)
-        }
-        Logger.warn("Timeout waiting for propagation - some nodes may not have all bundles yet")
-    }
-
     @Test
     fun `off-chain propagation - commit metadata propagates between participants`() {
         logSection("=== TEST: Off-Chain Propagation - Commit Metadata Propagation ===")
@@ -142,9 +116,6 @@ class PropagationTests : TestermintTest() {
         
         genesis.node.waitForNextBlock(5)
 
-        logSection("Waiting for propagation to complete")
-        waitForPropagation(listOf(genesis, join1, join2), pocHeight, 2)
-
         logSection("Querying propagation cache from all nodes")
         val genesisCacheData = genesis.api.getPropagationCache(pocHeight)
         val join1CacheData = join1.api.getPropagationCache(pocHeight)
@@ -208,30 +179,22 @@ class PropagationTests : TestermintTest() {
         
         genesis.node.waitForNextBlock(8)
 
-        logSection("Waiting for propagation to complete")
-        waitForPropagation(allParticipants, pocHeight, 8)
-
         logSection("Querying propagation cache from all 9 nodes")
-        val cacheData = allParticipants.mapIndexed { idx, pair ->
+        var totalBundles = 0
+        allParticipants.forEachIndexed { idx, pair ->
             val name = if (idx == 0) "genesis" else "join$idx"
             val cache = pair.api.getPropagationCache(pocHeight)
             Logger.info("$name cache: ${cache.count} bundles")
-            kotlin.Pair(name, cache)
-        }
-
-        logSection("Verifying natural propagation occurred")
-        
-        cacheData.forEach { (name, cache) ->
+            totalBundles += cache.count
+            
             assertThat(cache.count).isGreaterThanOrEqualTo(8)
                 .describedAs("$name should have received bundles from other participants")
         }
 
-        val totalBundles = cacheData.sumOf { it.second.count }
         Logger.info("Total bundles across all caches: $totalBundles")
 
         logSection("✅ Test Complete - Natural propagation verified in 9-node network")
         Logger.info("All participants successfully propagated and received bundles automatically")
-        Logger.info("Total bundles propagated: $totalBundles")
         Logger.info("Propagation handled by bundler and tree manager - no manual intervention")
     }
 }
