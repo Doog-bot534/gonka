@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 	"math"
+	"time"
 
 	sdkerrors "cosmossdk.io/errors"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -10,22 +11,55 @@ import (
 )
 
 func (k *Keeper) PutPaymentInEscrow(ctx context.Context, inference *types.Inference, cost int64) (int64, error) {
+	startTime := time.Now()
 	payeeAddress, err := sdk.AccAddressFromBech32(inference.RequestedBy)
 	if err != nil {
 		return 0, err
 	}
+	addrConvEnd := time.Now()
+	k.LogInfo("PutPaymentInEscrow: bech32 decode complete", types.Payments,
+		"inference_id", inference.InferenceId,
+		"duration_ms", durationMsBetween(startTime, addrConvEnd),
+		"duration_since_start_ms", durationMsBetween(startTime, addrConvEnd),
+	)
 	k.LogDebug("Sending coins to escrow", types.Payments, "inference", inference.InferenceId, "coins", cost, "payee", payeeAddress)
+	coinsStart := time.Now()
 	coins, err := types.GetCoins(cost)
+	coinsEnd := time.Now()
 	if err != nil {
 		return 0, err
 	}
+	k.LogInfo("PutPaymentInEscrow: coins constructed", types.Payments,
+		"inference_id", inference.InferenceId,
+		"amount", cost,
+		"duration_ms", durationMsBetween(coinsStart, coinsEnd),
+		"duration_since_start_ms", durationMsBetween(startTime, coinsEnd),
+	)
+	sendStart := time.Now()
 	err = k.BankKeeper.SendCoinsFromAccountToModule(ctx, payeeAddress, types.ModuleName, coins, "escrow for inferenceId:"+inference.InferenceId)
+	sendEnd := time.Now()
 	if err != nil {
-		k.LogError("Error sending coins to escrow", types.Payments, "error", err)
+		k.LogError("Error sending coins to escrow", types.Payments,
+			"inference_id", inference.InferenceId,
+			"duration_ms", durationMsBetween(sendStart, sendEnd),
+			"duration_since_start_ms", durationMsBetween(startTime, sendEnd),
+			"error", err,
+		)
 		return 0,
 			sdkerrors.Wrap(err, types.ErrRequesterCannotPay.Error())
 	}
 	k.LogInfo("Sent coins to escrow", types.Payments, "inference", inference.InferenceId, "coins", cost, "payee", payeeAddress)
+	k.LogInfo("Sent coins to escrow", types.Payments,
+		"inference_id", inference.InferenceId,
+		"coins", cost,
+		"payee", payeeAddress,
+		"duration_ms", durationMsBetween(sendStart, sendEnd),
+		"duration_since_start_ms", durationMsBetween(startTime, sendEnd),
+	)
+	k.LogInfo("PutPaymentInEscrow: complete", types.Payments,
+		"inference_id", inference.InferenceId,
+		"duration_ms", durationMs(startTime),
+	)
 	return cost, nil
 }
 

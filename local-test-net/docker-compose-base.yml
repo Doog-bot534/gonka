@@ -13,6 +13,7 @@ services:
       - SNAPSHOT_KEEP_RECENT=5
       - DEBUG=false
       - IS_TEST_NET=true
+      - INFERENCE_FINISHED_RND_SEED=${INFERENCE_FINISHED_RND_SEED:-${KEY_NAME}}
     ports:
       - "${RPC_PORT:-26657}:26657"  # RPC
       - "${P2P_PORT:-26656}:26656"  # P2P

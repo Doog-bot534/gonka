@@ -2,6 +2,12 @@ package keeper
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
+	"fmt"
+	"math/rand"
+	"os"
+	"time"
 
 	sdkerrors "cosmossdk.io/errors"
 	"cosmossdk.io/math"
@@ -12,6 +18,7 @@ import (
 
 func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishInference) (*types.MsgFinishInferenceResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
+	startTime := time.Now()
 
 	k.LogInfo("FinishInference", types.Inferences, "inference_id", msg.InferenceId, "executed_by", msg.ExecutedBy, "created_by", msg.Creator)
 
@@ -24,18 +31,23 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 
 	// Developer access gating: until cutoff height only allowlisted developers may run inference flows.
 	// We gate by the original requester (developer), not the executor/TA.
+	devAccessStart := time.Now()
 	if k.IsDeveloperAccessRestricted(ctx, ctx.BlockHeight()) && !k.IsAllowedDeveloper(ctx, msg.RequestedBy) {
 		k.LogError("FinishInference: developer is not allowlisted at this height", types.Inferences, "developer", msg.RequestedBy, "blockHeight", ctx.BlockHeight())
 		return failedFinish(ctx, sdkerrors.Wrap(types.ErrDeveloperNotAllowlisted, msg.RequestedBy), msg), nil
 	}
+	k.LogInfo("FinishInference: developer access check complete", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(devAccessStart))
 
 	// Transfer Agent access gating: only allowlisted TAs may be involved in inferences.
+	taAccessStart := time.Now()
 	if k.IsTransferAgentRestricted(ctx) && !k.IsAllowedTransferAgent(ctx, msg.TransferredBy) {
 		k.LogError("FinishInference: transfer agent is not allowlisted", types.Inferences,
 			"transferAgent", msg.TransferredBy, "blockHeight", ctx.BlockHeight())
 		return failedFinish(ctx, sdkerrors.Wrap(types.ErrTransferAgentNotAllowlisted, msg.TransferredBy), msg), nil
 	}
+	k.LogInfo("FinishInference: transfer agent access check complete", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(taAccessStart))
 
+	participantsStart := time.Now()
 	executor, found := k.GetParticipant(ctx, msg.ExecutedBy)
 	if !found {
 		k.LogError("FinishInference: executor not found", types.Inferences, "executed_by", msg.ExecutedBy)
@@ -53,14 +65,19 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 		k.LogError("FinishInference: transfer agent not found", types.Inferences, "transferred_by", msg.TransferredBy)
 		return failedFinish(ctx, sdkerrors.Wrap(types.ErrParticipantNotFound, msg.TransferredBy), msg), nil
 	}
+	k.LogInfo("FinishInference: participants fetched", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(participantsStart))
 
+	verifyStart := time.Now()
 	err := k.verifyFinishKeys(ctx, msg, &transferAgent, &requestor, &executor)
 	if err != nil {
 		k.LogError("FinishInference: verifyKeys failed", types.Inferences, "error", err)
 		return failedFinish(ctx, sdkerrors.Wrap(types.ErrInvalidSignature, err.Error()), msg), nil
 	}
+	k.LogInfo("FinishInference: verifyKeys complete", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(verifyStart))
 
+	getInferenceStart := time.Now()
 	existingInference, found := k.GetInference(ctx, msg.InferenceId)
+	k.LogInfo("FinishInference: GetInference complete", types.Inferences, "inference_id", msg.InferenceId, "found", found, "duration_ms", durationMs(getInferenceStart))
 
 	if found && existingInference.FinishedProcessed() {
 		k.LogError("FinishInference: inference already finished", types.Inferences, "inferenceId", msg.InferenceId)
@@ -78,8 +95,10 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 	// Record the current price only if this is the first message (StartInference not processed yet)
 	// This ensures consistent pricing regardless of message arrival order
 	if !existingInference.StartProcessed() {
+		priceStart := time.Now()
 		existingInference.Model = msg.Model
 		k.RecordInferencePrice(goCtx, &existingInference, msg.InferenceId)
+		k.LogInfo("FinishInference: RecordInferencePrice complete", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(priceStart))
 	} else if existingInference.Model == "" {
 		k.LogError("FinishInference: model not set by the processed start message", types.Inferences,
 			"inferenceId", msg.InferenceId,
@@ -96,25 +115,35 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 		BlockTimestamp: ctx.BlockTime().UnixMilli(),
 	}
 
+	processStart := time.Now()
 	inference, payments, err := calculations.ProcessFinishInference(&existingInference, msg, blockContext, k)
 	if err != nil {
 		return failedFinish(ctx, err, msg), nil
 	}
+	k.LogInfo("FinishInference: ProcessFinishInference complete", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(processStart))
 
+	paymentsStart := time.Now()
 	finalInference, err := k.processInferencePayments(ctx, inference, payments, true)
 	if err != nil {
 		return failedFinish(ctx, err, msg), nil
 	}
+	k.LogInfo("FinishInference: processInferencePayments complete", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(paymentsStart))
+	setInferenceStart := time.Now()
 	err = k.SetInference(ctx, *finalInference)
 	if err != nil {
 		return failedFinish(ctx, err, msg), nil
 	}
+	k.LogInfo("FinishInference: SetInference complete", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(setInferenceStart))
 	if existingInference.IsCompleted() {
+		completedStart := time.Now()
 		err := k.handleInferenceCompleted(ctx, finalInference)
 		if err != nil {
 			return failedFinish(ctx, err, msg), nil
 		}
+		k.LogInfo("FinishInference: handleInferenceCompleted complete", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(completedStart))
 	}
+	emitInferenceFinishedRandomEvent(ctx, msg, startTime)
+	k.LogInfo("FinishInference: completed", types.Inferences, "inference_id", msg.InferenceId, "duration_ms", durationMs(startTime))
 
 	return &types.MsgFinishInferenceResponse{InferenceIndex: msg.InferenceId}, nil
 }
@@ -164,6 +193,35 @@ func (k msgServer) verifyFinishKeys(ctx sdk.Context, msg *types.MsgFinishInferen
 	}
 
 	return nil
+}
+
+func emitInferenceFinishedRandomEvent(ctx sdk.Context, msg *types.MsgFinishInference, start time.Time) {
+	baseSeed := os.Getenv("INFERENCE_FINISHED_RND_SEED")
+	if baseSeed == "" {
+		if host, err := os.Hostname(); err == nil {
+			baseSeed = host
+		}
+	}
+
+	seedInput := fmt.Sprintf("%s|%s|%d", baseSeed, msg.InferenceId, ctx.BlockHeight())
+	hash := sha256.Sum256([]byte(seedInput))
+	seed := int64(binary.BigEndian.Uint64(hash[:8]))
+	rng := rand.New(rand.NewSource(seed))
+	value := rng.Int63()
+
+	emitStart := time.Now()
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			"inference_finished_rnd",
+			sdk.NewAttribute("inference_id", msg.InferenceId),
+			sdk.NewAttribute("value", fmt.Sprintf("%d", value)),
+			sdk.NewAttribute("duration_since_start_ms", fmt.Sprintf("%.3f", durationMsBetween(start, time.Now()))),
+		),
+	)
+	ctx.Logger().Info("FinishInference: inference_finished_rnd event emitted",
+		"inference_id", msg.InferenceId,
+		"duration_ms", durationMs(emitStart),
+	)
 }
 
 // verifyTASignature verifies TA signature using prompt_hash.

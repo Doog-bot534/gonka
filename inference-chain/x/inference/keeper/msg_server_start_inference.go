@@ -14,19 +14,24 @@ import (
 
 func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInference) (*types.MsgStartInferenceResponse, error) {
 	var ctx sdk.Context = sdk.UnwrapSDKContext(goCtx)
+	startTime := time.Now()
 	k.LogInfo("StartInference", types.Inferences, "inferenceId", msg.InferenceId, "creator", msg.Creator, "requestedBy", msg.RequestedBy, "model", msg.Model)
 
 	// Developer access gating: before the cutoff height, only allowlisted developers may request inferences.
+	devAccessStart := time.Now()
 	if k.IsDeveloperAccessRestricted(ctx, ctx.BlockHeight()) && !k.IsAllowedDeveloper(ctx, msg.RequestedBy) {
 		return failedStart(ctx, sdkerrors.Wrap(types.ErrDeveloperNotAllowlisted, msg.RequestedBy), msg), nil
 	}
+	k.LogInfo("StartInference: developer access check complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(devAccessStart))
 
 	// Transfer Agent access gating: only allowlisted TAs may submit StartInference.
+	taAccessStart := time.Now()
 	if k.IsTransferAgentRestricted(ctx) && !k.IsAllowedTransferAgent(ctx, msg.Creator) {
 		k.LogError("StartInference: transfer agent is not allowlisted", types.Inferences,
 			"transferAgent", msg.Creator, "blockHeight", ctx.BlockHeight())
 		return failedStart(ctx, sdkerrors.Wrap(types.ErrTransferAgentNotAllowlisted, msg.Creator), msg), nil
 	}
+	k.LogInfo("StartInference: transfer agent access check complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(taAccessStart))
 
 	if msg.MaxTokens > types.MaxAllowedTokens {
 		return failedStart(ctx, sdkerrors.Wrapf(types.ErrTokenCountOutOfRange, "max_tokens exceeds limit (%d > %d)", msg.MaxTokens, types.MaxAllowedTokens), msg), nil
@@ -35,6 +40,7 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 		return failedStart(ctx, sdkerrors.Wrapf(types.ErrTokenCountOutOfRange, "prompt_token_count exceeds limit (%d > %d)", msg.PromptTokenCount, types.MaxAllowedTokens), msg), nil
 	}
 
+	participantsStart := time.Now()
 	transferAgent, found := k.GetParticipant(ctx, msg.Creator)
 	if !found {
 		k.LogError("Creator not found", types.Inferences, "creator", msg.Creator, "msg", "StartInference")
@@ -48,14 +54,19 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 
 	k.LogInfo("DevPubKey", types.Inferences, "DevPubKey", dev.WorkerPublicKey, "DevAddress", dev.Address)
 	k.LogInfo("TransferAgentPubKey", types.Inferences, "TransferAgentPubKey", transferAgent.WorkerPublicKey, "TransferAgentAddress", transferAgent.Address)
+	k.LogInfo("StartInference: participants fetched", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(participantsStart))
 
+	verifyStart := time.Now()
 	err := k.verifyKeys(ctx, msg, transferAgent, dev)
 	if err != nil {
 		k.LogError("StartInference: verifyKeys failed", types.Inferences, "error", err)
 		return failedStart(ctx, sdkerrors.Wrap(types.ErrInvalidSignature, err.Error()), msg), nil
 	}
+	k.LogInfo("StartInference: verifyKeys complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(verifyStart))
 
+	getInferenceStart := time.Now()
 	existingInference, found := k.GetInference(ctx, msg.InferenceId)
+	k.LogInfo("StartInference: GetInference complete", types.Inferences, "inferenceId", msg.InferenceId, "found", found, "duration_ms", durationMs(getInferenceStart))
 
 	if found && existingInference.StartProcessed() {
 		k.LogError("StartInference: inference already started", types.Inferences, "inferenceId", msg.InferenceId)
@@ -65,8 +76,10 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 	// Record the current price only if this is the first message (FinishInference not processed yet)
 	// This ensures consistent pricing regardless of message arrival order
 	if !existingInference.FinishedProcessed() {
+		priceStart := time.Now()
 		existingInference.Model = msg.Model
 		k.RecordInferencePrice(goCtx, &existingInference, msg.InferenceId)
+		k.LogInfo("StartInference: RecordInferencePrice complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(priceStart))
 	}
 
 	blockContext := calculations.BlockContext{
@@ -74,27 +87,38 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 		BlockTimestamp: ctx.BlockTime().UnixMilli(),
 	}
 
+	processStart := time.Now()
 	inference, payments, err := calculations.ProcessStartInference(&existingInference, msg, blockContext, k)
 	if err != nil {
 		return failedStart(ctx, err, msg), nil
 	}
+	k.LogInfo("StartInference: ProcessStartInference complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(processStart))
 
+	paymentsStart := time.Now()
 	finalInference, err := k.processInferencePayments(ctx, inference, payments, false)
 	if err != nil {
 		return failedStart(ctx, err, msg), nil
 	}
+	k.LogInfo("StartInference: processInferencePayments complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(paymentsStart))
+	setInferenceStart := time.Now()
 	err = k.SetInference(ctx, *finalInference)
 	if err != nil {
 		return failedStart(ctx, err, msg), nil
 	}
+	k.LogInfo("StartInference: SetInference complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(setInferenceStart))
+	timeoutStart := time.Now()
 	k.addTimeout(ctx, inference)
+	k.LogInfo("StartInference: addTimeout complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(timeoutStart))
 
 	if inference.IsCompleted() {
+		completedStart := time.Now()
 		err := k.handleInferenceCompleted(ctx, inference)
 		if err != nil {
 			return failedStart(ctx, err, msg), nil
 		}
+		k.LogInfo("StartInference: handleInferenceCompleted complete", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(completedStart))
 	}
+	k.LogInfo("StartInference: completed", types.Inferences, "inferenceId", msg.InferenceId, "duration_ms", durationMs(startTime))
 
 	return &types.MsgStartInferenceResponse{
 		InferenceIndex: msg.InferenceId,
