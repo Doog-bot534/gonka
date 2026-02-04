@@ -119,6 +119,15 @@
             "exponent": "-2"
           },
           "max_inferences_per_block": "1000"
+        },
+        "participant_access_params": {
+          "new_participant_registration_start_height": "0",
+          "blocked_participant_addresses": [],
+          "use_participant_allowlist": false,
+          "participant_allowlist_until_block_height": "0"
+        },
+        "transfer_agent_access_params": {
+          "allowed_transfer_addresses": []
         }
       },
       "model_list": [
