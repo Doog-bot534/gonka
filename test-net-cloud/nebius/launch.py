@@ -399,6 +399,8 @@ services:
   api:
     environment:
       - IS_TEST_NET={is_test_net}
+      - ENFORCED_MODEL_ID=Qwen/Qwen3-4B-Instruct-2507
+      - ENFORCED_MODEL_ARGS=--enable-auto-tool-choice --tool-call-parser hermes --max-model-len 25000
   proxy:
     environment:
       - IS_TEST_NET={is_test_net}
