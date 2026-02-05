@@ -1,6 +1,6 @@
 # Propagation Tree Security Analysis
 
-**Parameters:** 10,000 participants, weighted shuffle
+**Parameters:** 10,000 participants, weighted shuffle, 100 simulations for each scenario
 
 ## Theoretical Probability (Random Attacker Distribution)
 
