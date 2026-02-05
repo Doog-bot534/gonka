@@ -263,6 +263,13 @@ func (b *Bundler) sendProofs(bundleID [32]byte, proofs []ProofItem) error {
 	return nil
 }
 
+func (b *Bundler) StoreOwnArrival(pocHeight int64, participant string, count uint32) error {
+	if b.cache == nil {
+		return fmt.Errorf("cache not available")
+	}
+	return b.cache.StoreFirstArrival(participant, pocHeight, time.Now().UnixMilli(), count)
+}
+
 func (b *Bundler) SetTrees(trees []*Tree) {
 	b.mu.Lock()
 	defer b.mu.Unlock()

@@ -404,7 +404,11 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 	}
 
 	observationBroadcastHeight := epochContext.PoCExchangeDeadline() - poc.DefaultObservationBuffer
-	minBroadcastHeight := epochContext.EndOfPoCGeneration() + 1
+	maxBroadcastHeight := epochContext.EndOfPoCGeneration() - 1
+	if observationBroadcastHeight > maxBroadcastHeight {
+		observationBroadcastHeight = maxBroadcastHeight
+	}
+	minBroadcastHeight := epochContext.PocStartBlockHeight + 1
 	if observationBroadcastHeight < minBroadcastHeight {
 		observationBroadcastHeight = minBroadcastHeight
 	}

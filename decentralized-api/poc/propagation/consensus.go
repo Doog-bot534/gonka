@@ -124,3 +124,4 @@ func (c *ConsensusCalculator) CalculateForParticipantWithDeadlineFromObservation
 
 	return c.CalculateForParticipant(pocHeight, participant, deadline)
 }
+
