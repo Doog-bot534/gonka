@@ -3,5 +3,6 @@ export PUBLIC_URL="http://89.169.110.250:8000"
 export P2P_EXTERNAL_ADDRESS="tcp://89.169.110.250:5000"
 export SYNC_WITH_SNAPSHOTS="false"
 export DAPI_API__POC_CALLBACK_URL="http://api:9100"
-export HF_HOME="/srv/dai/cache/"
-python3 launch.py --mode join --branch origin/testnet/main
+export CHAIN_ID="gonka-testnet"
+
+python3 launch.py --mode join --branch origin/gl/testnet/main --chainid "$CHAIN_ID"

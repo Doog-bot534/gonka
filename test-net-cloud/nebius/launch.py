@@ -62,6 +62,8 @@ def load_config_from_env(hf_home: str = None):
         "SYNC_WITH_SNAPSHOTS": "true",
         "SNAPSHOT_INTERVAL": "200",
         "IS_TEST_NET": "true",
+        "ETHEREUM_NETWORK": "sepolia",
+        "BEACON_STATE_URL": "https://sepolia.checkpoint-sync.ethpandaops.io",
     }
     
     config = default_config.copy()
@@ -920,7 +922,7 @@ def fund_distribution_module_account(community_pool_amount="120000000000000000")
     print(f"Community pool: {community_pool_amount}.000000000000000000ngonka")
 
 
-def generate_gentx(account_key: AccountKey, consensus_key: str, node_id: str, warm_key_address: str):
+def generate_gentx(account_key: AccountKey, consensus_key: str, node_id: str, warm_key_address: str, chain_id: str):
     """Generate genesis transaction using local inferenced binary"""
     print("Generating genesis transaction (gentx)...")
     
@@ -941,7 +943,7 @@ def generate_gentx(account_key: AccountKey, consensus_key: str, node_id: str, wa
         "--pubkey", consensus_key,
         "--ml-operational-address", warm_key_address,
         "--url", CONFIG_ENV["PUBLIC_URL"],
-        "--chain-id", "gonka-mainnet",
+        "--chain-id", chain_id,
         "--node-id", node_id
     ]
     
@@ -1143,6 +1145,81 @@ def apply_genesis_overrides(overrides_file_path):
         json.dump(genesis_data, f, indent=2, separators=(',', ': '))
     
     print(f"Genesis overrides applied successfully from {overrides_file_path}!")
+
+
+def fetch_genesis_from_seed():
+    """Fetch genesis.json from seed node RPC and save to repo genesis/ directory"""
+    seed_node_rpc_url = CONFIG_ENV.get("SEED_NODE_RPC_URL")
+    if not seed_node_rpc_url:
+        raise ValueError("SEED_NODE_RPC_URL not found in CONFIG_ENV")
+    
+    # RPC endpoint for genesis
+    genesis_url = f"{seed_node_rpc_url}/genesis"
+    
+    print(f"Fetching genesis from {genesis_url}...")
+    
+    try:
+        # Fetch genesis content
+        with urllib.request.urlopen(genesis_url) as response:
+            data = json.loads(response.read().decode())
+        
+        # Extract genesis from result
+        if 'result' in data and 'genesis' in data['result']:
+            genesis_content = data['result']['genesis']
+        elif 'genesis' in data:
+            genesis_content = data['genesis']
+        else:
+            raise ValueError(f"Could not find genesis content in response from {genesis_url}")
+        
+        # Destination path (repo genesis directory for Docker mount)
+        dest_genesis = GONKA_REPO_DIR / "genesis/genesis.json"
+        
+        # Ensure directory exists
+        dest_genesis.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Save to file
+        with open(dest_genesis, 'w') as f:
+            json.dump(genesis_content, f, indent=2)
+        
+        print(f"Genesis fetched and saved successfully to {dest_genesis}")
+        
+        return genesis_content
+        
+    except Exception as e:
+        print(f"Error fetching genesis from {genesis_url}: {e}")
+        # Try fallback to status endpoint if genesis is too large
+        status_url = f"{seed_node_rpc_url}/status"
+        print(f"Checking node status at {status_url} to confirm chain ID...")
+        try:
+             with urllib.request.urlopen(status_url) as response:
+                data = json.loads(response.read().decode())
+                print("Node status check successful. Warning: Genesis file could not be downloaded via RPC (likely too large).")
+                print("Please ensure you have manually copied the correct genesis.json if it differs from the repo default.")
+        except Exception as status_e:
+             print(f"Error checking node status: {status_e}")
+             
+        raise RuntimeError(f"Failed to fetch genesis: {e}")
+
+
+
+def set_chain_id_in_genesis(chain_id):
+    """Update valid chain_id in genesis.json"""
+    print(f"Setting chain_id to {chain_id} in genesis.json...")
+    
+    genesis_file = INFERENCED_STATE_DIR / "config/genesis.json"
+    
+    if not genesis_file.exists():
+        raise FileNotFoundError(f"Genesis file not found at {genesis_file}")
+    
+    with open(genesis_file, 'r') as f:
+        genesis_data = json.load(f)
+    
+    genesis_data['chain_id'] = chain_id
+    
+    with open(genesis_file, 'w') as f:
+        json.dump(genesis_data, f, indent=2, separators=(',', ': '))
+    
+    print(f"Set chain_id to {chain_id} successfully!")
 
 
 def copy_final_genesis_to_repo():
@@ -1386,7 +1463,7 @@ def start_docker_services(
     print("Docker services started successfully!")
 
 
-def genesis_route(account_key: AccountKey):
+def genesis_route(account_key: AccountKey, chain_id: str):
     print("\n=== GENESIS MODE: Initializing genesis node ===")
     run_genesis_initialization()
     add_genesis_account(account_key)
@@ -1402,22 +1479,50 @@ def genesis_route(account_key: AccountKey):
     node_id = CONFIG_ENV.get("NODE_ID", "")
     if not node_id:
         raise ValueError("NODE_ID not found in CONFIG_ENV")
-    generate_gentx(account_key, consensus_key, node_id, warm_key.address)
+    generate_gentx(account_key, consensus_key, node_id, warm_key.address, chain_id)
 
     # Phase 4. Genesis finalization
     collect_genesis_transactions()
     patch_genesis_participants()
 
     # Apply genesis overrides (includes denom_metadata and other configurations)
-    genesis_overrides_path = GONKA_REPO_DIR / "test-net-cloud/nebius/genesis-overrides.json"
+    # Check for local override file first (uploaded by prepare.sh), then fallback to repo
+    local_overrides = BASE_DIR / "genesis-overrides.json"
+    repo_overrides = GONKA_REPO_DIR / "test-net-cloud/nebius/genesis-overrides.json"
+    
+    if local_overrides.exists():
+        print(f"Using local genesis overrides from {local_overrides}")
+        genesis_overrides_path = local_overrides
+    else:
+        print(f"Using repo genesis overrides from {repo_overrides}")
+        genesis_overrides_path = repo_overrides
+        
     apply_genesis_overrides(genesis_overrides_path)
+    
+    # Explicitly set the chain ID from CLI argument
+    set_chain_id_in_genesis(chain_id)
 
     copy_genesis_back_to_docker()
     copy_final_genesis_to_repo()
 
 
-def join_route(account_key: AccountKey):
+def join_route(account_key: AccountKey, chain_id: str):
     print("\n=== JOIN MODE: Joining existing network ===")
+    
+    # Try to fetch global genesis file from the seed node
+    # This is critical if the chain ID has changed from default
+    try:
+        genesis_content = fetch_genesis_from_seed()
+        
+        # Verify Chain ID
+        fetched_chain_id = genesis_content.get("chain_id", "unknown")
+        if fetched_chain_id != chain_id:
+            print(f"WARNING: Fetched genesis chain_id '{fetched_chain_id}' does not match desired '{chain_id}'")
+            print(f"Using fetched chain_id '{fetched_chain_id}' as the source of truth.")
+    except Exception as e:
+        print(f"Warning: Could not fetch genesis from seed: {e}")
+        print("Falling back to local repo genesis.json. Ensure it matches the network!")
+
     start_docker_services(
         compose_files=["docker-compose.yml"],
         services=["tmkms", "node"],
@@ -1476,6 +1581,12 @@ Examples:
         default="main",
         help="Git branch to checkout after cloning (default: main)"
     )
+
+    parser.add_argument(
+        "--chainid",
+        default="gonka-testnet",
+        help="Chain ID to use for the network (default: gonka-testnet)"
+    )
     
     return parser.parse_args()
 
@@ -1517,9 +1628,9 @@ def main():
     pull_images()
 
     if is_genesis:
-        genesis_route(account_key)
+        genesis_route(account_key, args.chainid)
     else:
-        join_route(account_key)
+        join_route(account_key, args.chainid)
 
     # Phase 5. Start services
     if is_genesis:
