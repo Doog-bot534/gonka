@@ -21,6 +21,7 @@ import (
 )
 
 const distributionRetryInterval = 30 * time.Second
+const DefaultObservationBuffer = int64(10)
 
 type commitState struct {
 	count    uint32
@@ -43,8 +44,10 @@ type CommitWorker struct {
 	lastDistributionAttempt time.Time
 	lastCommitted           map[int64]commitState
 
-	propagationEnabled bool
-	bundler            *propagation.Bundler
+	propagationEnabled  bool
+	bundler             *propagation.Bundler
+	consensusCalculator *propagation.ConsensusCalculator
+	consensusSubmitted  map[int64]bool
 }
 
 func NewCommitWorker(
@@ -69,6 +72,7 @@ func NewCommitWorker(
 		lastCommitted:      make(map[int64]commitState),
 		propagationEnabled: propagationEnabled,
 		bundler:            bundler,
+		consensusSubmitted: make(map[int64]bool),
 	}
 
 	// Start flush - always on (same interval as commits)
@@ -77,6 +81,12 @@ func NewCommitWorker(
 	go w.run()
 	logging.Info("CommitWorker started", types.PoC, "interval", interval)
 	return w
+}
+
+func (w *CommitWorker) SetConsensusCalculator(calc *propagation.ConsensusCalculator) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.consensusCalculator = calc
 }
 
 // Close stops the worker and waits for it to finish.
@@ -121,16 +131,23 @@ func (w *CommitWorker) tick() {
 		w.currentPocHeight = pocHeight
 		w.lastDistributionAttempt = time.Time{}
 		w.lastCommitted = make(map[int64]commitState)
+		w.consensusSubmitted = make(map[int64]bool)
 	}
 
 	if pocHeight > 0 {
+		isPoCPhase := epochState.CurrentPhase == types.PoCGeneratePhase ||
+			epochState.CurrentPhase == types.PoCGenerateWindDownPhase
 		canCommit := ShouldAcceptStoreCommit(epochState, pocHeight)
 		logging.Debug("CommitWorker: tick", types.PoC,
 			"phase", epochState.CurrentPhase,
 			"pocHeight", pocHeight,
+			"isPoCPhase", isPoCPhase,
 			"canCommit", canCommit)
+		if isPoCPhase {
+			w.maybePublishHeaders(pocHeight)
+		}
 		if canCommit {
-			w.maybeSubmitCommit(pocHeight)
+			w.maybeSubmitConsensusCommit(pocHeight)
 		}
 	}
 
@@ -149,7 +166,67 @@ func (w *CommitWorker) tick() {
 	}
 }
 
-func (w *CommitWorker) maybeSubmitCommit(pocHeight int64) {
+func (w *CommitWorker) maybePublishHeaders(pocHeight int64) {
+	if !w.propagationEnabled || w.bundler == nil {
+		return
+	}
+
+	store, err := w.store.GetStore(pocHeight)
+	if err != nil || store == nil {
+		return
+	}
+
+	count, rootHash := store.GetFlushedRoot()
+	if count == 0 || rootHash == nil {
+		return
+	}
+
+	last := w.lastCommitted[pocHeight]
+	if last.count == count && bytes.Equal(last.rootHash, rootHash) {
+		return
+	}
+
+	bundleID := propagation.MakeBundleID(w.participantAddress, pocHeight, rootHash, count)
+
+	if err := w.bundler.Publish(pocHeight, w.participantAddress, w.pubKey, count, rootHash); err != nil {
+		logging.Warn("CommitWorker: propagation header publish failed", types.PoC,
+			"pocHeight", pocHeight, "error", err)
+	} else {
+		logging.Info("CommitWorker: header published via propagation", types.PoC,
+			"pocHeight", pocHeight, "count", count)
+
+		if err := w.bundler.StoreOwnArrival(pocHeight, w.participantAddress, count); err != nil {
+			logging.Warn("CommitWorker: failed to store own arrival", types.PoC,
+				"pocHeight", pocHeight, "error", err)
+		}
+
+		if err := w.publishProofsViaPropagation(store, bundleID, count); err != nil {
+			logging.Warn("CommitWorker: propagation proofs publish failed", types.PoC,
+				"pocHeight", pocHeight, "error", err)
+		}
+	}
+	w.lastCommitted[pocHeight] = commitState{count, rootHash}
+}
+
+func (w *CommitWorker) maybeSubmitConsensusCommit(pocHeight int64) {
+	if !w.propagationEnabled || w.consensusCalculator == nil {
+		store, err := w.store.GetStore(pocHeight)
+		if err != nil || store == nil {
+			return
+		}
+		count, rootHash := store.GetFlushedRoot()
+		if count == 0 || rootHash == nil {
+			return
+		}
+		logging.Warn("CommitWorker: propagation disabled, skipping commit", types.PoC,
+			"pocHeight", pocHeight, "count", count)
+		return
+	}
+
+	if w.consensusSubmitted[pocHeight] {
+		return
+	}
+
 	store, err := w.store.GetStore(pocHeight)
 	if err != nil || store == nil {
 		logging.Debug("CommitWorker: no store for height", types.PoC, "pocHeight", pocHeight)
@@ -162,49 +239,54 @@ func (w *CommitWorker) maybeSubmitCommit(pocHeight int64) {
 		return
 	}
 
-	// Skip if unchanged since last commit
-	last := w.lastCommitted[pocHeight]
-	if last.count == count && bytes.Equal(last.rootHash, rootHash) {
-		return
-	}
+	agreedCount := w.getConsensusCount(pocHeight)
 
-	// If propagation is enabled, publish header and proofs off-chain
-	if w.propagationEnabled && w.bundler != nil {
-		epochState := w.tracker.GetCurrentEpochState()
-		if epochState != nil && epochState.IsSynced {
-			bundleID := propagation.MakeBundleID(w.participantAddress, pocHeight, rootHash, count)
+	if agreedCount > 0 {
+		logging.Info("CommitWorker: submitting consensus-based commit", types.PoC,
+			"pocHeight", pocHeight, "localCount", count, "agreedCount", agreedCount)
 
-			if err := w.bundler.Publish(pocHeight, w.participantAddress, w.pubKey, count, rootHash); err != nil {
-				logging.Warn("CommitWorker: propagation header publish failed", types.PoC,
-					"pocHeight", pocHeight, "error", err)
-			} else {
-				logging.Info("CommitWorker: header published via propagation", types.PoC,
-					"pocHeight", pocHeight, "count", count)
-
-				if err := w.publishProofsViaPropagation(store, bundleID, count); err != nil {
-					logging.Warn("CommitWorker: propagation proofs publish failed", types.PoC,
-						"pocHeight", pocHeight, "error", err)
-				}
-			}
+		msg := &inference.MsgPoCV2StoreCommit{
+			PocStageStartBlockHeight: pocHeight,
+			Count:                    agreedCount,
+			RootHash:                 rootHash,
 		}
-	}
 
-	// Submit on-chain commit (always done for now, can be feature-flagged later)
-	msg := &inference.MsgPoCV2StoreCommit{
-		PocStageStartBlockHeight: pocHeight,
-		Count:                    count,
-		RootHash:                 rootHash,
-	}
+		if err := w.recorder.SubmitPoCV2StoreCommit(msg); err != nil {
+			logging.Warn("CommitWorker: consensus commit failed", types.PoC,
+				"pocHeight", pocHeight, "error", err)
+			return
+		}
 
-	if err := w.recorder.SubmitPoCV2StoreCommit(msg); err != nil {
-		logging.Warn("CommitWorker: commit failed", types.PoC,
-			"pocHeight", pocHeight, "error", err)
+		w.consensusSubmitted[pocHeight] = true
+		logging.Info("CommitWorker: consensus committed", types.PoC,
+			"pocHeight", pocHeight, "agreedCount", agreedCount)
 		return
 	}
 
-	w.lastCommitted[pocHeight] = commitState{count, rootHash}
-	logging.Debug("CommitWorker: committed", types.PoC,
-		"pocHeight", pocHeight, "count", count)
+	logging.Debug("CommitWorker: waiting for consensus, will retry", types.PoC,
+		"pocHeight", pocHeight)
+}
+
+func (w *CommitWorker) getConsensusCount(pocHeight int64) uint32 {
+	if w.consensusCalculator == nil {
+		return 0
+	}
+
+	result, err := w.consensusCalculator.CalculateForParticipantWithDeadlineFromObservations(pocHeight, w.participantAddress)
+	if err != nil {
+		logging.Warn("CommitWorker: failed to calculate consensus", types.PoC,
+			"pocHeight", pocHeight, "error", err)
+		return 0
+	}
+
+	if result != nil && result.AgreedCount > 0 {
+		logging.Info("CommitWorker: consensus reached", types.PoC,
+			"pocHeight", pocHeight, "agreedCount", result.AgreedCount,
+			"validators", result.TotalValidators, "agreeing", result.AgreeingCount)
+		return uint32(result.AgreedCount)
+	}
+
+	return 0
 }
 
 func (w *CommitWorker) publishProofsViaPropagation(store *artifacts.ArtifactStore, bundleID [32]byte, count uint32) error {
@@ -398,3 +480,5 @@ func formatWeightDistribution(weights []*inference.MLNodeWeight) string {
 	}
 	return "{" + strings.Join(parts, ", ") + "}"
 }
+
+

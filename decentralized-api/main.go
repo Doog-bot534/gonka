@@ -330,6 +330,11 @@ func main() {
 	)
 	defer commitWorker.Close()
 
+	if propagationCache != nil {
+		consensusCalculator := propagation.NewConsensusCalculator(propagationCache)
+		commitWorker.SetConsensusCalculator(consensusCalculator)
+	}
+
 	// Build server options
 	serverOpts := []pserver.ServerOption{pserver.WithArtifactStore(artifactStore)}
 	if propagationHandlers != nil {

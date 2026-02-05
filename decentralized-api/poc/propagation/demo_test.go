@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/stretchr/testify/require"
@@ -198,6 +199,8 @@ func testPropagationDemo(t *testing.T, numParticipants int, storageFactory propa
 	if err := bundlers[sender].Publish(pocHeight, sender, pubKeys[sender], senderCount, senderRoot); err != nil {
 		t.Fatalf("failed to publish: %v", err)
 	}
+
+	time.Sleep(100 * time.Millisecond)
 
 	bundleID := MakeBundleID(sender, pocHeight, senderRoot, senderCount)
 
