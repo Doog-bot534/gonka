@@ -334,3 +334,335 @@ func (s *testKeySigner) Sign(msg []byte) ([]byte, error) {
 	privKey := ed25519.PrivKey(s.key)
 	return privKey.Sign(msg)
 }
+
+func TestFirstArrivalTimeRecordedOnce(t *testing.T) {
+	tempDir := t.TempDir()
+	storageDir := filepath.Join(tempDir, "bundles")
+	storage, err := NewFileBundleStorage(storageDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	participant := "participant1"
+	pocHeight := int64(1000)
+
+	firstTime := int64(1000000)
+	firstCount := uint32(100)
+	err = storage.StoreFirstArrival(ctx, participant, pocHeight, firstTime, firstCount)
+	require.NoError(t, err)
+
+	retrieved, err := storage.GetFirstArrival(ctx, participant, pocHeight)
+	require.NoError(t, err)
+	require.Equal(t, firstTime, retrieved.Time)
+	require.Equal(t, firstCount, retrieved.Count)
+
+	secondTime := int64(2000000)
+	secondCount := uint32(200)
+	err = storage.StoreFirstArrival(ctx, participant, pocHeight, secondTime, secondCount)
+	require.NoError(t, err)
+
+	retrieved, err = storage.GetFirstArrival(ctx, participant, pocHeight)
+	require.NoError(t, err)
+	require.Equal(t, firstTime, retrieved.Time, "first arrival time should not change")
+	require.Equal(t, firstCount, retrieved.Count, "first arrival count should not change")
+}
+
+func TestFirstArrivalTimePersisted(t *testing.T) {
+	tempDir := t.TempDir()
+	storageDir := filepath.Join(tempDir, "bundles")
+
+	storage, err := NewFileBundleStorage(storageDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	participant := "participant1"
+	pocHeight := int64(1000)
+	arrivalTime := int64(1234567890)
+	arrivalCount := uint32(50)
+
+	err = storage.StoreFirstArrival(ctx, participant, pocHeight, arrivalTime, arrivalCount)
+	require.NoError(t, err)
+
+	storage2, err := NewFileBundleStorage(storageDir)
+	require.NoError(t, err)
+
+	retrieved, err := storage2.GetFirstArrival(ctx, participant, pocHeight)
+	require.NoError(t, err)
+	require.Equal(t, arrivalTime, retrieved.Time, "arrival time should persist across storage reload")
+	require.Equal(t, arrivalCount, retrieved.Count, "arrival count should persist across storage reload")
+}
+
+func TestFirstArrivalTimeMultipleParticipants(t *testing.T) {
+	tempDir := t.TempDir()
+	storageDir := filepath.Join(tempDir, "bundles")
+	storage, err := NewFileBundleStorage(storageDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	pocHeight := int64(1000)
+
+	arrivals := map[string]ArrivalInfo{
+		"participant1": {Time: 1000000, Count: 10},
+		"participant2": {Time: 2000000, Count: 20},
+		"participant3": {Time: 3000000, Count: 30},
+	}
+
+	for participant, info := range arrivals {
+		err = storage.StoreFirstArrival(ctx, participant, pocHeight, info.Time, info.Count)
+		require.NoError(t, err)
+	}
+
+	for participant, expected := range arrivals {
+		retrieved, err := storage.GetFirstArrival(ctx, participant, pocHeight)
+		require.NoError(t, err)
+		require.Equal(t, expected.Time, retrieved.Time)
+		require.Equal(t, expected.Count, retrieved.Count)
+	}
+
+	diffHeight := int64(2000)
+	err = storage.StoreFirstArrival(ctx, "participant1", diffHeight, 9999999, 999)
+	require.NoError(t, err)
+
+	retrieved, err := storage.GetFirstArrival(ctx, "participant1", pocHeight)
+	require.NoError(t, err)
+	require.Equal(t, arrivals["participant1"].Time, retrieved.Time, "different pocHeight should not affect original")
+}
+
+func TestGetAllFirstArrivals(t *testing.T) {
+	tempDir := t.TempDir()
+	storageDir := filepath.Join(tempDir, "bundles")
+	storage, err := NewFileBundleStorage(storageDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	pocHeight1 := int64(1000)
+	pocHeight2 := int64(2000)
+
+	err = storage.StoreFirstArrival(ctx, "participant1", pocHeight1, 1000000, 10)
+	require.NoError(t, err)
+	err = storage.StoreFirstArrival(ctx, "participant2", pocHeight1, 2000000, 20)
+	require.NoError(t, err)
+	err = storage.StoreFirstArrival(ctx, "participant3", pocHeight1, 3000000, 30)
+	require.NoError(t, err)
+
+	err = storage.StoreFirstArrival(ctx, "participant1", pocHeight2, 5000000, 50)
+	require.NoError(t, err)
+
+	arrivals, err := storage.GetAllFirstArrivals(ctx, pocHeight1)
+	require.NoError(t, err)
+	require.Len(t, arrivals, 3)
+	require.Equal(t, int64(1000000), arrivals["participant1"].Time)
+	require.Equal(t, uint32(10), arrivals["participant1"].Count)
+	require.Equal(t, int64(2000000), arrivals["participant2"].Time)
+	require.Equal(t, uint32(20), arrivals["participant2"].Count)
+	require.Equal(t, int64(3000000), arrivals["participant3"].Time)
+	require.Equal(t, uint32(30), arrivals["participant3"].Count)
+
+	arrivals2, err := storage.GetAllFirstArrivals(ctx, pocHeight2)
+	require.NoError(t, err)
+	require.Len(t, arrivals2, 1)
+	require.Equal(t, int64(5000000), arrivals2["participant1"].Time)
+	require.Equal(t, uint32(50), arrivals2["participant1"].Count)
+
+	arrivals3, err := storage.GetAllFirstArrivals(ctx, int64(9999))
+	require.NoError(t, err)
+	require.Len(t, arrivals3, 0)
+}
+
+func TestFirstArrivalTimeNotFound(t *testing.T) {
+	tempDir := t.TempDir()
+	storageDir := filepath.Join(tempDir, "bundles")
+	storage, err := NewFileBundleStorage(storageDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	_, err = storage.GetFirstArrival(ctx, "nonexistent", 1000)
+	require.ErrorIs(t, err, ErrArrivalNotFound)
+}
+
+func TestFirstArrivalTimeRecordedOnHeader(t *testing.T) {
+	numParticipants := 3
+	fanout := 2
+
+	participants := make([]string, numParticipants)
+	privKeys := make(map[string][]byte)
+	pubKeys := make(map[string]string)
+
+	for i := 0; i < numParticipants; i++ {
+		addr := fmt.Sprintf("participant%d", i)
+		participants[i] = addr
+
+		privKey := ed25519.GenPrivKey()
+		privKeys[addr] = privKey.Bytes()
+		pubKeys[addr] = base64.StdEncoding.EncodeToString(privKey.PubKey().Bytes())
+	}
+
+	blockHash := sha256.Sum256([]byte("test-block"))
+	pocHeight := int64(1000)
+
+	trees := BuildTrees(participants, blockHash[:], 1, fanout)
+
+	transport := NewMockTransport()
+	pubKeyProvider := NewMockPubKeyProvider()
+	for addr, pubKey := range pubKeys {
+		pubKeyProvider.RegisterKey(addr, pubKey)
+	}
+
+	tempDir := t.TempDir()
+
+	caches := make(map[string]*Cache)
+	bundlers := make(map[string]*Bundler)
+	stores := make(map[string]*artifacts.ArtifactStore)
+
+	for i, addr := range participants {
+		storageDir := filepath.Join(tempDir, addr, "bundles")
+		storage, err := NewFileBundleStorage(storageDir)
+		require.NoError(t, err)
+		cache := NewCache(storage)
+		caches[addr] = cache
+
+		perParticipantSender := transport.NewSenderFor(addr)
+		receiver := NewReceiver(cache, trees, pubKeyProvider, addr, perParticipantSender)
+		transport.RegisterReceiver(addr, receiver)
+
+		storeDir := filepath.Join(tempDir, addr, "store")
+		require.NoError(t, os.MkdirAll(storeDir, 0755))
+		store, err := artifacts.Open(storeDir)
+		require.NoError(t, err)
+		stores[addr] = store
+
+		for j := 0; j < 10; j++ {
+			nonce := int32(i*1000 + j)
+			vector := []byte(fmt.Sprintf("vector-%d-%d", i, j))
+			require.NoError(t, store.Add(nonce, vector))
+		}
+		require.NoError(t, store.Flush())
+
+		bundler := NewBundler(&testKeySigner{key: privKeys[addr]}, cache, trees, transport, addr)
+		bundlers[addr] = bundler
+	}
+
+	sender := participants[0]
+	senderCount := stores[sender].Count()
+	senderRoot := stores[sender].GetRoot()
+	err := bundlers[sender].Publish(pocHeight, sender, pubKeys[sender], senderCount, senderRoot)
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	for _, addr := range participants {
+		if addr == sender {
+			continue
+		}
+
+		arrival, err := caches[addr].GetFirstArrival(sender, pocHeight)
+		require.NoError(t, err, "participant %s should have first arrival for sender", addr)
+		require.Greater(t, arrival.Time, int64(0), "arrival time should be positive")
+		require.Equal(t, senderCount, arrival.Count, "arrival count should match sender count")
+	}
+
+	for _, store := range stores {
+		store.Close()
+	}
+}
+
+func TestObservationBroadcastAndForwarding(t *testing.T) {
+	numParticipants := 3
+	fanout := 2
+
+	participants := make([]string, numParticipants)
+	privKeys := make(map[string][]byte)
+	pubKeys := make(map[string]string)
+
+	for i := 0; i < numParticipants; i++ {
+		addr := fmt.Sprintf("validator%d", i)
+		participants[i] = addr
+
+		privKey := ed25519.GenPrivKey()
+		privKeys[addr] = privKey.Bytes()
+		pubKeys[addr] = base64.StdEncoding.EncodeToString(privKey.PubKey().Bytes())
+	}
+
+	blockHash := sha256.Sum256([]byte("test-block"))
+	pocHeight := int64(1000)
+
+	trees := BuildTrees(participants, blockHash[:], 1, fanout)
+
+	transport := NewMockTransport()
+	pubKeyProvider := NewMockPubKeyProvider()
+	for addr, pubKey := range pubKeys {
+		pubKeyProvider.RegisterKey(addr, pubKey)
+	}
+
+	tempDir := t.TempDir()
+
+	caches := make(map[string]*Cache)
+	bundlers := make(map[string]*Bundler)
+
+	for _, addr := range participants {
+		storageDir := filepath.Join(tempDir, addr, "bundles")
+		storage, err := NewFileBundleStorage(storageDir)
+		require.NoError(t, err)
+		cache := NewCache(storage)
+		caches[addr] = cache
+
+		perParticipantSender := transport.NewSenderFor(addr)
+		receiver := NewReceiver(cache, trees, pubKeyProvider, addr, perParticipantSender)
+		transport.RegisterReceiver(addr, receiver)
+
+		bundler := NewBundler(&testKeySigner{key: privKeys[addr]}, cache, trees, perParticipantSender, addr)
+		bundlers[addr] = bundler
+	}
+
+	broadcaster := participants[0]
+	broadcasterCache := caches[broadcaster]
+
+	err := broadcasterCache.StoreFirstArrival("participant_a", pocHeight, 1000, 50)
+	require.NoError(t, err)
+	err = broadcasterCache.StoreFirstArrival("participant_b", pocHeight, 2000, 75)
+	require.NoError(t, err)
+
+	err = bundlers[broadcaster].BroadcastObservation(pocHeight)
+	require.NoError(t, err)
+
+	time.Sleep(100 * time.Millisecond)
+
+	for _, addr := range participants {
+		observations, err := caches[addr].GetObservations(pocHeight)
+		require.NoError(t, err, "participant %s should be able to get observations", addr)
+		require.Len(t, observations, 1, "participant %s should have 1 observation", addr)
+
+		obs := observations[0]
+		require.Equal(t, broadcaster, obs.ValidatorAddress)
+		require.Equal(t, pocHeight, obs.PocHeight)
+		require.Len(t, obs.Arrivals, 2)
+		require.Equal(t, ArrivalInfo{Time: 1000, Count: 50}, obs.Arrivals["participant_a"])
+		require.Equal(t, ArrivalInfo{Time: 2000, Count: 75}, obs.Arrivals["participant_b"])
+	}
+}
+
+func TestReceiverClearProcessedState(t *testing.T) {
+	tempDir := t.TempDir()
+	storageDir := filepath.Join(tempDir, "bundles")
+	storage, err := NewFileBundleStorage(storageDir)
+	require.NoError(t, err)
+	cache := NewCache(storage)
+
+	transport := NewMockTransport()
+	pubKeyProvider := NewMockPubKeyProvider()
+
+	receiver := NewReceiver(cache, nil, pubKeyProvider, "test", transport.NewSenderFor("test"))
+
+	receiver.mu.Lock()
+	receiver.processedHeaders[[32]byte{1}] = true
+	receiver.processedProofs[[32]byte{2}] = true
+	receiver.processedObservations[[32]byte{3}] = true
+	receiver.mu.Unlock()
+
+	receiver.ClearProcessedState()
+
+	receiver.mu.RLock()
+	require.Empty(t, receiver.processedHeaders)
+	require.Empty(t, receiver.processedProofs)
+	require.Empty(t, receiver.processedObservations)
+	receiver.mu.RUnlock()
+}

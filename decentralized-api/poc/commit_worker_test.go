@@ -1,6 +1,7 @@
 package poc
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"decentralized-api/chainphase"
 	"decentralized-api/cosmosclient"
 	"decentralized-api/poc/artifacts"
+	"decentralized-api/poc/propagation"
 
 	"github.com/productscience/inference/api/inference/inference"
 	"github.com/productscience/inference/x/inference/types"
@@ -104,8 +106,7 @@ func TestCommitWorker_GetPocStageHeight_ConfirmationPoC(t *testing.T) {
 	assert.Equal(t, int64(450), height)
 }
 
-func TestCommitWorker_MaybeSubmitCommit_SkipsUnchanged(t *testing.T) {
-	// Create temp dir for artifact store
+func TestCommitWorker_MaybeSubmitConsensusCommit_SkipsUnchanged(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "commit_worker_test")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
@@ -115,15 +116,27 @@ func TestCommitWorker_MaybeSubmitCommit_SkipsUnchanged(t *testing.T) {
 
 	mockRecorder := &cosmosclient.MockCosmosMessageClient{}
 
+	bundleDir, err := os.MkdirTemp("", "bundle_storage_test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(bundleDir)
+
+	fileStorage, err := propagation.NewFileBundleStorage(bundleDir)
+	assert.NoError(t, err)
+	cache := propagation.NewCache(fileStorage)
+	consensusCalc := propagation.NewConsensusCalculator(cache)
+
 	worker := &CommitWorker{
-		store:         store,
-		recorder:      mockRecorder,
-		lastCommitted: make(map[int64]commitState),
+		store:               store,
+		recorder:            mockRecorder,
+		participantAddress:  "test_addr",
+		lastCommitted:       make(map[int64]commitState),
+		consensusSubmitted:  make(map[int64]bool),
+		propagationEnabled:  true,
+		consensusCalculator: consensusCalc,
 	}
 
 	pocHeight := int64(100)
 
-	// Get or create store and add an artifact
 	artifactStore, err := store.GetOrCreateStore(pocHeight)
 	assert.NoError(t, err)
 
@@ -132,15 +145,37 @@ func TestCommitWorker_MaybeSubmitCommit_SkipsUnchanged(t *testing.T) {
 	err = artifactStore.Flush()
 	assert.NoError(t, err)
 
-	// First commit should submit
+	count, rootHash := artifactStore.GetFlushedRoot()
+	assert.True(t, count > 0)
+	assert.NotNil(t, rootHash)
+
+	err = cache.StoreHeader(context.Background(), propagation.BundleHeader{
+		Participant: "test_addr",
+		PocHeight:   pocHeight,
+		Count:       count,
+		RootHash:    rootHash,
+		BundleID:    propagation.MakeBundleID("test_addr", pocHeight, rootHash, count),
+	})
+	assert.NoError(t, err)
+
+	obs := propagation.FirstArrivalObservation{
+		ValidatorAddress: "validator1",
+		PocHeight:        pocHeight,
+		Arrivals: map[string]propagation.ArrivalInfo{
+			"test_addr": {Time: time.Now().UnixMilli(), Count: count},
+		},
+		Timestamp: time.Now().UnixMilli(),
+	}
+	err = cache.StoreObservation(obs)
+	assert.NoError(t, err)
+
 	mockRecorder.On("SubmitPoCV2StoreCommit", mock.AnythingOfType("*inference.MsgPoCV2StoreCommit")).Return(nil).Once()
 
-	worker.maybeSubmitCommit(pocHeight)
+	worker.maybeSubmitConsensusCommit(pocHeight)
 	mockRecorder.AssertExpectations(t)
 
-	// Second commit with same state should NOT submit
-	worker.maybeSubmitCommit(pocHeight)
-	mockRecorder.AssertExpectations(t) // No additional calls expected
+	worker.maybeSubmitConsensusCommit(pocHeight)
+	mockRecorder.AssertExpectations(t)
 }
 
 func TestCommitWorker_StartAndStop(t *testing.T) {

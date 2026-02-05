@@ -38,3 +38,23 @@ func (c *Cache) StoreProofs(ctx context.Context, bundleID [32]byte, proofs []Pro
 func (c *Cache) GetProofs(bundleID [32]byte) ([]ProofItem, error) {
 	return c.storage.GetProofs(context.Background(), bundleID)
 }
+
+func (c *Cache) StoreFirstArrival(participant string, pocHeight int64, arrivalTime int64, count uint32) error {
+	return c.storage.StoreFirstArrival(context.Background(), participant, pocHeight, arrivalTime, count)
+}
+
+func (c *Cache) GetFirstArrival(participant string, pocHeight int64) (ArrivalInfo, error) {
+	return c.storage.GetFirstArrival(context.Background(), participant, pocHeight)
+}
+
+func (c *Cache) GetAllFirstArrivals(pocHeight int64) (map[string]ArrivalInfo, error) {
+	return c.storage.GetAllFirstArrivals(context.Background(), pocHeight)
+}
+
+func (c *Cache) StoreObservation(obs FirstArrivalObservation) error {
+	return c.storage.StoreObservation(context.Background(), obs)
+}
+
+func (c *Cache) GetObservations(pocHeight int64) ([]FirstArrivalObservation, error) {
+	return c.storage.GetObservations(context.Background(), pocHeight)
+}
