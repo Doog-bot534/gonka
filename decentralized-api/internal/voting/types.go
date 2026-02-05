@@ -65,7 +65,7 @@ type AssignmentProof struct {
 	RequesterAddress string `json:"requester_address,omitempty"`
 
 	// Seed is used for deterministic verification (optional).
-	Seed string `json:"seed,omitempty"`
+	Seed [32]byte `json:"seed,omitempty"`
 }
 
 // VerificationType specifies what voters should verify during the voting process.
@@ -162,7 +162,7 @@ func (v VerificationType) IsValid() bool {
 }
 
 // VoteType represents the outcome of a node's verification of Respondent behavior.
-type VoteType int
+type VoteType uint16
 
 const (
 	// VotePositive indicates the Respondent responded honestly with valid data.
@@ -390,4 +390,7 @@ type VotingConfig struct {
 
 	// MaxRetries is the maximum number of times to retry contacting a node.
 	MaxRetries int `json:"max_retries"`
+
+	// MaxNumSkips is the maximum number of nodes that may be skipped during a vote
+	MaxNumSkips uint8 `json:"max_num_skips"`
 }
