@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-	"math"
 	"math/rand"
 	"runtime"
 	"sort"
@@ -32,6 +31,7 @@ type Result struct {
 	Fanout           int
 	Trees            int
 	AttackerFraction float64
+	AttackerDist     string
 	PParent          float64
 	PBlock           float64
 	Blocked          float64
@@ -51,15 +51,19 @@ func main() {
 	fmt.Printf("Participants: %d, Simulations: %d, Workers: %d\n", numParticipants, numSimulations, runtime.NumCPU())
 	fmt.Println("==========================================")
 
+	attackerDists := []string{"uniform", "highweight"}
+
 	type job struct {
 		shufflePct       float64
 		fanout           int
 		numTrees         int
 		attackerFraction float64
+		attackerDist     string
 	}
 
-	jobs := make(chan job, len(shufflePcts)*len(fanouts)*len(treeCounts)*len(attackerFractions))
-	resultsChan := make(chan Result, len(shufflePcts)*len(fanouts)*len(treeCounts)*len(attackerFractions))
+	totalJobs := len(shufflePcts) * len(fanouts) * len(treeCounts) * len(attackerFractions) * len(attackerDists)
+	jobs := make(chan job, totalJobs)
+	resultsChan := make(chan Result, totalJobs)
 
 	var wg sync.WaitGroup
 	numWorkers := runtime.NumCPU()
@@ -89,9 +93,16 @@ func main() {
 
 					attackers := make(map[string]bool)
 					step := numParticipants / numAttackers
-					for i := 0; i < numAttackers; i++ {
-						idx := (i * step) % numParticipants
-						attackers[formatAddress(idx)] = true
+					if j.attackerDist == "uniform" {
+						for i := 0; i < numAttackers; i++ {
+							idx := (i * step) % numParticipants
+							attackers[formatAddress(idx)] = true
+						}
+					} else {
+						for i := 0; i < numAttackers; i++ {
+							idx := (numParticipants - 1) - (i * step)
+							attackers[formatAddress(idx)] = true
+						}
 					}
 
 					for _, tree := range trees {
@@ -131,15 +142,17 @@ func main() {
 
 				honestNodes := numParticipants - numAttackers
 				pParent := float64(parentAttacker) / float64(totalParentChecks)
+				avgBlocked := float64(blockedTotal) / float64(numSimulations)
 
 				resultsChan <- Result{
 					ShufflePct:       j.shufflePct,
 					Fanout:           j.fanout,
 					Trees:            j.numTrees,
 					AttackerFraction: j.attackerFraction,
+					AttackerDist:     j.attackerDist,
 					PParent:          pParent,
-					PBlock:           math.Pow(pParent, float64(j.numTrees)),
-					Blocked:          float64(blockedTotal) / float64(numSimulations),
+					PBlock:           avgBlocked / float64(honestNodes),
+					Blocked:          avgBlocked,
 					HonestNodes:      honestNodes,
 				}
 			}
@@ -150,7 +163,9 @@ func main() {
 		for _, fanout := range fanouts {
 			for _, numTrees := range treeCounts {
 				for _, attackerFraction := range attackerFractions {
-					jobs <- job{shufflePct, fanout, numTrees, attackerFraction}
+					for _, attackerDist := range attackerDists {
+						jobs <- job{shufflePct, fanout, numTrees, attackerFraction, attackerDist}
+					}
 				}
 			}
 		}
@@ -167,81 +182,89 @@ func main() {
 		results = append(results, r)
 	}
 
-	printTables(results, attackerFractions, fanouts, treeCounts, shufflePcts)
+	printTables(results, attackerFractions, fanouts, treeCounts, shufflePcts, attackerDists)
 }
 
-func printTables(results []Result, attackerFractions []float64, fanouts, treeCounts []int, shufflePcts []float64) {
-	for _, sp := range shufflePcts {
-		fmt.Printf("\n\n########## SHUFFLE PERCENTAGE: %.0f%% ##########\n", sp*100)
+func printTables(results []Result, attackerFractions []float64, fanouts, treeCounts []int, shufflePcts []float64, attackerDists []string) {
+	for _, dist := range attackerDists {
+		distName := "Uniform Distribution"
+		if dist == "highweight" {
+			distName = "High-Weight Attackers"
+		}
+		fmt.Printf("\n\n========== ATTACKER DISTRIBUTION: %s ==========\n", distName)
 
-		for _, af := range attackerFractions {
-			fmt.Printf("\n=== %.0f%% Attackers - Blocked Participants ===\n", af*100)
-			fmt.Printf("| Trees \\ Fanout |")
-			for _, f := range fanouts {
-				fmt.Printf(" %-12d |", f)
-			}
-			fmt.Println()
-			fmt.Printf("|----------------|")
-			for range fanouts {
-				fmt.Printf("--------------|")
-			}
-			fmt.Println()
+		for _, sp := range shufflePcts {
+			fmt.Printf("\n\n########## SHUFFLE PERCENTAGE: %.0f%% ##########\n", sp*100)
 
-			for _, t := range treeCounts {
-				fmt.Printf("| %-14d |", t)
+			for _, af := range attackerFractions {
+				fmt.Printf("\n=== %.0f%% Attackers - Blocked Participants ===\n", af*100)
+				fmt.Printf("| Trees \\ Fanout |")
 				for _, f := range fanouts {
-					for _, r := range results {
-						if r.ShufflePct == sp && r.Fanout == f && r.Trees == t && r.AttackerFraction == af {
-							fmt.Printf(" %-12.2f |", r.Blocked)
-							break
+					fmt.Printf(" %-12d |", f)
+				}
+				fmt.Println()
+				fmt.Printf("|----------------|")
+				for range fanouts {
+					fmt.Printf("--------------|")
+				}
+				fmt.Println()
+
+				for _, t := range treeCounts {
+					fmt.Printf("| %-14d |", t)
+					for _, f := range fanouts {
+						for _, r := range results {
+							if r.AttackerDist == dist && r.ShufflePct == sp && r.Fanout == f && r.Trees == t && r.AttackerFraction == af {
+								fmt.Printf(" %-12.2f |", r.Blocked)
+								break
+							}
+						}
+					}
+					fmt.Println()
+				}
+			}
+
+			fmt.Println("\n=== P(parent=attacker) by Fanout ===")
+			fmt.Printf("| Fanout | 33%% Attackers | 45%% Attackers |\n")
+			fmt.Printf("|--------|---------------|---------------|\n")
+			for _, f := range fanouts {
+				var p33, p45 float64
+				for _, r := range results {
+					if r.AttackerDist == dist && r.ShufflePct == sp && r.Fanout == f && r.Trees == treeCounts[0] {
+						if r.AttackerFraction == 0.33 {
+							p33 = r.PParent
+						} else {
+							p45 = r.PParent
 						}
 					}
 				}
-				fmt.Println()
+				fmt.Printf("| %-6d | %-13.4f | %-13.4f |\n", f, p33, p45)
 			}
-		}
 
-		fmt.Println("\n=== P(parent=attacker) by Fanout ===")
-		fmt.Printf("| Fanout | 33%% Attackers | 45%% Attackers |\n")
-		fmt.Printf("|--------|---------------|---------------|\n")
-		for _, f := range fanouts {
-			var p33, p45 float64
-			for _, r := range results {
-				if r.ShufflePct == sp && r.Fanout == f && r.Trees == treeCounts[0] {
-					if r.AttackerFraction == 0.33 {
-						p33 = r.PParent
-					} else {
-						p45 = r.PParent
-					}
-				}
-			}
-			fmt.Printf("| %-6d | %-13.4f | %-13.4f |\n", f, p33, p45)
-		}
-
-		for _, af := range attackerFractions {
-			fmt.Printf("\n=== P(block one) - %.0f%% Attackers ===\n", af*100)
-			fmt.Printf("| Trees \\ Fanout |")
-			for _, f := range fanouts {
-				fmt.Printf(" %-12d |", f)
-			}
-			fmt.Println()
-			fmt.Printf("|----------------|")
-			for range fanouts {
-				fmt.Printf("--------------|")
-			}
-			fmt.Println()
-
-			for _, t := range treeCounts {
-				fmt.Printf("| %-14d |", t)
+			for _, af := range attackerFractions {
+				fmt.Printf("\n=== P(block one) - %.0f%% Attackers ===\n", af*100)
+				fmt.Printf("| Trees \\ Fanout |")
 				for _, f := range fanouts {
-					for _, r := range results {
-						if r.ShufflePct == sp && r.Fanout == f && r.Trees == t && r.AttackerFraction == af {
-							fmt.Printf(" %-12.2e |", r.PBlock)
-							break
+					fmt.Printf(" %-12d |", f)
+				}
+				fmt.Println()
+				fmt.Printf("|----------------|")
+				for range fanouts {
+					fmt.Printf("--------------|")
+				}
+				fmt.Println()
+
+				for _, t := range treeCounts {
+					fmt.Printf("| %-14d |", t)
+					for _, f := range fanouts {
+						for _, r := range results {
+							if r.AttackerDist == dist && r.ShufflePct == sp && r.Fanout == f && r.Trees == t && r.AttackerFraction == af {
+								fmt.Printf(" %-12.2e |", r.PBlock)
+								break
+							}
 						}
 					}
+					fmt.Println()
 				}
-				fmt.Println()
 			}
 		}
 	}
