@@ -268,3 +268,129 @@ func (b *Bundler) SetTrees(trees []*Tree) {
 	defer b.mu.Unlock()
 	b.trees = trees
 }
+
+func (b *Bundler) BroadcastObservation(pocHeight int64) error {
+	if b.cache == nil {
+		return fmt.Errorf("cache not available")
+	}
+
+	arrivals, err := b.cache.GetAllFirstArrivals(pocHeight)
+	if err != nil {
+		return fmt.Errorf("get first arrivals: %w", err)
+	}
+
+	if len(arrivals) == 0 {
+		logging.Debug("Bundler: no arrivals to broadcast", types.PoC,
+			"pocHeight", pocHeight, "validator", b.myAddr)
+		return nil
+	}
+
+	obs := FirstArrivalObservation{
+		ValidatorAddress: b.myAddr,
+		PocHeight:        pocHeight,
+		Arrivals:         arrivals,
+		Timestamp:        time.Now().UnixMilli(),
+	}
+
+	sig, err := SignObservationWith(obs, b.signer)
+	if err != nil {
+		return fmt.Errorf("sign observation: %w", err)
+	}
+	obs.Signature = sig
+
+	if err := b.cache.StoreObservation(obs); err != nil {
+		logging.Warn("Bundler: failed to cache own observation", types.PoC, "error", err)
+	}
+
+	logging.Info("Bundler: broadcasting observation", types.PoC,
+		"pocHeight", pocHeight, "validator", b.myAddr, "arrivals", len(arrivals))
+
+	if err := b.sendObservation(obs); err != nil {
+		logging.Warn("Bundler: failed to send observation", types.PoC, "error", err)
+		return fmt.Errorf("send observation: %w", err)
+	}
+
+	logging.Info("Bundler: observation broadcast complete", types.PoC,
+		"pocHeight", pocHeight, "validator", b.myAddr)
+
+	return nil
+}
+
+func (b *Bundler) sendObservation(obs FirstArrivalObservation) error {
+	b.mu.RLock()
+	trees := b.trees
+	b.mu.RUnlock()
+
+	obsSender, ok := b.sender.(ObservationSender)
+	if !ok {
+		return fmt.Errorf("sender does not support SendObservation")
+	}
+
+	var wg sync.WaitGroup
+	totalRecipients := 0
+
+	logging.Info("Bundler: checking trees for observation recipients", types.PoC,
+		"validator", b.myAddr, "totalTrees", len(trees),
+		"pocHeight", obs.PocHeight)
+
+	for _, tree := range trees {
+		if tree.Root == nil {
+			continue
+		}
+
+		if tree.Root.Address == b.myAddr {
+			continue
+		}
+
+		totalRecipients++
+
+		wg.Add(1)
+		go func(rootAddr string) {
+			defer wg.Done()
+			if err := obsSender.SendObservation(rootAddr, obs); err != nil {
+				logging.Warn("Bundler: failed to send observation to root", types.PoC,
+					"validator", b.myAddr, "root", rootAddr, "error", err)
+			} else {
+				logging.Debug("Bundler: sent observation to root", types.PoC,
+					"validator", b.myAddr, "root", rootAddr)
+			}
+		}(tree.Root.Address)
+	}
+
+	for _, tree := range trees {
+		node := tree.GetNode(b.myAddr)
+		if node == nil || node.Parent != nil {
+			continue
+		}
+
+		if len(node.Children) > 0 {
+			logging.Info("Bundler: broadcasting observation as root", types.PoC,
+				"validator", b.myAddr, "tree", tree.Index,
+				"children", len(node.Children))
+		}
+
+		for _, child := range node.Children {
+			totalRecipients++
+
+			wg.Add(1)
+			go func(childAddr string) {
+				defer wg.Done()
+				if err := obsSender.SendObservation(childAddr, obs); err != nil {
+					logging.Warn("Bundler: failed to send observation to child", types.PoC,
+						"validator", b.myAddr, "child", childAddr, "error", err)
+				} else {
+					logging.Debug("Bundler: sent observation to child", types.PoC,
+						"validator", b.myAddr, "child", childAddr)
+				}
+			}(child.Address)
+		}
+	}
+
+	wg.Wait()
+
+	logging.Info("Bundler: sent observation to all recipients", types.PoC,
+		"validator", b.myAddr, "totalRecipients", totalRecipients,
+		"trees", len(trees), "pocHeight", obs.PocHeight)
+
+	return nil
+}

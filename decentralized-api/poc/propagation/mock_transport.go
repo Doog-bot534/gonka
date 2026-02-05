@@ -38,6 +38,18 @@ func (m *MockTransport) SendHeaderFrom(from string, treeIdx int, to string, h Bu
 	return receiver.OnHeader(h, treeIdx, from)
 }
 
+func (m *MockTransport) SendObservationFrom(from string, to string, obs FirstArrivalObservation) error {
+	m.mu.RLock()
+	receiver := m.receivers[to]
+	m.mu.RUnlock()
+
+	if receiver == nil {
+		return fmt.Errorf("receiver not found: %s", to)
+	}
+
+	return receiver.OnObservation(obs, from)
+}
+
 type PerParticipantSender struct {
 	transport *MockTransport
 	fromAddr  string
@@ -52,6 +64,10 @@ func (m *MockTransport) NewSenderFor(addr string) Sender {
 
 func (p *PerParticipantSender) SendHeader(treeIdx int, to string, h BundleHeader) error {
 	return p.transport.SendHeaderFrom(p.fromAddr, treeIdx, to, h)
+}
+
+func (p *PerParticipantSender) SendObservation(to string, obs FirstArrivalObservation) error {
+	return p.transport.SendObservationFrom(p.fromAddr, to, obs)
 }
 
 type MockPubKeyProvider struct {

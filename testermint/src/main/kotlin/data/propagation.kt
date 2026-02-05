@@ -51,3 +51,67 @@ data class PropagationProofsResponse(
     val bundleId: String,
     val proofs: List<PropagationProofItem>
 )
+
+/**
+ * Info about when and what count was first seen for a participant
+ */
+data class ArrivalInfo(
+    val time: Long,
+    val count: Long
+)
+
+/**
+ * Response from GET /v1/propagation/first-arrivals/{poc_height}
+ */
+data class PropagationFirstArrivalsResponse(
+    @SerializedName("poc_height")
+    val pocHeight: Long,
+    val arrivals: Map<String, ArrivalInfo>
+)
+
+/**
+ * Observation of first arrival times from a validator
+ */
+data class FirstArrivalObservation(
+    @SerializedName("validator_address")
+    val validatorAddress: String,
+    @SerializedName("poc_height")
+    val pocHeight: Long,
+    val arrivals: Map<String, ArrivalInfo>,
+    val timestamp: Long,
+    val signature: String
+)
+
+/**
+ * Response from GET /v1/propagation/observations/{poc_height}
+ */
+data class PropagationObservationsResponse(
+    @SerializedName("poc_height")
+    val pocHeight: Long,
+    val observations: List<FirstArrivalObservation>
+)
+
+/**
+ * Consensus result for a single participant
+ */
+data class ConsensusResult(
+    @SerializedName("poc_height")
+    val pocHeight: Long,
+    val participant: String,
+    @SerializedName("agreed_count")
+    val agreedCount: Long,
+    @SerializedName("total_validators")
+    val totalValidators: Int,
+    @SerializedName("agreeing_count")
+    val agreeingCount: Int
+)
+
+/**
+ * Response from GET /v1/propagation/consensus/{poc_height}
+ */
+data class PropagationConsensusResponse(
+    @SerializedName("poc_height")
+    val pocHeight: Long,
+    val deadline: Long,
+    val consensus: Map<String, ConsensusResult>
+)

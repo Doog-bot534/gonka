@@ -13,11 +13,13 @@ import (
 )
 
 type PostgresBundleStorage struct {
-	pool     *pgxpool.Pool
-	instance string
-	mu       sync.RWMutex
-	bundles  map[[32]byte]BundleHeader
-	proofs   map[[32]byte][]ProofItem
+	pool         *pgxpool.Pool
+	instance     string
+	mu           sync.RWMutex
+	bundles      map[[32]byte]BundleHeader
+	proofs       map[[32]byte][]ProofItem
+	arrivals     map[participantPocKey]ArrivalInfo
+	observations map[observationKey]FirstArrivalObservation
 }
 
 func NewPostgresBundleStorage(ctx context.Context, pool *pgxpool.Pool, instance string) (*PostgresBundleStorage, error) {
@@ -29,10 +31,12 @@ func NewPostgresBundleStorage(ctx context.Context, pool *pgxpool.Pool, instance 
 	}
 
 	s := &PostgresBundleStorage{
-		pool:     pool,
-		instance: instance,
-		bundles:  make(map[[32]byte]BundleHeader),
-		proofs:   make(map[[32]byte][]ProofItem),
+		pool:         pool,
+		instance:     instance,
+		bundles:      make(map[[32]byte]BundleHeader),
+		proofs:       make(map[[32]byte][]ProofItem),
+		arrivals:     make(map[participantPocKey]ArrivalInfo),
+		observations: make(map[observationKey]FirstArrivalObservation),
 	}
 
 	if err := s.ensureSchema(ctx); err != nil {
@@ -67,6 +71,25 @@ func (s *PostgresBundleStorage) ensureSchema(ctx context.Context) error {
 			bundle_id BYTEA NOT NULL,
 			proofs JSONB NOT NULL,
 			PRIMARY KEY (instance, bundle_id)
+		);
+
+		CREATE TABLE IF NOT EXISTS poc_first_arrivals (
+			instance TEXT NOT NULL,
+			participant TEXT NOT NULL,
+			poc_height BIGINT NOT NULL,
+			arrival_time BIGINT NOT NULL,
+			arrival_count INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (instance, participant, poc_height)
+		);
+
+		CREATE TABLE IF NOT EXISTS poc_observations (
+			instance TEXT NOT NULL,
+			validator_address TEXT NOT NULL,
+			poc_height BIGINT NOT NULL,
+			arrivals JSONB NOT NULL,
+			timestamp BIGINT NOT NULL,
+			signature BYTEA NOT NULL,
+			PRIMARY KEY (instance, validator_address, poc_height)
 		);
 	`)
 	return err
@@ -130,8 +153,61 @@ func (s *PostgresBundleStorage) loadBundles(ctx context.Context) error {
 		s.proofs[bundleID] = proofs
 	}
 
-	logging.Info("Loaded bundles from PostgreSQL", types.PoC, "count", len(s.bundles), "proofs", len(s.proofs))
-	return proofsRows.Err()
+	if err := proofsRows.Err(); err != nil {
+		return err
+	}
+
+	arrivalsRows, err := s.pool.Query(ctx, `
+		SELECT participant, poc_height, arrival_time, COALESCE(arrival_count, 0)
+		FROM poc_first_arrivals
+		WHERE instance = $1
+	`, s.instance)
+	if err != nil {
+		return err
+	}
+	defer arrivalsRows.Close()
+
+	for arrivalsRows.Next() {
+		var participant string
+		var pocHeight, arrivalTime int64
+		var count uint32
+		if err := arrivalsRows.Scan(&participant, &pocHeight, &arrivalTime, &count); err != nil {
+			return err
+		}
+		key := participantPocKey{Participant: participant, PocHeight: pocHeight}
+		s.arrivals[key] = ArrivalInfo{Time: arrivalTime, Count: count}
+	}
+
+	if err := arrivalsRows.Err(); err != nil {
+		return err
+	}
+
+	observationsRows, err := s.pool.Query(ctx, `
+		SELECT validator_address, poc_height, arrivals, timestamp, signature
+		FROM poc_observations
+		WHERE instance = $1
+	`, s.instance)
+	if err != nil {
+		return err
+	}
+	defer observationsRows.Close()
+
+	for observationsRows.Next() {
+		var obs FirstArrivalObservation
+		var arrivalsJSON []byte
+		if err := observationsRows.Scan(&obs.ValidatorAddress, &obs.PocHeight, &arrivalsJSON, &obs.Timestamp, &obs.Signature); err != nil {
+			return err
+		}
+		if err := json.Unmarshal(arrivalsJSON, &obs.Arrivals); err != nil {
+			logging.Warn("Failed to unmarshal observation arrivals from PostgreSQL", types.PoC, "error", err)
+			continue
+		}
+		key := observationKey{ValidatorAddress: obs.ValidatorAddress, PocHeight: obs.PocHeight}
+		s.observations[key] = obs
+	}
+
+	logging.Info("Loaded bundles from PostgreSQL", types.PoC, "count", len(s.bundles), "proofs", len(s.proofs), "arrivals", len(s.arrivals), "observations", len(s.observations))
+	return observationsRows.Err()
 }
 
 func (s *PostgresBundleStorage) StoreHeader(ctx context.Context, h BundleHeader) error {
@@ -236,6 +312,93 @@ func (s *PostgresBundleStorage) GetProofs(ctx context.Context, bundleID [32]byte
 		return nil, ErrProofsNotFound
 	}
 	return proofs, nil
+}
+
+func (s *PostgresBundleStorage) StoreFirstArrival(ctx context.Context, participant string, pocHeight int64, arrivalTime int64, count uint32) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := participantPocKey{Participant: participant, PocHeight: pocHeight}
+	if _, exists := s.arrivals[key]; exists {
+		return nil
+	}
+
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO poc_first_arrivals (instance, participant, poc_height, arrival_time, arrival_count)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (instance, participant, poc_height) DO NOTHING
+	`, s.instance, participant, pocHeight, arrivalTime, count)
+	if err != nil {
+		return fmt.Errorf("store first arrival: %w", err)
+	}
+
+	s.arrivals[key] = ArrivalInfo{Time: arrivalTime, Count: count}
+	return nil
+}
+
+func (s *PostgresBundleStorage) GetFirstArrival(ctx context.Context, participant string, pocHeight int64) (ArrivalInfo, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	key := participantPocKey{Participant: participant, PocHeight: pocHeight}
+	info, exists := s.arrivals[key]
+	if !exists {
+		return ArrivalInfo{}, ErrArrivalNotFound
+	}
+	return info, nil
+}
+
+func (s *PostgresBundleStorage) GetAllFirstArrivals(ctx context.Context, pocHeight int64) (map[string]ArrivalInfo, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make(map[string]ArrivalInfo)
+	for key, info := range s.arrivals {
+		if key.PocHeight == pocHeight {
+			result[key.Participant] = info
+		}
+	}
+	return result, nil
+}
+
+func (s *PostgresBundleStorage) StoreObservation(ctx context.Context, obs FirstArrivalObservation) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := observationKey{ValidatorAddress: obs.ValidatorAddress, PocHeight: obs.PocHeight}
+	if _, exists := s.observations[key]; exists {
+		return nil
+	}
+
+	arrivalsJSON, err := json.Marshal(obs.Arrivals)
+	if err != nil {
+		return fmt.Errorf("marshal arrivals: %w", err)
+	}
+
+	_, err = s.pool.Exec(ctx, `
+		INSERT INTO poc_observations (instance, validator_address, poc_height, arrivals, timestamp, signature)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (instance, validator_address, poc_height) DO NOTHING
+	`, s.instance, obs.ValidatorAddress, obs.PocHeight, arrivalsJSON, obs.Timestamp, obs.Signature)
+	if err != nil {
+		return fmt.Errorf("store observation: %w", err)
+	}
+
+	s.observations[key] = obs
+	return nil
+}
+
+func (s *PostgresBundleStorage) GetObservations(ctx context.Context, pocHeight int64) ([]FirstArrivalObservation, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]FirstArrivalObservation, 0)
+	for key, obs := range s.observations {
+		if key.PocHeight == pocHeight {
+			result = append(result, obs)
+		}
+	}
+	return result, nil
 }
 
 func (s *PostgresBundleStorage) Close() error {

@@ -140,6 +140,71 @@ func (h *HybridBundleStorage) GetProofs(ctx context.Context, bundleID [32]byte) 
 	return h.file.GetProofs(ctx, bundleID)
 }
 
+func (h *HybridBundleStorage) StoreFirstArrival(ctx context.Context, participant string, pocHeight int64, arrivalTime int64, count uint32) error {
+	if pg := h.currentPg(); pg != nil {
+		err := pg.StoreFirstArrival(ctx, participant, pocHeight, arrivalTime, count)
+		if err == nil {
+			return nil
+		}
+		logging.Warn("PostgreSQL store first arrival failed, falling back to file", types.PoC,
+			"participant", participant, "pocHeight", pocHeight, "error", err)
+	}
+	return h.file.StoreFirstArrival(ctx, participant, pocHeight, arrivalTime, count)
+}
+
+func (h *HybridBundleStorage) GetFirstArrival(ctx context.Context, participant string, pocHeight int64) (ArrivalInfo, error) {
+	if pg := h.currentPg(); pg != nil {
+		info, err := pg.GetFirstArrival(ctx, participant, pocHeight)
+		if err == nil {
+			return info, nil
+		}
+		if err != ErrArrivalNotFound {
+			logging.Debug("PostgreSQL get first arrival failed, checking file", types.PoC,
+				"participant", participant, "pocHeight", pocHeight, "error", err)
+		}
+	}
+
+	return h.file.GetFirstArrival(ctx, participant, pocHeight)
+}
+
+func (h *HybridBundleStorage) GetAllFirstArrivals(ctx context.Context, pocHeight int64) (map[string]ArrivalInfo, error) {
+	if pg := h.currentPg(); pg != nil {
+		arrivals, err := pg.GetAllFirstArrivals(ctx, pocHeight)
+		if err == nil {
+			return arrivals, nil
+		}
+		logging.Debug("PostgreSQL get all first arrivals failed, checking file", types.PoC,
+			"pocHeight", pocHeight, "error", err)
+	}
+
+	return h.file.GetAllFirstArrivals(ctx, pocHeight)
+}
+
+func (h *HybridBundleStorage) StoreObservation(ctx context.Context, obs FirstArrivalObservation) error {
+	if pg := h.currentPg(); pg != nil {
+		err := pg.StoreObservation(ctx, obs)
+		if err == nil {
+			return nil
+		}
+		logging.Warn("PostgreSQL store observation failed, falling back to file", types.PoC,
+			"validatorAddress", obs.ValidatorAddress, "pocHeight", obs.PocHeight, "error", err)
+	}
+	return h.file.StoreObservation(ctx, obs)
+}
+
+func (h *HybridBundleStorage) GetObservations(ctx context.Context, pocHeight int64) ([]FirstArrivalObservation, error) {
+	if pg := h.currentPg(); pg != nil {
+		observations, err := pg.GetObservations(ctx, pocHeight)
+		if err == nil {
+			return observations, nil
+		}
+		logging.Debug("PostgreSQL get observations failed, checking file", types.PoC,
+			"pocHeight", pocHeight, "error", err)
+	}
+
+	return h.file.GetObservations(ctx, pocHeight)
+}
+
 func (h *HybridBundleStorage) Close() error {
 	var pgErr, fileErr error
 

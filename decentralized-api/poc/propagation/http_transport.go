@@ -247,3 +247,97 @@ type ProofsMessage struct {
 	Proofs   []ProofItem `json:"proofs"`
 	From     string      `json:"from,omitempty"`
 }
+
+func (t *HTTPTransport) SendObservation(to string, obs FirstArrivalObservation) error {
+	if to == t.localAddr {
+		return t.handleLocalObservation(obs, t.localAddr)
+	}
+
+	t.mu.RLock()
+	url := t.participantAddrs[to]
+	t.mu.RUnlock()
+
+	if url == "" {
+		return fmt.Errorf("no URL for participant %s", to)
+	}
+
+	payload := &ObservationMessage{
+		Observation: obs,
+		From:        t.localAddr,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal observation: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url+"/v1/propagation/observation", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := t.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("http request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("http status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+func (t *HTTPTransport) handleLocalObservation(obs FirstArrivalObservation, from string) error {
+	t.mu.RLock()
+	handler := t.receivers[t.localAddr]
+	t.mu.RUnlock()
+
+	if handler == nil {
+		return fmt.Errorf("no local receiver registered")
+	}
+
+	return handler.OnObservation(obs, from)
+}
+
+func (t *HTTPTransport) HandleObservationHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var msg ObservationMessage
+	if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
+		logging.Warn("HTTPTransport: failed to decode observation", types.PoC, "error", err)
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	t.mu.RLock()
+	handler := t.receivers[t.localAddr]
+	t.mu.RUnlock()
+
+	if handler == nil {
+		http.Error(w, "No receiver registered", http.StatusServiceUnavailable)
+		return
+	}
+
+	from := msg.From
+	if from == "" {
+		from = msg.Observation.ValidatorAddress
+	}
+
+	if err := handler.OnObservation(msg.Observation, from); err != nil {
+		logging.Warn("HTTPTransport: observation handler failed", types.PoC, "error", err)
+		http.Error(w, "Handler error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}

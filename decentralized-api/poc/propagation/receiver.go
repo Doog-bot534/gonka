@@ -19,10 +19,12 @@ type Receiver struct {
 	myAddr   string
 	sender   Sender
 
-	mu               sync.RWMutex
-	processedHeaders map[[32]byte]bool
-	pendingHeaders   map[[32]byte]*BundleHeader
-	lastHeaderTime   map[[32]byte]time.Time
+	mu                    sync.RWMutex
+	processedHeaders      map[[32]byte]bool
+	processedProofs       map[[32]byte]bool
+	processedObservations map[[32]byte]bool
+	pendingHeaders        map[[32]byte]*BundleHeader
+	lastHeaderTime        map[[32]byte]time.Time
 }
 
 type PubKeyProvider interface {
@@ -31,14 +33,16 @@ type PubKeyProvider interface {
 
 func NewReceiver(cache *Cache, trees []*Tree, verifier PubKeyProvider, myAddr string, sender Sender) *Receiver {
 	return &Receiver{
-		cache:            cache,
-		trees:            trees,
-		verifier:         verifier,
-		myAddr:           myAddr,
-		sender:           sender,
-		processedHeaders: make(map[[32]byte]bool),
-		pendingHeaders:   make(map[[32]byte]*BundleHeader),
-		lastHeaderTime:   make(map[[32]byte]time.Time),
+		cache:                 cache,
+		trees:                 trees,
+		verifier:              verifier,
+		myAddr:                myAddr,
+		sender:                sender,
+		processedHeaders:      make(map[[32]byte]bool),
+		processedProofs:       make(map[[32]byte]bool),
+		processedObservations: make(map[[32]byte]bool),
+		pendingHeaders:        make(map[[32]byte]*BundleHeader),
+		lastHeaderTime:        make(map[[32]byte]time.Time),
 	}
 }
 
@@ -94,6 +98,18 @@ func (r *Receiver) OnHeader(h BundleHeader, treeIdx int, from string) error {
 		return fmt.Errorf("store header: %w", err)
 	}
 
+	arrivalTime := time.Now().UnixMilli()
+	arrivalCount := h.Count
+	go func() {
+		if err := r.cache.StoreFirstArrival(h.Participant, h.PocHeight, arrivalTime, arrivalCount); err != nil {
+			logging.Debug("Receiver: first arrival already recorded or error", types.PoC,
+				"participant", h.Participant, "pocHeight", h.PocHeight, "error", err)
+		} else {
+			logging.Info("Receiver: recorded first arrival time", types.PoC,
+				"participant", h.Participant, "pocHeight", h.PocHeight, "arrivalTime", arrivalTime, "count", arrivalCount)
+		}
+	}()
+
 	r.processedHeaders[h.BundleID] = true
 	r.pendingHeaders[h.BundleID] = &h
 	r.lastHeaderTime[h.BundleID] = time.Now()
@@ -145,9 +161,16 @@ func (r *Receiver) OnProofs(bundleID [32]byte, proofs []ProofItem, from string) 
 		"receiver", r.myAddr, "from", from, "bundleID", fmt.Sprintf("%x", bundleID[:8]),
 		"proofCount", len(proofs))
 
-	r.mu.RLock()
+	r.mu.Lock()
+	if r.processedProofs[bundleID] {
+		r.mu.Unlock()
+		logging.Debug("Receiver: duplicate proofs ignored (already processed)", types.PoC,
+			"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", bundleID[:8]))
+		return nil
+	}
+	r.processedProofs[bundleID] = true
 	trees := r.trees
-	r.mu.RUnlock()
+	r.mu.Unlock()
 
 	go func() {
 		if err := r.cache.StoreProofs(context.Background(), bundleID, proofs); err != nil {
@@ -207,4 +230,95 @@ func (r *Receiver) SetTrees(trees []*Tree) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.trees = trees
+}
+
+func (r *Receiver) ClearProcessedState() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.processedHeaders = make(map[[32]byte]bool)
+	r.processedProofs = make(map[[32]byte]bool)
+	r.processedObservations = make(map[[32]byte]bool)
+	r.pendingHeaders = make(map[[32]byte]*BundleHeader)
+	r.lastHeaderTime = make(map[[32]byte]time.Time)
+}
+
+func (r *Receiver) OnObservation(obs FirstArrivalObservation, from string) error {
+	logging.Info("Receiver: received observation", types.PoC,
+		"receiver", r.myAddr, "from", from, "validator", obs.ValidatorAddress,
+		"pocHeight", obs.PocHeight, "arrivals", len(obs.Arrivals))
+
+	obsID := MakeObservationID(obs.ValidatorAddress, obs.PocHeight)
+
+	r.mu.Lock()
+	if r.processedObservations[obsID] {
+		r.mu.Unlock()
+		logging.Debug("Receiver: duplicate observation ignored (already processed)", types.PoC,
+			"receiver", r.myAddr, "validator", obs.ValidatorAddress, "pocHeight", obs.PocHeight)
+		return nil
+	}
+	r.processedObservations[obsID] = true
+	trees := r.trees
+	r.mu.Unlock()
+
+	pubKey, err := r.verifier.GetPubKey(obs.ValidatorAddress)
+	if err != nil {
+		logging.Warn("Receiver: failed to get public key for observation", types.PoC,
+			"validatorAddress", obs.ValidatorAddress, "error", err)
+		return fmt.Errorf("get pubkey: %w", err)
+	}
+
+	if err := VerifyObservation(obs, pubKey); err != nil {
+		logging.Warn("Receiver: observation signature verification failed", types.PoC,
+			"validatorAddress", obs.ValidatorAddress, "error", err)
+		return fmt.Errorf("verify observation: %w", err)
+	}
+
+	if err := r.cache.StoreObservation(obs); err != nil {
+		logging.Warn("Receiver: failed to store observation", types.PoC,
+			"validatorAddress", obs.ValidatorAddress, "error", err)
+		return fmt.Errorf("store observation: %w", err)
+	}
+
+	logging.Info("Receiver: observation stored", types.PoC,
+		"receiver", r.myAddr, "validator", obs.ValidatorAddress, "pocHeight", obs.PocHeight)
+
+	go r.forwardObservationAllTrees(obs, trees)
+
+	return nil
+}
+
+func (r *Receiver) forwardObservationAllTrees(obs FirstArrivalObservation, trees []*Tree) {
+	obsSender, ok := r.sender.(ObservationSender)
+	if !ok {
+		return
+	}
+
+	var wg sync.WaitGroup
+
+	for _, tree := range trees {
+		node := tree.GetNode(r.myAddr)
+		if node == nil || len(node.Children) == 0 {
+			continue
+		}
+
+		logging.Info("Receiver: forwarding observation to children", types.PoC,
+			"forwarder", r.myAddr, "validator", obs.ValidatorAddress,
+			"tree", tree.Index, "children", len(node.Children))
+
+		for _, child := range node.Children {
+			wg.Add(1)
+			go func(childAddr string) {
+				defer wg.Done()
+				if err := obsSender.SendObservation(childAddr, obs); err != nil {
+					logging.Warn("Receiver: failed to forward observation to child", types.PoC,
+						"forwarder", r.myAddr, "child", childAddr, "error", err)
+				} else {
+					logging.Debug("Receiver: forwarded observation to child", types.PoC,
+						"forwarder", r.myAddr, "child", childAddr)
+				}
+			}(child.Address)
+		}
+	}
+
+	wg.Wait()
 }

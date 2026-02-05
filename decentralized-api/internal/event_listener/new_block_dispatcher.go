@@ -375,6 +375,7 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 					logging.Error("Failed to rebuild propagation trees", types.PoC,
 						"epoch", epochContext.EpochIndex, "error", err)
 				} else if len(trees) > 0 {
+					d.propagationReceiver.ClearProcessedState()
 					d.propagationReceiver.SetTrees(trees)
 					d.propagationBundler.SetTrees(trees)
 					logging.Info("Propagation trees updated successfully", types.PoC,
@@ -400,6 +401,23 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 			logging.Error("Failed to send init validate command", types.PoC, "error", err)
 			return
 		}
+	}
+
+	observationBroadcastHeight := epochContext.PoCExchangeDeadline() - poc.DefaultObservationBuffer
+	minBroadcastHeight := epochContext.EndOfPoCGeneration() + 1
+	if observationBroadcastHeight < minBroadcastHeight {
+		observationBroadcastHeight = minBroadcastHeight
+	}
+	if blockHeight == observationBroadcastHeight && d.propagationBundler != nil {
+		logging.Info("DapiStage:ObservationBroadcast. Broadcasting observation", types.Stages,
+			"blockHeight", blockHeight, "pocHeight", epochContext.PocStartBlockHeight,
+			"deadline", epochContext.PoCExchangeDeadline())
+		go func() {
+			if err := d.propagationBundler.BroadcastObservation(epochContext.PocStartBlockHeight); err != nil {
+				logging.Error("Failed to broadcast observation", types.PoC,
+					"pocHeight", epochContext.PocStartBlockHeight, "error", err)
+			}
+		}()
 	}
 
 	if epochContext.IsStartOfPoCValidationStage(blockHeight) {
