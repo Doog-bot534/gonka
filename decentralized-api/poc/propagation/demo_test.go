@@ -48,6 +48,21 @@ func (l *loggingSender) SendHeader(treeIdx int, to string, h BundleHeader) error
 	return l.dst.SendHeader(treeIdx, to, h)
 }
 
+func (l *loggingSender) SendProofs(to string, bundleID [32]byte, proofs []ProofItem) error {
+	l.mu.Lock()
+	if l.records != nil {
+		*l.records = append(*l.records, fmt.Sprintf("proofs: %s -> %s bundle=%x count=%d", l.from, to, bundleID[:8], len(proofs)))
+	}
+	l.mu.Unlock()
+	proofSender, ok := l.dst.(interface {
+		SendProofs(to string, bundleID [32]byte, proofs []ProofItem) error
+	})
+	if !ok {
+		return fmt.Errorf("destination sender does not support SendProofs")
+	}
+	return proofSender.SendProofs(to, bundleID, proofs)
+}
+
 type treeTrackingSender struct {
 	from      string
 	dst       Sender
@@ -74,6 +89,21 @@ func (s *treeTrackingSender) SendHeader(treeIdx int, to string, h BundleHeader) 
 	s.treeUsage[treeIdx]++
 	s.mu.Unlock()
 	return s.dst.SendHeader(treeIdx, to, h)
+}
+
+func (s *treeTrackingSender) SendProofs(to string, bundleID [32]byte, proofs []ProofItem) error {
+	s.mu.Lock()
+	if s.records != nil {
+		*s.records = append(*s.records, fmt.Sprintf("proofs: %s -> %s bundle=%x count=%d", s.from, to, bundleID[:8], len(proofs)))
+	}
+	s.mu.Unlock()
+	proofSender, ok := s.dst.(interface {
+		SendProofs(to string, bundleID [32]byte, proofs []ProofItem) error
+	})
+	if !ok {
+		return fmt.Errorf("destination sender does not support SendProofs")
+	}
+	return proofSender.SendProofs(to, bundleID, proofs)
 }
 
 type propagationStorageFactory func(t *testing.T, tempDir, addr string) (BundleStorage, error)
@@ -173,6 +203,11 @@ func testPropagationDemo(t *testing.T, numParticipants int, storageFactory propa
 	time.Sleep(100 * time.Millisecond)
 
 	bundleID := MakeBundleID(sender, pocHeight, senderRoot, senderCount)
+
+	for _, receiver := range receivers {
+		receiver.Wait()
+	}
+
 	receivedCount := 0
 	for _, addr := range participants {
 		if addr == sender {
@@ -267,6 +302,231 @@ func TestPropagationDemoWithFileStorage(t *testing.T) {
 
 func TestPropagationDemoLargeWithFileStorage(t *testing.T) {
 	testPropagationDemo(t, 1000, func(t *testing.T, tempDir, addr string) (BundleStorage, error) {
+		storageDir := filepath.Join(tempDir, addr, "bundles")
+		return NewFileBundleStorage(storageDir)
+	})
+}
+
+func testProofPropagation(t *testing.T, numParticipants int, storageFactory propagationStorageFactory) {
+	numTrees := 8
+	fanout := 4
+
+	weightedParticipants := make([]WeightedParticipant, numParticipants)
+	privKeys := make(map[string][]byte)
+	pubKeys := make(map[string]string)
+
+	for i := 0; i < numParticipants; i++ {
+		addr := fmt.Sprintf("participant%d", i)
+		weight := uint64(100 + i)
+		weightedParticipants[i] = WeightedParticipant{
+			Address: addr,
+			Weight:  weight,
+		}
+
+		privKey := ed25519.GenPrivKey()
+		privKeys[addr] = privKey.Bytes()
+		pubKeys[addr] = base64.StdEncoding.EncodeToString(privKey.PubKey().Bytes())
+	}
+
+	blockHash := sha256.Sum256([]byte("test-block-proofs"))
+	pocHeight := int64(2000)
+
+	trees := BuildTreesWithWeights(weightedParticipants, blockHash[:], numTrees, fanout)
+
+	participants := make([]string, numParticipants)
+	for i, wp := range weightedParticipants {
+		participants[i] = wp.Address
+	}
+
+	transport := NewMockTransport()
+	pubKeyProvider := NewMockPubKeyProvider()
+	for addr, pubKey := range pubKeys {
+		pubKeyProvider.RegisterKey(addr, pubKey)
+	}
+
+	var sendLogs []string
+	var sendLogsMu sync.Mutex
+	tempDir := t.TempDir()
+
+	caches := make(map[string]*Cache)
+	receivers := make(map[string]*Receiver)
+	bundlers := make(map[string]*Bundler)
+	stores := make(map[string]*artifacts.ArtifactStore)
+
+	for i, addr := range participants {
+		storage, err := storageFactory(t, tempDir, addr)
+		require.NoError(t, err)
+		cache := NewCache(storage)
+		caches[addr] = cache
+
+		perParticipantSender := transport.NewSenderFor(addr)
+		sender := &proofLoggingSender{
+			from:    addr,
+			dst:     perParticipantSender,
+			records: &sendLogs,
+			mu:      &sendLogsMu,
+		}
+		receiver := NewReceiver(cache, trees, pubKeyProvider, addr, sender)
+		receivers[addr] = receiver
+		transport.RegisterReceiver(addr, receiver)
+
+		storeDir := filepath.Join(tempDir, addr, "store")
+		if err := os.MkdirAll(storeDir, 0755); err != nil {
+			t.Fatalf("failed to create store dir for %s: %v", addr, err)
+		}
+		store, err := artifacts.Open(storeDir)
+		if err != nil {
+			t.Fatalf("failed to create store for %s: %v", addr, err)
+		}
+		stores[addr] = store
+
+		for j := 0; j < 50; j++ {
+			nonce := int32(i*1000 + j)
+			vector := []byte(fmt.Sprintf("vector-%d-%d", i, j))
+			if err := store.Add(nonce, vector); err != nil {
+				t.Fatalf("failed to add artifact: %v", err)
+			}
+		}
+
+		if err := store.Flush(); err != nil {
+			t.Fatalf("failed to flush store for %s: %v", addr, err)
+		}
+
+		signer := &testED25519Signer{key: privKeys[addr]}
+		bundler := NewBundler(signer, cache, trees, sender, addr)
+		bundlers[addr] = bundler
+	}
+
+	sender := trees[0].Shuffled[len(trees[0].Shuffled)-1]
+
+	senderCount := stores[sender].Count()
+	senderRoot := stores[sender].GetRoot()
+	if err := bundlers[sender].Publish(pocHeight, sender, pubKeys[sender], senderCount, senderRoot); err != nil {
+		t.Fatalf("failed to publish header: %v", err)
+	}
+
+	bundleID := MakeBundleID(sender, pocHeight, senderRoot, senderCount)
+
+	proofs := make([]ProofItem, 10)
+	for i := range proofs {
+		proofs[i] = ProofItem{
+			LeafIndex:   uint32(i),
+			NonceValue:  int32(i),
+			VectorBytes: fmt.Sprintf("vector-%d", i),
+			Proof:       []string{fmt.Sprintf("proof-hash-%d", i)},
+		}
+	}
+
+	if err := bundlers[sender].PublishProofs(bundleID, proofs); err != nil {
+		t.Fatalf("failed to publish proofs: %v", err)
+	}
+
+	for _, receiver := range receivers {
+		receiver.Wait()
+	}
+
+	headerReceivedCount := 0
+	proofReceivedCount := 0
+	for _, addr := range participants {
+		if addr == sender {
+			continue
+		}
+
+		header, err := caches[addr].GetHeader(bundleID)
+		if err != nil {
+			continue
+		}
+
+		if header.Participant != sender {
+			t.Errorf("participant %s: wrong sender in header: got %s, want %s",
+				addr, header.Participant, sender)
+		}
+		headerReceivedCount++
+
+		cachedProofs, err := caches[addr].GetProofs(bundleID)
+		if err != nil {
+			continue
+		}
+
+		if len(cachedProofs) != len(proofs) {
+			t.Errorf("participant %s: wrong proof count: got %d, want %d",
+				addr, len(cachedProofs), len(proofs))
+		}
+		proofReceivedCount++
+	}
+
+	for _, store := range stores {
+		store.Close()
+	}
+
+	headerMsgCount := 0
+	proofMsgCount := 0
+	sendLogsMu.Lock()
+	for _, log := range sendLogs {
+		if len(log) > 6 && log[:6] == "header" {
+			headerMsgCount++
+		} else if len(log) > 6 && log[:6] == "proofs" {
+			proofMsgCount++
+		}
+	}
+	sendLogsMu.Unlock()
+
+	t.Logf("- Trees: %d (fanout %d)", numTrees, fanout)
+	t.Logf("- Participants: %d", numParticipants)
+	t.Logf("- Headers received: %d out of %d", headerReceivedCount, numParticipants-1)
+	t.Logf("- Proofs received: %d out of %d", proofReceivedCount, numParticipants-1)
+	t.Logf("- Header messages sent: %d", headerMsgCount)
+	t.Logf("- Proof messages sent: %d", proofMsgCount)
+
+	if headerReceivedCount != numParticipants-1 {
+		t.Errorf("Not all participants received the header: got %d, want %d", headerReceivedCount, numParticipants-1)
+	}
+
+	if proofReceivedCount != numParticipants-1 {
+		t.Errorf("Not all participants received the proofs: got %d, want %d", proofReceivedCount, numParticipants-1)
+	}
+}
+
+type proofLoggingSender struct {
+	from    string
+	dst     Sender
+	records *[]string
+	mu      *sync.Mutex
+}
+
+func (p *proofLoggingSender) SendHeader(treeIdx int, to string, h BundleHeader) error {
+	p.mu.Lock()
+	if p.records != nil {
+		*p.records = append(*p.records, fmt.Sprintf("header: %s -> %s tree=%d bundle=%x", p.from, to, treeIdx, h.BundleID[:8]))
+	}
+	p.mu.Unlock()
+	return p.dst.SendHeader(treeIdx, to, h)
+}
+
+func (p *proofLoggingSender) SendProofs(to string, bundleID [32]byte, proofs []ProofItem) error {
+	p.mu.Lock()
+	if p.records != nil {
+		*p.records = append(*p.records, fmt.Sprintf("proofs: %s -> %s bundle=%x count=%d", p.from, to, bundleID[:8], len(proofs)))
+	}
+	p.mu.Unlock()
+	proofSender, ok := p.dst.(interface {
+		SendProofs(to string, bundleID [32]byte, proofs []ProofItem) error
+	})
+	if !ok {
+		return fmt.Errorf("destination sender does not support SendProofs")
+	}
+	return proofSender.SendProofs(to, bundleID, proofs)
+}
+
+func TestProofPropagationWithFileStorage(t *testing.T) {
+	testProofPropagation(t, 50, func(t *testing.T, tempDir, addr string) (BundleStorage, error) {
+		storageDir := filepath.Join(tempDir, addr, "bundles")
+		return NewFileBundleStorage(storageDir)
+	})
+}
+
+func TestProofPropagationLargeWithFileStorage(t *testing.T) {
+	testProofPropagation(t, 1000, func(t *testing.T, tempDir, addr string) (BundleStorage, error) {
 		storageDir := filepath.Join(tempDir, addr, "bundles")
 		return NewFileBundleStorage(storageDir)
 	})
@@ -371,6 +631,10 @@ func testMultiPublisherPropagation(t *testing.T, numParticipants int, storageFac
 			t.Fatalf("failed to publish from %s: %v", publisher, err)
 		}
 		bundleIDs[i] = MakeBundleID(publisher, pocHeight, pubRoot, pubCount)
+	}
+
+	for _, receiver := range receivers {
+		receiver.Wait()
 	}
 
 	actualReceipts := 0

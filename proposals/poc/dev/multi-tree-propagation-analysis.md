@@ -168,6 +168,89 @@ Based on attack resistance (% of nodes needed to block 50% of participants):
    - Minimum nodes adversary must control to block ≥45% or ≥50% of participants
    - Measures resilience to strategic attacks
 
+## Connections Per Participant
+
+Each participant maintains connections to neighbors in the propagation trees. The connection count depends on the tree structure and the participant's position.
+
+### Connection Types Per Tree
+
+For each tree, a participant connects to:
+- **1 parent** (except root node which has 0)
+- **Up to F children** where F = fanout (leaf nodes have 0)
+- **Up to F-1 siblings** (other children of the same parent)
+
+### Connection Calculation
+
+From `poc/propagation/trees.go`, the tree uses a heap-like structure:
+- Parent index: `(i - 1) / fanout` where i is the node's position in shuffled order
+- Children indices: `[i*fanout + 1, i*fanout + fanout]`
+
+**Per-tree connections for a typical (non-root, non-leaf) node:**
+```
+connections_per_tree = 1 (parent) + F (children) + (F-1) (siblings) = 2F
+```
+
+**Total unique connections across all trees:**
+```
+max_connections = num_trees × 2F = T × 2F
+```
+
+However, since trees are independently shuffled, the same participant rarely appears as a neighbor in multiple trees, so connections are typically unique.
+
+### Connection Counts by Configuration
+
+| Trees (T) | Fanout (F) | Max Connections | Typical Connections |
+|-----------|------------|-----------------|---------------------|
+| 6 | 4 | 48 | 36-48 |
+| 6 | 8 | 96 | 72-96 |
+| 6 | 16 | 192 | 144-192 |
+| 6 | 32 | 384 | 288-384 |
+| 8 | 4 | 64 | 48-64 |
+| 8 | 8 | 128 | 96-128 |
+| 8 | 16 | 256 | 192-256 |
+| 8 | 32 | 512 | 384-512 |
+| 10 | 4 | 80 | 60-80 |
+| 10 | 8 | 160 | 120-160 |
+| 10 | 16 | 320 | 240-320 |
+| 10 | 32 | 640 | 480-640 |
+| 12 | 4 | 96 | 72-96 |
+| 12 | 8 | 192 | 144-192 |
+| 12 | 16 | 384 | 288-384 |
+| 12 | 32 | 768 | 576-768 |
+
+**Formula:**
+```
+max_connections = T × 2F
+typical_connections ≈ T × (1.5F to 2F)  # accounting for leaf/root nodes
+```
+
+### Position-Based Variations
+
+| Position | Parent | Children | Siblings | Per-Tree Total |
+|----------|--------|----------|----------|----------------|
+| Root | 0 | F | 0 | F |
+| Internal | 1 | F | F-1 | 2F |
+| Leaf | 1 | 0 | F-1 | F |
+
+**Average connections per tree** (for large networks):
+```
+avg_per_tree ≈ (F + 2F×(internal_ratio) + F×(leaf_ratio))
+            ≈ 1.5F to 1.8F  (depending on tree shape)
+```
+
+### Bandwidth Implications
+
+Each connection requires:
+- Receiving data from parent (1 stream per tree)
+- Sending data to children (F streams per tree)
+- Optional sibling recovery (F-1 potential streams per tree)
+
+**Active streams during propagation:**
+```
+receiving_streams = T  (one per tree from parent)
+sending_streams = T × F  (fanout per tree)
+```
+
 ## Mathematical Model
 
 The analysis uses the following formulas:

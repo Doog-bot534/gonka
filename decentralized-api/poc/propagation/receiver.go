@@ -23,8 +23,11 @@ type Receiver struct {
 	processedHeaders      map[[32]byte]bool
 	processedProofs       map[[32]byte]bool
 	processedObservations map[[32]byte]bool
+	forwardedProofs       map[[32]byte]map[string]bool
 	pendingHeaders        map[[32]byte]*BundleHeader
 	lastHeaderTime        map[[32]byte]time.Time
+
+	wg sync.WaitGroup
 }
 
 type PubKeyProvider interface {
@@ -41,6 +44,7 @@ func NewReceiver(cache *Cache, trees []*Tree, verifier PubKeyProvider, myAddr st
 		processedHeaders:      make(map[[32]byte]bool),
 		processedProofs:       make(map[[32]byte]bool),
 		processedObservations: make(map[[32]byte]bool),
+		forwardedProofs:       make(map[[32]byte]map[string]bool),
 		pendingHeaders:        make(map[[32]byte]*BundleHeader),
 		lastHeaderTime:        make(map[[32]byte]time.Time),
 	}
@@ -120,14 +124,18 @@ func (r *Receiver) OnHeader(h BundleHeader, treeIdx int, from string) error {
 		"receiver", r.myAddr, "from", from, "publisher", h.Participant, "pocHeight", h.PocHeight,
 		"bundleID", fmt.Sprintf("%x", h.BundleID[:8]), "tree", treeIdx)
 
-	go r.forwardHeaderAllTrees(h, trees)
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		r.forwardHeaderAllTrees(h, trees)
+	}()
 
 	return nil
 }
 
 func (r *Receiver) forwardHeaderAllTrees(h BundleHeader, trees []*Tree) {
 	var wg sync.WaitGroup
-	
+
 	for _, tree := range trees {
 		node := tree.GetNode(r.myAddr)
 		if node == nil || len(node.Children) == 0 {
@@ -152,7 +160,7 @@ func (r *Receiver) forwardHeaderAllTrees(h BundleHeader, trees []*Tree) {
 			}(tree.Index, child.Address)
 		}
 	}
-	
+
 	wg.Wait()
 }
 
@@ -172,7 +180,9 @@ func (r *Receiver) OnProofs(bundleID [32]byte, proofs []ProofItem, from string) 
 	trees := r.trees
 	r.mu.Unlock()
 
+	r.wg.Add(1)
 	go func() {
+		defer r.wg.Done()
 		if err := r.cache.StoreProofs(context.Background(), bundleID, proofs); err != nil {
 			logging.Warn("Receiver: failed to store proofs", types.PoC,
 				"bundleID", fmt.Sprintf("%x", bundleID[:8]), "error", err)
@@ -182,13 +192,13 @@ func (r *Receiver) OnProofs(bundleID [32]byte, proofs []ProofItem, from string) 
 		logging.Info("Receiver: proofs stored", types.PoC,
 			"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", bundleID[:8]))
 
-		r.forwardProofsAllTrees(bundleID, proofs, trees)
+		r.forwardProofsAllTrees(bundleID, proofs, trees, from)
 	}()
 
 	return nil
 }
 
-func (r *Receiver) forwardProofsAllTrees(bundleID [32]byte, proofs []ProofItem, trees []*Tree) {
+func (r *Receiver) forwardProofsAllTrees(bundleID [32]byte, proofs []ProofItem, trees []*Tree, from string) {
 	proofSender, ok := r.sender.(interface {
 		SendProofs(to string, bundleID [32]byte, proofs []ProofItem) error
 	})
@@ -197,18 +207,33 @@ func (r *Receiver) forwardProofsAllTrees(bundleID [32]byte, proofs []ProofItem, 
 	}
 
 	var wg sync.WaitGroup
-	
+
 	for _, tree := range trees {
 		node := tree.GetNode(r.myAddr)
 		if node == nil || len(node.Children) == 0 {
 			continue
 		}
 
-		logging.Info("Receiver: forwarding proofs to children", types.PoC,
+		logging.Debug("Receiver: checking children for proof forwarding", types.PoC,
 			"forwarder", r.myAddr, "bundleID", fmt.Sprintf("%x", bundleID[:8]),
 			"tree", tree.Index, "children", len(node.Children))
 
 		for _, child := range node.Children {
+			if child.Address == from {
+				continue
+			}
+
+			r.mu.Lock()
+			if r.forwardedProofs[bundleID] == nil {
+				r.forwardedProofs[bundleID] = make(map[string]bool)
+			}
+			if r.forwardedProofs[bundleID][child.Address] {
+				r.mu.Unlock()
+				continue
+			}
+			r.forwardedProofs[bundleID][child.Address] = true
+			r.mu.Unlock()
+
 			wg.Add(1)
 			go func(childAddr string) {
 				defer wg.Done()
@@ -222,7 +247,7 @@ func (r *Receiver) forwardProofsAllTrees(bundleID [32]byte, proofs []ProofItem, 
 			}(child.Address)
 		}
 	}
-	
+
 	wg.Wait()
 }
 
@@ -238,6 +263,7 @@ func (r *Receiver) ClearProcessedState() {
 	r.processedHeaders = make(map[[32]byte]bool)
 	r.processedProofs = make(map[[32]byte]bool)
 	r.processedObservations = make(map[[32]byte]bool)
+	r.forwardedProofs = make(map[[32]byte]map[string]bool)
 	r.pendingHeaders = make(map[[32]byte]*BundleHeader)
 	r.lastHeaderTime = make(map[[32]byte]time.Time)
 }
@@ -321,4 +347,12 @@ func (r *Receiver) forwardObservationAllTrees(obs FirstArrivalObservation, trees
 	}
 
 	wg.Wait()
+}
+
+func (r *Receiver) Wait() {
+	r.wg.Wait()
+}
+
+func (r *Receiver) Close() {
+	r.wg.Wait()
 }

@@ -252,6 +252,8 @@ func main() {
 		propagationHandlers = pserver.NewPropagationHandlers(propagationTransport)
 		propagationHandlers.SetCache(propagationCache)
 
+		defer propagationReceiver.Close()
+
 		logging.Info("Propagation system initialized with TreeManager", types.PoC,
 			"note", "Trees will be rebuilt dynamically based on previous epoch weights")
 	} else {

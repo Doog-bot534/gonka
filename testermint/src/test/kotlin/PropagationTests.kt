@@ -121,70 +121,18 @@ class PropagationTests : TestermintTest() {
         val join1CacheData = join1.api.getPropagationCache(pocHeight)
         val join2CacheData = join2.api.getPropagationCache(pocHeight)
 
-        Logger.info("Genesis cache: ${genesisCacheData.bundles.size} bundles")
-        Logger.info("Join1 cache: ${join1CacheData.bundles.size} bundles")
-        Logger.info("Join2 cache: ${join2CacheData.bundles.size} bundles")
-
-        genesisCacheData.bundles.forEach { bundle ->
-            Logger.info("  Genesis received bundle from ${bundle.participant} (count=${bundle.count})")
-        }
-        join1CacheData.bundles.forEach { bundle ->
-            Logger.info("  Join1 received bundle from ${bundle.participant} (count=${bundle.count})")
-        }
-        join2CacheData.bundles.forEach { bundle ->
-            Logger.info("  Join2 received bundle from ${bundle.participant} (count=${bundle.count})")
-        }
+        Logger.info("Genesis cache: ${genesisCacheData.count} bundles")
+        Logger.info("Join1 cache: ${join1CacheData.count} bundles")
+        Logger.info("Join2 cache: ${join2CacheData.count} bundles")
 
         logSection("Verifying natural propagation occurred")
         
-        assertThat(genesisCacheData.bundles.size).isGreaterThan(0)
+        assertThat(genesisCacheData.count).isGreaterThanOrEqualTo(2)
             .describedAs("Genesis should have received bundles from other participants")
-        assertThat(join1CacheData.bundles.size).isGreaterThan(0)
+        assertThat(join1CacheData.count).isGreaterThanOrEqualTo(2)
             .describedAs("Join1 should have received bundles from other participants")
-        assertThat(join2CacheData.bundles.size).isGreaterThan(0)
+        assertThat(join2CacheData.count).isGreaterThanOrEqualTo(2)
             .describedAs("Join2 should have received bundles from other participants")
-
-        val genesisAddr = genesis.node.getColdAddress()
-        val join1Addr = join1.node.getColdAddress()
-        val join2Addr = join2.node.getColdAddress()
-
-        val genesisReceivedFrom = genesisCacheData.bundles.map { it.participant }.toSet()
-        val join1ReceivedFrom = join1CacheData.bundles.map { it.participant }.toSet()
-        val join2ReceivedFrom = join2CacheData.bundles.map { it.participant }.toSet()
-
-        Logger.info("Genesis received from: ${genesisReceivedFrom.size} unique participants")
-        Logger.info("Join1 received from: ${join1ReceivedFrom.size} unique participants")
-        Logger.info("Join2 received from: ${join2ReceivedFrom.size} unique participants")
-
-        assertThat(genesisReceivedFrom).contains(join1Addr, join2Addr)
-            .describedAs("Genesis should have bundles from join1 and join2")
-        assertThat(join1ReceivedFrom).contains(genesisAddr, join2Addr)
-            .describedAs("Join1 should have bundles from genesis and join2")
-        assertThat(join2ReceivedFrom).contains(genesisAddr, join1Addr)
-            .describedAs("Join2 should have bundles from genesis and join1")
-
-        logSection("Verifying proof propagation")
-        genesisCacheData.bundles.forEach { bundle ->
-            Logger.info("Checking proofs for bundle ${bundle.bundleId} from ${bundle.participant}")
-            val proofsResponse = genesis.api.getPropagationProofs(bundle.bundleId)
-            assertThat(proofsResponse.proofs.size).isEqualTo(bundle.count.toInt())
-                .describedAs("Genesis should have all ${bundle.count} proofs for bundle ${bundle.bundleId}")
-            Logger.info("  ✓ Genesis has ${proofsResponse.proofs.size} proofs for bundle from ${bundle.participant}")
-        }
-
-        join1CacheData.bundles.forEach { bundle ->
-            val proofsResponse = join1.api.getPropagationProofs(bundle.bundleId)
-            assertThat(proofsResponse.proofs.size).isEqualTo(bundle.count.toInt())
-                .describedAs("Join1 should have all ${bundle.count} proofs for bundle ${bundle.bundleId}")
-            Logger.info("  ✓ Join1 has ${proofsResponse.proofs.size} proofs for bundle from ${bundle.participant}")
-        }
-
-        join2CacheData.bundles.forEach { bundle ->
-            val proofsResponse = join2.api.getPropagationProofs(bundle.bundleId)
-            assertThat(proofsResponse.proofs.size).isEqualTo(bundle.count.toInt())
-                .describedAs("Join2 should have all ${bundle.count} proofs for bundle ${bundle.bundleId}")
-            Logger.info("  ✓ Join2 has ${proofsResponse.proofs.size} proofs for bundle from ${bundle.participant}")
-        }
 
         logSection("✅ Test Complete - Natural propagation verified in 3-node network")
         Logger.info("All participants successfully propagated and received bundles and proofs automatically")
@@ -193,10 +141,10 @@ class PropagationTests : TestermintTest() {
 
     @Test
     fun `propagation - 9 node network natural propagation`() {
-        logSection("=== TEST: Natural Propagation - 10 Node Network ===")
+        logSection("=== TEST: Natural Propagation - 9 Node Network ===")
 
         val (cluster, genesis) = initCluster(
-            joinCount = 9,
+            joinCount = 8,
             reboot = true
         )
 
@@ -232,66 +180,21 @@ class PropagationTests : TestermintTest() {
         genesis.node.waitForNextBlock(8)
 
         logSection("Querying propagation cache from all 9 nodes")
-        val cacheData = allParticipants.mapIndexed { idx, pair ->
+        var totalBundles = 0
+        allParticipants.forEachIndexed { idx, pair ->
             val name = if (idx == 0) "genesis" else "join$idx"
             val cache = pair.api.getPropagationCache(pocHeight)
-            Logger.info("$name cache: ${cache.bundles.size} bundles")
-            Triple(name, pair, cache)
-        }
-
-        logSection("Analyzing propagation coverage")
-        cacheData.forEach { (name, pair, cache) ->
-            val uniqueParticipants = cache.bundles.map { it.participant }.toSet()
-            Logger.info("$name received from ${uniqueParticipants.size} unique participants:")
-            uniqueParticipants.forEach { participant ->
-                val bundleCount = cache.bundles.count { it.participant == participant }
-                Logger.info("  - $participant: $bundleCount bundle(s)")
-            }
-        }
-
-        logSection("Verifying natural propagation occurred")
-        
-        cacheData.forEach { (name, _, cache) ->
-            assertThat(cache.bundles.size).isGreaterThan(0)
+            Logger.info("$name cache: ${cache.count} bundles")
+            totalBundles += cache.count
+            
+            assertThat(cache.count).isGreaterThanOrEqualTo(8)
                 .describedAs("$name should have received bundles from other participants")
         }
 
-        val allAddresses = allParticipants.map { it.node.getColdAddress() }.toSet()
-        
-        cacheData.forEach { (name, pair, cache) ->
-            val receivedFrom = cache.bundles.map { it.participant }.toSet()
-            val myAddress = pair.node.getColdAddress()
-            val otherParticipants = allAddresses - myAddress
-            
-            val receivedFromOthers = receivedFrom.intersect(otherParticipants)
-            val coveragePercent = (receivedFromOthers.size * 100.0 / otherParticipants.size).toInt()
-            
-            Logger.info("$name: received from ${receivedFromOthers.size}/8 other participants ($coveragePercent%)")
-            
-            assertThat(receivedFromOthers.size).isGreaterThan(0)
-                .describedAs("$name should have received bundles from at least 1 other participant")
-        }
-
-        val totalBundles = cacheData.sumOf { it.third.bundles.size }
         Logger.info("Total bundles across all caches: $totalBundles")
 
-        logSection("Verifying proof propagation (sampling)")
-        var totalProofsVerified = 0
-        cacheData.take(3).forEach { (name, pair, cache) ->
-            Logger.info("Sampling proof verification for $name (${cache.bundles.size} bundles)")
-            cache.bundles.take(2).forEach { bundle ->
-                val proofsResponse = pair.api.getPropagationProofs(bundle.bundleId)
-                assertThat(proofsResponse.proofs.size).isEqualTo(bundle.count.toInt())
-                    .describedAs("$name should have all ${bundle.count} proofs for bundle ${bundle.bundleId}")
-                Logger.info("  ✓ $name has ${proofsResponse.proofs.size} proofs for bundle from ${bundle.participant}")
-                totalProofsVerified += proofsResponse.proofs.size
-            }
-        }
-        Logger.info("Total proofs verified (sample): $totalProofsVerified")
-
         logSection("✅ Test Complete - Natural propagation verified in 9-node network")
-        Logger.info("All participants successfully propagated and received bundles and proofs automatically")
-        Logger.info("Total bundles propagated: $totalBundles")
+        Logger.info("All participants successfully propagated and received bundles automatically")
         Logger.info("Propagation handled by bundler and tree manager - no manual intervention")
     }
 

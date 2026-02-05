@@ -38,6 +38,18 @@ func (m *MockTransport) SendHeaderFrom(from string, treeIdx int, to string, h Bu
 	return receiver.OnHeader(h, treeIdx, from)
 }
 
+func (m *MockTransport) SendProofsFrom(from string, to string, bundleID [32]byte, proofs []ProofItem) error {
+	m.mu.RLock()
+	receiver := m.receivers[to]
+	m.mu.RUnlock()
+
+	if receiver == nil {
+		return fmt.Errorf("receiver not found: %s", to)
+	}
+
+	return receiver.OnProofs(bundleID, proofs, from)
+}
+
 func (m *MockTransport) SendObservationFrom(from string, to string, obs FirstArrivalObservation) error {
 	m.mu.RLock()
 	receiver := m.receivers[to]
@@ -64,6 +76,10 @@ func (m *MockTransport) NewSenderFor(addr string) Sender {
 
 func (p *PerParticipantSender) SendHeader(treeIdx int, to string, h BundleHeader) error {
 	return p.transport.SendHeaderFrom(p.fromAddr, treeIdx, to, h)
+}
+
+func (p *PerParticipantSender) SendProofs(to string, bundleID [32]byte, proofs []ProofItem) error {
+	return p.transport.SendProofsFrom(p.fromAddr, to, bundleID, proofs)
 }
 
 func (p *PerParticipantSender) SendObservation(to string, obs FirstArrivalObservation) error {
