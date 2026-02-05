@@ -106,7 +106,7 @@
           }
         },
         "confirmation_poc_params": {
-          "expected_confirmations_per_epoch": "4"
+          "expected_confirmations_per_epoch": "1"
         },
         "bandwidth_limits_params": {
           "estimated_limits_per_block_kb": "10752",

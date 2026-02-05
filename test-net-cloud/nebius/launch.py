@@ -1204,6 +1204,7 @@ def register_joining_participant(service="api"):
     # Build the command to run inside the container
     # NOTE! variable are getting renamed inside the container
     compose_files = get_compose_files_arg(include_mlnode=True)
+    time.sleep(10)
     register_cmd = f"bash -c 'source {config_file} && docker compose {compose_files} run --rm --no-deps -T {service} sh -lc \"inferenced register-new-participant \\$DAPI_API__PUBLIC_URL \\$ACCOUNT_PUBKEY --node-address \\$DAPI_CHAIN_NODE__SEED_API_URL\"'"
     
     print(f"Running command: {register_cmd}")
