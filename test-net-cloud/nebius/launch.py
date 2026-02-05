@@ -1596,6 +1596,10 @@ def main():
     # Parse command-line arguments
     args = parse_arguments()
     
+    # Store Chain ID in CONFIG_ENV so it permeates to config.env and Docker containers
+    CONFIG_ENV["CHAIN_ID"] = args.chainid
+    print(f"Using Chain ID: {args.chainid}")
+    
     # Determine operation mode
     is_genesis = (args.mode == "genesis")
     
