@@ -62,29 +62,36 @@ type AssignmentProof struct {
 }
 
 // VerificationType specifies what voters should verify during the voting process.
+//
+// Before casting a negative vote, voters must attempt recovery:
+// 1. If data is missing, voter tries to fetch it from the respondent
+// 2. If successful, voter relays the data to the challenger (giving them a chance to receive it)
+// 3. Only if data is still unavailable after retries, cast a negative vote
 type VerificationType string
 
 const (
 	// VerifyPayloadFromTA indicates voters should ping the TA's payload endpoint.
-	// Used when an executor challenges a TA for not sending the payload
+	// Used when an executor challenges a TA for not sending the payload.
+	// Recovery: If missing, voter requests payload from TA and relays to executor if found.
 	// Voters will: GET /v1/inference/payloads?inference_id=... on TA's endpoint
 	VerifyPayloadFromTA VerificationType = "payload_from_ta"
 
 	// VerifyPayloadFromExecutor indicates voters should ping the executor's payload endpoint.
 	// Used when a TA challenges an executor for not storing the response payload.
+	// Recovery: If missing, voter requests payload from executor and relays to TA if found.
 	// Voters will: GET /v1/inference/payloads?inference_id=... on executor's endpoint
 	VerifyPayloadFromExecutor VerificationType = "payload_from_executor"
 
 	// VerifyMsgStartExists indicates voters should check if MsgStartInference exists on-chain.
 	// Used when an executor challenges a TA for not posting MsgStartInference.
-	// Voters will: Query chain for MsgStartInference with the inference_id,
-	// if missing, it will request the MsgStartInference from the TA.
+	// Recovery: If missing on-chain, voter requests TA to post it, then re-checks.
+	// Voters will: Query chain for MsgStartInference with the inference_id.
 	VerifyMsgStartExists VerificationType = "msg_start_exists"
 
 	// VerifyMsgFinishExists indicates voters should check if MsgFinishInference exists on-chain.
 	// Used when a TA challenges an executor for not completing the inference.
-	// Voters will: Query chain for MsgFinishInference with the inference_id,
-	// if missing, it will request the MsgFinishInference from the executor.
+	// Recovery: If missing on-chain, voter requests executor to post it, then re-checks.
+	// Voters will: Query chain for MsgFinishInference with the inference_id.
 	VerifyMsgFinishExists VerificationType = "msg_finish_exists"
 
 	// VerifyPromptHashMatch indicates voters should verify the TA's payload hash matches on-chain.
@@ -96,6 +103,16 @@ const (
 	// Used when a TA challenges an executor for response hash mismatch.
 	// Voters will: Compare executor's payload hash vs MsgFinishInference.response_hash
 	VerifyResponseHashMatch VerificationType = "response_hash_match"
+
+	// VerifyResponseDeliveryToTA indicates voters should verify the TA received the response from executor.
+	// Used when a TA claims they never received the HTTP response from executor.
+	// Recovery: Voter fetches response from executor's payload endpoint and relays to TA.
+	// Voters will:
+	//   1. Check if MsgFinishInference exists (executor completed)
+	//   2. Fetch response payload from executor
+	//   3. Relay response to TA's callback endpoint
+	//   4. Vote negative if executor doesn't have it
+	VerifyResponseDeliveryToTA VerificationType = "response_delivery_to_ta"
 )
 
 // String returns a human-readable representation of the VerificationType.
@@ -111,7 +128,8 @@ func (v VerificationType) IsValid() bool {
 		VerifyMsgStartExists,
 		VerifyMsgFinishExists,
 		VerifyPromptHashMatch,
-		VerifyResponseHashMatch:
+		VerifyResponseHashMatch,
+		VerifyResponseDeliveryToTA:
 		return true
 	default:
 		return false
@@ -274,6 +292,66 @@ type VotingResult struct {
 
 	// CompletedAt is the timestamp when voting completed.
 	CompletedAt int64 `json:"completed_at"`
+}
+
+// VoteRequest represents a request sent to a node by a voting coordinator to verify Respondent behavior.
+type VoteRequest struct {
+	// ID of the inference to verify.
+	InferenceId string `json:"inference_id"`
+
+	// RespondentAddress is the address of the Respondent to verify.
+	RespondentAddress string `json:"respondent_address"`
+
+	// VerificationType specifies what type of verification voters should perform.
+	VerificationType VerificationType `json:"verification_type"`
+
+	// ExpectedDataHash is the expected hash of data from challenger or chain.
+	ExpectedDataHash string `json:"expected_data_hash,omitempty"`
+
+	// RequestTimestamp is when the verification request was initiated.
+	RequestTimestamp int64 `json:"request_timestamp"`
+
+	// RequesterAddress is the address of the node requesting the verification (voting coordinator).
+	RequesterAddress string `json:"requester_address"`
+
+	// RequesterSignature proves this request is from a legitimate voting coordinator.
+	// Signs: inference_id + respondent_address + verification_type + request_timestamp
+	RequesterSignature string `json:"requester_signature"`
+}
+
+// OnChainProof contains data fetched from chain (MsgStartInference and MsgFinishInference) to validate challenger claims.
+// This is used by voters to verify that the challenger has a legitimate dispute.
+type OnChainProof struct {
+	// InferenceExists indicates whether MsgStartInference exist for this inference_id.
+	InferenceExists bool `json:"inference_exists"`
+
+	// AssignedTo is the executor address from MsgStartInference.assigned_to.
+	// Used to verify executor challenger: MsgStartInference.assigned_to == ChallengerAddress
+	AssignedTo string `json:"assigned_to"`
+
+	// CreatedBy is the TA address from MsgStartInference.creator.
+	// Used to verify TA challenger: MsgStartInference.creator == ChallengerAddress
+	CreatedBy string `json:"created_by"`
+
+	// FinishExists indicates whether MsgFinishInference exists for this inference_id.
+	// If false and TA is challenger, executor failed to complete.
+	FinishExists bool `json:"finish_exists"`
+
+	// ExpectedPromptHash is the prompt_hash from MsgStartInference.
+	// Used to verify data served by TA matches what was committed on-chain.
+	ExpectedPromptHash string `json:"expected_prompt_hash"`
+
+	// ExpectedResponseHash is the response_hash from MsgFinishInference (if exists).
+	// Used to verify executor completed with correct response.
+	ExpectedResponseHash string `json:"expected_response_hash,omitempty"`
+
+	// RequestTimestamp is the timestamp from MsgStartInference.
+	// Used for signature verification.
+	RequestTimestamp int64 `json:"request_timestamp"`
+
+	// TransferSignature is the TA's signature from MsgStartInference.
+	// Can be used to verify TA's commitment.
+	TransferSignature string `json:"transfer_signature,omitempty"`
 }
 
 // VotingConfig holds configuration parameters for the voting mechanism.
