@@ -72,13 +72,13 @@ data class InferencePayload(
 
 
 enum class InferenceStatus(val value: Int) {
-    UNSPECIFIED(0),
-    STARTED(1),
-    FINISHED(2),
-    VALIDATED(3),
-    INVALIDATED(4),
-    VOTING(5),
-    EXPIRED(6);
+    STARTED(0),
+    FINISHED(1),
+    VALIDATED(2),
+    INVALIDATED(3),
+    VOTING(4),
+    EXPIRED(5),
+    UNSPECIFIED(6);
 
     companion object {
         fun fromValue(value: Int): InferenceStatus =
