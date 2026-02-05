@@ -263,6 +263,27 @@ Higher shuffle disperses the weight ordering, making the tree structure more ran
 
 ---
 
+### Connection Counts by Configuration
+
+| Trees (T) | Fanout (F) | Max Connections | Typical Connections |
+|-----------|------------|-----------------|---------------------|
+| 6         | 4          | 48              | 36-48               |
+| 6         | 8          | 96              | 72-96               |
+| 6         | 16         | 192             | 144-192             |
+| 6         | 32         | 384             | 288-384             |
+| 8         | 4          | 64              | 48-64               |
+| 8         | 8          | 128             | 96-128              |
+| 8         | 16         | 256             | 192-256             |
+| 8         | 32         | 512             | 384-512             |
+| 10        | 4          | 80              | 60-80               |
+| 10        | 8          | 160             | 120-160             |
+| 10        | 16         | 320             | 240-320             |
+| 10        | 32         | 640             | 480-640             |
+| 12        | 4          | 96              | 72-96               |
+| 12        | 8          | 192             | 144-192             |
+| 12        | 16         | 384             | 288-384             |
+| 12        | 32         | 768             | 576-768             |
+
 ## Running the Simulation
 
 To run the blocking probability simulation:
