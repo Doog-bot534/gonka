@@ -384,20 +384,23 @@ def create_config_env_file():
 
 
 def create_env_override():
-    """Create docker-compose override file to inject IS_TEST_NET into all containers"""
+    """Create docker-compose override file to inject IS_TEST_NET and CHAIN_ID into all containers"""
     working_dir = GONKA_REPO_DIR / "deploy/join"
     override_file = working_dir / "docker-compose.env-override.yml"
     
     is_test_net = CONFIG_ENV.get("IS_TEST_NET", "true")
+    chain_id = CONFIG_ENV.get("CHAIN_ID", "gonka-testnet")
     
     override_content = f"""# Auto-generated environment override - do not commit
 services:
   tmkms:
     environment:
       - IS_TEST_NET={is_test_net}
+      - CHAIN_ID={chain_id}
   node:
     environment:
       - IS_TEST_NET={is_test_net}
+      - CHAIN_ID={chain_id}
   api:
     environment:
       - IS_TEST_NET={is_test_net}
@@ -488,10 +491,11 @@ def pull_images():
 def create_docker_compose_override(init_only=True, node_id=None):
     """Create a docker-compose override file for genesis initialization or runtime"""
     working_dir = GONKA_REPO_DIR / "deploy/join"
+    chain_id = CONFIG_ENV.get("CHAIN_ID", "gonka-testnet")
     
     if init_only:
         override_file = working_dir / "docker-compose.genesis-override.yml"
-        override_content = """services:
+        override_content = f"""services:
   node:
     ports:
       - "26657:26657"
@@ -499,6 +503,7 @@ def create_docker_compose_override(init_only=True, node_id=None):
       - INIT_ONLY=true
       - IS_GENESIS=true
       - COIN_DENOM=ngonka
+      - CHAIN_ID={chain_id}
   proxy:
     environment:
       - DISABLE_GONKA_API=false
@@ -534,6 +539,7 @@ def create_docker_compose_override(init_only=True, node_id=None):
       - IS_GENESIS=true
       - GENESIS_SEEDS={genesis_seeds}
       - COIN_DENOM=ngonka
+      - CHAIN_ID={chain_id}
   proxy:
     environment:
       - DISABLE_GONKA_API=false
@@ -1475,6 +1481,7 @@ def genesis_route(account_key: AccountKey, chain_id: str):
     # Phase 3. GENTX and GENPARTICIPANT generation
     # Setup genesis.json file for local gentx generation
     setup_genesis_file()
+    set_chain_id_in_genesis(chain_id)
     fund_distribution_module_account()
     # Generate gentx transaction
     node_id = CONFIG_ENV.get("NODE_ID", "")
@@ -1500,7 +1507,6 @@ def genesis_route(account_key: AccountKey, chain_id: str):
         
     apply_genesis_overrides(genesis_overrides_path)
     
-    # Explicitly set the chain ID from CLI argument
     set_chain_id_in_genesis(chain_id)
 
     copy_genesis_back_to_docker()
