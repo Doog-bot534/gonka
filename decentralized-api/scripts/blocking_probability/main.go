@@ -69,7 +69,7 @@ func main() {
 	startTime := time.Now()
 
 	numParticipants := 10000
-	numSimulations := numParticipants
+	numSimulations := 1000
 
 	shufflePcts := []float64{0.10, 0.15, 0.20, 0.25, 0.30}
 	fanouts := []int{4, 8, 16, 32}

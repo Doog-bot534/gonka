@@ -1,8 +1,8 @@
 # Propagation Tree Security Analysis
 
-**Parameters:** 10,000 participants, weighted shuffle, 100 simulations for each scenario
+**Parameters:** 10,000 participants, weighted shuffle, 1000 simulations per scenario
 
-## Theoretical Probability (Random Attacker Distribution)
+## Theoretical Probability (Random Attacker Distribution without correlation to weight)
 
 If attackers are randomly distributed without correlation to weight:
 
@@ -31,73 +31,37 @@ P(block one) = α^numTrees
 
 **Note:** These theoretical values assume P(parent is attacker) = α, which holds when attacker selection is independent of weight. In practice with weighted shuffle, P(parent is attacker) can be higher or lower depending on how attackers are distributed across weight levels.
 
+
+## What We Measure
+
+**P(single honest participant blocked)** — the probability that a randomly chosen honest participant will **not** receive a message when a sender broadcasts through all trees and attackers actively block relay.
+
+### How It's Calculated
+
+```
+P(single honest participant blocked) = AvgUnreached / HonestNodes
+```
+
+**Simulation process:**
+1. For each simulation, one sender broadcasts their message to all tree roots
+2. Message propagates down each tree via BFS — attacker nodes don't relay to their children
+3. A honest participant is "reached" if they receive the message in **at least one tree**
+4. `UnreachedHonest` = count of honest participants not reached in any tree
+5. Average across all simulations → `AvgUnreached`
+6. Divide by total honest nodes → probability
+
+**Example:** A value of 0.10 means any given honest node has a 10% chance of not receiving the data.
+
 ---
-
-## Key Formula (Approximate)
-
-```
-P(block one participant) ≈ P(parent is attacker)^numTrees
-P(any of n blocked) ≈ n × P(block one)
-```
-
-**️ Important Limitation:**
-
-This formula is an **approximation** that uses the average P(parent is attacker) across all nodes. In reality:
-
-- **Low-weight participants** have higher P(parent is attacker) (their parents are more likely to be attackers)
-- **High-weight participants** have lower P(parent is attacker) (their parents are less likely to be attackers)
-
-The mathematical issue:
-```
-(average P)^numTrees  ≠  average of (P_i)^numTrees
-```
-
-Due to Jensen's inequality, the average of a power is not equal to the power of an average. This means:
-- The formula **underestimates** blocking for low-weight participants
-- The formula **overestimates** blocking for high-weight participants
-- The overall blocking probability is **approximated** but not exact
-
-The simulation directly counts blocked participants, avoiding this averaging issue.
-
-
-## Methodology: How P(parent is attacker) is Calculated
-
-These values are measured via simulation, not a closed-form formula.
-
-### Simulation Approach
-
-```go
-for _, tree := range trees {
-    for _, node := range tree.Nodes {
-        if node.Parent == nil {
-            continue
-        }
-        totalParentChecks++
-        if attackers[node.Parent.Address] {
-            parentIsAttacker++
-        }
-    }
-}
-P_parent_attacker = parentIsAttacker / totalParentChecks
-```
-
-### Why P(parent is attacker) != Attacker Fraction
-
-With weighted shuffle:
-1. **Parents are high-weight nodes** (tree positions 0 to ~n/fanout)
-2. **Uniform attackers are spread across ALL weight levels**
-3. Attacker density among parents != overall attacker fraction
 
 ## Attacker Distribution Models
 
-The simulation supports two attacker distribution strategies:
+### 1. Uniform Distribution
 
-### 1. Uniform Attacker Distribution
-
-Attackers are evenly distributed across **all weight levels**, starting from the lowest-weight participants.
+Attackers are evenly distributed across **all weight levels**.
 
 ```go
-step := numParticipants / numAttackers  // integer division
+step := numParticipants / numAttackers
 for i := 0; i < numAttackers; i++ {
     idx := (i * step) % numParticipants
     attackers[formatAddress(idx)] = true
@@ -106,17 +70,16 @@ for i := 0; i < numAttackers; i++ {
 
 **Characteristics:**
 - Selects every Nth participant starting from index 0
-- For 33% attackers: step = 10000/3300 = 3, selects indices 0, 3, 6, ..., 9897
-- For 45% attackers: step = 10000/4500 = 2, selects indices 0, 2, 4, ..., 8998
-- **Attackers are spread across low-weight and mid-weight nodes**
-- High-weight nodes (indices 9000-9999) have **zero or few attackers**
+- For 33% attackers: step = 3, selects indices 0, 3, 6, ..., 9897
+- For 45% attackers: step = 2, selects indices 0, 2, 4, ..., 8998
+- High-weight nodes (tree parents) have **fewer attackers**
 
-### 2. High-Weight Attacker Distribution
+### 2. High-Weight Distribution
 
-Attackers are evenly distributed among **high-weight participants**, starting from the highest-weight nodes.
+Attackers are concentrated among **high-weight participants** (worst-case scenario).
 
 ```go
-step := numParticipants / numAttackers  // integer division
+step := numParticipants / numAttackers
 for i := 0; i < numAttackers; i++ {
     idx := (numParticipants - 1) - (i * step)
     attackers[formatAddress(idx)] = true
@@ -124,456 +87,392 @@ for i := 0; i < numAttackers; i++ {
 ```
 
 **Characteristics:**
-- Selects every Nth participant starting from the **end** (index 9999)
-- For 33% attackers: step = 3, selects indices 9999, 9996, 9993, ..., 102
-- For 45% attackers: step = 2, selects indices 9999, 9997, 9995, ..., 1
-- **Attackers are concentrated among high-weight nodes**
-- These nodes are **most likely to become parents** in the tree structure
-- This represents a **worst-case attack scenario** where attackers control high-weight nodes
-
-## Examples: How Distribution Affects P(parent is attacker)
-
-### Uniform Distribution Example
-
-**Fanout 32, n=10,000, 45% attackers, 30% shuffle**
-
-1. **Attacker selection:**
-   - step = 10000 / 4500 = 2 (integer division)
-   - Attackers at original indices: 0, 2, 4, 6, ..., 8998
-   - Maximum attacker index = 4499 × 2 = 8998
-   - **Indices 9000-9999 have ZERO attackers**
-
-2. **Parent positions after weighted shuffle:**
-   - Weight of node i = 1000 + i (higher index = higher weight)
-   - After sorting by weight, tree positions 0-312 = original indices ~9687-9999
-   - These are the highest-weight nodes
-
-3. **Overlap calculation:**
-   - Parents come from indices 9687-9999 (313 nodes)
-   - Attackers only exist at indices 0-8998
-   - Only due to 30% shuffle randomness, ~27 attackers swap into parent positions
-   - P(parent is attacker) = 27/313 = **0.026** (very low!)
-
-**Fanout 4, n=10,000, 33% attackers, uniform**
-
-1. **Attacker selection:**
-   - step = 10000 / 3300 = 3
-   - Attackers at indices: 0, 3, 6, ..., 9897
-   - Maximum attacker index = 3299 × 3 = 9897
-
-2. **Parent positions:**
-   - ~3,333 nodes are parents (tree positions 0-3332)
-   - These correspond to original indices ~6667-9999
-
-3. **Overlap calculation:**
-   - Among indices 6667-9999, attackers are at: 6669, 6672, ..., 9897
-   - Count: (9897 - 6669) / 3 + 1 = ~1076 attackers
-   - P(parent is attacker) = 1076/3333 = **~0.32**
-
-### High-Weight Distribution Example
-
-**Fanout 32, n=10,000, 45% attackers, high-weight**
-
-1. **Attacker selection:**
-   - step = 10000 / 4500 = 2
-   - Attackers at indices: 9999, 9997, 9995, ..., 1
-   - **ALL high-weight nodes are attackers**
-
-2. **Parent positions after weighted shuffle:**
-   - Tree positions 0-312 come from original indices ~9687-9999
-   - These are the highest-weight nodes
-
-3. **Overlap calculation:**
-   - Parents come from indices 9687-9999 (313 nodes)
-   - All odd indices in this range are attackers: 9687, 9689, ..., 9999
-   - Count: ~157 attackers (approximately 50%)
-   - P(parent is attacker) ≈ **0.50**
-
-**Key Insight:**
-- **Uniform distribution:** Attackers are spread across all weights → Low P(parent is attacker) with high fanout
-- **High-weight distribution:** Attackers control high-weight nodes → High P(parent is attacker) regardless of fanout (~50% for 45% attackers)
-- With uniform attackers, the weighted shuffle places high-weight nodes as parents, but **high-index nodes have fewer or zero attackers**, making P(parent is attacker) lower than the overall attacker fraction
+- Selects every Nth participant starting from the **end** (highest weight)
+- For 33% attackers: selects indices 9999, 9996, 9993, ..., 102
+- For 45% attackers: selects indices 9999, 9997, 9995, ..., 1
+- Attackers control nodes **most likely to become parents**
 
 ---
 
-## Shuffle Percentage Impact
+## Simulation Results
 
-The **shuffle percentage** controls how much randomness is introduced into the weight-based ordering. Higher shuffle % means more position swaps, dispersing high-weight nodes away from guaranteed root positions.
+### Uniform Distribution
 
-### How Shuffle Percentage Affects Security
+#### Shuffle 10%
 
-| Shuffle % | Effect on Weight Ordering | Security Impact |
-|-----------|--------------------------|-----------------|
-| 10%       | Mostly weight-ordered    | Less randomization in parent selection |
-| 30%       | Significant randomization | More uniform parent distribution |
+**33% Attackers — Avg Unreached Honest Participants (out of 6699 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 1506.18        | 501.62         | 169.09         | 49.71          |
+| 6              | 767.28         | 152.09         | 30.65          | 4.81           |
+| 8              | 397.24         | 47.24          | 5.69           | 0.48           |
+| 10             | 208.89         | 15.10          | 1.09           | 0.05           |
 
-### Blocked Participants by Shuffle % (10 trees, fanout 32)
+**45% Attackers — Avg Unreached Honest Participants (out of 5500 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 157.09         | 12.25          | 0.00           | 0.00           |
+| 6              | 38.44          | 1.25           | 0.00           | 0.00           |
+| 8              | 9.50           | 0.13           | 0.00           | 0.00           |
+| 10             | 2.38           | 0.01           | 0.00           | 0.00           |
 
-| Shuffle % | 33% Attackers | 45% Attackers |
-|-----------|---------------|---------------|
-| 10%       | 126.61        | 0.00          |
-| 15%       | 36.36         | 0.00          |
-| 20%       | 12.58         | 0.00          |
-| 25%       | 4.79          | 0.00          |
-| 30%       | 1.64          | 0.00          |
+**33% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.224803       | 0.074868       | 0.025237       | 0.007420       |
+| 6              | 0.114520       | 0.022700       | 0.004575       | 0.000719       |
+| 8              | 0.059289       | 0.007051       | 0.000849       | 0.000071       |
+| 10             | 0.031177       | 0.002253       | 0.000163       | 0.000007       |
 
-### Key Correlation
-
-**Higher shuffle % = Better security**:
-
-Higher shuffle disperses the weight ordering, making the tree structure more randomized. This reduces the probability that any single participant has all attacker parents across all trees.
-
----
-
-## Simulation Results by Shuffle Percentage
-
-### Shuffle 10%
-
-#### P(parent=attacker) by Fanout
-| Fanout | 33% Attackers | 45% Attackers |
-|--------|---------------|---------------|
-| 4      | 0.320         | 0.300         |
-| 8      | 0.307         | 0.112         |
-| 16     | 0.283         | 0.018         |
-| 32     | 0.237         | 0.010         |
-
-#### Blocked Participants - 33% Attackers
-| Trees \ Fanout | 4      | 8      | 16     | 32     |
-|----------------|--------|--------|--------|--------|
-| 4              | 849.00 | 805.68 | 691.88 | 562.44 |
-| 6              | 503.30 | 476.87 | 415.61 | 339.88 |
-| 8              | 300.30 | 283.42 | 246.14 | 204.94 |
-| 10             | 179.81 | 168.32 | 147.97 | 126.61 |
-
-#### Blocked Participants - 45% Attackers
-| Trees \ Fanout | 4      | 8      | 16   | 32   |
-|----------------|--------|--------|------|------|
-| 4              | 650.09 | 179.00 | 0.00 | 0.00 |
-| 6              | 431.57 | 106.48 | 0.00 | 0.00 |
-| 8              | 286.22 | 63.61  | 0.00 | 0.00 |
-| 10             | 191.45 | 39.16  | 0.00 | 0.00 |
+**45% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.028561       | 0.002227       | 0.000000       | 0.000000       |
+| 6              | 0.006988       | 0.000228       | 0.000000       | 0.000000       |
+| 8              | 0.001728       | 0.000024       | 0.000000       | 0.000000       |
+| 10             | 0.000433       | 0.000001       | 0.000000       | 0.000000       |
 
 ---
 
-### Shuffle 20%
+#### Shuffle 15%
 
-#### P(parent=attacker) by Fanout
-| Fanout | 33% Attackers | 45% Attackers |
-|--------|---------------|---------------|
-| 4      | 0.320         | 0.300         |
-| 8      | 0.307         | 0.124         |
-| 16     | 0.286         | 0.034         |
-| 32     | 0.248         | 0.018         |
+**33% Attackers — Avg Unreached Honest Participants (out of 6699 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 1733.14        | 602.20         | 209.18         | 73.33          |
+| 6              | 934.89         | 196.75         | 40.78          | 8.89           |
+| 8              | 513.96         | 66.83          | 7.98           | 1.10           |
+| 10             | 286.98         | 23.08          | 1.60           | 0.16           |
 
-#### Blocked Participants - 33% Attackers
-| Trees \ Fanout | 4      | 8      | 16     | 32     |
-|----------------|--------|--------|--------|--------|
-| 4              | 338.12 | 317.03 | 275.20 | 227.55 |
-| 6              | 126.67 | 117.47 | 102.98 | 87.35  |
-| 8              | 47.46  | 43.60  | 38.77  | 32.80  |
-| 10             | 17.95  | 16.03  | 14.78  | 12.58  |
+**45% Attackers — Avg Unreached Honest Participants (out of 5500 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 176.99         | 9.62           | 0.13           | 0.00           |
+| 6              | 48.52          | 0.84           | 0.00           | 0.00           |
+| 8              | 13.58          | 0.07           | 0.00           | 0.00           |
+| 10             | 4.01           | 0.01           | 0.00           | 0.00           |
 
-#### Blocked Participants - 45% Attackers
-| Trees \ Fanout | 4      | 8     | 16   | 32   |
-|----------------|--------|-------|------|------|
-| 4              | 322.90 | 73.32 | 0.01 | 0.01 |
-| 6              | 149.87 | 27.77 | 0.00 | 0.00 |
-| 8              | 71.13  | 10.66 | 0.00 | 0.00 |
-| 10             | 32.83  | 3.91  | 0.00 | 0.00 |
+**33% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.258677       | 0.089880       | 0.031221       | 0.010944       |
+| 6              | 0.139536       | 0.029366       | 0.006086       | 0.001327       |
+| 8              | 0.076710       | 0.009974       | 0.001192       | 0.000164       |
+| 10             | 0.042833       | 0.003444       | 0.000239       | 0.000024       |
 
----
-
-### Shuffle 30%
-
-#### P(parent=attacker) by Fanout
-| Fanout | 33% Attackers | 45% Attackers |
-|--------|---------------|---------------|
-| 4      | 0.320         | 0.300         |
-| 8      | 0.308         | 0.135         |
-| 16     | 0.290         | 0.048         |
-| 32     | 0.257         | 0.026         |
-
-#### Blocked Participants - 33% Attackers
-| Trees \ Fanout | 4      | 8      | 16     | 32     |
-|----------------|--------|--------|--------|--------|
-| 4              | 168.78 | 154.10 | 136.89 | 111.37 |
-| 6              | 39.96  | 36.27  | 31.62  | 27.47  |
-| 8              | 10.11  | 8.89   | 8.18   | 7.42   |
-| 10             | 2.69   | 2.04   | 1.98   | 1.64   |
-
-#### Blocked Participants - 45% Attackers
-| Trees \ Fanout | 4      | 8     | 16   | 32   |
-|----------------|--------|-------|------|------|
-| 4              | 196.38 | 35.07 | 0.04 | 0.00 |
-| 6              | 65.86  | 8.82  | 0.00 | 0.00 |
-| 8              | 23.11  | 2.33  | 0.00 | 0.00 |
-| 10             | 7.92   | 0.52  | 0.00 | 0.00 |
-
-#### P(block one) - 33% Attackers
-| Trees \ Fanout | 4            | 8            | 16           | 32           |
-|----------------|--------------|--------------|--------------|--------------|
-| 4              | 1.05e-02     | 8.94e-03     | 7.10e-03     | 4.36e-03     |
-| 6              | 1.08e-03     | 8.43e-04     | 5.95e-04     | 2.91e-04     |
-| 8              | 1.10e-04     | 7.94e-05     | 5.02e-05     | 1.95e-05     |
-| 10             | 1.12e-05     | 7.49e-06     | 4.21e-06     | 1.29e-06     |
-
-#### P(block one) - 45% Attackers
-| Trees \ Fanout | 4            | 8            | 16           | 32           |
-|----------------|--------------|--------------|--------------|--------------|
-| 4              | 8.14e-03     | 3.32e-04     | 5.25e-06     | 4.59e-07     |
-| 6              | 7.33e-04     | 6.05e-06     | 1.22e-08     | 2.96e-10     |
-| 8              | 6.62e-05     | 1.09e-07     | 2.74e-11     | 2.00e-13     |
-| 10             | 5.98e-06     | 1.96e-09     | 6.09e-14     | 1.33e-16     |
+**45% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.032179       | 0.001749       | 0.000024       | 0.000000       |
+| 6              | 0.008822       | 0.000152       | 0.000000       | 0.000000       |
+| 8              | 0.002470       | 0.000013       | 0.000000       | 0.000000       |
+| 10             | 0.000730       | 0.000001       | 0.000000       | 0.000000       |
 
 ---
 
-## High-Weight Attacker Distribution Results
+#### Shuffle 20%
 
-When attackers control high-weight nodes, the security characteristics change dramatically. Unlike uniform distribution where higher fanout reduces attack effectiveness, **high-weight attackers maintain consistent P(parent is attacker) across all fanout values** because they already occupy parent positions.
+**33% Attackers — Avg Unreached Honest Participants (out of 6699 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 1895.37        | 672.48         | 244.61         | 95.85          |
+| 6              | 1066.40        | 232.08         | 51.38          | 13.29          |
+| 8              | 611.44         | 81.54          | 11.20          | 1.82           |
+| 10             | 355.15         | 29.61          | 2.42           | 0.27           |
 
-### Shuffle 10% - High-Weight Attackers
+**45% Attackers — Avg Unreached Honest Participants (out of 5500 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 194.69         | 9.86           | 0.62           | 0.00           |
+| 6              | 57.14          | 0.67           | 0.02           | 0.00           |
+| 8              | 17.64          | 0.04           | 0.00           | 0.00           |
+| 10             | 5.49           | 0.01           | 0.00           | 0.00           |
 
-#### P(parent=attacker) by Fanout
-| Fanout | 33% Attackers | 45% Attackers |
-|--------|---------------|---------------|
-| 4      | 0.334         | 0.500         |
-| 8      | 0.334         | 0.500         |
-| 16     | 0.334         | 0.500         |
-| 32     | 0.334         | 0.500         |
+**33% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.282891       | 0.100371       | 0.036509       | 0.014306       |
+| 6              | 0.159165       | 0.034638       | 0.007669       | 0.001984       |
+| 8              | 0.091259       | 0.012170       | 0.001672       | 0.000271       |
+| 10             | 0.053008       | 0.004420       | 0.000361       | 0.000040       |
 
-**Observation:** P(parent is attacker) is **constant across all fanouts** and matches the attacker fraction precisely. This is because attackers already control the highest-weight nodes that become parents.
-
-#### Blocked Participants - 33% Attackers
-| Trees \ Fanout | 4      | 8      | 16     | 32     |
-|----------------|--------|--------|--------|--------|
-| 4              | 908.36 | 913.82 | 863.24 | 880.50 |
-| 6              | 544.08 | 550.62 | 529.35 | 542.45 |
-| 8              | 328.22 | 332.61 | 320.76 | 333.36 |
-| 10             | 198.82 | 202.09 | 197.20 | 208.29 |
-
-#### Blocked Participants - 45% Attackers
-| Trees \ Fanout | 4       | 8       | 16      | 32      |
-|----------------|---------|---------|---------|---------|
-| 4              | 1320.79 | 1319.57 | 1352.90 | 1358.51 |
-| 6              | 913.47  | 917.36  | 947.75  | 953.11  |
-| 8              | 635.34  | 637.65  | 660.70  | 665.74  |
-| 10             | 440.23  | 441.16  | 460.95  | 462.02  |
-
-#### P(block one) - 33% Attackers
-| Trees \ Fanout | 4            | 8            | 16           | 32           |
-|----------------|--------------|--------------|--------------|--------------|
-| 4              | 1.36e-01     | 1.36e-01     | 1.29e-01     | 1.31e-01     |
-| 6              | 8.12e-02     | 8.22e-02     | 7.90e-02     | 8.10e-02     |
-| 8              | 4.90e-02     | 4.96e-02     | 4.79e-02     | 4.98e-02     |
-| 10             | 2.97e-02     | 3.02e-02     | 2.94e-02     | 3.11e-02     |
-
-#### P(block one) - 45% Attackers
-| Trees \ Fanout | 4            | 8            | 16           | 32           |
-|----------------|--------------|--------------|--------------|--------------|
-| 4              | 2.40e-01     | 2.40e-01     | 2.46e-01     | 2.47e-01     |
-| 6              | 1.66e-01     | 1.67e-01     | 1.72e-01     | 1.73e-01     |
-| 8              | 1.16e-01     | 1.16e-01     | 1.20e-01     | 1.21e-01     |
-| 10             | 8.00e-02     | 8.02e-02     | 8.38e-02     | 8.40e-02     |
+**45% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.035399       | 0.001792       | 0.000112       | 0.000000       |
+| 6              | 0.010390       | 0.000122       | 0.000003       | 0.000000       |
+| 8              | 0.003208       | 0.000008       | 0.000000       | 0.000000       |
+| 10             | 0.000998       | 0.000001       | 0.000000       | 0.000000       |
 
 ---
 
-### Shuffle 15% - High-Weight Attackers
+#### Shuffle 25%
 
-#### P(parent=attacker) by Fanout
-| Fanout | 33% Attackers | 45% Attackers |
-|--------|---------------|---------------|
-| 4      | 0.334         | 0.500         |
-| 8      | 0.334         | 0.500         |
-| 16     | 0.334         | 0.501         |
-| 32     | 0.334         | 0.501         |
+**33% Attackers — Avg Unreached Honest Participants (out of 6699 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 2020.15        | 732.13         | 275.12         | 114.10         |
+| 6              | 1168.75        | 260.01         | 59.89          | 17.01          |
+| 8              | 688.18         | 94.20          | 13.66          | 2.61           |
+| 10             | 410.56         | 35.00          | 3.27           | 0.39           |
 
-#### Blocked Participants - 33% Attackers
-| Trees \ Fanout | 4      | 8      | 16     | 32     |
-|----------------|--------|--------|--------|--------|
-| 4              | 571.47 | 572.55 | 547.88 | 561.55 |
-| 6              | 271.57 | 271.91 | 267.71 | 274.36 |
-| 8              | 129.79 | 131.26 | 129.45 | 134.97 |
-| 10             | 63.02  | 63.32  | 63.35  | 65.79  |
+**45% Attackers — Avg Unreached Honest Participants (out of 5500 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 203.22         | 11.87          | 1.49           | 0.01           |
+| 6              | 61.28          | 0.78           | 0.05           | 0.00           |
+| 8              | 19.40          | 0.06           | 0.00           | 0.00           |
+| 10             | 6.37           | 0.01           | 0.00           | 0.00           |
 
-#### Blocked Participants - 45% Attackers
-| Trees \ Fanout | 4       | 8       | 16      | 32      |
-|----------------|---------|---------|---------|---------|
-| 4              | 963.89  | 963.85  | 993.55  | 1007.64 |
-| 6              | 564.60  | 563.79  | 591.08  | 600.10  |
-| 8              | 335.84  | 333.46  | 355.77  | 361.25  |
-| 10             | 197.50  | 197.25  | 212.65  | 219.17  |
+**33% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.301515       | 0.109273       | 0.041063       | 0.017030       |
+| 6              | 0.174440       | 0.038808       | 0.008939       | 0.002539       |
+| 8              | 0.102714       | 0.014059       | 0.002039       | 0.000390       |
+| 10             | 0.061277       | 0.005223       | 0.000487       | 0.000058       |
 
-#### P(block one) - 33% Attackers
-| Trees \ Fanout | 4            | 8            | 16           | 32           |
-|----------------|--------------|--------------|--------------|--------------|
-| 4              | 8.53e-02     | 8.55e-02     | 8.18e-02     | 8.38e-02     |
-| 6              | 4.05e-02     | 4.06e-02     | 4.00e-02     | 4.09e-02     |
-| 8              | 1.94e-02     | 1.96e-02     | 1.93e-02     | 2.01e-02     |
-| 10             | 9.41e-03     | 9.45e-03     | 9.46e-03     | 9.82e-03     |
-
-#### P(block one) - 45% Attackers
-| Trees \ Fanout | 4            | 8            | 16           | 32           |
-|----------------|--------------|--------------|--------------|--------------|
-| 4              | 1.75e-01     | 1.75e-01     | 1.81e-01     | 1.83e-01     |
-| 6              | 1.03e-01     | 1.03e-01     | 1.07e-01     | 1.09e-01     |
-| 8              | 6.11e-02     | 6.06e-02     | 6.47e-02     | 6.57e-02     |
-| 10             | 3.59e-02     | 3.59e-02     | 3.87e-02     | 3.98e-02     |
+**45% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.036949       | 0.002158       | 0.000270       | 0.000001       |
+| 6              | 0.011142       | 0.000142       | 0.000009       | 0.000000       |
+| 8              | 0.003527       | 0.000012       | 0.000000       | 0.000000       |
+| 10             | 0.001158       | 0.000001       | 0.000000       | 0.000000       |
 
 ---
 
-### Shuffle 20% - High-Weight Attackers
+#### Shuffle 30%
 
-#### P(parent=attacker) by Fanout
-| Fanout | 33% Attackers | 45% Attackers |
-|--------|---------------|---------------|
-| 4      | 0.333         | 0.500         |
-| 8      | 0.334         | 0.500         |
-| 16     | 0.334         | 0.500         |
-| 32     | 0.334         | 0.501         |
+**33% Attackers — Avg Unreached Honest Participants (out of 6699 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 2119.94        | 787.50         | 299.31         | 129.47         |
+| 6              | 1251.39        | 287.82         | 68.65          | 20.37          |
+| 8              | 752.89         | 108.03         | 16.46          | 3.43           |
+| 10             | 457.60         | 41.64          | 4.14           | 0.54           |
 
-#### Blocked Participants - 33% Attackers
-| Trees \ Fanout | 4      | 8      | 16     | 32     |
-|----------------|--------|--------|--------|--------|
-| 4              | 371.46 | 376.10 | 364.25 | 380.61 |
-| 6              | 142.54 | 144.83 | 143.26 | 152.14 |
-| 8              | 55.23  | 56.00  | 57.35  | 61.80  |
-| 10             | 21.30  | 21.43  | 22.88  | 24.55  |
+**45% Attackers — Avg Unreached Honest Participants (out of 5500 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 205.42         | 15.55          | 2.66           | 0.03           |
+| 6              | 61.16          | 1.22           | 0.12           | 0.00           |
+| 8              | 19.42          | 0.10           | 0.01           | 0.00           |
+| 10             | 6.39           | 0.01           | 0.00           | 0.00           |
 
-#### Blocked Participants - 45% Attackers
-| Trees \ Fanout | 4      | 8      | 16     | 32     |
-|----------------|--------|--------|--------|--------|
-| 4              | 735.99 | 735.93 | 764.38 | 772.22 |
-| 6              | 368.84 | 369.83 | 392.59 | 399.36 |
-| 8              | 189.18 | 190.18 | 206.15 | 212.25 |
-| 10             | 97.57  | 96.93  | 108.47 | 110.64 |
+**33% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.316409       | 0.117537       | 0.044673       | 0.019323       |
+| 6              | 0.186775       | 0.042958       | 0.010246       | 0.003040       |
+| 8              | 0.112371       | 0.016124       | 0.002457       | 0.000511       |
+| 10             | 0.068298       | 0.006215       | 0.000618       | 0.000081       |
 
-#### P(block one) - 33% Attackers
-| Trees \ Fanout | 4            | 8            | 16           | 32           |
-|----------------|--------------|--------------|--------------|--------------|
-| 4              | 5.54e-02     | 5.61e-02     | 5.44e-02     | 5.68e-02     |
-| 6              | 2.13e-02     | 2.16e-02     | 2.14e-02     | 2.27e-02     |
-| 8              | 8.24e-03     | 8.36e-03     | 8.56e-03     | 9.22e-03     |
-| 10             | 3.18e-03     | 3.20e-03     | 3.41e-03     | 3.66e-03     |
-
-#### P(block one) - 45% Attackers
-| Trees \ Fanout | 4            | 8            | 16           | 32           |
-|----------------|--------------|--------------|--------------|--------------|
-| 4              | 1.34e-01     | 1.34e-01     | 1.39e-01     | 1.40e-01     |
-| 6              | 6.71e-02     | 6.72e-02     | 7.14e-02     | 7.26e-02     |
-| 8              | 3.44e-02     | 3.46e-02     | 3.75e-02     | 3.86e-02     |
-| 10             | 1.77e-02     | 1.76e-02     | 1.97e-02     | 2.01e-02     |
+**45% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.037349       | 0.002827       | 0.000484       | 0.000006       |
+| 6              | 0.011119       | 0.000221       | 0.000023       | 0.000000       |
+| 8              | 0.003532       | 0.000019       | 0.000001       | 0.000000       |
+| 10             | 0.001162       | 0.000002       | 0.000000       | 0.000000       |
 
 ---
 
-### Shuffle 25% - High-Weight Attackers
+### High-Weight Attackers (Worst-Case)
 
-#### P(parent=attacker) by Fanout
-| Fanout | 33% Attackers | 45% Attackers |
-|--------|---------------|---------------|
-| 4      | 0.334         | 0.500         |
-| 8      | 0.333         | 0.500         |
-| 16     | 0.334         | 0.501         |
-| 32     | 0.334         | 0.500         |
+#### Shuffle 10%
 
-#### Blocked Participants - 33% Attackers
-| Trees \ Fanout | 4      | 8      | 16     | 32     |
-|----------------|--------|--------|--------|--------|
-| 4              | 256.66 | 259.16 | 246.25 | 258.14 |
-| 6              | 77.17  | 79.43  | 78.56  | 82.53  |
-| 8              | 24.30  | 24.63  | 25.32  | 27.13  |
-| 10             | 7.68   | 7.88   | 8.35   | 9.40   |
+**33% Attackers — Avg Unreached Honest Participants (out of 6699 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 4864.87        | 3374.68        | 2377.50        | 1620.29        |
+| 6              | 4159.87        | 2420.17        | 1446.24        | 807.21         |
+| 8              | 3594.02        | 1769.09        | 906.32         | 411.28         |
+| 10             | 3111.10        | 1304.57        | 572.80         | 209.41         |
 
-#### Blocked Participants - 45% Attackers
-| Trees \ Fanout | 4      | 8      | 16     | 32     |
-|----------------|--------|--------|--------|--------|
-| 4              | 584.50 | 587.36 | 610.61 | 610.56 |
-| 6              | 250.25 | 255.45 | 267.31 | 274.69 |
-| 8              | 113.07 | 113.69 | 123.00 | 126.02 |
-| 10             | 50.99  | 51.21  | 55.70  | 57.04  |
+**45% Attackers — Avg Unreached Honest Participants (out of 5500 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 5201.87        | 4574.86        | 3878.96        | 3161.21        |
+| 6              | 5058.39        | 4180.52        | 3273.18        | 2394.27        |
+| 8              | 4930.77        | 3845.27        | 2798.55        | 1844.16        |
+| 10             | 4801.07        | 3536.35        | 2385.20        | 1420.29        |
 
-#### P(block one) - 33% Attackers
-| Trees \ Fanout | 4            | 8            | 16           | 32           |
-|----------------|--------------|--------------|--------------|--------------|
-| 4              | 3.83e-02     | 3.87e-02     | 3.68e-02     | 3.85e-02     |
-| 6              | 1.15e-02     | 1.19e-02     | 1.17e-02     | 1.23e-02     |
-| 8              | 3.63e-03     | 3.68e-03     | 3.78e-03     | 4.05e-03     |
-| 10             | 1.15e-03     | 1.18e-03     | 1.25e-03     | 1.40e-03     |
+**33% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.726100       | 0.503684       | 0.354851       | 0.241834       |
+| 6              | 0.620876       | 0.361219       | 0.215856       | 0.120479       |
+| 8              | 0.536421       | 0.264044       | 0.135272       | 0.061385       |
+| 10             | 0.464344       | 0.194711       | 0.085493       | 0.031256       |
 
-#### P(block one) - 45% Attackers
-| Trees \ Fanout | 4            | 8            | 16           | 32           |
-|----------------|--------------|--------------|--------------|--------------|
-| 4              | 1.06e-01     | 1.07e-01     | 1.11e-01     | 1.11e-01     |
-| 6              | 4.55e-02     | 4.64e-02     | 4.86e-02     | 4.99e-02     |
-| 8              | 2.06e-02     | 2.07e-02     | 2.24e-02     | 2.29e-02     |
-| 10             | 9.27e-03     | 9.31e-03     | 1.01e-02     | 1.04e-02     |
+**45% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.945795       | 0.831793       | 0.705265       | 0.574765       |
+| 6              | 0.919708       | 0.760095       | 0.595124       | 0.435322       |
+| 8              | 0.896503       | 0.699140       | 0.508828       | 0.335301       |
+| 10             | 0.872922       | 0.642973       | 0.433673       | 0.258235       |
 
 ---
 
-### Shuffle 30% - High-Weight Attackers
+#### Shuffle 15%
 
-#### P(parent=attacker) by Fanout
-| Fanout | 33% Attackers | 45% Attackers |
-|--------|---------------|---------------|
-| 4      | 0.334         | 0.500         |
-| 8      | 0.334         | 0.500         |
-| 16     | 0.335         | 0.500         |
-| 32     | 0.334         | 0.500         |
+**33% Attackers — Avg Unreached Honest Participants (out of 6699 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 4834.12        | 3353.80        | 2353.48        | 1590.23        |
+| 6              | 4141.98        | 2408.10        | 1437.20        | 793.79         |
+| 8              | 3577.21        | 1751.01        | 894.87         | 399.38         |
+| 10             | 3080.94        | 1277.97        | 559.33         | 202.15         |
 
-#### Blocked Participants - 33% Attackers
-| Trees \ Fanout | 4      | 8      | 16     | 32     |
-|----------------|--------|--------|--------|--------|
-| 4              | 189.93 | 189.23 | 186.47 | 190.75 |
-| 6              | 46.49  | 47.20  | 46.05  | 50.17  |
-| 8              | 12.16  | 12.15  | 12.50  | 14.58  |
-| 10             | 3.35   | 3.24   | 3.31   | 3.78   |
+**45% Attackers — Avg Unreached Honest Participants (out of 5500 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 5197.41        | 4566.17        | 3866.26        | 3152.11        |
+| 6              | 5056.67        | 4165.72        | 3255.10        | 2381.88        |
+| 8              | 4921.84        | 3821.09        | 2771.76        | 1820.93        |
+| 10             | 4795.93        | 3508.95        | 2360.30        | 1392.31        |
 
-#### Blocked Participants - 45% Attackers
-| Trees \ Fanout | 4      | 8      | 16     | 32     |
-|----------------|--------|--------|--------|--------|
-| 4              | 496.21 | 492.22 | 506.58 | 513.27 |
-| 6              | 187.70 | 185.53 | 195.75 | 200.91 |
-| 8              | 73.92  | 72.73  | 79.51  | 82.86  |
-| 10             | 29.21  | 29.59  | 32.22  | 34.57  |
+**33% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.721510       | 0.500567       | 0.351266       | 0.237349       |
+| 6              | 0.618206       | 0.359417       | 0.214507       | 0.118476       |
+| 8              | 0.533913       | 0.261344       | 0.133563       | 0.059609       |
+| 10             | 0.459842       | 0.190742       | 0.083482       | 0.030171       |
 
-#### P(block one) - 33% Attackers
-| Trees \ Fanout | 4            | 8            | 16           | 32           |
-|----------------|--------------|--------------|--------------|--------------|
-| 4              | 2.83e-02     | 2.82e-02     | 2.78e-02     | 2.85e-02     |
-| 6              | 6.94e-03     | 7.04e-03     | 6.87e-03     | 7.49e-03     |
-| 8              | 1.81e-03     | 1.81e-03     | 1.87e-03     | 2.18e-03     |
-| 10             | 5.00e-04     | 4.84e-04     | 4.94e-04     | 5.64e-04     |
+**45% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.944984       | 0.830213       | 0.702957       | 0.573110       |
+| 6              | 0.919394       | 0.757403       | 0.591836       | 0.433068       |
+| 8              | 0.894880       | 0.694743       | 0.503956       | 0.331078       |
+| 10             | 0.871987       | 0.637991       | 0.429146       | 0.253147       |
 
-#### P(block one) - 45% Attackers
-| Trees \ Fanout | 4            | 8            | 16           | 32           |
-|----------------|--------------|--------------|--------------|--------------|
-| 4              | 9.02e-02     | 8.95e-02     | 9.21e-02     | 9.33e-02     |
-| 6              | 3.41e-02     | 3.37e-02     | 3.56e-02     | 3.65e-02     |
-| 8              | 1.34e-02     | 1.32e-02     | 1.45e-02     | 1.51e-02     |
-| 10             | 5.31e-03     | 5.38e-03     | 5.86e-03     | 6.29e-03     |
+---
+
+#### Shuffle 20%
+
+**33% Attackers — Avg Unreached Honest Participants (out of 6699 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 4826.44        | 3342.88        | 2342.23        | 1577.22        |
+| 6              | 4134.02        | 2408.65        | 1438.44        | 789.86         |
+| 8              | 3567.26        | 1758.21        | 894.36         | 404.33         |
+| 10             | 3070.05        | 1276.95        | 553.80         | 205.53         |
+
+**45% Attackers — Avg Unreached Honest Participants (out of 5500 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 5194.47        | 4563.91        | 3856.05        | 3151.74        |
+| 6              | 5048.91        | 4163.79        | 3244.02        | 2379.17        |
+| 8              | 4912.77        | 3815.65        | 2753.76        | 1813.38        |
+| 10             | 4782.85        | 3499.42        | 2341.62        | 1379.69        |
+
+**33% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.720364       | 0.498937       | 0.349586       | 0.235406       |
+| 6              | 0.617019       | 0.359500       | 0.214692       | 0.117889       |
+| 8              | 0.532426       | 0.262419       | 0.133486       | 0.060347       |
+| 10             | 0.458216       | 0.190590       | 0.082657       | 0.030676       |
+
+**45% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.944449       | 0.829802       | 0.701101       | 0.573043       |
+| 6              | 0.917983       | 0.757053       | 0.589821       | 0.432576       |
+| 8              | 0.893232       | 0.693755       | 0.500684       | 0.329705       |
+| 10             | 0.869609       | 0.636259       | 0.425749       | 0.250853       |
+
+---
+
+#### Shuffle 25%
+
+**33% Attackers — Avg Unreached Honest Participants (out of 6699 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 4807.10        | 3313.70        | 2307.20        | 1546.35        |
+| 6              | 4105.71        | 2382.21        | 1405.58        | 765.83         |
+| 8              | 3532.44        | 1728.42        | 868.63         | 385.16         |
+| 10             | 3034.38        | 1252.29        | 537.70         | 191.13         |
+
+**45% Attackers — Avg Unreached Honest Participants (out of 5500 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 5191.53        | 4558.62        | 3838.47        | 3142.00        |
+| 6              | 5046.02        | 4156.70        | 3230.43        | 2368.76        |
+| 8              | 4906.70        | 3804.46        | 2743.01        | 1801.58        |
+| 10             | 4777.97        | 3490.03        | 2328.98        | 1371.47        |
+
+**33% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.717477       | 0.494581       | 0.344358       | 0.230799       |
+| 6              | 0.612792       | 0.355553       | 0.209788       | 0.114303       |
+| 8              | 0.527229       | 0.257973       | 0.129647       | 0.057486       |
+| 10             | 0.452892       | 0.186909       | 0.080254       | 0.028528       |
+
+**45% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.943915       | 0.828840       | 0.697903       | 0.571273       |
+| 6              | 0.917458       | 0.755763       | 0.587350       | 0.430683       |
+| 8              | 0.892127       | 0.691719       | 0.498729       | 0.327560       |
+| 10             | 0.868722       | 0.634551       | 0.423451       | 0.249359       |
+
+---
+
+#### Shuffle 30%
+
+**33% Attackers — Avg Unreached Honest Participants (out of 6699 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 4812.88        | 3326.90        | 2316.17        | 1559.58        |
+| 6              | 4111.15        | 2387.64        | 1410.54        | 777.51         |
+| 8              | 3530.97        | 1723.93        | 863.68         | 389.84         |
+| 10             | 3027.51        | 1244.91        | 532.40         | 190.97         |
+
+**45% Attackers — Avg Unreached Honest Participants (out of 5500 honest)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 5188.56        | 4552.96        | 3836.06        | 3140.85        |
+| 6              | 5044.99        | 4155.02        | 3231.89        | 2373.23        |
+| 8              | 4908.19        | 3801.46        | 2734.77        | 1806.12        |
+| 10             | 4776.90        | 3480.99        | 2317.09        | 1372.28        |
+
+**33% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.718340       | 0.496553       | 0.345697       | 0.232774       |
+| 6              | 0.613605       | 0.356364       | 0.210528       | 0.116046       |
+| 8              | 0.527010       | 0.257303       | 0.128908       | 0.058185       |
+| 10             | 0.451867       | 0.185808       | 0.079462       | 0.028503       |
+
+**45% Attackers — P(single honest participant blocked)**
+| Trees \ Fanout | 4              | 8              | 16             | 32             |
+|----------------|----------------|----------------|----------------|----------------|
+| 4              | 0.943374       | 0.827811       | 0.697465       | 0.571064       |
+| 6              | 0.917271       | 0.755458       | 0.587616       | 0.431497       |
+| 8              | 0.892398       | 0.691175       | 0.497231       | 0.328386       |
+| 10             | 0.868526       | 0.632908       | 0.421289       | 0.249505       |
 
 ---
 
 ## Key Insights
 
-### Uniform Distribution (Low-Weight Attackers)
+### Uniform Distribution
 
-1. **Higher shuffle % = better security**: Increasing shuffle from 10% to 30% reduces blocked participants by ~77x for 33% attackers.
+1. **Higher fanout dramatically improves security**: With 10 trees and 45% attackers, fanout 4 blocks 0.04% of honest nodes while fanout 16+ blocks essentially 0%.
 
-2. **Higher fanout reduces P(parent=attacker)** because fewer nodes are parents (only top positions), and uniform attackers are spread across all weight levels.
+2. **More trees exponentially reduce blocking**: Each additional tree roughly halves the blocking probability.
 
-3. **45% attackers with high fanout is surprisingly secure** because parents come from the top ~3% of nodes, and uniform attackers have low density there.
+### High-Weight Attackers (Worst-Case)
 
-4. **Recommended production config:** 30% shuffle, 8-10 trees, fanout 16-32 provides excellent security against uniform attacks.
+1. **Devastating attack effectiveness**: With 45% high-weight attackers, even with 10 trees and fanout 32, over 22% of honest nodes are blocked.
 
-### High-Weight Distribution (Worst-Case Attackers)
-
-1. **Fanout has NO impact** on P(parent is attacker) because attackers already control parent positions. P(parent is attacker) remains constant at ~0.33 for 33% attackers and ~0.50 for 45% attackers across all fanout values.
-
-2. **Shuffle percentage has minimal effect** against high-weight attackers: Even increasing shuffle from 10% to 30% only reduces P(parent is attacker) slightly. The attackers maintain control over high-weight nodes regardless of shuffle (P stays at ~0.50 for 45% attackers).
-
-3. **Blocking is severe with high-weight attackers**: At 10% shuffle with 45% attackers and 4 trees, ~1360 participants are blocked (24.7% of honest nodes). Even with 30% shuffle, ~496 participants remain blocked (9.0% of honest nodes).
-
-4. **More trees are essential** against high-weight attackers: Increasing from 4 to 10 trees reduces blocking from ~1360 to ~462 (66% reduction) at 10% shuffle, and from ~496 to ~29 (94% reduction) at 30% shuffle.
+2. **Fanout still helps significantly**: Increasing fanout from 4 to 32 reduces blocking by ~60% (e.g., 0.87 → 0.22 for 10 trees, 45% attackers).
 ---
 
 ### Connection Counts by Configuration
