@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sort"
 	"sync"
+	"time"
 )
 
 type WeightedParticipant struct {
@@ -65,6 +66,8 @@ func propagate(tree *Tree, attackers map[string]bool) map[string]bool {
 }
 
 func main() {
+	startTime := time.Now()
+
 	numParticipants := 10000
 	numSimulations := numParticipants
 
@@ -74,6 +77,7 @@ func main() {
 	attackerFractions := []float64{0.33, 0.45}
 
 	fmt.Println("Multi-Tree Message Propagation Blocking Analysis")
+	fmt.Printf("Started at: %s\n", startTime.Format("2006-01-02 15:04:05"))
 	fmt.Printf("Participants: %d, Simulations: %d, Workers: %d\n", numParticipants, numSimulations, runtime.NumCPU())
 	fmt.Println("Model: sender -> all tree roots -> propagate down; attackers block relay")
 	fmt.Println("==========================================")
@@ -184,11 +188,34 @@ func main() {
 	}()
 
 	var results []Result
+	completed := 0
+	fmt.Printf("\nProgress: [")
+	barWidth := 50
 	for r := range resultsChan {
 		results = append(results, r)
+		completed++
+
+		filled := int(float64(completed) / float64(totalJobs) * float64(barWidth))
+		bar := ""
+		for i := 0; i < barWidth; i++ {
+			if i < filled {
+				bar += "="
+			} else if i == filled {
+				bar += ">"
+			} else {
+				bar += " "
+			}
+		}
+
+		percentage := float64(completed) / float64(totalJobs) * 100
+		fmt.Printf("\rProgress: [%s] %.1f%% (%d/%d)", bar, percentage, completed, totalJobs)
 	}
+	fmt.Println()
 
 	printTables(results, attackerFractions, fanouts, treeCounts, shufflePcts, attackerDists)
+
+	elapsed := time.Since(startTime)
+	fmt.Printf("\nExecution completed in: %s\n", elapsed.Round(time.Millisecond))
 }
 
 func printTables(results []Result, attackerFractions []float64, fanouts, treeCounts []int, shufflePcts []float64, attackerDists []string) {
