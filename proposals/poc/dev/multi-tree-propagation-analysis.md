@@ -54,6 +54,53 @@ P(single honest participant blocked) = AvgUnreached / HonestNodes
 
 ---
 
+## Weighted Shuffle Algorithm
+
+The tree structure is built using a **weighted deterministic shuffle** that places higher-weight participants closer to the root (parent positions).
+
+### How It Works
+
+```go
+func weightedDeterministicShuffle(participants []WeightedParticipant, seed []byte, shufflePct float64) []string {
+    rng := rand.New(rand.NewSource(int64(binary.BigEndian.Uint64(seed[:8]))))
+
+    for i, p := range participants {
+        baseScore := float64(p.Weight)
+        randomComponent := rng.Float64() * float64(p.Weight) * shufflePct
+        items[i].randomScore = baseScore + randomComponent
+    }
+
+    sort.Slice(items, func(i, j int) bool {
+        return items[i].randomScore > items[j].randomScore
+    })
+}
+```
+
+### Score Calculation
+
+For each participant:
+```
+finalScore = weight + (random[0,1) × weight × shufflePct)
+```
+
+**Example** (shufflePct = 0.20):
+- Participant with weight 10000: score in range `[10000, 12000]`
+- Participant with weight 5000: score in range `[5000, 6000]`
+- Participant with weight 1000: score in range `[1000, 1200]`
+
+### Effect of Shuffle Percentage
+
+| Shuffle % | Behavior |
+|-----------|----------|
+| 0%        | Pure weight ordering — highest weight always first |
+| 10%       | Minimal randomization — weight mostly determines position |
+| 30%       | Moderate randomization — some position swaps between adjacent weights |
+| 100%      | High randomization — weight ranges overlap significantly |
+
+**Key property:** Higher-weight participants have larger absolute random ranges, but the *relative* randomization is the same percentage for all participants.
+
+---
+
 ## Attacker Distribution Models
 
 ### 1. Uniform Distribution
