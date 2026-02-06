@@ -23,6 +23,7 @@ type Node struct {
 }
 
 type Tree struct {
+	Root  *Node
 	Nodes map[string]*Node
 }
 
@@ -32,23 +33,49 @@ type Result struct {
 	Trees            int
 	AttackerFraction float64
 	AttackerDist     string
-	PParent          float64
-	PBlock           float64
-	Blocked          float64
+	AvgUnreached     float64
 	HonestNodes      int
+}
+
+func propagate(tree *Tree, attackers map[string]bool) map[string]bool {
+	reached := make(map[string]bool)
+	if tree.Root == nil {
+		return reached
+	}
+
+	reached[tree.Root.Address] = true
+
+	queue := []*Node{tree.Root}
+	for len(queue) > 0 {
+		node := queue[0]
+		queue = queue[1:]
+
+		if attackers[node.Address] {
+			continue
+		}
+
+		for _, child := range node.Children {
+			if !reached[child.Address] {
+				reached[child.Address] = true
+				queue = append(queue, child)
+			}
+		}
+	}
+	return reached
 }
 
 func main() {
 	numParticipants := 10000
-	numSimulations := 100
+	numSimulations := numParticipants
 
 	shufflePcts := []float64{0.10, 0.15, 0.20, 0.25, 0.30}
 	fanouts := []int{4, 8, 16, 32}
 	treeCounts := []int{4, 6, 8, 10}
 	attackerFractions := []float64{0.33, 0.45}
 
-	fmt.Println("Multi-Tree Blocking Probability Analysis")
+	fmt.Println("Multi-Tree Message Propagation Blocking Analysis")
 	fmt.Printf("Participants: %d, Simulations: %d, Workers: %d\n", numParticipants, numSimulations, runtime.NumCPU())
+	fmt.Println("Model: sender -> all tree roots -> propagate down; attackers block relay")
 	fmt.Println("==========================================")
 
 	attackerDists := []string{"uniform", "highweight"}
@@ -75,9 +102,7 @@ func main() {
 			for j := range jobs {
 				numAttackers := int(float64(numParticipants) * j.attackerFraction)
 
-				blockedTotal := 0
-				parentAttacker := 0
-				totalParentChecks := 0
+				unreachedTotal := 0
 
 				for sim := 0; sim < numSimulations; sim++ {
 					participants := make([]WeightedParticipant, numParticipants)
@@ -105,44 +130,27 @@ func main() {
 						}
 					}
 
+					globalReached := make(map[string]bool)
 					for _, tree := range trees {
-						for _, node := range tree.Nodes {
-							if node.Parent == nil {
-								continue
-							}
-							totalParentChecks++
-							if attackers[node.Parent.Address] {
-								parentAttacker++
-							}
+						treeReached := propagate(tree, attackers)
+						for addr := range treeReached {
+							globalReached[addr] = true
 						}
 					}
 
+					unreachedHonest := 0
 					for i := 0; i < numParticipants; i++ {
 						addr := formatAddress(i)
-
-						if !attackers[addr] {
-							blocked := true
-							for _, tree := range trees {
-								node := tree.Nodes[addr]
-								if node == nil || node.Parent == nil {
-									blocked = false
-									break
-								}
-								if !attackers[node.Parent.Address] {
-									blocked = false
-									break
-								}
-							}
-							if blocked {
-								blockedTotal++
-							}
+						if !attackers[addr] && !globalReached[addr] {
+							unreachedHonest++
 						}
 					}
+
+					unreachedTotal += unreachedHonest
 				}
 
 				honestNodes := numParticipants - numAttackers
-				pParent := float64(parentAttacker) / float64(totalParentChecks)
-				avgBlocked := float64(blockedTotal) / float64(numSimulations)
+				avgUnreached := float64(unreachedTotal) / float64(numSimulations)
 
 				resultsChan <- Result{
 					ShufflePct:       j.shufflePct,
@@ -150,9 +158,7 @@ func main() {
 					Trees:            j.numTrees,
 					AttackerFraction: j.attackerFraction,
 					AttackerDist:     j.attackerDist,
-					PParent:          pParent,
-					PBlock:           avgBlocked / float64(honestNodes),
-					Blocked:          avgBlocked,
+					AvgUnreached:     avgUnreached,
 					HonestNodes:      honestNodes,
 				}
 			}
@@ -197,15 +203,15 @@ func printTables(results []Result, attackerFractions []float64, fanouts, treeCou
 			fmt.Printf("\n\n########## SHUFFLE PERCENTAGE: %.0f%% ##########\n", sp*100)
 
 			for _, af := range attackerFractions {
-				fmt.Printf("\n=== %.0f%% Attackers - Blocked Participants ===\n", af*100)
+				fmt.Printf("\n=== %.0f%% Attackers - Avg Unreached Honest Participants (out of %d honest) ===\n", af*100, int(10000*(1-af)))
 				fmt.Printf("| Trees \\ Fanout |")
 				for _, f := range fanouts {
-					fmt.Printf(" %-12d |", f)
+					fmt.Printf(" %-14d |", f)
 				}
 				fmt.Println()
 				fmt.Printf("|----------------|")
 				for range fanouts {
-					fmt.Printf("--------------|")
+					fmt.Printf("----------------|")
 				}
 				fmt.Println()
 
@@ -214,7 +220,7 @@ func printTables(results []Result, attackerFractions []float64, fanouts, treeCou
 					for _, f := range fanouts {
 						for _, r := range results {
 							if r.AttackerDist == dist && r.ShufflePct == sp && r.Fanout == f && r.Trees == t && r.AttackerFraction == af {
-								fmt.Printf(" %-12.2f |", r.Blocked)
+								fmt.Printf(" %-14.2f |", r.AvgUnreached)
 								break
 							}
 						}
@@ -223,33 +229,16 @@ func printTables(results []Result, attackerFractions []float64, fanouts, treeCou
 				}
 			}
 
-			fmt.Println("\n=== P(parent=attacker) by Fanout ===")
-			fmt.Printf("| Fanout | 33%% Attackers | 45%% Attackers |\n")
-			fmt.Printf("|--------|---------------|---------------|\n")
-			for _, f := range fanouts {
-				var p33, p45 float64
-				for _, r := range results {
-					if r.AttackerDist == dist && r.ShufflePct == sp && r.Fanout == f && r.Trees == treeCounts[0] {
-						if r.AttackerFraction == 0.33 {
-							p33 = r.PParent
-						} else {
-							p45 = r.PParent
-						}
-					}
-				}
-				fmt.Printf("| %-6d | %-13.4f | %-13.4f |\n", f, p33, p45)
-			}
-
 			for _, af := range attackerFractions {
-				fmt.Printf("\n=== P(block one) - %.0f%% Attackers ===\n", af*100)
+				fmt.Printf("\n=== %.0f%% Attackers - P(single honest participant blocked) ===\n", af*100)
 				fmt.Printf("| Trees \\ Fanout |")
 				for _, f := range fanouts {
-					fmt.Printf(" %-12d |", f)
+					fmt.Printf(" %-14d |", f)
 				}
 				fmt.Println()
 				fmt.Printf("|----------------|")
 				for range fanouts {
-					fmt.Printf("--------------|")
+					fmt.Printf("----------------|")
 				}
 				fmt.Println()
 
@@ -258,7 +247,7 @@ func printTables(results []Result, attackerFractions []float64, fanouts, treeCou
 					for _, f := range fanouts {
 						for _, r := range results {
 							if r.AttackerDist == dist && r.ShufflePct == sp && r.Fanout == f && r.Trees == t && r.AttackerFraction == af {
-								fmt.Printf(" %-12.2e |", r.PBlock)
+								fmt.Printf(" %-14.6f |", r.AvgUnreached/float64(r.HonestNodes))
 								break
 							}
 						}
@@ -312,6 +301,8 @@ func buildTree(shuffled []string, fanout int) *Tree {
 		parent.Children = append(parent.Children, node)
 	}
 
+	t.Root = t.Nodes[shuffled[0]]
+
 	return t
 }
 
@@ -321,40 +312,30 @@ func weightedDeterministicShuffle(participants []WeightedParticipant, seed []byt
 		return nil
 	}
 
-	sorted := make([]WeightedParticipant, n)
-	copy(sorted, participants)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Weight > sorted[j].Weight
+	type indexed struct {
+		participant WeightedParticipant
+		randomScore float64
+	}
+
+	items := make([]indexed, n)
+	rng := rand.New(rand.NewSource(int64(binary.BigEndian.Uint64(seed[:8]))))
+
+	for i, p := range participants {
+		baseScore := float64(p.Weight)
+		randomComponent := rng.Float64() * float64(p.Weight) * shufflePct
+		items[i] = indexed{
+			participant: p,
+			randomScore: baseScore + randomComponent,
+		}
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].randomScore > items[j].randomScore
 	})
 
-	seedInt := binary.BigEndian.Uint64(seed[:8])
-	rng := rand.New(rand.NewSource(int64(seedInt)))
-
-	swapProbability := shufflePct
-	maxSwapDistance := n / 10
-	if maxSwapDistance < 1 {
-		maxSwapDistance = 1
-	}
-
 	result := make([]string, n)
-	for i, p := range sorted {
-		result[i] = p.Address
-	}
-
-	for i := 0; i < n; i++ {
-		if rng.Float64() < swapProbability {
-			maxJ := i + maxSwapDistance
-			if maxJ >= n {
-				maxJ = n - 1
-			}
-			minJ := i - maxSwapDistance
-			if minJ < 0 {
-				minJ = 0
-			}
-
-			j := minJ + rng.Intn(maxJ-minJ+1)
-			result[i], result[j] = result[j], result[i]
-		}
+	for i, item := range items {
+		result[i] = item.participant.Address
 	}
 
 	return result
