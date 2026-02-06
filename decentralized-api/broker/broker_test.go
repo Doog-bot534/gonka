@@ -217,18 +217,21 @@ func registerNodeAndSetInferenceStatus(t *testing.T, broker *Broker, node apicon
 	<-setStatusCommand.Response
 
 	// Wait for reconciliation to actually bring the node to INFERENCE status in the broker
-	deadline := time.Now().Add(2 * time.Second)
+	// AND for reconciliation to complete (ReconcileInfo == nil)
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		nodes, _ := broker.GetNodes()
 		for _, n := range nodes {
-			if n.Node.Id == node.Id && n.State.CurrentStatus == types.HardwareNodeStatus_INFERENCE {
+			if n.Node.Id == node.Id && 
+				n.State.CurrentStatus == types.HardwareNodeStatus_INFERENCE &&
+				n.State.ReconcileInfo == nil {
 				return
 			}
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	t.Fatalf("Node did not reach INFERENCE status in time")
+	t.Fatalf("Node did not reach INFERENCE status and complete reconciliation in time")
 }
 
 func TestNodeRemoval(t *testing.T) {
