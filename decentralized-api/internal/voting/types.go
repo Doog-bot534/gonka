@@ -5,23 +5,30 @@ package voting
 
 // ChallengerRole identifies who is initiating the dispute.
 // The role determines what proof is required and what verification voters perform.
-type ChallengerRole string
+type ChallengerRole int
 
 const (
 	// RoleExecutor indicates an executor is challenging a TA for not sending the payload.
 	// Proof: On-chain MsgStartInference.assigned_to == ChallengerAddress
 	// No ChallengerDataHash needed (executor has nothing to provide).
-	RoleExecutor ChallengerRole = "executor"
+	RoleExecutor ChallengerRole = iota
 
 	// RoleTA indicates a TA is challenging an executor for not finishing the inference.
 	// Proof: On-chain MsgStartInference.creator == ChallengerAddress
 	// ChallengerDataHash should contain the hash of the prompt_payload TA sent.
-	RoleTA ChallengerRole = "ta"
+	RoleTA
 )
 
-// String returns a human-readable representation of the ChallengerRole.
+// Returns a string representation of the ChallengerRole.
 func (r ChallengerRole) String() string {
-	return string(r)
+	switch r {
+	case RoleExecutor:
+		return "executor"
+	case RoleTA:
+		return "ta"
+	default:
+		return "unknown"
+	}
 }
 
 // IsValid returns true if the ChallengerRole is a recognized value.
@@ -67,42 +74,43 @@ type AssignmentProof struct {
 // 1. If data is missing, voter tries to fetch it from the respondent
 // 2. If successful, voter relays the data to the challenger (giving them a chance to receive it)
 // 3. Only if data is still unavailable after retries, cast a negative vote
-type VerificationType string
+type VerificationType int
 
 const (
+
 	// VerifyPayloadFromTA indicates voters should ping the TA's payload endpoint.
 	// Used when an executor challenges a TA for not sending the payload.
 	// Recovery: If missing, voter requests payload from TA and relays to executor if found.
 	// Voters will: GET /v1/inference/payloads?inference_id=... on TA's endpoint
-	VerifyPayloadFromTA VerificationType = "payload_from_ta"
+	VerifyPayloadFromTA VerificationType = iota
 
 	// VerifyPayloadFromExecutor indicates voters should ping the executor's payload endpoint.
 	// Used when a TA challenges an executor for not storing the response payload.
 	// Recovery: If missing, voter requests payload from executor and relays to TA if found.
 	// Voters will: GET /v1/inference/payloads?inference_id=... on executor's endpoint
-	VerifyPayloadFromExecutor VerificationType = "payload_from_executor"
+	VerifyPayloadFromExecutor
 
 	// VerifyMsgStartExists indicates voters should check if MsgStartInference exists on-chain.
 	// Used when an executor challenges a TA for not posting MsgStartInference.
 	// Recovery: If missing on-chain, voter requests TA to post it, then re-checks.
 	// Voters will: Query chain for MsgStartInference with the inference_id.
-	VerifyMsgStartExists VerificationType = "msg_start_exists"
+	VerifyMsgStartExists
 
 	// VerifyMsgFinishExists indicates voters should check if MsgFinishInference exists on-chain.
 	// Used when a TA challenges an executor for not completing the inference.
 	// Recovery: If missing on-chain, voter requests executor to post it, then re-checks.
 	// Voters will: Query chain for MsgFinishInference with the inference_id.
-	VerifyMsgFinishExists VerificationType = "msg_finish_exists"
+	VerifyMsgFinishExists
 
 	// VerifyPromptHashMatch indicates voters should verify the TA's payload hash matches on-chain.
 	// Used when an executor challenges a TA for payload mismatch.
 	// Voters will: Compare TA's payload hash vs MsgStartInference.prompt_hash
-	VerifyPromptHashMatch VerificationType = "prompt_hash_match"
+	VerifyPromptHashMatch
 
 	// VerifyResponseHashMatch indicates voters should verify the executor's response hash matches on-chain.
 	// Used when a TA challenges an executor for response hash mismatch.
 	// Voters will: Compare executor's payload hash vs MsgFinishInference.response_hash
-	VerifyResponseHashMatch VerificationType = "response_hash_match"
+	VerifyResponseHashMatch
 
 	// VerifyResponseDeliveryToTA indicates voters should verify the TA received the response from executor.
 	// Used when a TA claims they never received the HTTP response from executor.
@@ -112,12 +120,29 @@ const (
 	//   2. Fetch response payload from executor
 	//   3. Relay response to TA's callback endpoint
 	//   4. Vote negative if executor doesn't have it
-	VerifyResponseDeliveryToTA VerificationType = "response_delivery_to_ta"
+	VerifyResponseDeliveryToTA
 )
 
-// String returns a human-readable representation of the VerificationType.
+// Returns a string representation of the VerificationType.
 func (v VerificationType) String() string {
-	return string(v)
+	switch v {
+	case VerifyPayloadFromTA:
+		return "payload_from_ta"
+	case VerifyPayloadFromExecutor:
+		return "payload_from_executor"
+	case VerifyMsgStartExists:
+		return "msg_start_exists"
+	case VerifyMsgFinishExists:
+		return "msg_finish_exists"
+	case VerifyPromptHashMatch:
+		return "prompt_hash_match"
+	case VerifyResponseHashMatch:
+		return "response_hash_match"
+	case VerifyResponseDeliveryToTA:
+		return "response_delivery_to_ta"
+	default:
+		return "unknown"
+	}
 }
 
 // IsValid returns true if the VerificationType is a recognized value.
@@ -141,14 +166,14 @@ type VoteType int
 
 const (
 	// VotePositive indicates the Respondent responded honestly with valid data.
-	VotePositive VoteType = 1
+	VotePositive VoteType = iota
 	// VoteNegative indicates the Respondent did not respond or was dishonest.
-	VoteNegative VoteType = 2
-	// (Placeholder for future errors)
-	VoteInvalid VoteType = 3
+	VoteNegative
+	// VoteInvalid indicates the vote could not be determined (error case).
+	VoteInvalid
 )
 
-// String returns a human-readable representation of the VoteType.
+// Returns a string representation of the VoteType.
 func (v VoteType) String() string {
 	switch v {
 	case VotePositive:
@@ -172,14 +197,14 @@ type VotingOutcome int
 
 const (
 	// OutcomePositive indicates that at least one node voted positively for the inference and got the payload.
-	OutcomePositive VotingOutcome = 1
+	OutcomePositive VotingOutcome = iota
 	// OutcomeNegative indicates that at all nodes voted negatively for the inference and did not get the payload.
-	OutcomeNegative VotingOutcome = 2
+	OutcomeNegative
 	// OutcomeInconclusive for cases, when the voting went wrong
-	OutcomeInconclusive VotingOutcome = 3
+	OutcomeInconclusive
 )
 
-// String returns a human-readable representation of the VotingOutcome.
+// Returns a string representation of the VotingOutcome.
 func (o VotingOutcome) String() string {
 	switch o {
 	case OutcomePositive:
