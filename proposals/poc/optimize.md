@@ -203,13 +203,44 @@ N_SLOTS selection rationale:
 
 With sampling, an attacker controlling fraction `f` of total weight could be over-represented in a specific participant's assigned validators by chance. This follows a binomial distribution.
 
-| Attacker Weight (f) | Expected Malicious Slots (N=64) | P(>50% slots) | P(>50% slots) N=128 |
-|---------------------|--------------------------------|---------------|---------------------|
-| 30% | 19.2 | < 10⁻⁶ | < 10⁻¹⁰ |
-| 35% | 22.4 | ~10⁻⁴ | ~10⁻⁷ |
-| 40% | 25.6 | ~2-3% | ~0.1% |
-| 45% | 28.8 | ~13% | ~5% |
-| 49% | 31.4 | ~38% | ~35% |
+**Computation Method**:
+
+Attack probability is calculated using the binomial probability mass function:
+
+```
+P(X = k) = C(n, k) * p^k * (1-p)^(n-k)
+```
+
+where:
+- `n = N_SLOTS` (number of validation slots)
+- `k =` number of malicious slots
+- `p = f` (attacker weight fraction, probability each slot selects attacker validator)
+- `C(n, k) = n! / (k! * (n-k)!)` is the binomial coefficient
+
+Attack succeeds when `k > n/2`, so:
+
+```
+P(attack) = sum_{k=floor(n/2)+1}^{n} P(X = k)
+```
+
+To avoid numerical overflow with large factorials, computation uses logarithms:
+
+```
+log P(X = k) = log C(n, k) + k*log(p) + (n-k)*log(1-p)
+log C(n, k) = sum_{i=0}^{k-1} [log(n-i) - log(i+1)]
+```
+
+**Calculated Attack Probabilities**:
+
+| Attacker Weight (f) | P(>50% slots) N=32 | P(>50% slots) N=64 | P(>50% slots) N=128 |
+|---------------------|-------------------|-------------------|---------------------|
+| 30% | 0.524% | 0.025% | 7.07×10^-7 |
+| 35% | 2.69% | 0.477% | 0.018% |
+| 40% | 9.20% | 4.02% | 0.868% |
+| 45% | 22.72% | 17.62% | 11.03% |
+| 49% | 38.58% | 38.76% | 37.64% |
+
+*Note: Values computed using exact binomial distribution. See `proposals/poc/simulate.py` for verification.*
 
 **Key insight**: Attack probability is per-participant. An attacker cannot simultaneously attack all N participants with favorable odds—they can only target specific participants, and each target has independent sampling.
 
@@ -217,9 +248,9 @@ With sampling, an attacker controlling fraction `f` of total weight could be ove
 
 | N_SLOTS | Security Margin | Performance (N=10k) | Use Case |
 |---------|-----------------|---------------------|----------|
-| 64 | Good | 99.4% reduction | Initial deployment, smaller networks |
-| 128 | Very good | 98.7% reduction | Production recommended |
-| 256 | Excellent | 97.4% reduction | High-security requirements |
+| 64 | Good | 99.36% reduction | Initial deployment, smaller networks |
+| 128 | Very good | 98.72% reduction | Production recommended |
+| 256 | Excellent | 97.44% reduction | High-security requirements |
 
 **Recommendation**: Use N_SLOTS=128 for production to provide stronger security margins while retaining substantial scalability benefits.
 
