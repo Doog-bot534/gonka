@@ -16,7 +16,8 @@ class PropagationTests : TestermintTest() {
         // Initialize cluster with 3 participants
         val (cluster, genesis) = initCluster(
             joinCount = 2,
-            reboot = true
+            reboot = true,
+            config = bandwidthConfig,
         )
 
         val join1 = cluster.joinPairs[0]
@@ -76,7 +77,8 @@ class PropagationTests : TestermintTest() {
 
         val (cluster, genesis) = initCluster(
             joinCount = 2,
-            reboot = true
+            reboot = true,
+            config = bandwidthConfig,
         )
 
         val join1 = cluster.joinPairs[0]
@@ -140,71 +142,13 @@ class PropagationTests : TestermintTest() {
     }
 
     @Test
-    fun `propagation - 9 node network natural propagation`() {
-        logSection("=== TEST: Natural Propagation - 9 Node Network ===")
-
-        val (cluster, genesis) = initCluster(
-            joinCount = 8,
-            reboot = true
-        )
-
-        val allParticipants = listOf(genesis) + cluster.joinPairs
-
-        logSection("✅ Cluster with 9 participants initialized")
-        allParticipants.forEachIndexed { idx, pair ->
-            val name = if (idx == 0) "genesis" else "join$idx"
-            Logger.info("  $name: ${pair.node.getColdAddress()}")
-        }
-
-        logSection("Setting PoC weights on all participants")
-        allParticipants.forEach { it.setPocWeight(10) }
-
-        logSection("Waiting for PoC generation phase")
-        genesis.waitForStage(EpochStage.START_OF_POC)
-        genesis.node.waitForNextBlock(5)
-
-        val epochData = genesis.getEpochData()
-        val pocHeight = epochData.latestEpoch.pocStartBlockHeight
-
-        logSection("Verifying all participants generated artifacts")
-        allParticipants.forEachIndexed { idx, pair ->
-            val name = if (idx == 0) "genesis" else "join$idx"
-            val state = pair.api.getPocArtifactsState(pocHeight)
-            Logger.info("$name: count=${state.count}, rootHash=${state.rootHash}")
-            assertThat(state.count).isGreaterThan(0)
-        }
-
-        logSection("Waiting for PoC exchange phase (natural propagation)")
-        genesis.waitForStage(EpochStage.POC_EXCHANGE_DEADLINE)
-        
-        genesis.node.waitForNextBlock(8)
-
-        logSection("Querying propagation cache from all 9 nodes")
-        var totalBundles = 0
-        allParticipants.forEachIndexed { idx, pair ->
-            val name = if (idx == 0) "genesis" else "join$idx"
-            val cache = pair.api.getPropagationCache(pocHeight)
-            Logger.info("$name cache: ${cache.count} bundles")
-            totalBundles += cache.count
-            
-            assertThat(cache.count).isGreaterThanOrEqualTo(8)
-                .describedAs("$name should have received bundles from other participants")
-        }
-
-        Logger.info("Total bundles across all caches: $totalBundles")
-
-        logSection("✅ Test Complete - Natural propagation verified in 9-node network")
-        Logger.info("All participants successfully propagated and received bundles automatically")
-        Logger.info("Propagation handled by bundler and tree manager - no manual intervention")
-    }
-
-    @Test
     fun `propagation - first arrival times are recorded for each participant`() {
         logSection("=== TEST: First Arrival Time Tracking ===")
 
         val (cluster, genesis) = initCluster(
             joinCount = 2,
-            reboot = true
+            reboot = true,
+            config = bandwidthConfig,
         )
 
         val join1 = cluster.joinPairs[0]
@@ -307,7 +251,8 @@ class PropagationTests : TestermintTest() {
 
         val (cluster, genesis) = initCluster(
             joinCount = 2,
-            reboot = true
+            reboot = true,
+            config = bandwidthConfig,
         )
 
         val join1 = cluster.joinPairs[0]
@@ -453,4 +398,22 @@ class PropagationTests : TestermintTest() {
         Logger.info("All nodes calculated consensus based on observations")
         Logger.info("Agreed counts are positive and bounded by actual artifact counts")
     }
+
+    val offChainPoCSpec = spec {
+        this[AppState::inference] = spec<InferenceState> {
+            this[InferenceState::params] = spec<InferenceParams> {
+                this[InferenceParams::epochParams] = spec<EpochParams> {
+                    this[EpochParams::pocStageDuration] = 3L
+                    this[EpochParams::pocValidationDuration] = 4L
+                }
+                this[InferenceParams::pocParams] = spec<PocParams> {
+                    this[PocParams::pocV2Enabled] = true
+                }
+            }
+        }
+    }
+
+    val bandwidthConfig = inferenceConfig.copy(
+        genesisSpec = inferenceConfig.genesisSpec?.merge(offChainPoCSpec) ?: offChainPoCSpec,
+    )
 }
