@@ -16,7 +16,8 @@ class PropagationTests : TestermintTest() {
         // Initialize cluster with 3 participants
         val (cluster, genesis) = initCluster(
             joinCount = 2,
-            reboot = true
+            reboot = true,
+            config = bandwidthConfig,
         )
 
         val join1 = cluster.joinPairs[0]
@@ -76,7 +77,8 @@ class PropagationTests : TestermintTest() {
 
         val (cluster, genesis) = initCluster(
             joinCount = 2,
-            reboot = true
+            reboot = true,
+            config = bandwidthConfig,
         )
 
         val join1 = cluster.joinPairs[0]
@@ -145,7 +147,8 @@ class PropagationTests : TestermintTest() {
 
         val (cluster, genesis) = initCluster(
             joinCount = 2,
-            reboot = true
+            reboot = true,
+            config = bandwidthConfig,
         )
 
         val join1 = cluster.joinPairs[0]
@@ -248,7 +251,8 @@ class PropagationTests : TestermintTest() {
 
         val (cluster, genesis) = initCluster(
             joinCount = 2,
-            reboot = true
+            reboot = true,
+            config = bandwidthConfig,
         )
 
         val join1 = cluster.joinPairs[0]
@@ -394,4 +398,22 @@ class PropagationTests : TestermintTest() {
         Logger.info("All nodes calculated consensus based on observations")
         Logger.info("Agreed counts are positive and bounded by actual artifact counts")
     }
+
+    val offChainPoCSpec = spec {
+        this[AppState::inference] = spec<InferenceState> {
+            this[InferenceState::params] = spec<InferenceParams> {
+                this[InferenceParams::epochParams] = spec<EpochParams> {
+                    this[EpochParams::pocStageDuration] = 3L
+                    this[EpochParams::pocValidationDuration] = 4L
+                }
+                this[InferenceParams::pocParams] = spec<PocParams> {
+                    this[PocParams::pocV2Enabled] = true
+                }
+            }
+        }
+    }
+
+    val bandwidthConfig = inferenceConfig.copy(
+        genesisSpec = inferenceConfig.genesisSpec?.merge(offChainPoCSpec) ?: offChainPoCSpec,
+    )
 }
