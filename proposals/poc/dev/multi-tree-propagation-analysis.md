@@ -99,6 +99,39 @@ finalScore = weight + (random[0,1) × weight × shufflePct)
 
 **Key property:** Higher-weight participants have larger absolute random ranges, but the *relative* randomization is the same percentage for all participants.
 
+### Tree Construction from Shuffled List
+
+After shuffling, a **complete k-ary tree** is built where `k = fanout`:
+
+```go
+func buildTree(shuffled []string, fanout int) *Tree {
+    // Position 0 = root
+    t.Root = t.Nodes[shuffled[0]]
+
+    // For each node at position i > 0, parent is at position (i-1)/fanout
+    for i := 1; i < n; i++ {
+        parentIndex := (i - 1) / fanout
+        node.Parent = t.Nodes[shuffled[parentIndex]]
+    }
+}
+```
+
+**Structure with fanout=4:**
+```
+Position:     0              <- Root (highest weight)
+            / | \ \
+           1  2  3  4        <- Level 1 (positions 1-4)
+          /|\ ...
+         5 6 7 8 ...         <- Level 2 (positions 5-20)
+```
+
+**Parent calculation:** Node at position `i` has parent at position `(i-1) / fanout`
+- Positions 1-4 → parent at 0
+- Positions 5-8 → parent at 1
+- Positions 9-12 → parent at 2
+
+**Why this matters:** The first `n/fanout` positions are parents. Since the shuffle places high-weight nodes first, **high-weight nodes become parents** and low-weight nodes become leaves.
+
 ---
 
 ## Attacker Distribution Models
