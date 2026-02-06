@@ -10,6 +10,7 @@ import (
 	mathsdk "cosmossdk.io/math"
 	"github.com/productscience/inference/x/inference/calculations"
 	"github.com/productscience/inference/x/inference/types"
+	"github.com/productscience/inference/x/inference/utils"
 )
 
 // WeightCalculator encapsulates all the data needed to calculate new weights for participants.
@@ -850,13 +851,26 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 	}
 	weightScaleFactor := params.PocParams.GetWeightScaleFactorDec()
 
-	// Build guardian address set for tiebreaker logic
 	guardianEnabled := am.keeper.GetGenesisGuardianEnabled(ctx)
 	guardianAddrs := am.keeper.GetGenesisGuardianAddresses(ctx)
 	guardianSet := make(map[string]bool, len(guardianAddrs))
 	for _, addr := range guardianAddrs {
-		guardianSet[addr] = true
+		accAddr, err := utils.OperatorAddressToAccAddress(addr)
+		if err != nil {
+			am.LogWarn("ComputeNewWeights: Failed to convert guardian address", types.PoC,
+				"operatorAddress", addr, "error", err)
+			continue
+		}
+		guardianSet[accAddr] = true
 	}
+
+	guardianAccAddrs := make([]string, 0, len(guardianSet))
+	for addr := range guardianSet {
+		guardianAccAddrs = append(guardianAccAddrs, addr)
+	}
+	am.LogInfo("ComputeNewWeights: Resolved guardian addresses", types.PoC,
+		"guardianEnabled", guardianEnabled,
+		"guardianAccAddrs", guardianAccAddrs)
 
 	// Get validation snapshot for sampling (if enabled)
 	var appHash string
