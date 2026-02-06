@@ -7,4 +7,4 @@ export CHAIN_ID="gonka-testnet"
 export HF_HOME="/srv/dai/cache/"
 export TESTNET_BASE_DIR="/srv/dai/"
 
-python3 launch.py --mode join --branch origin/gl/testnet/main --chainid "$CHAIN_ID"
+python3 launch.py --mode join --branch origin/testnet/main --chainid "$CHAIN_ID"
