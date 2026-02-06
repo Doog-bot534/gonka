@@ -398,16 +398,14 @@ func (v *OffChainValidator) worker(
 						*pendingCount--
 						logging.Warn("OffChainValidator: queue full, marking as failed", types.PoC,
 							"participant", work.address)
-						// Report participant as invalid to chain
-						v.reportInvalidParticipant(pocHeight, work.address)
 					}
 				} else {
 					*failCount++
 					*pendingCount--
 					logging.Warn("OffChainValidator: max retries exceeded, reporting as invalid", types.PoC,
 						"participant", work.address, "attempts", work.attempt+1)
-					// Report participant as invalid to chain
-					v.reportInvalidParticipant(pocHeight, work.address)
+					// Report participant as invalid to chain. We probably should separate only to report failed network requests.
+					// reportAddr = work.address
 				}
 			}
 
