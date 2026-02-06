@@ -1257,9 +1257,10 @@ def copy_final_genesis_to_repo():
     print("Finalized genesis.json copied to repository successfully!")
 
 
-def register_joining_participant(service="api"):
+def register_joining_participant(service="api", max_retries=5, retry_delay=30):
     """
-    Register this node as a new participant in the existing network using Docker compose
+    Register this node as a new participant in the existing network using Docker compose.
+    Retries if the node is not ready yet.
     """
     working_dir = GONKA_REPO_DIR / "deploy/join"
     config_file = working_dir / "config.env"
@@ -1287,34 +1288,47 @@ def register_joining_participant(service="api"):
     # Build the command to run inside the container
     # NOTE! variable are getting renamed inside the container
     compose_files = get_compose_files_arg(include_mlnode=True)
-    time.sleep(10)
     register_cmd = f"bash -c 'source {config_file} && docker compose {compose_files} run --rm --no-deps -T {service} sh -lc \"inferenced register-new-participant \\$DAPI_API__PUBLIC_URL \\$ACCOUNT_PUBKEY --node-address \\$DAPI_CHAIN_NODE__SEED_API_URL\"'"
     
     print(f"Running command: {register_cmd}")
     
-    result = subprocess.run(
-        register_cmd,
-        shell=True,
-        cwd=working_dir,
-        capture_output=True,
-        text=True
-    )
-    
-    print("Participant registration completed!")
-    print("Output:")
-    print("=" * 50)
-    if result.stdout:
-        print(result.stdout)
-    if result.stderr:
-        print("Errors/Warnings:")
-        print(result.stderr)
-    print("=" * 50)
-    
-    if result.returncode != 0:
+    for attempt in range(max_retries):
+        result = subprocess.run(
+            register_cmd,
+            shell=True,
+            cwd=working_dir,
+            capture_output=True,
+            text=True
+        )
+        
+        print(f"Participant registration attempt {attempt + 1}/{max_retries}")
+        print("Output:")
+        print("=" * 50)
+        if result.stdout:
+            print(result.stdout)
+        if result.stderr:
+            print("Errors/Warnings:")
+            print(result.stderr)
+        print("=" * 50)
+        
+        if result.returncode == 0:
+            print("Participant registration completed successfully!")
+            return
+        
+        # Check if it's a connection error (node not ready yet)
+        if "connection refused" in result.stderr.lower() or "not responding" in result.stderr.lower():
+            if attempt < max_retries - 1:
+                print(f"Node not ready yet. Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+                continue
+        
+        # For other errors, fail immediately
         print(f"Participant registration failed with return code: {result.returncode}")
         raise subprocess.CalledProcessError(result.returncode, register_cmd)
     
-    print("Participant registration completed successfully!")
+    # All retries exhausted
+    print(f"Participant registration failed after {max_retries} attempts")
+    raise subprocess.CalledProcessError(result.returncode, register_cmd)
 
 
 def grant_key_permissions(warm_key_address: str):
