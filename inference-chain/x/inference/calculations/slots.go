@@ -7,9 +7,9 @@ import (
 	"sort"
 )
 
-type weightEntry struct {
-	address string
-	weight  int64
+type WeightEntry struct {
+	Address string
+	Weight  int64
 }
 
 type slotRandom struct {
@@ -17,29 +17,38 @@ type slotRandom struct {
 	origIdx   int
 }
 
-// GetSlots returns deterministically sampled validators for a participant using weighted random selection.
-// Returns nil if weights is empty, nSlots is 0, or all weights are non-positive.
-func GetSlots(appHash, participantAddress string, weights map[string]int64, nSlots int) []string {
-	if len(weights) == 0 || nSlots == 0 {
-		return nil
+// PrepareSortedEntries filters and sorts weights, returns sorted entries and total weight.
+// Returns nil, 0 if weights is empty or all weights are non-positive.
+func PrepareSortedEntries(weights map[string]int64) ([]WeightEntry, int64) {
+	if len(weights) == 0 {
+		return nil, 0
 	}
 
-	entries := make([]weightEntry, 0, len(weights))
+	sortedEntries := make([]WeightEntry, 0, len(weights))
 	var totalWeight int64
 	for addr, w := range weights {
 		if w <= 0 {
-			continue // Skip non-positive weights
+			continue
 		}
-		entries = append(entries, weightEntry{addr, w})
+		sortedEntries = append(sortedEntries, WeightEntry{addr, w})
 		totalWeight += w
 	}
-	if totalWeight == 0 || len(entries) == 0 {
-		return nil
+	if totalWeight == 0 || len(sortedEntries) == 0 {
+		return nil, 0
 	}
 
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].address < entries[j].address
+	sort.Slice(sortedEntries, func(i, j int) bool {
+		return sortedEntries[i].Address < sortedEntries[j].Address
 	})
+
+	return sortedEntries, totalWeight
+}
+
+// GetSlotsFromSorted uses pre-sorted entries to avoid sorting per call.
+func GetSlotsFromSorted(appHash, participantAddress string, sortedEntries []WeightEntry, totalWeight int64, nSlots int) []string {
+	if nSlots == 0 {
+		return nil
+	}
 
 	randoms := make([]slotRandom, nSlots)
 	for i := 0; i < nSlots; i++ {
@@ -56,10 +65,10 @@ func GetSlots(appHash, participantAddress string, weights map[string]int64, nSlo
 	cumulative := int64(0)
 	randIdx := 0
 
-	for _, entry := range entries {
-		cumulative += entry.weight
+	for _, entry := range sortedEntries {
+		cumulative += entry.Weight
 		for randIdx < len(randoms) && randoms[randIdx].randomVal < cumulative {
-			result[randoms[randIdx].origIdx] = entry.address
+			result[randoms[randIdx].origIdx] = entry.Address
 			randIdx++
 		}
 	}
@@ -67,41 +76,23 @@ func GetSlots(appHash, participantAddress string, weights map[string]int64, nSlo
 	return result
 }
 
-// GetSlot returns a single slot by index.
-// Returns empty string if weights is empty or all weights are non-positive.
-func GetSlot(appHash, participantAddress string, weights map[string]int64, slotIdx int) string {
-	if len(weights) == 0 {
+// GetSlotFromSorted returns a single slot by index using pre-sorted entries.
+func GetSlotFromSorted(appHash, participantAddress string, sortedEntries []WeightEntry, totalWeight int64, slotIdx int) string {
+	if len(sortedEntries) == 0 {
 		return ""
 	}
-
-	entries := make([]weightEntry, 0, len(weights))
-	var totalWeight int64
-	for addr, w := range weights {
-		if w <= 0 {
-			continue // Skip non-positive weights
-		}
-		entries = append(entries, weightEntry{addr, w})
-		totalWeight += w
-	}
-	if totalWeight == 0 || len(entries) == 0 {
-		return ""
-	}
-
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].address < entries[j].address
-	})
 
 	randomVal := slotRandomVal(appHash, participantAddress, slotIdx, totalWeight)
 
 	cumulative := int64(0)
-	for _, entry := range entries {
-		cumulative += entry.weight
+	for _, entry := range sortedEntries {
+		cumulative += entry.Weight
 		if randomVal < cumulative {
-			return entry.address
+			return entry.Address
 		}
 	}
 
-	return entries[len(entries)-1].address
+	return sortedEntries[len(sortedEntries)-1].Address
 }
 
 func slotRandomVal(appHash, participantAddress string, slotIdx int, totalWeight int64) int64 {

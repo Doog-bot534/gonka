@@ -29,6 +29,8 @@ type WeightCalculator struct {
 	GuardianAddresses       map[string]bool
 	AppHash                 string
 	ValidationSlots         int
+	sortedValidatorEntries  []calculations.WeightEntry
+	validatorTotalWeight    int64
 }
 
 // NewWeightCalculator creates a new WeightCalculator instance.
@@ -47,7 +49,7 @@ func NewWeightCalculator(
 	appHash string,
 	validationSlots int,
 ) *WeightCalculator {
-	return &WeightCalculator{
+	wc := &WeightCalculator{
 		CurrentValidatorWeights: currentValidatorWeights,
 		StoreCommits:            storeCommits,
 		NodeWeightDistributions: nodeWeightDistributions,
@@ -62,6 +64,12 @@ func NewWeightCalculator(
 		AppHash:                 appHash,
 		ValidationSlots:         validationSlots,
 	}
+
+	if validationSlots > 0 {
+		wc.sortedValidatorEntries, wc.validatorTotalWeight = calculations.PrepareSortedEntries(currentValidatorWeights)
+	}
+
+	return wc
 }
 
 // Calculate computes the new weights for active participants.
@@ -225,7 +233,10 @@ func (wc *WeightCalculator) getAssignedValidators(participantAddress string) []s
 	if wc.ValidationSlots == 0 {
 		return nil
 	}
-	return calculations.GetSlots(wc.AppHash, participantAddress, wc.CurrentValidatorWeights, wc.ValidationSlots)
+	if wc.sortedValidatorEntries == nil {
+		return nil
+	}
+	return calculations.GetSlotsFromSorted(wc.AppHash, participantAddress, wc.sortedValidatorEntries, wc.validatorTotalWeight, wc.ValidationSlots)
 }
 
 // ValidationOutcome holds aggregated vote counts.
@@ -260,13 +271,14 @@ func (wc *WeightCalculator) calculateAssignedOutcome(vals []types.PoCValidationV
 
 	// Count slots. Each slot = 1 (weight is already in slot distribution).
 	// Same validator can appear multiple times if they have high weight.
-	var totalSlots, validSlots, invalidSlots int64
+	// TotalWeight is fixed to all assigned slots (missing votes are abstentions).
+	totalSlots := int64(len(assignedValidators))
+	var validSlots, invalidSlots int64
 	for _, slotValidator := range assignedValidators {
 		vote, hasVote := voteMap[slotValidator]
 		if !hasVote {
-			continue // Validator didn't submit a vote for this participant
+			continue
 		}
-		totalSlots++
 		if vote > 0 {
 			validSlots++
 		} else {

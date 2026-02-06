@@ -173,6 +173,8 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 	validationSlots := int(pocParams.ValidationSlots)
 	var snapshotWeights map[string]int64
 	var snapshotAppHash string
+	var sortedValidatorEntries []calculations.WeightEntry
+	var validatorTotalWeight int64
 	if validationSlots > 0 {
 		snapshotResp, err := queryClient.PoCValidationSnapshot(context.Background(),
 			&types.QueryPoCValidationSnapshotRequest{
@@ -185,6 +187,7 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 		} else if snapshotResp.Found && snapshotResp.Snapshot != nil {
 			snapshotWeights = validatorWeightsSliceToMap(snapshotResp.Snapshot.ValidatorWeights)
 			snapshotAppHash = snapshotResp.Snapshot.AppHash
+			sortedValidatorEntries, validatorTotalWeight = calculations.PrepareSortedEntries(snapshotWeights)
 			logging.Info("OffChainValidator: using validation snapshot for sampling", types.PoC,
 				"appHash", snapshotAppHash,
 				"validationSlots", validationSlots,
@@ -201,8 +204,8 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 	skippedNotAssigned := 0
 	for _, commit := range commitsResp.Commits {
 		// If sampling is enabled, check if we're assigned to validate this participant
-		if validationSlots > 0 && snapshotWeights != nil {
-			assignedValidators := calculations.GetSlots(snapshotAppHash, commit.ParticipantAddress, snapshotWeights, validationSlots)
+		if validationSlots > 0 && sortedValidatorEntries != nil {
+			assignedValidators := calculations.GetSlotsFromSorted(snapshotAppHash, commit.ParticipantAddress, sortedValidatorEntries, validatorTotalWeight, validationSlots)
 			if !slices.Contains(assignedValidators, v.validatorAddress) {
 				skippedNotAssigned++
 				continue
