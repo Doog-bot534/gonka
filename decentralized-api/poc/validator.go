@@ -768,24 +768,3 @@ func validatorWeightsSliceToMap(weights []*types.ValidatorWeight) map[string]int
 	}
 	return result
 }
-
-// reportInvalidParticipant submits a validation result with ValidatedWeight=-1 (invalid) to chain.
-// This is called when validation fails permanently (e.g., retry exhaustion).
-func (v *OffChainValidator) reportInvalidParticipant(pocHeight int64, participantAddress string) {
-	msg := &inference.MsgSubmitPocValidationsV2{
-		PocStageStartBlockHeight: pocHeight,
-		Validations: []*inference.PoCValidationPayloadV2{
-			{
-				ParticipantAddress: participantAddress,
-				ValidatedWeight:    -1, // Invalid
-			},
-		},
-	}
-	if err := v.recorder.SubmitPocValidationsV2(msg); err != nil {
-		logging.Error("OffChainValidator: failed to report invalid participant", types.PoC,
-			"participant", participantAddress, "error", err)
-	} else {
-		logging.Info("OffChainValidator: reported participant as invalid", types.PoC,
-			"participant", participantAddress)
-	}
-}
