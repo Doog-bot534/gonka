@@ -10,4 +10,6 @@ option go_package = "github.com/productscience/inference/x/bookkeeper/types";
 message Params {
   option (amino.name) = "inference/x/bookkeeper/Params";
   option (gogoproto.equal) = true;
+
+  bool ci_test_toggle = 1;
 }
