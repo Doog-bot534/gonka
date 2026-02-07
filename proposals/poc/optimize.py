@@ -110,6 +110,7 @@ def get_vote_from(
 
 
 def validate_host(
+    app_hash: str,
     host: str,
 ) -> bool:
     prev_weights = get_weights()

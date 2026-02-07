@@ -200,9 +200,11 @@ func (wc *WeightCalculator) pocValidated(vals []types.PoCValidationV2, participa
 
 	assignedValidators := wc.getAssignedValidators(participantAddress)
 	outcome := wc.calculateAssignedOutcome(vals, assignedValidators)
-	halfWeight := outcome.TotalWeight / 2
+	// 66.7% threshold: need >2/3 of assigned slots to vote valid
+	// If not met, falls back to guardian decision
+	twoThirdsWeight := outcome.TotalWeight * 2 / 3
 
-	if outcome.ValidWeight > halfWeight {
+	if outcome.ValidWeight > twoThirdsWeight {
 		wc.Logger.LogInfo("Calculate: Valid majority. Accepting.", types.PoC,
 			"participant", participantAddress,
 			"validWeight", outcome.ValidWeight,
@@ -213,7 +215,7 @@ func (wc *WeightCalculator) pocValidated(vals []types.PoCValidationV2, participa
 		return true
 	}
 
-	if outcome.InvalidWeight > halfWeight {
+	if outcome.InvalidWeight > twoThirdsWeight {
 		wc.Logger.LogWarn("Calculate: Invalid majority. Rejecting.", types.PoC,
 			"participant", participantAddress,
 			"validWeight", outcome.ValidWeight,
