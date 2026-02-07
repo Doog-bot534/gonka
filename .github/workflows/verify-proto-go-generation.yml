@@ -19,15 +19,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.24.2"
-
       - name: Install Ignite CLI
         run: |
-          go install github.com/ignite/cli/ignite@v28.10.0
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          curl -sSL -o /tmp/ignite_28.10.0_linux_amd64.tar.gz \
+            https://github.com/ignite/cli/releases/download/v28.10.0/ignite_28.10.0_linux_amd64.tar.gz
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf /tmp/ignite_28.10.0_linux_amd64.tar.gz -C "$RUNNER_TEMP/bin" ignite
+          chmod +x "$RUNNER_TEMP/bin/ignite"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/bin/ignite" version
 
       - name: Run proto-go generation
         working-directory: ./inference-chain
