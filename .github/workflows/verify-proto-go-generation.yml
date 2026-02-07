@@ -26,7 +26,7 @@ jobs:
 
       - name: Install Ignite CLI
         run: |
-          go install github.com/ignite/cli/v28/ignite@v28.10.0
+          go install github.com/ignite/cli/v28@v28.10.0
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Run proto-go generation
