@@ -64,7 +64,7 @@ func (m *mockGroupKeeper) ProposalsByGroupPolicy(ctx context.Context, req *group
 	return nil, nil
 }
 
-func TestCalculateInferenceServingWeight_POCSlotTrue(t *testing.T) {
+func TestCalculatePocParticipatingNodesWeight_POCSlotTrue(t *testing.T) {
 	// Nodes with POC_SLOT=true (index 1 = true) should be EXCLUDED
 	mlNodes := []*types.ModelMLNodes{
 		{
@@ -89,7 +89,7 @@ func TestCalculateInferenceServingWeight_POCSlotTrue(t *testing.T) {
 	require.Equal(t, int64(0), weight)
 }
 
-func TestCalculateInferenceServingWeight_POCSlotFalse(t *testing.T) {
+func TestCalculatePocParticipatingNodesWeight_POCSlotFalse(t *testing.T) {
 	// Nodes with POC_SLOT=false (index 1 = false) should be INCLUDED
 	mlNodes := []*types.ModelMLNodes{
 		{
@@ -114,7 +114,7 @@ func TestCalculateInferenceServingWeight_POCSlotFalse(t *testing.T) {
 	require.Equal(t, int64(300), weight)
 }
 
-func TestCalculateInferenceServingWeight_Mixed(t *testing.T) {
+func TestCalculatePocParticipatingNodesWeight_Mixed(t *testing.T) {
 	// Mixed nodes - some with POC_SLOT=true, some with POC_SLOT=false
 	mlNodes := []*types.ModelMLNodes{
 		{
@@ -149,7 +149,7 @@ func TestCalculateInferenceServingWeight_Mixed(t *testing.T) {
 	require.Equal(t, int64(400), weight)
 }
 
-func TestCalculateInferenceServingWeight_EmptySlots(t *testing.T) {
+func TestCalculatePocParticipatingNodesWeight_EmptySlots(t *testing.T) {
 	// Nodes with empty or short TimeslotAllocation arrays
 	mlNodes := []*types.ModelMLNodes{
 		{
@@ -179,7 +179,7 @@ func TestCalculateInferenceServingWeight_EmptySlots(t *testing.T) {
 	require.Equal(t, int64(300), weight)
 }
 
-func TestCalculateInferenceServingWeight_NilNodes(t *testing.T) {
+func TestCalculatePocParticipatingNodesWeight_NilNodes(t *testing.T) {
 	// Test handling of nil nodes
 	mlNodes := []*types.ModelMLNodes{
 		nil, // Nil model nodes
@@ -214,7 +214,7 @@ func TestSanitizeMembers_FiltersNilMembers(t *testing.T) {
 	require.Equal(t, "addr1", filtered[0].Member.Address)
 }
 
-func TestCalculateInferenceServingWeight_MultipleModelArrays(t *testing.T) {
+func TestCalculatePocParticipatingNodesWeight_MultipleModelArrays(t *testing.T) {
 	// Multiple model arrays (though typically there's only one)
 	mlNodes := []*types.ModelMLNodes{
 		{
