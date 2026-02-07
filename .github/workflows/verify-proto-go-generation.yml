@@ -1,0 +1,45 @@
+name: Verify Proto Go Generation
+
+on:
+  pull_request:
+    branches:
+      - "**"
+  push:
+    branches:
+      - "**"
+
+jobs:
+  verify-proto-go-generation:
+    name: Verify `ignite generate proto-go`
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.2"
+
+      - name: Install Ignite CLI
+        run: |
+          go install github.com/ignite/cli/v28/ignite@v28.10.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Run proto-go generation
+        working-directory: ./inference-chain
+        run: ignite generate proto-go
+
+      - name: Verify no generated changes
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "Proto generation produced changes. Please run 'ignite generate proto-go' in inference-chain and commit the result."
+            echo
+            git status --short
+            echo
+            git diff --stat
+            exit 1
+          fi
