@@ -31,6 +31,9 @@ jobs:
 
       - name: Run proto-go generation
         working-directory: ./inference-chain
+        env:
+          CI: "true"
+          DO_NOT_TRACK: "1"
         run: ignite generate proto-go
 
       - name: Verify no generated changes
