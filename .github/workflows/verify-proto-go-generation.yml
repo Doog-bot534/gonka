@@ -13,6 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      IGNITE_VERSION: "28.10.0"
+      IGNITE_TARBALL: "ignite_28.10.0_linux_amd64.tar.gz"
 
     steps:
       - name: Checkout code
@@ -20,12 +23,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.2"
+
       - name: Install Ignite CLI
         run: |
-          curl -sSL -o /tmp/ignite_28.10.0_linux_amd64.tar.gz \
-            https://github.com/ignite/cli/releases/download/v28.10.0/ignite_28.10.0_linux_amd64.tar.gz
+          curl -fsSLo "/tmp/${IGNITE_TARBALL}" \
+            "https://github.com/ignite/cli/releases/download/v${IGNITE_VERSION}/${IGNITE_TARBALL}"
+          curl -fsSLo /tmp/ignite_checksums.txt \
+            "https://github.com/ignite/cli/releases/download/v${IGNITE_VERSION}/ignite_${IGNITE_VERSION}_checksums.txt"
+          grep " ${IGNITE_TARBALL}$" /tmp/ignite_checksums.txt | sed "s#  ${IGNITE_TARBALL}\$#  /tmp/${IGNITE_TARBALL}#" | sha256sum -c -
           mkdir -p "$RUNNER_TEMP/bin"
-          tar -xzf /tmp/ignite_28.10.0_linux_amd64.tar.gz -C "$RUNNER_TEMP/bin" ignite
+          tar -xzf "/tmp/${IGNITE_TARBALL}" -C "$RUNNER_TEMP/bin" ignite
           chmod +x "$RUNNER_TEMP/bin/ignite"
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/bin/ignite" version
