@@ -83,7 +83,7 @@ func TestCalculateInferenceServingWeight_POCSlotTrue(t *testing.T) {
 		},
 	}
 
-	weight := calculateInferenceServingWeight(mlNodes)
+	weight := calculatePocParticipatingNodesWeight(mlNodes)
 
 	// Should be 0 since all nodes have POC_SLOT=true
 	require.Equal(t, int64(0), weight)
@@ -108,7 +108,7 @@ func TestCalculateInferenceServingWeight_POCSlotFalse(t *testing.T) {
 		},
 	}
 
-	weight := calculateInferenceServingWeight(mlNodes)
+	weight := calculatePocParticipatingNodesWeight(mlNodes)
 
 	// Should be sum of all weights since all have POC_SLOT=false
 	require.Equal(t, int64(300), weight)
@@ -143,7 +143,7 @@ func TestCalculateInferenceServingWeight_Mixed(t *testing.T) {
 		},
 	}
 
-	weight := calculateInferenceServingWeight(mlNodes)
+	weight := calculatePocParticipatingNodesWeight(mlNodes)
 
 	// Should be 100 + 300 = 400 (only POC_SLOT=false nodes)
 	require.Equal(t, int64(400), weight)
@@ -173,7 +173,7 @@ func TestCalculateInferenceServingWeight_EmptySlots(t *testing.T) {
 		},
 	}
 
-	weight := calculateInferenceServingWeight(mlNodes)
+	weight := calculatePocParticipatingNodesWeight(mlNodes)
 
 	// Should be 300 (only node3 has valid POC_SLOT at index 1)
 	require.Equal(t, int64(300), weight)
@@ -195,7 +195,7 @@ func TestCalculateInferenceServingWeight_NilNodes(t *testing.T) {
 		},
 	}
 
-	weight := calculateInferenceServingWeight(mlNodes)
+	weight := calculatePocParticipatingNodesWeight(mlNodes)
 
 	// Should handle nils gracefully and count only valid node
 	require.Equal(t, int64(100), weight)
@@ -237,7 +237,7 @@ func TestCalculateInferenceServingWeight_MultipleModelArrays(t *testing.T) {
 		},
 	}
 
-	weight := calculateInferenceServingWeight(mlNodes)
+	weight := calculatePocParticipatingNodesWeight(mlNodes)
 
 	// Should sum across all model arrays
 	require.Equal(t, int64(300), weight)
