@@ -1,0 +1,9 @@
+syntax = "proto3";
+package inference.inference;
+
+option go_package = "github.com/productscience/inference/x/inference/types";
+
+message Test {
+  uint64 index  = 1;
+  string description = 2;
+}
