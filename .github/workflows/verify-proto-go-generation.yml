@@ -33,8 +33,11 @@ jobs:
         working-directory: ./inference-chain
         env:
           CI: "true"
-          DO_NOT_TRACK: "1"
-        run: ignite generate proto-go
+          DO_NOT_TRACK: "true"
+          IGNT_CONFIG_DIR: "${{ runner.temp }}/ignite-config"
+        run: |
+          mkdir -p "$IGNT_CONFIG_DIR"
+          ignite generate proto-go --yes
 
       - name: Verify no generated changes
         run: |
