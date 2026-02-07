@@ -2,11 +2,10 @@ name: Verify Proto Go Generation
 
 on:
   pull_request:
-    branches:
-      - "**"
-  push:
-    branches:
-      - "**"
+    paths:
+      - "inference-chain/**/*.proto"
+      - "inference-chain/**/*.pb.go"
+      - "inference-chain/**/*.pulsar.go"
 
 jobs:
   verify-proto-go-generation:
