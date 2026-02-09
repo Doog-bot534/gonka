@@ -117,7 +117,7 @@ func (eg *EpochGroup) NewReplayableRandomContext(
 ) (*ReplayableRandomContext, error) {
 	blockHash = blockHash.Bytes()
 
-	participants, err := eg.getAllGroupMembersPaginated(ctx, uint64(eg.GroupData.EpochGroupId))
+	participants, err := eg.GetGroupMembers(ctx)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -186,7 +186,7 @@ func selectRandomParticipantReplayable(ctx *ReplayableRandomContext) (string, er
 		currentSeed := ctx.Seed[:]
 		randomWeight := int64(binary.LittleEndian.Uint64(currentSeed)) % weightSum
 
-		index := upperBound(randomWeight, ctx.CumulativeArray)
+		index := UpperBound(randomWeight, ctx.CumulativeArray)
 		if index >= participantsCnt {
 			index = participantsCnt-1
 		}
@@ -201,7 +201,7 @@ func selectRandomParticipantReplayable(ctx *ReplayableRandomContext) (string, er
 
 // Performs a binary search, searching for the lowest value greater than the needle in the haystack.
 // Assumes the input array is already sorted.
-func upperBound[T cmp.Ordered](needle T, haystack []T) int {
+func UpperBound[T cmp.Ordered](needle T, haystack []T) int {
 	low, high := 0, len(haystack)
 	for low < high {
 		middle := low + (high - low) / 2
