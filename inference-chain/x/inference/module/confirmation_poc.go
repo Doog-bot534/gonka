@@ -252,6 +252,8 @@ func (am AppModule) handleConfirmationPoCPhaseTransitions(
 		transitionCount++
 		transitions = append(transitions, "GRACE_PERIOD->GENERATION")
 
+		am.captureGenerationStartTimestamp(ctx, sdkCtx.BlockTime().Unix(), event.TriggerHeight)
+
 		am.LogInfo("Confirmation PoC: GRACE_PERIOD -> GENERATION", types.PoC,
 			"epochIndex", event.EpochIndex,
 			"eventSequence", event.EventSequence,
@@ -525,7 +527,6 @@ func (am AppModule) updateConfirmationWeightsV2(
 		"guardianEnabled", guardianEnabled,
 		"guardianAccAddrs", guardianAccAddrs)
 
-	// Get validation snapshot for sampling (if enabled)
 	params, err := am.keeper.GetParams(ctx)
 	if err != nil {
 		am.LogError("updateConfirmationWeightsV2: failed to get params", types.PoC, "error", err)
@@ -534,23 +535,33 @@ func (am AppModule) updateConfirmationWeightsV2(
 
 	var appHash string
 	var validationSlots int
-	if params.PocParams.ValidationSlots > 0 {
-		snapshot, snapshotFound, _ := am.keeper.GetPoCValidationSnapshot(ctx, event.TriggerHeight)
-		if snapshotFound {
+	timeNormalizationFactor := mathsdk.LegacyOneDec()
+
+	snapshot, snapshotFound, _ := am.keeper.GetPoCValidationSnapshot(ctx, event.TriggerHeight)
+	if snapshotFound {
+		if params.PocParams.ValidationSlots > 0 {
 			appHash = snapshot.AppHash
 			validationSlots = int(params.PocParams.ValidationSlots)
-			am.LogInfo("updateConfirmationWeightsV2: Using validation snapshot for sampling", types.PoC,
-				"appHash", appHash,
-				"validationSlots", validationSlots,
-			)
-		} else {
-			am.LogWarn("updateConfirmationWeightsV2: Validation snapshot not found, falling back to O(N^2)", types.PoC,
-				"triggerHeight", event.TriggerHeight,
-			)
 		}
+		timeNormalizationFactor = CalculateTimeNormalizationFactor(
+			snapshot.GenerationStartTimestamp,
+			snapshot.ExchangeEndTimestamp,
+			params.EpochParams.PocStageDuration,
+			params.EpochParams.PocExchangeDuration,
+		)
+		am.LogInfo("updateConfirmationWeightsV2: Using validation snapshot", types.PoC,
+			"appHash", appHash,
+			"validationSlots", validationSlots,
+			"generationStartTimestamp", snapshot.GenerationStartTimestamp,
+			"exchangeEndTimestamp", snapshot.ExchangeEndTimestamp,
+			"timeNormalizationFactor", timeNormalizationFactor.String(),
+		)
+	} else {
+		am.LogWarn("updateConfirmationWeightsV2: Validation snapshot not found", types.PoC,
+			"triggerHeight", event.TriggerHeight,
+		)
 	}
 
-	// Create WeightCalculator with store commits and distributions
 	calculator := NewWeightCalculator(
 		currentValidatorWeights,
 		storeCommits,
@@ -561,6 +572,7 @@ func (am AppModule) updateConfirmationWeightsV2(
 		event.TriggerHeight,
 		am,
 		weightScaleFactor,
+		timeNormalizationFactor,
 		guardianEnabled,
 		guardianSet,
 		appHash,

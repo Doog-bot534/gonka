@@ -16730,7 +16730,7 @@ type PocParams struct {
 	PocV2Enabled             bool               `protobuf:"varint,8,opt,name=poc_v2_enabled,json=pocV2Enabled,proto3" json:"poc_v2_enabled,omitempty"`                                       // false = V1 (on-chain batches), true = V2 (off-chain commits). Default: true
 	ConfirmationPocV2Enabled bool               `protobuf:"varint,9,opt,name=confirmation_poc_v2_enabled,json=confirmationPocV2Enabled,proto3" json:"confirmation_poc_v2_enabled,omitempty"` // Enables V2 for Confirmation PoC only. Migration mode: poc_v2_enabled=false + confirmation_poc_v2_enabled=true
 	StatTest                 *PoCStatTestParams `protobuf:"bytes,10,opt,name=stat_test,json=statTest,proto3" json:"stat_test,omitempty"`                                                     // Statistical test parameters for V2 validation
-	ValidationSlots          uint32             `protobuf:"varint,11,opt,name=validation_slots,json=validationSlots,proto3" json:"validation_slots,omitempty"`                               // Number of validators sampled per participant (0 = disabled)
+	ValidationSlots          uint32             `protobuf:"varint,11,opt,name=validation_slots,json=validationSlots,proto3" json:"validation_slots,omitempty"`                               // Number of validators sampled per participant (default 128, 0 = disabled)
 }
 
 func (x *PocParams) Reset() {
