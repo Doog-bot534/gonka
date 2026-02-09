@@ -427,6 +427,8 @@ func (am AppModule) EndBlock(ctx context.Context) error {
 			am.LogError("Unable to create epoch group", types.EpochGroup, "error", err.Error())
 			return err
 		}
+
+		am.captureGenerationStartTimestamp(ctx, blockTime, upcomingEpoch.PocStartBlockHeight)
 	}
 
 	// Capture validation snapshot at poc_validation_start for deterministic sampling
@@ -642,11 +644,26 @@ func (am AppModule) onSetNewValidatorsStage(ctx context.Context, blockHeight int
 	am.keeper.DeletePoCValidationSnapshot(ctx, upcomingEpoch.PocStartBlockHeight)
 }
 
+func (am AppModule) captureGenerationStartTimestamp(ctx context.Context, blockTime, pocStartBlockHeight int64) {
+	snapshot := types.PoCValidationSnapshot{
+		PocStageStartHeight:      pocStartBlockHeight,
+		GenerationStartTimestamp: blockTime,
+	}
+	if err := am.keeper.SetPoCValidationSnapshot(ctx, snapshot); err != nil {
+		am.LogError("captureGenerationStartTimestamp: Failed to store", types.PoC, "error", err)
+		return
+	}
+	am.LogInfo("captureGenerationStartTimestamp: Stored", types.PoC,
+		"pocStartBlockHeight", pocStartBlockHeight,
+		"generationStartTimestamp", blockTime)
+}
+
 // captureValidationSnapshot stores validator weights and app_hash at validation phase start
 // for deterministic sampling synchronization between chain and DAPI.
 // Used by both regular PoC and confirmation PoC.
 func (am AppModule) captureValidationSnapshot(ctx context.Context, blockHeight, snapshotKey int64, logContext string) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	blockTime := sdkCtx.BlockTime().Unix()
 
 	currentValidatorWeights, err := am.getCurrentValidatorWeights(ctx)
 	if err != nil {
@@ -655,11 +672,19 @@ func (am AppModule) captureValidationSnapshot(ctx context.Context, blockHeight, 
 		return
 	}
 
+	var generationStartTimestamp int64
+	existingSnapshot, found, _ := am.keeper.GetPoCValidationSnapshot(ctx, snapshotKey)
+	if found {
+		generationStartTimestamp = existingSnapshot.GenerationStartTimestamp
+	}
+
 	snapshot := types.PoCValidationSnapshot{
-		PocStageStartHeight: snapshotKey,
-		SnapshotHeight:      blockHeight,
-		AppHash:             hex.EncodeToString(sdkCtx.HeaderInfo().AppHash),
-		ValidatorWeights:    validatorWeightsMapToSlice(currentValidatorWeights),
+		PocStageStartHeight:      snapshotKey,
+		SnapshotHeight:           blockHeight,
+		AppHash:                  hex.EncodeToString(sdkCtx.HeaderInfo().AppHash),
+		ValidatorWeights:         validatorWeightsMapToSlice(currentValidatorWeights),
+		GenerationStartTimestamp: generationStartTimestamp,
+		ExchangeEndTimestamp:     blockTime,
 	}
 
 	if err := am.keeper.SetPoCValidationSnapshot(ctx, snapshot); err != nil {
@@ -673,6 +698,8 @@ func (am AppModule) captureValidationSnapshot(ctx context.Context, blockHeight, 
 		"snapshotKey", snapshotKey,
 		"snapshotHeight", blockHeight,
 		"numValidators", len(currentValidatorWeights),
+		"generationStartTimestamp", generationStartTimestamp,
+		"exchangeEndTimestamp", blockTime,
 	)
 }
 

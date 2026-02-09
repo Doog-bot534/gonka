@@ -10,6 +10,8 @@ message PoCValidationSnapshot {
   int64 snapshot_height = 2;
   string app_hash = 3;
   repeated ValidatorWeight validator_weights = 4;
+  int64 generation_start_timestamp = 5;
+  int64 exchange_end_timestamp = 6;
 }
 
 message ValidatorWeight {

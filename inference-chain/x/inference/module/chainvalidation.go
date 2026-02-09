@@ -13,6 +13,29 @@ import (
 	"github.com/productscience/inference/x/inference/utils"
 )
 
+const ExpectedBlockDurationSec = 5.41
+
+func CalculateTimeNormalizationFactor(
+	genStartTimestamp, exchangeEndTimestamp int64,
+	pocStageDuration, pocExchangeDuration int64,
+) mathsdk.LegacyDec {
+	if genStartTimestamp == 0 || exchangeEndTimestamp == 0 {
+		return mathsdk.LegacyOneDec()
+	}
+
+	actualDurationSec := float64(exchangeEndTimestamp - genStartTimestamp)
+	if actualDurationSec <= 0 {
+		return mathsdk.LegacyOneDec()
+	}
+
+	expectedBlocks := pocStageDuration + pocExchangeDuration
+	expectedDurationSec := float64(expectedBlocks) * ExpectedBlockDurationSec
+
+	return mathsdk.LegacyMustNewDecFromStr(
+		strconv.FormatFloat(expectedDurationSec/actualDurationSec, 'f', 18, 64),
+	)
+}
+
 // WeightCalculator encapsulates all the data needed to calculate new weights for participants.
 // Uses off-chain store commits and weight distributions instead of on-chain batches.
 type WeightCalculator struct {
@@ -25,6 +48,7 @@ type WeightCalculator struct {
 	EpochStartBlockHeight   int64
 	Logger                  types.InferenceLogger
 	WeightScaleFactor       mathsdk.LegacyDec
+	TimeNormalizationFactor mathsdk.LegacyDec
 	GuardianEnabled         bool
 	GuardianAddresses       map[string]bool
 	AppHash                 string
@@ -44,6 +68,7 @@ func NewWeightCalculator(
 	epochStartBlockHeight int64,
 	logger types.InferenceLogger,
 	weightScaleFactor mathsdk.LegacyDec,
+	timeNormalizationFactor mathsdk.LegacyDec,
 	guardianEnabled bool,
 	guardianAddresses map[string]bool,
 	appHash string,
@@ -59,6 +84,7 @@ func NewWeightCalculator(
 		EpochStartBlockHeight:   epochStartBlockHeight,
 		Logger:                  logger,
 		WeightScaleFactor:       weightScaleFactor,
+		TimeNormalizationFactor: timeNormalizationFactor,
 		GuardianEnabled:         guardianEnabled,
 		GuardianAddresses:       guardianAddresses,
 		AppHash:                 appHash,
@@ -349,7 +375,7 @@ type nodeWeight struct {
 }
 
 // calculateParticipantWeight computes the claimed weight from store commit and weight distribution.
-// Total weight comes from StoreCommit.Count (scaled by weightScaleFactor).
+// Total weight comes from StoreCommit.Count (scaled by weightScaleFactor and timeNormalizationFactor).
 // Per-node weights come from MLNodeWeightDistribution.
 func (wc *WeightCalculator) calculateParticipantWeight(participantAddress string) ([]nodeWeight, int64) {
 	commit, hasCommit := wc.StoreCommits[participantAddress]
@@ -357,22 +383,23 @@ func (wc *WeightCalculator) calculateParticipantWeight(participantAddress string
 		return nil, 0
 	}
 
-	// Calculate total weight from commit count
-	totalWeight := mathsdk.LegacyNewDec(int64(commit.Count)).Mul(wc.WeightScaleFactor).TruncateInt64()
+	combinedFactor := wc.WeightScaleFactor
+	if wc.TimeNormalizationFactor.IsPositive() {
+		combinedFactor = combinedFactor.Mul(wc.TimeNormalizationFactor)
+	}
 
-	// Get per-node weights from distribution
+	totalWeight := mathsdk.LegacyNewDec(int64(commit.Count)).Mul(combinedFactor).TruncateInt64()
+
 	distribution, hasDistribution := wc.NodeWeightDistributions[participantAddress]
 	if !hasDistribution || len(distribution.Weights) == 0 {
-		// No distribution - create a single "unknown" node with all weight
 		wc.Logger.LogWarn("Calculate: No weight distribution for participant, using single node", types.PoC,
 			"participant", participantAddress, "totalWeight", totalWeight)
 		return []nodeWeight{{nodeId: "unknown", weight: totalWeight}}, totalWeight
 	}
 
-	// Build per-node weights from distribution
 	nodeWeightsSlice := make([]nodeWeight, 0, len(distribution.Weights))
 	for _, w := range distribution.Weights {
-		scaledWeight := mathsdk.LegacyNewDec(int64(w.Weight)).Mul(wc.WeightScaleFactor).TruncateInt64()
+		scaledWeight := mathsdk.LegacyNewDec(int64(w.Weight)).Mul(combinedFactor).TruncateInt64()
 		nodeWeightsSlice = append(nodeWeightsSlice, nodeWeight{nodeId: w.NodeId, weight: scaledWeight})
 	}
 	sort.Slice(nodeWeightsSlice, func(i, j int) bool {
@@ -886,23 +913,33 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 		"guardianEnabled", guardianEnabled,
 		"guardianAccAddrs", guardianAccAddrs)
 
-	// Get validation snapshot for sampling (if enabled)
 	var appHash string
 	var validationSlots int
-	if params.PocParams.ValidationSlots > 0 {
-		snapshot, snapshotFound, _ := am.keeper.GetPoCValidationSnapshot(ctx, epochStartBlockHeight)
-		if snapshotFound {
+	timeNormalizationFactor := mathsdk.LegacyOneDec()
+
+	snapshot, snapshotFound, _ := am.keeper.GetPoCValidationSnapshot(ctx, epochStartBlockHeight)
+	if snapshotFound {
+		if params.PocParams.ValidationSlots > 0 {
 			appHash = snapshot.AppHash
 			validationSlots = int(params.PocParams.ValidationSlots)
-			am.LogInfo("ComputeNewWeights: Using validation snapshot for sampling", types.PoC,
-				"appHash", appHash,
-				"validationSlots", validationSlots,
-			)
-		} else {
-			am.LogWarn("ComputeNewWeights: Validation snapshot not found, falling back to O(N^2)", types.PoC,
-				"epochStartBlockHeight", epochStartBlockHeight,
-			)
 		}
+		timeNormalizationFactor = CalculateTimeNormalizationFactor(
+			snapshot.GenerationStartTimestamp,
+			snapshot.ExchangeEndTimestamp,
+			params.EpochParams.PocStageDuration,
+			params.EpochParams.PocExchangeDuration,
+		)
+		am.LogInfo("ComputeNewWeights: Using validation snapshot", types.PoC,
+			"appHash", appHash,
+			"validationSlots", validationSlots,
+			"generationStartTimestamp", snapshot.GenerationStartTimestamp,
+			"exchangeEndTimestamp", snapshot.ExchangeEndTimestamp,
+			"timeNormalizationFactor", timeNormalizationFactor.String(),
+		)
+	} else {
+		am.LogWarn("ComputeNewWeights: Validation snapshot not found", types.PoC,
+			"epochStartBlockHeight", epochStartBlockHeight,
+		)
 	}
 
 	calculator := NewWeightCalculator(
@@ -915,6 +952,7 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 		epochStartBlockHeight,
 		am,
 		weightScaleFactor,
+		timeNormalizationFactor,
 		guardianEnabled,
 		guardianSet,
 		appHash,
