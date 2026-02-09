@@ -3,10 +3,13 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"flag"
 	"fmt"
+	"math"
 	"math/rand"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -66,23 +69,46 @@ func propagate(tree *Tree, attackers map[string]bool) map[string]bool {
 }
 
 func main() {
+	distFlag := flag.String("dist", "all", "Attacker distribution: uniform, highweight, slots, wald, or all")
+	numSimulations := flag.Int("sims", 10, "Number of simulations per scenario")
+	numParticipants := flag.Int("participants", 10000, "Number of participants")
+	flag.Parse()
+
 	startTime := time.Now()
 
-	numParticipants := 10000
-	numSimulations := 1000
-
-	shufflePcts := []float64{0.10, 0.15, 0.20, 0.25, 0.30}
+	shufflePcts := []float64{0.05, 0.10, 0.15, 0.20, 0.25, 0.30}
 	fanouts := []int{4, 8, 16, 32}
 	treeCounts := []int{4, 6, 8, 10}
 	attackerFractions := []float64{0.33, 0.45}
 
+	allDists := []string{"uniform", "highweight", "slots", "wald"}
+	var attackerDists []string
+	if *distFlag == "all" {
+		attackerDists = allDists
+	} else {
+		for _, d := range strings.Split(*distFlag, ",") {
+			d = strings.TrimSpace(d)
+			valid := false
+			for _, ad := range allDists {
+				if d == ad {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				fmt.Printf("Unknown distribution: %s (valid: uniform, highweight, slots, wald, all)\n", d)
+				return
+			}
+			attackerDists = append(attackerDists, d)
+		}
+	}
+
 	fmt.Println("Multi-Tree Message Propagation Blocking Analysis")
 	fmt.Printf("Started at: %s\n", startTime.Format("2006-01-02 15:04:05"))
-	fmt.Printf("Participants: %d, Simulations: %d, Workers: %d\n", numParticipants, numSimulations, runtime.NumCPU())
+	fmt.Printf("Participants: %d, Simulations: %d, Workers: %d\n", *numParticipants, *numSimulations, runtime.NumCPU())
+	fmt.Printf("Attacker distributions: %s\n", strings.Join(attackerDists, ", "))
 	fmt.Println("Model: sender -> all tree roots -> propagate down; attackers block relay")
 	fmt.Println("==========================================")
-
-	attackerDists := []string{"uniform", "highweight"}
 
 	type job struct {
 		shufflePct       float64
@@ -104,13 +130,14 @@ func main() {
 		go func() {
 			defer wg.Done()
 			for j := range jobs {
-				numAttackers := int(float64(numParticipants) * j.attackerFraction)
+				numAttackers := int(float64(*numParticipants) * j.attackerFraction)
 
 				unreachedTotal := 0
+				honestTotal := 0
 
-				for sim := 0; sim < numSimulations; sim++ {
-					participants := make([]WeightedParticipant, numParticipants)
-					for i := 0; i < numParticipants; i++ {
+				for sim := 0; sim < *numSimulations; sim++ {
+					participants := make([]WeightedParticipant, *numParticipants)
+					for i := 0; i < *numParticipants; i++ {
 						participants[i] = WeightedParticipant{
 							Address: formatAddress(i),
 							Weight:  uint64(1000 + i),
@@ -120,17 +147,25 @@ func main() {
 					blockHash := []byte{byte(sim), byte(sim >> 8), byte(sim >> 16), byte(sim >> 24), 0, 0, 0, 0}
 					trees := buildTreesWithWeights(participants, blockHash, j.numTrees, j.fanout, j.shufflePct)
 
-					attackers := make(map[string]bool)
-					step := numParticipants / numAttackers
-					if j.attackerDist == "uniform" {
-						for i := 0; i < numAttackers; i++ {
-							idx := (i * step) % numParticipants
-							attackers[formatAddress(idx)] = true
-						}
+					var attackers map[string]bool
+					if j.attackerDist == "slots" {
+						simSeed := fmt.Sprintf("%s_%d_%f_%d_%d_%f_%x", j.attackerDist, sim, j.shufflePct, j.fanout, j.numTrees, j.attackerFraction, blockHash)
+						attackers = selectAttackersBySlots(participants, numAttackers, simSeed)
+					} else if j.attackerDist == "wald" {
+						attackers = selectAttackersByWald(participants, numAttackers, sim)
 					} else {
-						for i := 0; i < numAttackers; i++ {
-							idx := (numParticipants - 1) - (i * step)
-							attackers[formatAddress(idx)] = true
+						attackers = make(map[string]bool)
+						step := *numParticipants / numAttackers
+						if j.attackerDist == "uniform" {
+							for i := 0; i < numAttackers; i++ {
+								idx := (i * step) % *numParticipants
+								attackers[formatAddress(idx)] = true
+							}
+						} else if j.attackerDist == "highweight" {
+							for i := 0; i < numAttackers; i++ {
+								idx := (*numParticipants - 1) - (i * step)
+								attackers[formatAddress(idx)] = true
+							}
 						}
 					}
 
@@ -143,18 +178,19 @@ func main() {
 					}
 
 					unreachedHonest := 0
-					for i := 0; i < numParticipants; i++ {
+					for i := 0; i < *numParticipants; i++ {
 						addr := formatAddress(i)
 						if !attackers[addr] && !globalReached[addr] {
 							unreachedHonest++
 						}
 					}
 
+					honestTotal += *numParticipants - len(attackers)
 					unreachedTotal += unreachedHonest
 				}
 
-				honestNodes := numParticipants - numAttackers
-				avgUnreached := float64(unreachedTotal) / float64(numSimulations)
+				honestNodes := honestTotal / *numSimulations
+				avgUnreached := float64(unreachedTotal) / float64(*numSimulations)
 
 				resultsChan <- Result{
 					ShufflePct:       j.shufflePct,
@@ -223,6 +259,10 @@ func printTables(results []Result, attackerFractions []float64, fanouts, treeCou
 		distName := "Uniform Distribution"
 		if dist == "highweight" {
 			distName = "High-Weight Attackers"
+		} else if dist == "slots" {
+			distName = "Slot-Based Distribution (Weighted Random Sampling)"
+		} else if dist == "wald" {
+			distName = "Wald (Inverse Gaussian) Distribution"
 		}
 		fmt.Printf("\n\n========== ATTACKER DISTRIBUTION: %s ==========\n", distName)
 
@@ -230,7 +270,14 @@ func printTables(results []Result, attackerFractions []float64, fanouts, treeCou
 			fmt.Printf("\n\n########## SHUFFLE PERCENTAGE: %.0f%% ##########\n", sp*100)
 
 			for _, af := range attackerFractions {
-				fmt.Printf("\n=== %.0f%% Attackers - Avg Unreached Honest Participants (out of %d honest) ===\n", af*100, int(10000*(1-af)))
+				honestExample := 0
+				for _, r := range results {
+					if r.AttackerDist == dist && r.AttackerFraction == af {
+						honestExample = r.HonestNodes
+						break
+					}
+				}
+				fmt.Printf("\n=== %.0f%% Attackers - Avg Unreached Honest Participants (honest nodes: %d) ===\n", af*100, honestExample)
 				fmt.Printf("| Trees \\ Fanout |")
 				for _, f := range fanouts {
 					fmt.Printf(" %-14d |", f)
@@ -366,4 +413,105 @@ func weightedDeterministicShuffle(participants []WeightedParticipant, seed []byt
 	}
 
 	return result
+}
+
+func slotRandomVal(appHash, participantAddress string, slotIdx int, totalWeight int64) int64 {
+	seedData := fmt.Sprintf("%s%s%d", appHash, participantAddress, slotIdx)
+	hash := sha256.Sum256([]byte(seedData))
+	return int64(binary.BigEndian.Uint64(hash[:8]) % uint64(totalWeight))
+}
+
+func selectAttackersBySlots(participants []WeightedParticipant, numAttackers int, simSeed string) map[string]bool {
+	hash := sha256.Sum256([]byte(simSeed))
+	appHash := fmt.Sprintf("%x", hash[:16])
+
+	type weightEntry struct {
+		address string
+		weight  int64
+	}
+	entries := make([]weightEntry, 0, len(participants))
+	var totalWeight int64
+	for _, p := range participants {
+		if p.Weight <= 0 {
+			continue
+		}
+		entries = append(entries, weightEntry{address: p.Address, weight: int64(p.Weight)})
+		totalWeight += int64(p.Weight)
+	}
+	if totalWeight == 0 || len(entries) == 0 {
+		return nil
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].address < entries[j].address
+	})
+
+	attackers := make(map[string]bool)
+	slotIdx := 0
+	for len(attackers) < numAttackers && len(attackers) < len(entries) {
+		rv := slotRandomVal(appHash, "attacker_selection", slotIdx, totalWeight)
+		cumulative := int64(0)
+		for _, entry := range entries {
+			cumulative += entry.weight
+			if rv < cumulative {
+				if !attackers[entry.address] {
+					attackers[entry.address] = true
+				}
+				break
+			}
+		}
+		slotIdx++
+	}
+	return attackers
+}
+
+// Michael–Schucany–Haas algorithm
+func sampleWald(mu, lambda float64, rng *rand.Rand) float64 {
+	nu := rng.NormFloat64()
+	y := nu * nu
+	x := mu + (mu*mu*y)/(2*lambda) - (mu/(2*lambda))*math.Sqrt(4*mu*lambda*y+mu*mu*y*y)
+
+	u := rng.Float64()
+	if u <= mu/(mu+x) {
+		return x
+	}
+	return mu * mu / x
+}
+
+func selectAttackersByWald(participants []WeightedParticipant, numAttackers int, simSeed int) map[string]bool {
+	rng := rand.New(rand.NewSource(int64(simSeed)))
+
+	const lambda = 1.0
+
+	type scored struct {
+		address string
+		score   float64
+	}
+
+	maxWeight := float64(0)
+	for _, p := range participants {
+		if float64(p.Weight) > maxWeight {
+			maxWeight = float64(p.Weight)
+		}
+	}
+	
+	scores := make([]scored, len(participants))
+	for i, p := range participants {
+		mu := maxWeight / float64(p.Weight)
+		waldVal := sampleWald(mu, lambda, rng)
+		scores[i] = scored{
+			address: p.Address,
+			score:   waldVal,
+		}
+	}
+
+	sort.Slice(scores, func(i, j int) bool {
+		return scores[i].score < scores[j].score
+	})
+
+	attackers := make(map[string]bool)
+	for i := 0; i < numAttackers && i < len(scores); i++ {
+		attackers[scores[i].address] = true
+	}
+
+	return attackers
 }

@@ -172,6 +172,139 @@ for i := 0; i < numAttackers; i++ {
 - For 45% attackers: selects indices 9999, 9997, 9995, ..., 1
 - Attackers control nodes **most likely to become parents**
 
+### 3. Wald Distribution (Weight-Based Probabilistic)
+
+Attackers are selected using **Inverse Gaussian (Wald) distribution** where participant weight controls selection probability.
+
+**Mathematical Model:**
+
+```go
+const lambda = 1.0  // shape parameter (global noise control)
+
+maxWeight := max(all participant weights)
+
+for each participant p:
+    mu := maxWeight / p.Weight               // inverse weight mapping
+    score := sampleWald(mu, lambda, rng)     // draw from Wald(μ, λ)
+
+sort participants by score (ascending)
+select first N as attackers
+```
+
+**Wald Distribution Properties:**
+
+The Wald distribution models "first passage time" — the time it takes for a process to reach a threshold:
+
+```
+f(x; μ, λ) = sqrt(λ / (2πx³)) × exp(-λ(x-μ)² / (2μ²x))
+
+E[X] = μ         (expected value)
+Var[X] = μ³/λ    (variance increases cubically with μ)
+```
+
+**Why This Works:**
+
+1. **Inverse weight mapping:**
+   - Participant with weight 10999 (max): μ = 10999/10999 = 1.0, E[score] = 1.0
+   - Participant with weight 5000: μ = 10999/5000 = 2.2, E[score] = 2.2
+   - Participant with weight 1000: μ = 10999/1000 = 11.0, E[score] = 11.0
+   
+2. **Lower score = higher priority:**
+   - Smaller draw → "recruited faster" → selected as attacker
+   - Higher-weight participants have **smaller μ** → **lower expected scores** → higher selection probability
+
+3. **Probabilistic but weighted:**
+   - Not deterministic like uniform/highweight
+   - Randomness adds variance while preserving weight influence
+   - Heavy tail allows occasional low-weight selections
+
+**Selection Probability:**
+
+For a participant with weight `w`, the probability of being selected depends on:
+```
+P(selected) ∝ P(Wald(maxWeight/w, 1) < threshold)
+```
+
+Where the threshold is determined by the N-th order statistic of all Wald draws.
+
+Higher weight → smaller μ → distribution shifted left → higher chance of small score → higher selection probability.
+
+**Sampling Algorithm (Michael–Schucany–Haas):**
+
+```go
+func sampleWald(mu, lambda float64, rng *rand.Rand) float64 {
+    nu := rng.NormFloat64()           // standard normal
+    y := nu²
+    x := mu + (mu²y)/(2λ) - (mu/(2λ))×sqrt(4muλy + mu²y²)
+    
+    u := rng.Float64()                // uniform [0,1)
+    if u <= mu/(mu+x):
+        return x
+    return mu²/x
+}
+```
+
+**Characteristics:**
+- Weight-proportional selection with controlled randomness
+- Higher-weight nodes have higher probability of becoming attackers
+- Variance **decreases** with weight (μ³/λ, but μ is inverse to weight)
+  - Highest weight (10999): μ=1.0, Var=1.0 (tight distribution)
+  - Lowest weight (1000): μ=11.0, Var=1331 (wide distribution)
+- Heavy tail allows occasional low-weight selections, but attackers concentrate toward high-weight participants
+- More realistic than deterministic highweight distribution
+
+### 4. Slot-Based Distribution (Weighted Random Sampling)
+
+**Mathematical Model:**
+
+```go
+appHash := SHA256(simSeed)[:16]
+totalWeight := sum(all participant weights)
+
+for slot := 0; slot < numAttackers; slot++:
+    rv := SHA256(appHash || "attacker_selection" || slot) % totalWeight
+    
+    cumulative := 0
+    for each participant p (sorted by address):
+        cumulative += p.Weight
+        if rv < cumulative:
+            select p as attacker (if not already selected)
+            break
+```
+
+**Random Value Generation:**
+
+```go
+func slotRandomVal(appHash, participantAddress string, slotIdx int, totalWeight int64) int64 {
+    seedData := appHash + participantAddress + slotIdx
+    hash := SHA256(seedData)
+    return hash[:8] as uint64 % totalWeight
+}
+```
+
+**Selection Probability:**
+
+For participant with weight `w`:
+```
+P(selected in slot i) = w / totalWeight
+
+P(selected overall) = 1 - (1 - w/totalWeight)^numAttackers
+
+E[selections] = numAttackers × (w / totalWeight)
+```
+
+**Example (weights 1000-10999, total = 60,994,500):**
+
+- Highest weight (10999): P(slot) = 10999/60,994,500 ≈ 0.01803%
+- Lowest weight (1000): P(slot) = 1000/60,994,500 ≈ 0.01639%
+- Weight ratio: 11:1
+
+**Characteristics:**
+- Sequential weighted lottery (models PoS slot assignment)
+- Probability strictly proportional to weight
+- Deterministic given same seed
+- Duplicates ignored (sampling without replacement)
+
 ---
 
 ## Simulation Results
