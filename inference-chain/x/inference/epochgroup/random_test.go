@@ -66,44 +66,11 @@ func TestCanSample(t *testing.T) {
 
 	require.NoError(t, eg.CreateGroup(ctx))
 
-	activeParticipant := &types.ActiveParticipant{
-		Index:        testutil.Bech32Addr(42),
-		ValidatorKey: "Au+a3CpMj6nqFV6d0tUlVajCTkOP3cxKnps+1/lMv5zY",
-		Weight:       450,
-		MlNodes: []*types.ModelMLNodes{
-			{
-				MlNodes: []*types.MLNodeInfo{
-					{
-						NodeId:             "node1",
-						PocWeight:          100,
-						TimeslotAllocation: []bool{true, false},
-					},
-					{
-						NodeId:             "node2",
-						PocWeight:          150,
-						TimeslotAllocation: []bool{true, false},
-					},
-				},
-			},
-		},
-	}
-
-	// TODO: Looks like the following is unneded:
-	//reputation := int64(100)
-	//confirmationWeight := int64(0)
-	//mocks.GroupKeeper.EXPECT().
-	//	UpdateGroupMembers(ctx, gomock.Any()).
-	//	Return(&group.MsgUpdateGroupMembersResponse{}, nil)
-	//mocks.GroupKeeper.EXPECT().
-	//	UpdateGroupMetadata(ctx, gomock.Any()).
-	//	Return(&group.MsgUpdateGroupMetadataResponse{}, nil)
-	//member := epochgroup.NewEpochMemberFromActiveParticipant(activeParticipant, reputation, confirmationWeight)
-	//require.NoError(t, eg.AddMember(ctx, member))
-
+	addr := testutil.Bech32Addr(42)
 	participant := types.Participant {
-		Index: activeParticipant.Index,
-		Address: activeParticipant.Index,
-		Weight: int32(activeParticipant.Weight),
+		Index: addr,
+		Address: addr,
+		Weight: 450,
 		Status: types.ParticipantStatus_ACTIVE,
 		CurrentEpochStats: types.NewCurrentEpochStats(),
 	}
@@ -117,8 +84,8 @@ func TestCanSample(t *testing.T) {
 				Members: []*group.GroupMember {
 					&group.GroupMember {
 						Member: &group.Member {
-							Address: activeParticipant.Index,
-							Weight: strconv.Itoa(int(activeParticipant.Weight)),
+							Address: participant.Address,
+							Weight: strconv.Itoa(int(participant.Weight)),
 							Metadata: "",
 							AddedAt: time.Now(),
 						},
