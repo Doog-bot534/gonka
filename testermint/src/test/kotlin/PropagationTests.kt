@@ -246,8 +246,8 @@ class PropagationTests : TestermintTest() {
     }
 
     @Test
-    fun `propagation - consensus calculates correct agreed counts`() {
-        logSection("=== TEST: Consensus Calculation ===")
+    fun `propagation - on-chain consensus calculates correct agreed counts`() {
+        logSection("=== TEST: On-Chain Consensus Calculation ===")
 
         val (cluster, genesis) = initCluster(
             joinCount = 2,
@@ -287,7 +287,7 @@ class PropagationTests : TestermintTest() {
         assertThat(join1State.count).isGreaterThan(0)
         assertThat(join2State.count).isGreaterThan(0)
 
-        logSection("Waiting for PoC exchange deadline (observations broadcast)")
+        logSection("Waiting for PoC exchange deadline (observations submitted on-chain)")
         genesis.waitForStage(EpochStage.POC_EXCHANGE_DEADLINE)
         genesis.node.waitForNextBlock(10)
 
@@ -295,108 +295,66 @@ class PropagationTests : TestermintTest() {
         val join1Addr = join1.node.getColdAddress()
         val join2Addr = join2.node.getColdAddress()
 
-        logSection("Querying observations from all nodes")
-        val genesisObs = genesis.api.getPropagationObservations(pocHeight)
-        val join1Obs = join1.api.getPropagationObservations(pocHeight)
-        val join2Obs = join2.api.getPropagationObservations(pocHeight)
+        logSection("Querying on-chain observations")
+        val observations = genesis.node.getPoCObservations(pocHeight)
 
-        Logger.info("Genesis has ${genesisObs.observations.size} observations")
-        genesisObs.observations.forEach { obs ->
-            Logger.info("  From ${obs.validatorAddress}: ${obs.arrivals.size} arrivals")
+        Logger.info("On-chain observations: ${observations.observations.size}")
+        observations.observations.forEach { obs ->
+            Logger.info("  From ${obs.validatorAddress}: ${obs.arrivals.size} arrivals at block ${obs.blockHeight}")
+            obs.arrivals.forEach { arrival ->
+                Logger.info("    ${arrival.participant}: count=${arrival.count}")
+            }
         }
 
-        Logger.info("Join1 has ${join1Obs.observations.size} observations")
-        join1Obs.observations.forEach { obs ->
-            Logger.info("  From ${obs.validatorAddress}: ${obs.arrivals.size} arrivals")
-        }
+        logSection("Verifying observations were submitted on-chain")
+        assertThat(observations.observations.size).isGreaterThanOrEqualTo(1)
+            .describedAs("At least one observation should be submitted on-chain")
 
-        Logger.info("Join2 has ${join2Obs.observations.size} observations")
-        join2Obs.observations.forEach { obs ->
-            Logger.info("  From ${obs.validatorAddress}: ${obs.arrivals.size} arrivals")
-        }
+        logSection("Querying on-chain consensus")
+        val consensus = genesis.node.getPoCConsensus(pocHeight)
 
-        logSection("Verifying observations were broadcast")
-        assertThat(genesisObs.observations.size).isGreaterThanOrEqualTo(1)
-            .describedAs("Genesis should have at least its own observation")
-        assertThat(join1Obs.observations.size).isGreaterThanOrEqualTo(1)
-            .describedAs("Join1 should have at least its own observation")
-        assertThat(join2Obs.observations.size).isGreaterThanOrEqualTo(1)
-            .describedAs("Join2 should have at least its own observation")
-
-        logSection("Querying consensus from all nodes")
-        val genesisConsensus = genesis.api.getPropagationConsensus(pocHeight)
-        val join1Consensus = join1.api.getPropagationConsensus(pocHeight)
-        val join2Consensus = join2.api.getPropagationConsensus(pocHeight)
-
-        Logger.info("Genesis consensus results:")
-        genesisConsensus.consensus.forEach { (participant, result) ->
-            Logger.info("  $participant: agreedCount=${result.agreedCount}, " +
-                "totalValidators=${result.totalValidators}, agreeingCount=${result.agreeingCount}")
-        }
-
-        Logger.info("Join1 consensus results:")
-        join1Consensus.consensus.forEach { (participant, result) ->
-            Logger.info("  $participant: agreedCount=${result.agreedCount}, " +
-                "totalValidators=${result.totalValidators}, agreeingCount=${result.agreeingCount}")
-        }
-
-        Logger.info("Join2 consensus results:")
-        join2Consensus.consensus.forEach { (participant, result) ->
-            Logger.info("  $participant: agreedCount=${result.agreedCount}, " +
-                "totalValidators=${result.totalValidators}, agreeingCount=${result.agreeingCount}")
+        Logger.info("On-chain consensus entries: ${consensus.entries.size}")
+        consensus.entries.forEach { entry ->
+            Logger.info("  ${entry.participant}: agreedCount=${entry.agreedCount}, " +
+                "totalValidators=${entry.totalValidators}, agreeingCount=${entry.agreeingCount}")
         }
 
         logSection("Verifying consensus results are present")
-        assertThat(genesisConsensus.consensus).isNotEmpty
-            .describedAs("Genesis should have consensus results")
+        assertThat(consensus.entries).isNotEmpty
+            .describedAs("Should have consensus entries")
 
         logSection("Verifying consensus agreed counts match actual artifact counts")
+        val consensusMap = consensus.entries.associateBy { it.participant }
 
-        if (genesisConsensus.consensus.containsKey(genesisAddr)) {
-            val genesisResult = genesisConsensus.consensus[genesisAddr]!!
-            Logger.info("Genesis consensus for self: agreedCount=${genesisResult.agreedCount}, actualCount=${genesisState.count}")
-            assertThat(genesisResult.agreedCount).isGreaterThan(0)
-                .describedAs("Genesis should have positive agreed count for itself")
-            assertThat(genesisResult.agreedCount).isLessThanOrEqualTo(genesisState.count.toLong())
+        if (consensusMap.containsKey(genesisAddr)) {
+            val result = consensusMap[genesisAddr]!!
+            Logger.info("Consensus for Genesis: agreedCount=${result.agreedCount}, actualCount=${genesisState.count}")
+            assertThat(result.agreedCount).isGreaterThan(0)
+                .describedAs("Genesis should have positive agreed count")
+            assertThat(result.agreedCount).isLessThanOrEqualTo(genesisState.count.toLong())
                 .describedAs("Agreed count should not exceed actual count")
         }
 
-        if (genesisConsensus.consensus.containsKey(join1Addr)) {
-            val join1Result = genesisConsensus.consensus[join1Addr]!!
-            Logger.info("Genesis consensus for Join1: agreedCount=${join1Result.agreedCount}, actualCount=${join1State.count}")
-            assertThat(join1Result.agreedCount).isGreaterThan(0)
-                .describedAs("Genesis should have positive agreed count for Join1")
-            assertThat(join1Result.agreedCount).isLessThanOrEqualTo(join1State.count.toLong())
+        if (consensusMap.containsKey(join1Addr)) {
+            val result = consensusMap[join1Addr]!!
+            Logger.info("Consensus for Join1: agreedCount=${result.agreedCount}, actualCount=${join1State.count}")
+            assertThat(result.agreedCount).isGreaterThan(0)
+                .describedAs("Join1 should have positive agreed count")
+            assertThat(result.agreedCount).isLessThanOrEqualTo(join1State.count.toLong())
                 .describedAs("Agreed count should not exceed actual count")
         }
 
-        if (genesisConsensus.consensus.containsKey(join2Addr)) {
-            val join2Result = genesisConsensus.consensus[join2Addr]!!
-            Logger.info("Genesis consensus for Join2: agreedCount=${join2Result.agreedCount}, actualCount=${join2State.count}")
-            assertThat(join2Result.agreedCount).isGreaterThan(0)
-                .describedAs("Genesis should have positive agreed count for Join2")
-            assertThat(join2Result.agreedCount).isLessThanOrEqualTo(join2State.count.toLong())
+        if (consensusMap.containsKey(join2Addr)) {
+            val result = consensusMap[join2Addr]!!
+            Logger.info("Consensus for Join2: agreedCount=${result.agreedCount}, actualCount=${join2State.count}")
+            assertThat(result.agreedCount).isGreaterThan(0)
+                .describedAs("Join2 should have positive agreed count")
+            assertThat(result.agreedCount).isLessThanOrEqualTo(join2State.count.toLong())
                 .describedAs("Agreed count should not exceed actual count")
         }
 
-        logSection("Verifying consensus is consistent across nodes")
-        genesisConsensus.consensus.forEach { (participant, genesisResult) ->
-            val join1Result = join1Consensus.consensus[participant]
-            val join2Result = join2Consensus.consensus[participant]
-
-            if (join1Result != null) {
-                Logger.info("Comparing consensus for $participant: " +
-                    "genesis=${genesisResult.agreedCount}, join1=${join1Result.agreedCount}")
-            }
-            if (join2Result != null) {
-                Logger.info("Comparing consensus for $participant: " +
-                    "genesis=${genesisResult.agreedCount}, join2=${join2Result.agreedCount}")
-            }
-        }
-
-        logSection("Test Complete - Consensus calculation verified")
-        Logger.info("All nodes calculated consensus based on observations")
-        Logger.info("Agreed counts are positive and bounded by actual artifact counts")
+        logSection("Test Complete - On-chain consensus calculation verified")
+        Logger.info("Observations submitted on-chain and consensus computed by chain query")
     }
 
     val offChainPoCSpec = spec {

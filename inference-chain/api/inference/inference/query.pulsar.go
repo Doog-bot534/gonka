@@ -21723,6 +21723,2366 @@ func (x *fastReflection_MLNodeWeightDistributionWithAddress) ProtoMethods() *pro
 }
 
 var (
+	md_QueryPoCObservationsRequest                              protoreflect.MessageDescriptor
+	fd_QueryPoCObservationsRequest_poc_stage_start_block_height protoreflect.FieldDescriptor
+)
+
+func init() {
+	file_inference_inference_query_proto_init()
+	md_QueryPoCObservationsRequest = File_inference_inference_query_proto.Messages().ByName("QueryPoCObservationsRequest")
+	fd_QueryPoCObservationsRequest_poc_stage_start_block_height = md_QueryPoCObservationsRequest.Fields().ByName("poc_stage_start_block_height")
+}
+
+var _ protoreflect.Message = (*fastReflection_QueryPoCObservationsRequest)(nil)
+
+type fastReflection_QueryPoCObservationsRequest QueryPoCObservationsRequest
+
+func (x *QueryPoCObservationsRequest) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_QueryPoCObservationsRequest)(x)
+}
+
+func (x *QueryPoCObservationsRequest) slowProtoReflect() protoreflect.Message {
+	mi := &file_inference_inference_query_proto_msgTypes[45]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+var _fastReflection_QueryPoCObservationsRequest_messageType fastReflection_QueryPoCObservationsRequest_messageType
+var _ protoreflect.MessageType = fastReflection_QueryPoCObservationsRequest_messageType{}
+
+type fastReflection_QueryPoCObservationsRequest_messageType struct{}
+
+func (x fastReflection_QueryPoCObservationsRequest_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_QueryPoCObservationsRequest)(nil)
+}
+func (x fastReflection_QueryPoCObservationsRequest_messageType) New() protoreflect.Message {
+	return new(fastReflection_QueryPoCObservationsRequest)
+}
+func (x fastReflection_QueryPoCObservationsRequest_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_QueryPoCObservationsRequest
+}
+
+// Descriptor returns message descriptor, which contains only the protobuf
+// type information for the message.
+func (x *fastReflection_QueryPoCObservationsRequest) Descriptor() protoreflect.MessageDescriptor {
+	return md_QueryPoCObservationsRequest
+}
+
+// Type returns the message type, which encapsulates both Go and protobuf
+// type information. If the Go type information is not needed,
+// it is recommended that the message descriptor be used instead.
+func (x *fastReflection_QueryPoCObservationsRequest) Type() protoreflect.MessageType {
+	return _fastReflection_QueryPoCObservationsRequest_messageType
+}
+
+// New returns a newly allocated and mutable empty message.
+func (x *fastReflection_QueryPoCObservationsRequest) New() protoreflect.Message {
+	return new(fastReflection_QueryPoCObservationsRequest)
+}
+
+// Interface unwraps the message reflection interface and
+// returns the underlying ProtoMessage interface.
+func (x *fastReflection_QueryPoCObservationsRequest) Interface() protoreflect.ProtoMessage {
+	return (*QueryPoCObservationsRequest)(x)
+}
+
+// Range iterates over every populated field in an undefined order,
+// calling f for each field descriptor and value encountered.
+// Range returns immediately if f returns false.
+// While iterating, mutating operations may only be performed
+// on the current field descriptor.
+func (x *fastReflection_QueryPoCObservationsRequest) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+	if x.PocStageStartBlockHeight != int64(0) {
+		value := protoreflect.ValueOfInt64(x.PocStageStartBlockHeight)
+		if !f(fd_QueryPoCObservationsRequest_poc_stage_start_block_height, value) {
+			return
+		}
+	}
+}
+
+// Has reports whether a field is populated.
+//
+// Some fields have the property of nullability where it is possible to
+// distinguish between the default value of a field and whether the field
+// was explicitly populated with the default value. Singular message fields,
+// member fields of a oneof, and proto2 scalar fields are nullable. Such
+// fields are populated only if explicitly set.
+//
+// In other cases (aside from the nullable cases above),
+// a proto3 scalar field is populated if it contains a non-zero value, and
+// a repeated field is populated if it is non-empty.
+func (x *fastReflection_QueryPoCObservationsRequest) Has(fd protoreflect.FieldDescriptor) bool {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCObservationsRequest.poc_stage_start_block_height":
+		return x.PocStageStartBlockHeight != int64(0)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCObservationsRequest"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCObservationsRequest does not contain field %s", fd.FullName()))
+	}
+}
+
+// Clear clears the field such that a subsequent Has call reports false.
+//
+// Clearing an extension field clears both the extension type and value
+// associated with the given field number.
+//
+// Clear is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_QueryPoCObservationsRequest) Clear(fd protoreflect.FieldDescriptor) {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCObservationsRequest.poc_stage_start_block_height":
+		x.PocStageStartBlockHeight = int64(0)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCObservationsRequest"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCObservationsRequest does not contain field %s", fd.FullName()))
+	}
+}
+
+// Get retrieves the value for a field.
+//
+// For unpopulated scalars, it returns the default value, where
+// the default value of a bytes scalar is guaranteed to be a copy.
+// For unpopulated composite types, it returns an empty, read-only view
+// of the value; to obtain a mutable reference, use Mutable.
+func (x *fastReflection_QueryPoCObservationsRequest) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+	switch descriptor.FullName() {
+	case "inference.inference.QueryPoCObservationsRequest.poc_stage_start_block_height":
+		value := x.PocStageStartBlockHeight
+		return protoreflect.ValueOfInt64(value)
+	default:
+		if descriptor.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCObservationsRequest"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCObservationsRequest does not contain field %s", descriptor.FullName()))
+	}
+}
+
+// Set stores the value for a field.
+//
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType.
+// When setting a composite type, it is unspecified whether the stored value
+// aliases the source's memory in any way. If the composite value is an
+// empty, read-only value, then it panics.
+//
+// Set is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_QueryPoCObservationsRequest) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCObservationsRequest.poc_stage_start_block_height":
+		x.PocStageStartBlockHeight = value.Int()
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCObservationsRequest"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCObservationsRequest does not contain field %s", fd.FullName()))
+	}
+}
+
+// Mutable returns a mutable reference to a composite type.
+//
+// If the field is unpopulated, it may allocate a composite value.
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType
+// if not already stored.
+// It panics if the field does not contain a composite type.
+//
+// Mutable is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_QueryPoCObservationsRequest) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCObservationsRequest.poc_stage_start_block_height":
+		panic(fmt.Errorf("field poc_stage_start_block_height of message inference.inference.QueryPoCObservationsRequest is not mutable"))
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCObservationsRequest"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCObservationsRequest does not contain field %s", fd.FullName()))
+	}
+}
+
+// NewField returns a new value that is assignable to the field
+// for the given descriptor. For scalars, this returns the default value.
+// For lists, maps, and messages, this returns a new, empty, mutable value.
+func (x *fastReflection_QueryPoCObservationsRequest) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCObservationsRequest.poc_stage_start_block_height":
+		return protoreflect.ValueOfInt64(int64(0))
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCObservationsRequest"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCObservationsRequest does not contain field %s", fd.FullName()))
+	}
+}
+
+// WhichOneof reports which field within the oneof is populated,
+// returning nil if none are populated.
+// It panics if the oneof descriptor does not belong to this message.
+func (x *fastReflection_QueryPoCObservationsRequest) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+	switch d.FullName() {
+	default:
+		panic(fmt.Errorf("%s is not a oneof field in inference.inference.QueryPoCObservationsRequest", d.FullName()))
+	}
+	panic("unreachable")
+}
+
+// GetUnknown retrieves the entire list of unknown fields.
+// The caller may only mutate the contents of the RawFields
+// if the mutated bytes are stored back into the message with SetUnknown.
+func (x *fastReflection_QueryPoCObservationsRequest) GetUnknown() protoreflect.RawFields {
+	return x.unknownFields
+}
+
+// SetUnknown stores an entire list of unknown fields.
+// The raw fields must be syntactically valid according to the wire format.
+// An implementation may panic if this is not the case.
+// Once stored, the caller must not mutate the content of the RawFields.
+// An empty RawFields may be passed to clear the fields.
+//
+// SetUnknown is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_QueryPoCObservationsRequest) SetUnknown(fields protoreflect.RawFields) {
+	x.unknownFields = fields
+}
+
+// IsValid reports whether the message is valid.
+//
+// An invalid message is an empty, read-only value.
+//
+// An invalid message often corresponds to a nil pointer of the concrete
+// message type, but the details are implementation dependent.
+// Validity is not part of the protobuf data model, and may not
+// be preserved in marshaling or other operations.
+func (x *fastReflection_QueryPoCObservationsRequest) IsValid() bool {
+	return x != nil
+}
+
+// ProtoMethods returns optional fastReflectionFeature-path implementations of various operations.
+// This method may return nil.
+//
+// The returned methods type is identical to
+// "google.golang.org/protobuf/runtime/protoiface".Methods.
+// Consult the protoiface package documentation for details.
+func (x *fastReflection_QueryPoCObservationsRequest) ProtoMethods() *protoiface.Methods {
+	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
+		x := input.Message.Interface().(*QueryPoCObservationsRequest)
+		if x == nil {
+			return protoiface.SizeOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Size:              0,
+			}
+		}
+		options := runtime.SizeInputToOptions(input)
+		_ = options
+		var n int
+		var l int
+		_ = l
+		if x.PocStageStartBlockHeight != 0 {
+			n += 1 + runtime.Sov(uint64(x.PocStageStartBlockHeight))
+		}
+		if x.unknownFields != nil {
+			n += len(x.unknownFields)
+		}
+		return protoiface.SizeOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Size:              n,
+		}
+	}
+
+	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
+		x := input.Message.Interface().(*QueryPoCObservationsRequest)
+		if x == nil {
+			return protoiface.MarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Buf:               input.Buf,
+			}, nil
+		}
+		options := runtime.MarshalInputToOptions(input)
+		_ = options
+		size := options.Size(x)
+		dAtA := make([]byte, size)
+		i := len(dAtA)
+		_ = i
+		var l int
+		_ = l
+		if x.unknownFields != nil {
+			i -= len(x.unknownFields)
+			copy(dAtA[i:], x.unknownFields)
+		}
+		if x.PocStageStartBlockHeight != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.PocStageStartBlockHeight))
+			i--
+			dAtA[i] = 0x8
+		}
+		if input.Buf != nil {
+			input.Buf = append(input.Buf, dAtA...)
+		} else {
+			input.Buf = dAtA
+		}
+		return protoiface.MarshalOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Buf:               input.Buf,
+		}, nil
+	}
+	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
+		x := input.Message.Interface().(*QueryPoCObservationsRequest)
+		if x == nil {
+			return protoiface.UnmarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Flags:             input.Flags,
+			}, nil
+		}
+		options := runtime.UnmarshalInputToOptions(input)
+		_ = options
+		dAtA := input.Buf
+		l := len(dAtA)
+		iNdEx := 0
+		for iNdEx < l {
+			preIndex := iNdEx
+			var wire uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				wire |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			fieldNum := int32(wire >> 3)
+			wireType := int(wire & 0x7)
+			if wireType == 4 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: QueryPoCObservationsRequest: wiretype end group for non-group")
+			}
+			if fieldNum <= 0 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: QueryPoCObservationsRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			}
+			switch fieldNum {
+			case 1:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field PocStageStartBlockHeight", wireType)
+				}
+				x.PocStageStartBlockHeight = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.PocStageStartBlockHeight |= int64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+			default:
+				iNdEx = preIndex
+				skippy, err := runtime.Skip(dAtA[iNdEx:])
+				if err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				if (skippy < 0) || (iNdEx+skippy) < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if (iNdEx + skippy) > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if !options.DiscardUnknown {
+					x.unknownFields = append(x.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+				}
+				iNdEx += skippy
+			}
+		}
+
+		if iNdEx > l {
+			return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+		}
+		return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, nil
+	}
+	return &protoiface.Methods{
+		NoUnkeyedLiterals: struct{}{},
+		Flags:             protoiface.SupportMarshalDeterministic | protoiface.SupportUnmarshalDiscardUnknown,
+		Size:              size,
+		Marshal:           marshal,
+		Unmarshal:         unmarshal,
+		Merge:             nil,
+		CheckInitialized:  nil,
+	}
+}
+
+var _ protoreflect.List = (*_QueryPoCObservationsResponse_1_list)(nil)
+
+type _QueryPoCObservationsResponse_1_list struct {
+	list *[]*PoCObservation
+}
+
+func (x *_QueryPoCObservationsResponse_1_list) Len() int {
+	if x.list == nil {
+		return 0
+	}
+	return len(*x.list)
+}
+
+func (x *_QueryPoCObservationsResponse_1_list) Get(i int) protoreflect.Value {
+	return protoreflect.ValueOfMessage((*x.list)[i].ProtoReflect())
+}
+
+func (x *_QueryPoCObservationsResponse_1_list) Set(i int, value protoreflect.Value) {
+	valueUnwrapped := value.Message()
+	concreteValue := valueUnwrapped.Interface().(*PoCObservation)
+	(*x.list)[i] = concreteValue
+}
+
+func (x *_QueryPoCObservationsResponse_1_list) Append(value protoreflect.Value) {
+	valueUnwrapped := value.Message()
+	concreteValue := valueUnwrapped.Interface().(*PoCObservation)
+	*x.list = append(*x.list, concreteValue)
+}
+
+func (x *_QueryPoCObservationsResponse_1_list) AppendMutable() protoreflect.Value {
+	v := new(PoCObservation)
+	*x.list = append(*x.list, v)
+	return protoreflect.ValueOfMessage(v.ProtoReflect())
+}
+
+func (x *_QueryPoCObservationsResponse_1_list) Truncate(n int) {
+	for i := n; i < len(*x.list); i++ {
+		(*x.list)[i] = nil
+	}
+	*x.list = (*x.list)[:n]
+}
+
+func (x *_QueryPoCObservationsResponse_1_list) NewElement() protoreflect.Value {
+	v := new(PoCObservation)
+	return protoreflect.ValueOfMessage(v.ProtoReflect())
+}
+
+func (x *_QueryPoCObservationsResponse_1_list) IsValid() bool {
+	return x.list != nil
+}
+
+var (
+	md_QueryPoCObservationsResponse              protoreflect.MessageDescriptor
+	fd_QueryPoCObservationsResponse_observations protoreflect.FieldDescriptor
+)
+
+func init() {
+	file_inference_inference_query_proto_init()
+	md_QueryPoCObservationsResponse = File_inference_inference_query_proto.Messages().ByName("QueryPoCObservationsResponse")
+	fd_QueryPoCObservationsResponse_observations = md_QueryPoCObservationsResponse.Fields().ByName("observations")
+}
+
+var _ protoreflect.Message = (*fastReflection_QueryPoCObservationsResponse)(nil)
+
+type fastReflection_QueryPoCObservationsResponse QueryPoCObservationsResponse
+
+func (x *QueryPoCObservationsResponse) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_QueryPoCObservationsResponse)(x)
+}
+
+func (x *QueryPoCObservationsResponse) slowProtoReflect() protoreflect.Message {
+	mi := &file_inference_inference_query_proto_msgTypes[46]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+var _fastReflection_QueryPoCObservationsResponse_messageType fastReflection_QueryPoCObservationsResponse_messageType
+var _ protoreflect.MessageType = fastReflection_QueryPoCObservationsResponse_messageType{}
+
+type fastReflection_QueryPoCObservationsResponse_messageType struct{}
+
+func (x fastReflection_QueryPoCObservationsResponse_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_QueryPoCObservationsResponse)(nil)
+}
+func (x fastReflection_QueryPoCObservationsResponse_messageType) New() protoreflect.Message {
+	return new(fastReflection_QueryPoCObservationsResponse)
+}
+func (x fastReflection_QueryPoCObservationsResponse_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_QueryPoCObservationsResponse
+}
+
+// Descriptor returns message descriptor, which contains only the protobuf
+// type information for the message.
+func (x *fastReflection_QueryPoCObservationsResponse) Descriptor() protoreflect.MessageDescriptor {
+	return md_QueryPoCObservationsResponse
+}
+
+// Type returns the message type, which encapsulates both Go and protobuf
+// type information. If the Go type information is not needed,
+// it is recommended that the message descriptor be used instead.
+func (x *fastReflection_QueryPoCObservationsResponse) Type() protoreflect.MessageType {
+	return _fastReflection_QueryPoCObservationsResponse_messageType
+}
+
+// New returns a newly allocated and mutable empty message.
+func (x *fastReflection_QueryPoCObservationsResponse) New() protoreflect.Message {
+	return new(fastReflection_QueryPoCObservationsResponse)
+}
+
+// Interface unwraps the message reflection interface and
+// returns the underlying ProtoMessage interface.
+func (x *fastReflection_QueryPoCObservationsResponse) Interface() protoreflect.ProtoMessage {
+	return (*QueryPoCObservationsResponse)(x)
+}
+
+// Range iterates over every populated field in an undefined order,
+// calling f for each field descriptor and value encountered.
+// Range returns immediately if f returns false.
+// While iterating, mutating operations may only be performed
+// on the current field descriptor.
+func (x *fastReflection_QueryPoCObservationsResponse) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+	if len(x.Observations) != 0 {
+		value := protoreflect.ValueOfList(&_QueryPoCObservationsResponse_1_list{list: &x.Observations})
+		if !f(fd_QueryPoCObservationsResponse_observations, value) {
+			return
+		}
+	}
+}
+
+// Has reports whether a field is populated.
+//
+// Some fields have the property of nullability where it is possible to
+// distinguish between the default value of a field and whether the field
+// was explicitly populated with the default value. Singular message fields,
+// member fields of a oneof, and proto2 scalar fields are nullable. Such
+// fields are populated only if explicitly set.
+//
+// In other cases (aside from the nullable cases above),
+// a proto3 scalar field is populated if it contains a non-zero value, and
+// a repeated field is populated if it is non-empty.
+func (x *fastReflection_QueryPoCObservationsResponse) Has(fd protoreflect.FieldDescriptor) bool {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCObservationsResponse.observations":
+		return len(x.Observations) != 0
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCObservationsResponse"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCObservationsResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// Clear clears the field such that a subsequent Has call reports false.
+//
+// Clearing an extension field clears both the extension type and value
+// associated with the given field number.
+//
+// Clear is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_QueryPoCObservationsResponse) Clear(fd protoreflect.FieldDescriptor) {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCObservationsResponse.observations":
+		x.Observations = nil
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCObservationsResponse"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCObservationsResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// Get retrieves the value for a field.
+//
+// For unpopulated scalars, it returns the default value, where
+// the default value of a bytes scalar is guaranteed to be a copy.
+// For unpopulated composite types, it returns an empty, read-only view
+// of the value; to obtain a mutable reference, use Mutable.
+func (x *fastReflection_QueryPoCObservationsResponse) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+	switch descriptor.FullName() {
+	case "inference.inference.QueryPoCObservationsResponse.observations":
+		if len(x.Observations) == 0 {
+			return protoreflect.ValueOfList(&_QueryPoCObservationsResponse_1_list{})
+		}
+		listValue := &_QueryPoCObservationsResponse_1_list{list: &x.Observations}
+		return protoreflect.ValueOfList(listValue)
+	default:
+		if descriptor.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCObservationsResponse"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCObservationsResponse does not contain field %s", descriptor.FullName()))
+	}
+}
+
+// Set stores the value for a field.
+//
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType.
+// When setting a composite type, it is unspecified whether the stored value
+// aliases the source's memory in any way. If the composite value is an
+// empty, read-only value, then it panics.
+//
+// Set is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_QueryPoCObservationsResponse) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCObservationsResponse.observations":
+		lv := value.List()
+		clv := lv.(*_QueryPoCObservationsResponse_1_list)
+		x.Observations = *clv.list
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCObservationsResponse"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCObservationsResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// Mutable returns a mutable reference to a composite type.
+//
+// If the field is unpopulated, it may allocate a composite value.
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType
+// if not already stored.
+// It panics if the field does not contain a composite type.
+//
+// Mutable is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_QueryPoCObservationsResponse) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCObservationsResponse.observations":
+		if x.Observations == nil {
+			x.Observations = []*PoCObservation{}
+		}
+		value := &_QueryPoCObservationsResponse_1_list{list: &x.Observations}
+		return protoreflect.ValueOfList(value)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCObservationsResponse"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCObservationsResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// NewField returns a new value that is assignable to the field
+// for the given descriptor. For scalars, this returns the default value.
+// For lists, maps, and messages, this returns a new, empty, mutable value.
+func (x *fastReflection_QueryPoCObservationsResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCObservationsResponse.observations":
+		list := []*PoCObservation{}
+		return protoreflect.ValueOfList(&_QueryPoCObservationsResponse_1_list{list: &list})
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCObservationsResponse"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCObservationsResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// WhichOneof reports which field within the oneof is populated,
+// returning nil if none are populated.
+// It panics if the oneof descriptor does not belong to this message.
+func (x *fastReflection_QueryPoCObservationsResponse) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+	switch d.FullName() {
+	default:
+		panic(fmt.Errorf("%s is not a oneof field in inference.inference.QueryPoCObservationsResponse", d.FullName()))
+	}
+	panic("unreachable")
+}
+
+// GetUnknown retrieves the entire list of unknown fields.
+// The caller may only mutate the contents of the RawFields
+// if the mutated bytes are stored back into the message with SetUnknown.
+func (x *fastReflection_QueryPoCObservationsResponse) GetUnknown() protoreflect.RawFields {
+	return x.unknownFields
+}
+
+// SetUnknown stores an entire list of unknown fields.
+// The raw fields must be syntactically valid according to the wire format.
+// An implementation may panic if this is not the case.
+// Once stored, the caller must not mutate the content of the RawFields.
+// An empty RawFields may be passed to clear the fields.
+//
+// SetUnknown is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_QueryPoCObservationsResponse) SetUnknown(fields protoreflect.RawFields) {
+	x.unknownFields = fields
+}
+
+// IsValid reports whether the message is valid.
+//
+// An invalid message is an empty, read-only value.
+//
+// An invalid message often corresponds to a nil pointer of the concrete
+// message type, but the details are implementation dependent.
+// Validity is not part of the protobuf data model, and may not
+// be preserved in marshaling or other operations.
+func (x *fastReflection_QueryPoCObservationsResponse) IsValid() bool {
+	return x != nil
+}
+
+// ProtoMethods returns optional fastReflectionFeature-path implementations of various operations.
+// This method may return nil.
+//
+// The returned methods type is identical to
+// "google.golang.org/protobuf/runtime/protoiface".Methods.
+// Consult the protoiface package documentation for details.
+func (x *fastReflection_QueryPoCObservationsResponse) ProtoMethods() *protoiface.Methods {
+	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
+		x := input.Message.Interface().(*QueryPoCObservationsResponse)
+		if x == nil {
+			return protoiface.SizeOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Size:              0,
+			}
+		}
+		options := runtime.SizeInputToOptions(input)
+		_ = options
+		var n int
+		var l int
+		_ = l
+		if len(x.Observations) > 0 {
+			for _, e := range x.Observations {
+				l = options.Size(e)
+				n += 1 + l + runtime.Sov(uint64(l))
+			}
+		}
+		if x.unknownFields != nil {
+			n += len(x.unknownFields)
+		}
+		return protoiface.SizeOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Size:              n,
+		}
+	}
+
+	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
+		x := input.Message.Interface().(*QueryPoCObservationsResponse)
+		if x == nil {
+			return protoiface.MarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Buf:               input.Buf,
+			}, nil
+		}
+		options := runtime.MarshalInputToOptions(input)
+		_ = options
+		size := options.Size(x)
+		dAtA := make([]byte, size)
+		i := len(dAtA)
+		_ = i
+		var l int
+		_ = l
+		if x.unknownFields != nil {
+			i -= len(x.unknownFields)
+			copy(dAtA[i:], x.unknownFields)
+		}
+		if len(x.Observations) > 0 {
+			for iNdEx := len(x.Observations) - 1; iNdEx >= 0; iNdEx-- {
+				encoded, err := options.Marshal(x.Observations[iNdEx])
+				if err != nil {
+					return protoiface.MarshalOutput{
+						NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+						Buf:               input.Buf,
+					}, err
+				}
+				i -= len(encoded)
+				copy(dAtA[i:], encoded)
+				i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
+				i--
+				dAtA[i] = 0xa
+			}
+		}
+		if input.Buf != nil {
+			input.Buf = append(input.Buf, dAtA...)
+		} else {
+			input.Buf = dAtA
+		}
+		return protoiface.MarshalOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Buf:               input.Buf,
+		}, nil
+	}
+	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
+		x := input.Message.Interface().(*QueryPoCObservationsResponse)
+		if x == nil {
+			return protoiface.UnmarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Flags:             input.Flags,
+			}, nil
+		}
+		options := runtime.UnmarshalInputToOptions(input)
+		_ = options
+		dAtA := input.Buf
+		l := len(dAtA)
+		iNdEx := 0
+		for iNdEx < l {
+			preIndex := iNdEx
+			var wire uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				wire |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			fieldNum := int32(wire >> 3)
+			wireType := int(wire & 0x7)
+			if wireType == 4 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: QueryPoCObservationsResponse: wiretype end group for non-group")
+			}
+			if fieldNum <= 0 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: QueryPoCObservationsResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			}
+			switch fieldNum {
+			case 1:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Observations", wireType)
+				}
+				var msglen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					msglen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if msglen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + msglen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.Observations = append(x.Observations, &PoCObservation{})
+				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Observations[len(x.Observations)-1]); err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				iNdEx = postIndex
+			default:
+				iNdEx = preIndex
+				skippy, err := runtime.Skip(dAtA[iNdEx:])
+				if err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				if (skippy < 0) || (iNdEx+skippy) < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if (iNdEx + skippy) > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if !options.DiscardUnknown {
+					x.unknownFields = append(x.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+				}
+				iNdEx += skippy
+			}
+		}
+
+		if iNdEx > l {
+			return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+		}
+		return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, nil
+	}
+	return &protoiface.Methods{
+		NoUnkeyedLiterals: struct{}{},
+		Flags:             protoiface.SupportMarshalDeterministic | protoiface.SupportUnmarshalDiscardUnknown,
+		Size:              size,
+		Marshal:           marshal,
+		Unmarshal:         unmarshal,
+		Merge:             nil,
+		CheckInitialized:  nil,
+	}
+}
+
+var (
+	md_PoCConsensusEntry                  protoreflect.MessageDescriptor
+	fd_PoCConsensusEntry_participant      protoreflect.FieldDescriptor
+	fd_PoCConsensusEntry_agreed_count     protoreflect.FieldDescriptor
+	fd_PoCConsensusEntry_total_validators protoreflect.FieldDescriptor
+	fd_PoCConsensusEntry_agreeing_count   protoreflect.FieldDescriptor
+)
+
+func init() {
+	file_inference_inference_query_proto_init()
+	md_PoCConsensusEntry = File_inference_inference_query_proto.Messages().ByName("PoCConsensusEntry")
+	fd_PoCConsensusEntry_participant = md_PoCConsensusEntry.Fields().ByName("participant")
+	fd_PoCConsensusEntry_agreed_count = md_PoCConsensusEntry.Fields().ByName("agreed_count")
+	fd_PoCConsensusEntry_total_validators = md_PoCConsensusEntry.Fields().ByName("total_validators")
+	fd_PoCConsensusEntry_agreeing_count = md_PoCConsensusEntry.Fields().ByName("agreeing_count")
+}
+
+var _ protoreflect.Message = (*fastReflection_PoCConsensusEntry)(nil)
+
+type fastReflection_PoCConsensusEntry PoCConsensusEntry
+
+func (x *PoCConsensusEntry) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_PoCConsensusEntry)(x)
+}
+
+func (x *PoCConsensusEntry) slowProtoReflect() protoreflect.Message {
+	mi := &file_inference_inference_query_proto_msgTypes[47]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+var _fastReflection_PoCConsensusEntry_messageType fastReflection_PoCConsensusEntry_messageType
+var _ protoreflect.MessageType = fastReflection_PoCConsensusEntry_messageType{}
+
+type fastReflection_PoCConsensusEntry_messageType struct{}
+
+func (x fastReflection_PoCConsensusEntry_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_PoCConsensusEntry)(nil)
+}
+func (x fastReflection_PoCConsensusEntry_messageType) New() protoreflect.Message {
+	return new(fastReflection_PoCConsensusEntry)
+}
+func (x fastReflection_PoCConsensusEntry_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_PoCConsensusEntry
+}
+
+// Descriptor returns message descriptor, which contains only the protobuf
+// type information for the message.
+func (x *fastReflection_PoCConsensusEntry) Descriptor() protoreflect.MessageDescriptor {
+	return md_PoCConsensusEntry
+}
+
+// Type returns the message type, which encapsulates both Go and protobuf
+// type information. If the Go type information is not needed,
+// it is recommended that the message descriptor be used instead.
+func (x *fastReflection_PoCConsensusEntry) Type() protoreflect.MessageType {
+	return _fastReflection_PoCConsensusEntry_messageType
+}
+
+// New returns a newly allocated and mutable empty message.
+func (x *fastReflection_PoCConsensusEntry) New() protoreflect.Message {
+	return new(fastReflection_PoCConsensusEntry)
+}
+
+// Interface unwraps the message reflection interface and
+// returns the underlying ProtoMessage interface.
+func (x *fastReflection_PoCConsensusEntry) Interface() protoreflect.ProtoMessage {
+	return (*PoCConsensusEntry)(x)
+}
+
+// Range iterates over every populated field in an undefined order,
+// calling f for each field descriptor and value encountered.
+// Range returns immediately if f returns false.
+// While iterating, mutating operations may only be performed
+// on the current field descriptor.
+func (x *fastReflection_PoCConsensusEntry) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+	if x.Participant != "" {
+		value := protoreflect.ValueOfString(x.Participant)
+		if !f(fd_PoCConsensusEntry_participant, value) {
+			return
+		}
+	}
+	if x.AgreedCount != uint32(0) {
+		value := protoreflect.ValueOfUint32(x.AgreedCount)
+		if !f(fd_PoCConsensusEntry_agreed_count, value) {
+			return
+		}
+	}
+	if x.TotalValidators != int32(0) {
+		value := protoreflect.ValueOfInt32(x.TotalValidators)
+		if !f(fd_PoCConsensusEntry_total_validators, value) {
+			return
+		}
+	}
+	if x.AgreeingCount != int32(0) {
+		value := protoreflect.ValueOfInt32(x.AgreeingCount)
+		if !f(fd_PoCConsensusEntry_agreeing_count, value) {
+			return
+		}
+	}
+}
+
+// Has reports whether a field is populated.
+//
+// Some fields have the property of nullability where it is possible to
+// distinguish between the default value of a field and whether the field
+// was explicitly populated with the default value. Singular message fields,
+// member fields of a oneof, and proto2 scalar fields are nullable. Such
+// fields are populated only if explicitly set.
+//
+// In other cases (aside from the nullable cases above),
+// a proto3 scalar field is populated if it contains a non-zero value, and
+// a repeated field is populated if it is non-empty.
+func (x *fastReflection_PoCConsensusEntry) Has(fd protoreflect.FieldDescriptor) bool {
+	switch fd.FullName() {
+	case "inference.inference.PoCConsensusEntry.participant":
+		return x.Participant != ""
+	case "inference.inference.PoCConsensusEntry.agreed_count":
+		return x.AgreedCount != uint32(0)
+	case "inference.inference.PoCConsensusEntry.total_validators":
+		return x.TotalValidators != int32(0)
+	case "inference.inference.PoCConsensusEntry.agreeing_count":
+		return x.AgreeingCount != int32(0)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCConsensusEntry"))
+		}
+		panic(fmt.Errorf("message inference.inference.PoCConsensusEntry does not contain field %s", fd.FullName()))
+	}
+}
+
+// Clear clears the field such that a subsequent Has call reports false.
+//
+// Clearing an extension field clears both the extension type and value
+// associated with the given field number.
+//
+// Clear is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_PoCConsensusEntry) Clear(fd protoreflect.FieldDescriptor) {
+	switch fd.FullName() {
+	case "inference.inference.PoCConsensusEntry.participant":
+		x.Participant = ""
+	case "inference.inference.PoCConsensusEntry.agreed_count":
+		x.AgreedCount = uint32(0)
+	case "inference.inference.PoCConsensusEntry.total_validators":
+		x.TotalValidators = int32(0)
+	case "inference.inference.PoCConsensusEntry.agreeing_count":
+		x.AgreeingCount = int32(0)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCConsensusEntry"))
+		}
+		panic(fmt.Errorf("message inference.inference.PoCConsensusEntry does not contain field %s", fd.FullName()))
+	}
+}
+
+// Get retrieves the value for a field.
+//
+// For unpopulated scalars, it returns the default value, where
+// the default value of a bytes scalar is guaranteed to be a copy.
+// For unpopulated composite types, it returns an empty, read-only view
+// of the value; to obtain a mutable reference, use Mutable.
+func (x *fastReflection_PoCConsensusEntry) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+	switch descriptor.FullName() {
+	case "inference.inference.PoCConsensusEntry.participant":
+		value := x.Participant
+		return protoreflect.ValueOfString(value)
+	case "inference.inference.PoCConsensusEntry.agreed_count":
+		value := x.AgreedCount
+		return protoreflect.ValueOfUint32(value)
+	case "inference.inference.PoCConsensusEntry.total_validators":
+		value := x.TotalValidators
+		return protoreflect.ValueOfInt32(value)
+	case "inference.inference.PoCConsensusEntry.agreeing_count":
+		value := x.AgreeingCount
+		return protoreflect.ValueOfInt32(value)
+	default:
+		if descriptor.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCConsensusEntry"))
+		}
+		panic(fmt.Errorf("message inference.inference.PoCConsensusEntry does not contain field %s", descriptor.FullName()))
+	}
+}
+
+// Set stores the value for a field.
+//
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType.
+// When setting a composite type, it is unspecified whether the stored value
+// aliases the source's memory in any way. If the composite value is an
+// empty, read-only value, then it panics.
+//
+// Set is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_PoCConsensusEntry) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+	switch fd.FullName() {
+	case "inference.inference.PoCConsensusEntry.participant":
+		x.Participant = value.Interface().(string)
+	case "inference.inference.PoCConsensusEntry.agreed_count":
+		x.AgreedCount = uint32(value.Uint())
+	case "inference.inference.PoCConsensusEntry.total_validators":
+		x.TotalValidators = int32(value.Int())
+	case "inference.inference.PoCConsensusEntry.agreeing_count":
+		x.AgreeingCount = int32(value.Int())
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCConsensusEntry"))
+		}
+		panic(fmt.Errorf("message inference.inference.PoCConsensusEntry does not contain field %s", fd.FullName()))
+	}
+}
+
+// Mutable returns a mutable reference to a composite type.
+//
+// If the field is unpopulated, it may allocate a composite value.
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType
+// if not already stored.
+// It panics if the field does not contain a composite type.
+//
+// Mutable is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_PoCConsensusEntry) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "inference.inference.PoCConsensusEntry.participant":
+		panic(fmt.Errorf("field participant of message inference.inference.PoCConsensusEntry is not mutable"))
+	case "inference.inference.PoCConsensusEntry.agreed_count":
+		panic(fmt.Errorf("field agreed_count of message inference.inference.PoCConsensusEntry is not mutable"))
+	case "inference.inference.PoCConsensusEntry.total_validators":
+		panic(fmt.Errorf("field total_validators of message inference.inference.PoCConsensusEntry is not mutable"))
+	case "inference.inference.PoCConsensusEntry.agreeing_count":
+		panic(fmt.Errorf("field agreeing_count of message inference.inference.PoCConsensusEntry is not mutable"))
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCConsensusEntry"))
+		}
+		panic(fmt.Errorf("message inference.inference.PoCConsensusEntry does not contain field %s", fd.FullName()))
+	}
+}
+
+// NewField returns a new value that is assignable to the field
+// for the given descriptor. For scalars, this returns the default value.
+// For lists, maps, and messages, this returns a new, empty, mutable value.
+func (x *fastReflection_PoCConsensusEntry) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "inference.inference.PoCConsensusEntry.participant":
+		return protoreflect.ValueOfString("")
+	case "inference.inference.PoCConsensusEntry.agreed_count":
+		return protoreflect.ValueOfUint32(uint32(0))
+	case "inference.inference.PoCConsensusEntry.total_validators":
+		return protoreflect.ValueOfInt32(int32(0))
+	case "inference.inference.PoCConsensusEntry.agreeing_count":
+		return protoreflect.ValueOfInt32(int32(0))
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCConsensusEntry"))
+		}
+		panic(fmt.Errorf("message inference.inference.PoCConsensusEntry does not contain field %s", fd.FullName()))
+	}
+}
+
+// WhichOneof reports which field within the oneof is populated,
+// returning nil if none are populated.
+// It panics if the oneof descriptor does not belong to this message.
+func (x *fastReflection_PoCConsensusEntry) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+	switch d.FullName() {
+	default:
+		panic(fmt.Errorf("%s is not a oneof field in inference.inference.PoCConsensusEntry", d.FullName()))
+	}
+	panic("unreachable")
+}
+
+// GetUnknown retrieves the entire list of unknown fields.
+// The caller may only mutate the contents of the RawFields
+// if the mutated bytes are stored back into the message with SetUnknown.
+func (x *fastReflection_PoCConsensusEntry) GetUnknown() protoreflect.RawFields {
+	return x.unknownFields
+}
+
+// SetUnknown stores an entire list of unknown fields.
+// The raw fields must be syntactically valid according to the wire format.
+// An implementation may panic if this is not the case.
+// Once stored, the caller must not mutate the content of the RawFields.
+// An empty RawFields may be passed to clear the fields.
+//
+// SetUnknown is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_PoCConsensusEntry) SetUnknown(fields protoreflect.RawFields) {
+	x.unknownFields = fields
+}
+
+// IsValid reports whether the message is valid.
+//
+// An invalid message is an empty, read-only value.
+//
+// An invalid message often corresponds to a nil pointer of the concrete
+// message type, but the details are implementation dependent.
+// Validity is not part of the protobuf data model, and may not
+// be preserved in marshaling or other operations.
+func (x *fastReflection_PoCConsensusEntry) IsValid() bool {
+	return x != nil
+}
+
+// ProtoMethods returns optional fastReflectionFeature-path implementations of various operations.
+// This method may return nil.
+//
+// The returned methods type is identical to
+// "google.golang.org/protobuf/runtime/protoiface".Methods.
+// Consult the protoiface package documentation for details.
+func (x *fastReflection_PoCConsensusEntry) ProtoMethods() *protoiface.Methods {
+	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
+		x := input.Message.Interface().(*PoCConsensusEntry)
+		if x == nil {
+			return protoiface.SizeOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Size:              0,
+			}
+		}
+		options := runtime.SizeInputToOptions(input)
+		_ = options
+		var n int
+		var l int
+		_ = l
+		l = len(x.Participant)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		if x.AgreedCount != 0 {
+			n += 1 + runtime.Sov(uint64(x.AgreedCount))
+		}
+		if x.TotalValidators != 0 {
+			n += 1 + runtime.Sov(uint64(x.TotalValidators))
+		}
+		if x.AgreeingCount != 0 {
+			n += 1 + runtime.Sov(uint64(x.AgreeingCount))
+		}
+		if x.unknownFields != nil {
+			n += len(x.unknownFields)
+		}
+		return protoiface.SizeOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Size:              n,
+		}
+	}
+
+	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
+		x := input.Message.Interface().(*PoCConsensusEntry)
+		if x == nil {
+			return protoiface.MarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Buf:               input.Buf,
+			}, nil
+		}
+		options := runtime.MarshalInputToOptions(input)
+		_ = options
+		size := options.Size(x)
+		dAtA := make([]byte, size)
+		i := len(dAtA)
+		_ = i
+		var l int
+		_ = l
+		if x.unknownFields != nil {
+			i -= len(x.unknownFields)
+			copy(dAtA[i:], x.unknownFields)
+		}
+		if x.AgreeingCount != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.AgreeingCount))
+			i--
+			dAtA[i] = 0x20
+		}
+		if x.TotalValidators != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.TotalValidators))
+			i--
+			dAtA[i] = 0x18
+		}
+		if x.AgreedCount != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.AgreedCount))
+			i--
+			dAtA[i] = 0x10
+		}
+		if len(x.Participant) > 0 {
+			i -= len(x.Participant)
+			copy(dAtA[i:], x.Participant)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.Participant)))
+			i--
+			dAtA[i] = 0xa
+		}
+		if input.Buf != nil {
+			input.Buf = append(input.Buf, dAtA...)
+		} else {
+			input.Buf = dAtA
+		}
+		return protoiface.MarshalOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Buf:               input.Buf,
+		}, nil
+	}
+	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
+		x := input.Message.Interface().(*PoCConsensusEntry)
+		if x == nil {
+			return protoiface.UnmarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Flags:             input.Flags,
+			}, nil
+		}
+		options := runtime.UnmarshalInputToOptions(input)
+		_ = options
+		dAtA := input.Buf
+		l := len(dAtA)
+		iNdEx := 0
+		for iNdEx < l {
+			preIndex := iNdEx
+			var wire uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				wire |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			fieldNum := int32(wire >> 3)
+			wireType := int(wire & 0x7)
+			if wireType == 4 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: PoCConsensusEntry: wiretype end group for non-group")
+			}
+			if fieldNum <= 0 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: PoCConsensusEntry: illegal tag %d (wire type %d)", fieldNum, wire)
+			}
+			switch fieldNum {
+			case 1:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Participant", wireType)
+				}
+				var stringLen uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					stringLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.Participant = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
+			case 2:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field AgreedCount", wireType)
+				}
+				x.AgreedCount = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.AgreedCount |= uint32(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+			case 3:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field TotalValidators", wireType)
+				}
+				x.TotalValidators = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.TotalValidators |= int32(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+			case 4:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field AgreeingCount", wireType)
+				}
+				x.AgreeingCount = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.AgreeingCount |= int32(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+			default:
+				iNdEx = preIndex
+				skippy, err := runtime.Skip(dAtA[iNdEx:])
+				if err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				if (skippy < 0) || (iNdEx+skippy) < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if (iNdEx + skippy) > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if !options.DiscardUnknown {
+					x.unknownFields = append(x.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+				}
+				iNdEx += skippy
+			}
+		}
+
+		if iNdEx > l {
+			return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+		}
+		return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, nil
+	}
+	return &protoiface.Methods{
+		NoUnkeyedLiterals: struct{}{},
+		Flags:             protoiface.SupportMarshalDeterministic | protoiface.SupportUnmarshalDiscardUnknown,
+		Size:              size,
+		Marshal:           marshal,
+		Unmarshal:         unmarshal,
+		Merge:             nil,
+		CheckInitialized:  nil,
+	}
+}
+
+var (
+	md_QueryPoCConsensusRequest                              protoreflect.MessageDescriptor
+	fd_QueryPoCConsensusRequest_poc_stage_start_block_height protoreflect.FieldDescriptor
+)
+
+func init() {
+	file_inference_inference_query_proto_init()
+	md_QueryPoCConsensusRequest = File_inference_inference_query_proto.Messages().ByName("QueryPoCConsensusRequest")
+	fd_QueryPoCConsensusRequest_poc_stage_start_block_height = md_QueryPoCConsensusRequest.Fields().ByName("poc_stage_start_block_height")
+}
+
+var _ protoreflect.Message = (*fastReflection_QueryPoCConsensusRequest)(nil)
+
+type fastReflection_QueryPoCConsensusRequest QueryPoCConsensusRequest
+
+func (x *QueryPoCConsensusRequest) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_QueryPoCConsensusRequest)(x)
+}
+
+func (x *QueryPoCConsensusRequest) slowProtoReflect() protoreflect.Message {
+	mi := &file_inference_inference_query_proto_msgTypes[48]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+var _fastReflection_QueryPoCConsensusRequest_messageType fastReflection_QueryPoCConsensusRequest_messageType
+var _ protoreflect.MessageType = fastReflection_QueryPoCConsensusRequest_messageType{}
+
+type fastReflection_QueryPoCConsensusRequest_messageType struct{}
+
+func (x fastReflection_QueryPoCConsensusRequest_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_QueryPoCConsensusRequest)(nil)
+}
+func (x fastReflection_QueryPoCConsensusRequest_messageType) New() protoreflect.Message {
+	return new(fastReflection_QueryPoCConsensusRequest)
+}
+func (x fastReflection_QueryPoCConsensusRequest_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_QueryPoCConsensusRequest
+}
+
+// Descriptor returns message descriptor, which contains only the protobuf
+// type information for the message.
+func (x *fastReflection_QueryPoCConsensusRequest) Descriptor() protoreflect.MessageDescriptor {
+	return md_QueryPoCConsensusRequest
+}
+
+// Type returns the message type, which encapsulates both Go and protobuf
+// type information. If the Go type information is not needed,
+// it is recommended that the message descriptor be used instead.
+func (x *fastReflection_QueryPoCConsensusRequest) Type() protoreflect.MessageType {
+	return _fastReflection_QueryPoCConsensusRequest_messageType
+}
+
+// New returns a newly allocated and mutable empty message.
+func (x *fastReflection_QueryPoCConsensusRequest) New() protoreflect.Message {
+	return new(fastReflection_QueryPoCConsensusRequest)
+}
+
+// Interface unwraps the message reflection interface and
+// returns the underlying ProtoMessage interface.
+func (x *fastReflection_QueryPoCConsensusRequest) Interface() protoreflect.ProtoMessage {
+	return (*QueryPoCConsensusRequest)(x)
+}
+
+// Range iterates over every populated field in an undefined order,
+// calling f for each field descriptor and value encountered.
+// Range returns immediately if f returns false.
+// While iterating, mutating operations may only be performed
+// on the current field descriptor.
+func (x *fastReflection_QueryPoCConsensusRequest) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+	if x.PocStageStartBlockHeight != int64(0) {
+		value := protoreflect.ValueOfInt64(x.PocStageStartBlockHeight)
+		if !f(fd_QueryPoCConsensusRequest_poc_stage_start_block_height, value) {
+			return
+		}
+	}
+}
+
+// Has reports whether a field is populated.
+//
+// Some fields have the property of nullability where it is possible to
+// distinguish between the default value of a field and whether the field
+// was explicitly populated with the default value. Singular message fields,
+// member fields of a oneof, and proto2 scalar fields are nullable. Such
+// fields are populated only if explicitly set.
+//
+// In other cases (aside from the nullable cases above),
+// a proto3 scalar field is populated if it contains a non-zero value, and
+// a repeated field is populated if it is non-empty.
+func (x *fastReflection_QueryPoCConsensusRequest) Has(fd protoreflect.FieldDescriptor) bool {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCConsensusRequest.poc_stage_start_block_height":
+		return x.PocStageStartBlockHeight != int64(0)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCConsensusRequest"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCConsensusRequest does not contain field %s", fd.FullName()))
+	}
+}
+
+// Clear clears the field such that a subsequent Has call reports false.
+//
+// Clearing an extension field clears both the extension type and value
+// associated with the given field number.
+//
+// Clear is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_QueryPoCConsensusRequest) Clear(fd protoreflect.FieldDescriptor) {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCConsensusRequest.poc_stage_start_block_height":
+		x.PocStageStartBlockHeight = int64(0)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCConsensusRequest"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCConsensusRequest does not contain field %s", fd.FullName()))
+	}
+}
+
+// Get retrieves the value for a field.
+//
+// For unpopulated scalars, it returns the default value, where
+// the default value of a bytes scalar is guaranteed to be a copy.
+// For unpopulated composite types, it returns an empty, read-only view
+// of the value; to obtain a mutable reference, use Mutable.
+func (x *fastReflection_QueryPoCConsensusRequest) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+	switch descriptor.FullName() {
+	case "inference.inference.QueryPoCConsensusRequest.poc_stage_start_block_height":
+		value := x.PocStageStartBlockHeight
+		return protoreflect.ValueOfInt64(value)
+	default:
+		if descriptor.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCConsensusRequest"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCConsensusRequest does not contain field %s", descriptor.FullName()))
+	}
+}
+
+// Set stores the value for a field.
+//
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType.
+// When setting a composite type, it is unspecified whether the stored value
+// aliases the source's memory in any way. If the composite value is an
+// empty, read-only value, then it panics.
+//
+// Set is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_QueryPoCConsensusRequest) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCConsensusRequest.poc_stage_start_block_height":
+		x.PocStageStartBlockHeight = value.Int()
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCConsensusRequest"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCConsensusRequest does not contain field %s", fd.FullName()))
+	}
+}
+
+// Mutable returns a mutable reference to a composite type.
+//
+// If the field is unpopulated, it may allocate a composite value.
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType
+// if not already stored.
+// It panics if the field does not contain a composite type.
+//
+// Mutable is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_QueryPoCConsensusRequest) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCConsensusRequest.poc_stage_start_block_height":
+		panic(fmt.Errorf("field poc_stage_start_block_height of message inference.inference.QueryPoCConsensusRequest is not mutable"))
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCConsensusRequest"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCConsensusRequest does not contain field %s", fd.FullName()))
+	}
+}
+
+// NewField returns a new value that is assignable to the field
+// for the given descriptor. For scalars, this returns the default value.
+// For lists, maps, and messages, this returns a new, empty, mutable value.
+func (x *fastReflection_QueryPoCConsensusRequest) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCConsensusRequest.poc_stage_start_block_height":
+		return protoreflect.ValueOfInt64(int64(0))
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCConsensusRequest"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCConsensusRequest does not contain field %s", fd.FullName()))
+	}
+}
+
+// WhichOneof reports which field within the oneof is populated,
+// returning nil if none are populated.
+// It panics if the oneof descriptor does not belong to this message.
+func (x *fastReflection_QueryPoCConsensusRequest) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+	switch d.FullName() {
+	default:
+		panic(fmt.Errorf("%s is not a oneof field in inference.inference.QueryPoCConsensusRequest", d.FullName()))
+	}
+	panic("unreachable")
+}
+
+// GetUnknown retrieves the entire list of unknown fields.
+// The caller may only mutate the contents of the RawFields
+// if the mutated bytes are stored back into the message with SetUnknown.
+func (x *fastReflection_QueryPoCConsensusRequest) GetUnknown() protoreflect.RawFields {
+	return x.unknownFields
+}
+
+// SetUnknown stores an entire list of unknown fields.
+// The raw fields must be syntactically valid according to the wire format.
+// An implementation may panic if this is not the case.
+// Once stored, the caller must not mutate the content of the RawFields.
+// An empty RawFields may be passed to clear the fields.
+//
+// SetUnknown is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_QueryPoCConsensusRequest) SetUnknown(fields protoreflect.RawFields) {
+	x.unknownFields = fields
+}
+
+// IsValid reports whether the message is valid.
+//
+// An invalid message is an empty, read-only value.
+//
+// An invalid message often corresponds to a nil pointer of the concrete
+// message type, but the details are implementation dependent.
+// Validity is not part of the protobuf data model, and may not
+// be preserved in marshaling or other operations.
+func (x *fastReflection_QueryPoCConsensusRequest) IsValid() bool {
+	return x != nil
+}
+
+// ProtoMethods returns optional fastReflectionFeature-path implementations of various operations.
+// This method may return nil.
+//
+// The returned methods type is identical to
+// "google.golang.org/protobuf/runtime/protoiface".Methods.
+// Consult the protoiface package documentation for details.
+func (x *fastReflection_QueryPoCConsensusRequest) ProtoMethods() *protoiface.Methods {
+	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
+		x := input.Message.Interface().(*QueryPoCConsensusRequest)
+		if x == nil {
+			return protoiface.SizeOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Size:              0,
+			}
+		}
+		options := runtime.SizeInputToOptions(input)
+		_ = options
+		var n int
+		var l int
+		_ = l
+		if x.PocStageStartBlockHeight != 0 {
+			n += 1 + runtime.Sov(uint64(x.PocStageStartBlockHeight))
+		}
+		if x.unknownFields != nil {
+			n += len(x.unknownFields)
+		}
+		return protoiface.SizeOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Size:              n,
+		}
+	}
+
+	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
+		x := input.Message.Interface().(*QueryPoCConsensusRequest)
+		if x == nil {
+			return protoiface.MarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Buf:               input.Buf,
+			}, nil
+		}
+		options := runtime.MarshalInputToOptions(input)
+		_ = options
+		size := options.Size(x)
+		dAtA := make([]byte, size)
+		i := len(dAtA)
+		_ = i
+		var l int
+		_ = l
+		if x.unknownFields != nil {
+			i -= len(x.unknownFields)
+			copy(dAtA[i:], x.unknownFields)
+		}
+		if x.PocStageStartBlockHeight != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.PocStageStartBlockHeight))
+			i--
+			dAtA[i] = 0x8
+		}
+		if input.Buf != nil {
+			input.Buf = append(input.Buf, dAtA...)
+		} else {
+			input.Buf = dAtA
+		}
+		return protoiface.MarshalOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Buf:               input.Buf,
+		}, nil
+	}
+	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
+		x := input.Message.Interface().(*QueryPoCConsensusRequest)
+		if x == nil {
+			return protoiface.UnmarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Flags:             input.Flags,
+			}, nil
+		}
+		options := runtime.UnmarshalInputToOptions(input)
+		_ = options
+		dAtA := input.Buf
+		l := len(dAtA)
+		iNdEx := 0
+		for iNdEx < l {
+			preIndex := iNdEx
+			var wire uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				wire |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			fieldNum := int32(wire >> 3)
+			wireType := int(wire & 0x7)
+			if wireType == 4 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: QueryPoCConsensusRequest: wiretype end group for non-group")
+			}
+			if fieldNum <= 0 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: QueryPoCConsensusRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			}
+			switch fieldNum {
+			case 1:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field PocStageStartBlockHeight", wireType)
+				}
+				x.PocStageStartBlockHeight = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.PocStageStartBlockHeight |= int64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+			default:
+				iNdEx = preIndex
+				skippy, err := runtime.Skip(dAtA[iNdEx:])
+				if err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				if (skippy < 0) || (iNdEx+skippy) < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if (iNdEx + skippy) > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if !options.DiscardUnknown {
+					x.unknownFields = append(x.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+				}
+				iNdEx += skippy
+			}
+		}
+
+		if iNdEx > l {
+			return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+		}
+		return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, nil
+	}
+	return &protoiface.Methods{
+		NoUnkeyedLiterals: struct{}{},
+		Flags:             protoiface.SupportMarshalDeterministic | protoiface.SupportUnmarshalDiscardUnknown,
+		Size:              size,
+		Marshal:           marshal,
+		Unmarshal:         unmarshal,
+		Merge:             nil,
+		CheckInitialized:  nil,
+	}
+}
+
+var _ protoreflect.List = (*_QueryPoCConsensusResponse_1_list)(nil)
+
+type _QueryPoCConsensusResponse_1_list struct {
+	list *[]*PoCConsensusEntry
+}
+
+func (x *_QueryPoCConsensusResponse_1_list) Len() int {
+	if x.list == nil {
+		return 0
+	}
+	return len(*x.list)
+}
+
+func (x *_QueryPoCConsensusResponse_1_list) Get(i int) protoreflect.Value {
+	return protoreflect.ValueOfMessage((*x.list)[i].ProtoReflect())
+}
+
+func (x *_QueryPoCConsensusResponse_1_list) Set(i int, value protoreflect.Value) {
+	valueUnwrapped := value.Message()
+	concreteValue := valueUnwrapped.Interface().(*PoCConsensusEntry)
+	(*x.list)[i] = concreteValue
+}
+
+func (x *_QueryPoCConsensusResponse_1_list) Append(value protoreflect.Value) {
+	valueUnwrapped := value.Message()
+	concreteValue := valueUnwrapped.Interface().(*PoCConsensusEntry)
+	*x.list = append(*x.list, concreteValue)
+}
+
+func (x *_QueryPoCConsensusResponse_1_list) AppendMutable() protoreflect.Value {
+	v := new(PoCConsensusEntry)
+	*x.list = append(*x.list, v)
+	return protoreflect.ValueOfMessage(v.ProtoReflect())
+}
+
+func (x *_QueryPoCConsensusResponse_1_list) Truncate(n int) {
+	for i := n; i < len(*x.list); i++ {
+		(*x.list)[i] = nil
+	}
+	*x.list = (*x.list)[:n]
+}
+
+func (x *_QueryPoCConsensusResponse_1_list) NewElement() protoreflect.Value {
+	v := new(PoCConsensusEntry)
+	return protoreflect.ValueOfMessage(v.ProtoReflect())
+}
+
+func (x *_QueryPoCConsensusResponse_1_list) IsValid() bool {
+	return x.list != nil
+}
+
+var (
+	md_QueryPoCConsensusResponse         protoreflect.MessageDescriptor
+	fd_QueryPoCConsensusResponse_entries protoreflect.FieldDescriptor
+)
+
+func init() {
+	file_inference_inference_query_proto_init()
+	md_QueryPoCConsensusResponse = File_inference_inference_query_proto.Messages().ByName("QueryPoCConsensusResponse")
+	fd_QueryPoCConsensusResponse_entries = md_QueryPoCConsensusResponse.Fields().ByName("entries")
+}
+
+var _ protoreflect.Message = (*fastReflection_QueryPoCConsensusResponse)(nil)
+
+type fastReflection_QueryPoCConsensusResponse QueryPoCConsensusResponse
+
+func (x *QueryPoCConsensusResponse) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_QueryPoCConsensusResponse)(x)
+}
+
+func (x *QueryPoCConsensusResponse) slowProtoReflect() protoreflect.Message {
+	mi := &file_inference_inference_query_proto_msgTypes[49]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+var _fastReflection_QueryPoCConsensusResponse_messageType fastReflection_QueryPoCConsensusResponse_messageType
+var _ protoreflect.MessageType = fastReflection_QueryPoCConsensusResponse_messageType{}
+
+type fastReflection_QueryPoCConsensusResponse_messageType struct{}
+
+func (x fastReflection_QueryPoCConsensusResponse_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_QueryPoCConsensusResponse)(nil)
+}
+func (x fastReflection_QueryPoCConsensusResponse_messageType) New() protoreflect.Message {
+	return new(fastReflection_QueryPoCConsensusResponse)
+}
+func (x fastReflection_QueryPoCConsensusResponse_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_QueryPoCConsensusResponse
+}
+
+// Descriptor returns message descriptor, which contains only the protobuf
+// type information for the message.
+func (x *fastReflection_QueryPoCConsensusResponse) Descriptor() protoreflect.MessageDescriptor {
+	return md_QueryPoCConsensusResponse
+}
+
+// Type returns the message type, which encapsulates both Go and protobuf
+// type information. If the Go type information is not needed,
+// it is recommended that the message descriptor be used instead.
+func (x *fastReflection_QueryPoCConsensusResponse) Type() protoreflect.MessageType {
+	return _fastReflection_QueryPoCConsensusResponse_messageType
+}
+
+// New returns a newly allocated and mutable empty message.
+func (x *fastReflection_QueryPoCConsensusResponse) New() protoreflect.Message {
+	return new(fastReflection_QueryPoCConsensusResponse)
+}
+
+// Interface unwraps the message reflection interface and
+// returns the underlying ProtoMessage interface.
+func (x *fastReflection_QueryPoCConsensusResponse) Interface() protoreflect.ProtoMessage {
+	return (*QueryPoCConsensusResponse)(x)
+}
+
+// Range iterates over every populated field in an undefined order,
+// calling f for each field descriptor and value encountered.
+// Range returns immediately if f returns false.
+// While iterating, mutating operations may only be performed
+// on the current field descriptor.
+func (x *fastReflection_QueryPoCConsensusResponse) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+	if len(x.Entries) != 0 {
+		value := protoreflect.ValueOfList(&_QueryPoCConsensusResponse_1_list{list: &x.Entries})
+		if !f(fd_QueryPoCConsensusResponse_entries, value) {
+			return
+		}
+	}
+}
+
+// Has reports whether a field is populated.
+//
+// Some fields have the property of nullability where it is possible to
+// distinguish between the default value of a field and whether the field
+// was explicitly populated with the default value. Singular message fields,
+// member fields of a oneof, and proto2 scalar fields are nullable. Such
+// fields are populated only if explicitly set.
+//
+// In other cases (aside from the nullable cases above),
+// a proto3 scalar field is populated if it contains a non-zero value, and
+// a repeated field is populated if it is non-empty.
+func (x *fastReflection_QueryPoCConsensusResponse) Has(fd protoreflect.FieldDescriptor) bool {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCConsensusResponse.entries":
+		return len(x.Entries) != 0
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCConsensusResponse"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCConsensusResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// Clear clears the field such that a subsequent Has call reports false.
+//
+// Clearing an extension field clears both the extension type and value
+// associated with the given field number.
+//
+// Clear is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_QueryPoCConsensusResponse) Clear(fd protoreflect.FieldDescriptor) {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCConsensusResponse.entries":
+		x.Entries = nil
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCConsensusResponse"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCConsensusResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// Get retrieves the value for a field.
+//
+// For unpopulated scalars, it returns the default value, where
+// the default value of a bytes scalar is guaranteed to be a copy.
+// For unpopulated composite types, it returns an empty, read-only view
+// of the value; to obtain a mutable reference, use Mutable.
+func (x *fastReflection_QueryPoCConsensusResponse) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+	switch descriptor.FullName() {
+	case "inference.inference.QueryPoCConsensusResponse.entries":
+		if len(x.Entries) == 0 {
+			return protoreflect.ValueOfList(&_QueryPoCConsensusResponse_1_list{})
+		}
+		listValue := &_QueryPoCConsensusResponse_1_list{list: &x.Entries}
+		return protoreflect.ValueOfList(listValue)
+	default:
+		if descriptor.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCConsensusResponse"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCConsensusResponse does not contain field %s", descriptor.FullName()))
+	}
+}
+
+// Set stores the value for a field.
+//
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType.
+// When setting a composite type, it is unspecified whether the stored value
+// aliases the source's memory in any way. If the composite value is an
+// empty, read-only value, then it panics.
+//
+// Set is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_QueryPoCConsensusResponse) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCConsensusResponse.entries":
+		lv := value.List()
+		clv := lv.(*_QueryPoCConsensusResponse_1_list)
+		x.Entries = *clv.list
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCConsensusResponse"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCConsensusResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// Mutable returns a mutable reference to a composite type.
+//
+// If the field is unpopulated, it may allocate a composite value.
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType
+// if not already stored.
+// It panics if the field does not contain a composite type.
+//
+// Mutable is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_QueryPoCConsensusResponse) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCConsensusResponse.entries":
+		if x.Entries == nil {
+			x.Entries = []*PoCConsensusEntry{}
+		}
+		value := &_QueryPoCConsensusResponse_1_list{list: &x.Entries}
+		return protoreflect.ValueOfList(value)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCConsensusResponse"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCConsensusResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// NewField returns a new value that is assignable to the field
+// for the given descriptor. For scalars, this returns the default value.
+// For lists, maps, and messages, this returns a new, empty, mutable value.
+func (x *fastReflection_QueryPoCConsensusResponse) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "inference.inference.QueryPoCConsensusResponse.entries":
+		list := []*PoCConsensusEntry{}
+		return protoreflect.ValueOfList(&_QueryPoCConsensusResponse_1_list{list: &list})
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.QueryPoCConsensusResponse"))
+		}
+		panic(fmt.Errorf("message inference.inference.QueryPoCConsensusResponse does not contain field %s", fd.FullName()))
+	}
+}
+
+// WhichOneof reports which field within the oneof is populated,
+// returning nil if none are populated.
+// It panics if the oneof descriptor does not belong to this message.
+func (x *fastReflection_QueryPoCConsensusResponse) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+	switch d.FullName() {
+	default:
+		panic(fmt.Errorf("%s is not a oneof field in inference.inference.QueryPoCConsensusResponse", d.FullName()))
+	}
+	panic("unreachable")
+}
+
+// GetUnknown retrieves the entire list of unknown fields.
+// The caller may only mutate the contents of the RawFields
+// if the mutated bytes are stored back into the message with SetUnknown.
+func (x *fastReflection_QueryPoCConsensusResponse) GetUnknown() protoreflect.RawFields {
+	return x.unknownFields
+}
+
+// SetUnknown stores an entire list of unknown fields.
+// The raw fields must be syntactically valid according to the wire format.
+// An implementation may panic if this is not the case.
+// Once stored, the caller must not mutate the content of the RawFields.
+// An empty RawFields may be passed to clear the fields.
+//
+// SetUnknown is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_QueryPoCConsensusResponse) SetUnknown(fields protoreflect.RawFields) {
+	x.unknownFields = fields
+}
+
+// IsValid reports whether the message is valid.
+//
+// An invalid message is an empty, read-only value.
+//
+// An invalid message often corresponds to a nil pointer of the concrete
+// message type, but the details are implementation dependent.
+// Validity is not part of the protobuf data model, and may not
+// be preserved in marshaling or other operations.
+func (x *fastReflection_QueryPoCConsensusResponse) IsValid() bool {
+	return x != nil
+}
+
+// ProtoMethods returns optional fastReflectionFeature-path implementations of various operations.
+// This method may return nil.
+//
+// The returned methods type is identical to
+// "google.golang.org/protobuf/runtime/protoiface".Methods.
+// Consult the protoiface package documentation for details.
+func (x *fastReflection_QueryPoCConsensusResponse) ProtoMethods() *protoiface.Methods {
+	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
+		x := input.Message.Interface().(*QueryPoCConsensusResponse)
+		if x == nil {
+			return protoiface.SizeOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Size:              0,
+			}
+		}
+		options := runtime.SizeInputToOptions(input)
+		_ = options
+		var n int
+		var l int
+		_ = l
+		if len(x.Entries) > 0 {
+			for _, e := range x.Entries {
+				l = options.Size(e)
+				n += 1 + l + runtime.Sov(uint64(l))
+			}
+		}
+		if x.unknownFields != nil {
+			n += len(x.unknownFields)
+		}
+		return protoiface.SizeOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Size:              n,
+		}
+	}
+
+	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
+		x := input.Message.Interface().(*QueryPoCConsensusResponse)
+		if x == nil {
+			return protoiface.MarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Buf:               input.Buf,
+			}, nil
+		}
+		options := runtime.MarshalInputToOptions(input)
+		_ = options
+		size := options.Size(x)
+		dAtA := make([]byte, size)
+		i := len(dAtA)
+		_ = i
+		var l int
+		_ = l
+		if x.unknownFields != nil {
+			i -= len(x.unknownFields)
+			copy(dAtA[i:], x.unknownFields)
+		}
+		if len(x.Entries) > 0 {
+			for iNdEx := len(x.Entries) - 1; iNdEx >= 0; iNdEx-- {
+				encoded, err := options.Marshal(x.Entries[iNdEx])
+				if err != nil {
+					return protoiface.MarshalOutput{
+						NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+						Buf:               input.Buf,
+					}, err
+				}
+				i -= len(encoded)
+				copy(dAtA[i:], encoded)
+				i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
+				i--
+				dAtA[i] = 0xa
+			}
+		}
+		if input.Buf != nil {
+			input.Buf = append(input.Buf, dAtA...)
+		} else {
+			input.Buf = dAtA
+		}
+		return protoiface.MarshalOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Buf:               input.Buf,
+		}, nil
+	}
+	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
+		x := input.Message.Interface().(*QueryPoCConsensusResponse)
+		if x == nil {
+			return protoiface.UnmarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Flags:             input.Flags,
+			}, nil
+		}
+		options := runtime.UnmarshalInputToOptions(input)
+		_ = options
+		dAtA := input.Buf
+		l := len(dAtA)
+		iNdEx := 0
+		for iNdEx < l {
+			preIndex := iNdEx
+			var wire uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				wire |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			fieldNum := int32(wire >> 3)
+			wireType := int(wire & 0x7)
+			if wireType == 4 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: QueryPoCConsensusResponse: wiretype end group for non-group")
+			}
+			if fieldNum <= 0 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: QueryPoCConsensusResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			}
+			switch fieldNum {
+			case 1:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Entries", wireType)
+				}
+				var msglen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					msglen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if msglen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + msglen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.Entries = append(x.Entries, &PoCConsensusEntry{})
+				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Entries[len(x.Entries)-1]); err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				iNdEx = postIndex
+			default:
+				iNdEx = preIndex
+				skippy, err := runtime.Skip(dAtA[iNdEx:])
+				if err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				if (skippy < 0) || (iNdEx+skippy) < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if (iNdEx + skippy) > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if !options.DiscardUnknown {
+					x.unknownFields = append(x.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+				}
+				iNdEx += skippy
+			}
+		}
+
+		if iNdEx > l {
+			return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+		}
+		return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, nil
+	}
+	return &protoiface.Methods{
+		NoUnkeyedLiterals: struct{}{},
+		Flags:             protoiface.SupportMarshalDeterministic | protoiface.SupportUnmarshalDiscardUnknown,
+		Size:              size,
+		Marshal:           marshal,
+		Unmarshal:         unmarshal,
+		Merge:             nil,
+		CheckInitialized:  nil,
+	}
+}
+
+var (
 	md_QueryGetCurrentEpochRequest protoreflect.MessageDescriptor
 )
 
@@ -21740,7 +24100,7 @@ func (x *QueryGetCurrentEpochRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryGetCurrentEpochRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[45]
+	mi := &file_inference_inference_query_proto_msgTypes[50]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22098,7 +24458,7 @@ func (x *QueryGetCurrentEpochResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryGetCurrentEpochResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[46]
+	mi := &file_inference_inference_query_proto_msgTypes[51]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22500,7 +24860,7 @@ func (x *QueryGetTokenomicsDataRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryGetTokenomicsDataRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[47]
+	mi := &file_inference_inference_query_proto_msgTypes[52]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -22858,7 +25218,7 @@ func (x *QueryGetTokenomicsDataResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryGetTokenomicsDataResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[48]
+	mi := &file_inference_inference_query_proto_msgTypes[53]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -23293,7 +25653,7 @@ func (x *QueryGetUnitOfComputePriceProposalRequest) ProtoReflect() protoreflect.
 }
 
 func (x *QueryGetUnitOfComputePriceProposalRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[49]
+	mi := &file_inference_inference_query_proto_msgTypes[54]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -23715,7 +26075,7 @@ func (x *QueryGetUnitOfComputePriceProposalResponse) ProtoReflect() protoreflect
 }
 
 func (x *QueryGetUnitOfComputePriceProposalResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[50]
+	mi := &file_inference_inference_query_proto_msgTypes[55]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -24194,7 +26554,7 @@ func (x *QueryCurrentEpochGroupDataRequest) ProtoReflect() protoreflect.Message 
 }
 
 func (x *QueryCurrentEpochGroupDataRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[51]
+	mi := &file_inference_inference_query_proto_msgTypes[56]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -24552,7 +26912,7 @@ func (x *QueryCurrentEpochGroupDataResponse) ProtoReflect() protoreflect.Message
 }
 
 func (x *QueryCurrentEpochGroupDataResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[52]
+	mi := &file_inference_inference_query_proto_msgTypes[57]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -24985,7 +27345,7 @@ func (x *QueryPreviousEpochGroupDataRequest) ProtoReflect() protoreflect.Message
 }
 
 func (x *QueryPreviousEpochGroupDataRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[53]
+	mi := &file_inference_inference_query_proto_msgTypes[58]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25343,7 +27703,7 @@ func (x *QueryPreviousEpochGroupDataResponse) ProtoReflect() protoreflect.Messag
 }
 
 func (x *QueryPreviousEpochGroupDataResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[54]
+	mi := &file_inference_inference_query_proto_msgTypes[59]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -25778,7 +28138,7 @@ func (x *QueryModelsAllRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryModelsAllRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[55]
+	mi := &file_inference_inference_query_proto_msgTypes[60]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26266,7 +28626,7 @@ func (x *QueryModelsAllResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryModelsAllResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[56]
+	mi := &file_inference_inference_query_proto_msgTypes[61]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -26786,7 +29146,7 @@ func (x *QueryGetTopMinerRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryGetTopMinerRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[57]
+	mi := &file_inference_inference_query_proto_msgTypes[62]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27206,7 +29566,7 @@ func (x *QueryGetTopMinerResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryGetTopMinerResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[58]
+	mi := &file_inference_inference_query_proto_msgTypes[63]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -27641,7 +30001,7 @@ func (x *QueryAllTopMinerRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryAllTopMinerRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[59]
+	mi := &file_inference_inference_query_proto_msgTypes[64]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28129,7 +30489,7 @@ func (x *QueryAllTopMinerResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryAllTopMinerResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[60]
+	mi := &file_inference_inference_query_proto_msgTypes[65]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -28651,7 +31011,7 @@ func (x *QueryGetInferenceTimeoutRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryGetInferenceTimeoutRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[61]
+	mi := &file_inference_inference_query_proto_msgTypes[66]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29117,7 +31477,7 @@ func (x *QueryGetInferenceTimeoutResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryGetInferenceTimeoutResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[62]
+	mi := &file_inference_inference_query_proto_msgTypes[67]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -29552,7 +31912,7 @@ func (x *QueryAllInferenceTimeoutRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryAllInferenceTimeoutRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[63]
+	mi := &file_inference_inference_query_proto_msgTypes[68]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30040,7 +32400,7 @@ func (x *QueryAllInferenceTimeoutResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryAllInferenceTimeoutResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[64]
+	mi := &file_inference_inference_query_proto_msgTypes[69]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -30562,7 +32922,7 @@ func (x *QueryGetInferenceValidationDetailsRequest) ProtoReflect() protoreflect.
 }
 
 func (x *QueryGetInferenceValidationDetailsRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[65]
+	mi := &file_inference_inference_query_proto_msgTypes[70]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31028,7 +33388,7 @@ func (x *QueryGetInferenceValidationDetailsResponse) ProtoReflect() protoreflect
 }
 
 func (x *QueryGetInferenceValidationDetailsResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[66]
+	mi := &file_inference_inference_query_proto_msgTypes[71]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31463,7 +33823,7 @@ func (x *QueryAllInferenceValidationDetailsRequest) ProtoReflect() protoreflect.
 }
 
 func (x *QueryAllInferenceValidationDetailsRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[67]
+	mi := &file_inference_inference_query_proto_msgTypes[72]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -31951,7 +34311,7 @@ func (x *QueryAllInferenceValidationDetailsResponse) ProtoReflect() protoreflect
 }
 
 func (x *QueryAllInferenceValidationDetailsResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[68]
+	mi := &file_inference_inference_query_proto_msgTypes[73]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -32519,7 +34879,7 @@ func (x *QueryGetInferenceValidationParametersRequest) ProtoReflect() protorefle
 }
 
 func (x *QueryGetInferenceValidationParametersRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[69]
+	mi := &file_inference_inference_query_proto_msgTypes[74]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33123,7 +35483,7 @@ func (x *QueryGetInferenceValidationParametersResponse) ProtoReflect() protorefl
 }
 
 func (x *QueryGetInferenceValidationParametersResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[70]
+	mi := &file_inference_inference_query_proto_msgTypes[75]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -33776,7 +36136,7 @@ func (x *ValidatorPower) ProtoReflect() protoreflect.Message {
 }
 
 func (x *ValidatorPower) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[71]
+	mi := &file_inference_inference_query_proto_msgTypes[76]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34226,7 +36586,7 @@ func (x *QueryEpochPerformanceSummaryByEpochRequest) ProtoReflect() protoreflect
 }
 
 func (x *QueryEpochPerformanceSummaryByEpochRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[72]
+	mi := &file_inference_inference_query_proto_msgTypes[77]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -34681,7 +37041,7 @@ func (x *QueryEpochPerformanceSummaryByEpochResponse) ProtoReflect() protoreflec
 }
 
 func (x *QueryEpochPerformanceSummaryByEpochResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[73]
+	mi := &file_inference_inference_query_proto_msgTypes[78]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35126,7 +37486,7 @@ func (x *QueryEpochPerformanceSummaryByParticipantRequest) ProtoReflect() protor
 }
 
 func (x *QueryEpochPerformanceSummaryByParticipantRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[74]
+	mi := &file_inference_inference_query_proto_msgTypes[79]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -35592,7 +37952,7 @@ func (x *QueryEpochPerformanceSummaryByParticipantResponse) ProtoReflect() proto
 }
 
 func (x *QueryEpochPerformanceSummaryByParticipantResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[75]
+	mi := &file_inference_inference_query_proto_msgTypes[80]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -36027,7 +38387,7 @@ func (x *QueryAllEpochPerformanceSummaryRequest) ProtoReflect() protoreflect.Mes
 }
 
 func (x *QueryAllEpochPerformanceSummaryRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[76]
+	mi := &file_inference_inference_query_proto_msgTypes[81]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -36515,7 +38875,7 @@ func (x *QueryAllEpochPerformanceSummaryResponse) ProtoReflect() protoreflect.Me
 }
 
 func (x *QueryAllEpochPerformanceSummaryResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[77]
+	mi := &file_inference_inference_query_proto_msgTypes[82]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37035,7 +39395,7 @@ func (x *QueryTrainingTaskRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryTrainingTaskRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[78]
+	mi := &file_inference_inference_query_proto_msgTypes[83]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37439,7 +39799,7 @@ func (x *QueryTrainingTaskResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryTrainingTaskResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[79]
+	mi := &file_inference_inference_query_proto_msgTypes[84]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -37874,7 +40234,7 @@ func (x *QueryHardwareNodesRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryHardwareNodesRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[80]
+	mi := &file_inference_inference_query_proto_msgTypes[85]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38294,7 +40654,7 @@ func (x *QueryHardwareNodesResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryHardwareNodesResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[81]
+	mi := &file_inference_inference_query_proto_msgTypes[86]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -38727,7 +41087,7 @@ func (x *QueryHardwareNodesAllRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryHardwareNodesAllRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[82]
+	mi := &file_inference_inference_query_proto_msgTypes[87]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39136,7 +41496,7 @@ func (x *QueryHardwareNodesAllResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryHardwareNodesAllResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[83]
+	mi := &file_inference_inference_query_proto_msgTypes[88]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39577,7 +41937,7 @@ func (x *QueryQueuedTrainingTasksRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryQueuedTrainingTasksRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[84]
+	mi := &file_inference_inference_query_proto_msgTypes[89]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -39986,7 +42346,7 @@ func (x *QueryQueuedTrainingTasksResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryQueuedTrainingTasksResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[85]
+	mi := &file_inference_inference_query_proto_msgTypes[90]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40427,7 +42787,7 @@ func (x *QueryTrainingTaskAllRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryTrainingTaskAllRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[86]
+	mi := &file_inference_inference_query_proto_msgTypes[91]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -40836,7 +43196,7 @@ func (x *QueryTrainingTaskAllResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryTrainingTaskAllResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[87]
+	mi := &file_inference_inference_query_proto_msgTypes[92]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41279,7 +43639,7 @@ func (x *QueryGetParticipantCurrentStatsRequest) ProtoReflect() protoreflect.Mes
 }
 
 func (x *QueryGetParticipantCurrentStatsRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[88]
+	mi := &file_inference_inference_query_proto_msgTypes[93]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -41701,7 +44061,7 @@ func (x *QueryGetParticipantCurrentStatsResponse) ProtoReflect() protoreflect.Me
 }
 
 func (x *QueryGetParticipantCurrentStatsResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[89]
+	mi := &file_inference_inference_query_proto_msgTypes[94]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42149,7 +44509,7 @@ func (x *QueryGetAllParticipantCurrentStatsRequest) ProtoReflect() protoreflect.
 }
 
 func (x *QueryGetAllParticipantCurrentStatsRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[90]
+	mi := &file_inference_inference_query_proto_msgTypes[95]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -42562,7 +44922,7 @@ func (x *QueryGetAllParticipantCurrentStatsResponse) ProtoReflect() protoreflect
 }
 
 func (x *QueryGetAllParticipantCurrentStatsResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[91]
+	mi := &file_inference_inference_query_proto_msgTypes[96]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -43105,7 +45465,7 @@ func (x *ParticipantCurrentStats) ProtoReflect() protoreflect.Message {
 }
 
 func (x *ParticipantCurrentStats) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[92]
+	mi := &file_inference_inference_query_proto_msgTypes[97]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -43719,7 +46079,7 @@ func (x *ParticipantFullStats) ProtoReflect() protoreflect.Message {
 }
 
 func (x *ParticipantFullStats) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[93]
+	mi := &file_inference_inference_query_proto_msgTypes[98]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -44383,7 +46743,7 @@ func (x *QueryParticipantsFullStatsRequest) ProtoReflect() protoreflect.Message 
 }
 
 func (x *QueryParticipantsFullStatsRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[94]
+	mi := &file_inference_inference_query_proto_msgTypes[99]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -44792,7 +47152,7 @@ func (x *QueryParticipantsFullStatsResponse) ProtoReflect() protoreflect.Message
 }
 
 func (x *QueryParticipantsFullStatsResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[95]
+	mi := &file_inference_inference_query_proto_msgTypes[100]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -45239,7 +47599,7 @@ func (x *QueryStatsByTimePeriodByDeveloperRequest) ProtoReflect() protoreflect.M
 }
 
 func (x *QueryStatsByTimePeriodByDeveloperRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[96]
+	mi := &file_inference_inference_query_proto_msgTypes[101]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -45802,7 +48162,7 @@ func (x *QueryStatsByTimePeriodByDeveloperResponse) ProtoReflect() protoreflect.
 }
 
 func (x *QueryStatsByTimePeriodByDeveloperResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[97]
+	mi := &file_inference_inference_query_proto_msgTypes[102]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -46247,7 +48607,7 @@ func (x *QueryStatsByDeveloperAndEpochBackwardsRequest) ProtoReflect() protorefl
 }
 
 func (x *QueryStatsByDeveloperAndEpochBackwardsRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[98]
+	mi := &file_inference_inference_query_proto_msgTypes[103]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -46713,7 +49073,7 @@ func (x *QueryInferencesAndTokensStatsByEpochsBackwardsRequest) ProtoReflect() p
 }
 
 func (x *QueryInferencesAndTokensStatsByEpochsBackwardsRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[99]
+	mi := &file_inference_inference_query_proto_msgTypes[104]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -47119,7 +49479,7 @@ func (x *QueryInferencesAndTokensStatsByTimePeriodRequest) ProtoReflect() protor
 }
 
 func (x *QueryInferencesAndTokensStatsByTimePeriodRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[100]
+	mi := &file_inference_inference_query_proto_msgTypes[105]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -47571,7 +49931,7 @@ func (x *QueryInferencesAndTokensStatsByModelsRequest) ProtoReflect() protorefle
 }
 
 func (x *QueryInferencesAndTokensStatsByModelsRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[101]
+	mi := &file_inference_inference_query_proto_msgTypes[106]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -48025,7 +50385,7 @@ func (x *ModelStats) ProtoReflect() protoreflect.Message {
 }
 
 func (x *ModelStats) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[102]
+	mi := &file_inference_inference_query_proto_msgTypes[107]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -48588,7 +50948,7 @@ func (x *QueryInferencesAndTokensStatsByModelsResponse) ProtoReflect() protorefl
 }
 
 func (x *QueryInferencesAndTokensStatsByModelsResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[103]
+	mi := &file_inference_inference_query_proto_msgTypes[108]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -49035,7 +51395,7 @@ func (x *QueryInferencesAndTokensStatsResponse) ProtoReflect() protoreflect.Mess
 }
 
 func (x *QueryInferencesAndTokensStatsResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[104]
+	mi := &file_inference_inference_query_proto_msgTypes[109]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -49529,7 +51889,7 @@ func (x *QueryCountAllParticipantsRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryCountAllParticipantsRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[105]
+	mi := &file_inference_inference_query_proto_msgTypes[110]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -49887,7 +52247,7 @@ func (x *QueryCountAllParticipantsResponse) ProtoReflect() protoreflect.Message 
 }
 
 func (x *QueryCountAllParticipantsResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[106]
+	mi := &file_inference_inference_query_proto_msgTypes[111]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -50289,7 +52649,7 @@ func (x *QueryDebugStatsRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryDebugStatsRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[107]
+	mi := &file_inference_inference_query_proto_msgTypes[112]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -50751,7 +53111,7 @@ func (x *QueryDebugStatsResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryDebugStatsResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[108]
+	mi := &file_inference_inference_query_proto_msgTypes[113]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -51332,7 +53692,7 @@ func (x *QueryDebugStatsResponse_TemporaryTimeStat) ProtoReflect() protoreflect.
 }
 
 func (x *QueryDebugStatsResponse_TemporaryTimeStat) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[174]
+	mi := &file_inference_inference_query_proto_msgTypes[179]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -51890,7 +54250,7 @@ func (x *QueryDebugStatsResponse_TemporaryEpochStat) ProtoReflect() protoreflect
 }
 
 func (x *QueryDebugStatsResponse_TemporaryEpochStat) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[175]
+	mi := &file_inference_inference_query_proto_msgTypes[180]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -52393,7 +54753,7 @@ func (x *QueryGetMinimumValidationAverageRequest) ProtoReflect() protoreflect.Me
 }
 
 func (x *QueryGetMinimumValidationAverageRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[109]
+	mi := &file_inference_inference_query_proto_msgTypes[114]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -52755,7 +55115,7 @@ func (x *QueryGetMinimumValidationAverageResponse) ProtoReflect() protoreflect.M
 }
 
 func (x *QueryGetMinimumValidationAverageResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[110]
+	mi := &file_inference_inference_query_proto_msgTypes[115]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -53265,7 +55625,7 @@ func (x *QueryInProgressTrainingTasksRequest) ProtoReflect() protoreflect.Messag
 }
 
 func (x *QueryInProgressTrainingTasksRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[111]
+	mi := &file_inference_inference_query_proto_msgTypes[116]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -53674,7 +56034,7 @@ func (x *QueryInProgressTrainingTasksResponse) ProtoReflect() protoreflect.Messa
 }
 
 func (x *QueryInProgressTrainingTasksResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[112]
+	mi := &file_inference_inference_query_proto_msgTypes[117]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -54117,7 +56477,7 @@ func (x *QueryGetPartialUpgradeRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryGetPartialUpgradeRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[113]
+	mi := &file_inference_inference_query_proto_msgTypes[118]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -54521,7 +56881,7 @@ func (x *QueryGetPartialUpgradeResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryGetPartialUpgradeResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[114]
+	mi := &file_inference_inference_query_proto_msgTypes[119]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -54956,7 +57316,7 @@ func (x *QueryAllPartialUpgradeRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryAllPartialUpgradeRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[115]
+	mi := &file_inference_inference_query_proto_msgTypes[120]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -55444,7 +57804,7 @@ func (x *QueryAllPartialUpgradeResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryAllPartialUpgradeResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[116]
+	mi := &file_inference_inference_query_proto_msgTypes[121]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -55966,7 +58326,7 @@ func (x *QueryTrainingKvRecordRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryTrainingKvRecordRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[117]
+	mi := &file_inference_inference_query_proto_msgTypes[122]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -56432,7 +58792,7 @@ func (x *QueryTrainingKvRecordResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryTrainingKvRecordResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[118]
+	mi := &file_inference_inference_query_proto_msgTypes[123]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -56867,7 +59227,7 @@ func (x *QueryListTrainingKvRecordKeysRequest) ProtoReflect() protoreflect.Messa
 }
 
 func (x *QueryListTrainingKvRecordKeysRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[119]
+	mi := &file_inference_inference_query_proto_msgTypes[124]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -57317,7 +59677,7 @@ func (x *QueryListTrainingKvRecordKeysResponse) ProtoReflect() protoreflect.Mess
 }
 
 func (x *QueryListTrainingKvRecordKeysResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[120]
+	mi := &file_inference_inference_query_proto_msgTypes[125]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -57751,7 +60111,7 @@ func (x *QueryTrainingBarrierRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryTrainingBarrierRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[121]
+	mi := &file_inference_inference_query_proto_msgTypes[126]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -58186,7 +60546,7 @@ func (x *QueryTrainingBarrierResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryTrainingBarrierResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[122]
+	mi := &file_inference_inference_query_proto_msgTypes[127]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -58621,7 +60981,7 @@ func (x *QueryTrainingAliveNodesRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryTrainingAliveNodesRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[123]
+	mi := &file_inference_inference_query_proto_msgTypes[128]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -59056,7 +61416,7 @@ func (x *QueryTrainingAliveNodesResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryTrainingAliveNodesResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[124]
+	mi := &file_inference_inference_query_proto_msgTypes[129]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -59495,7 +61855,7 @@ func (x *QueryGetBridgeTransactionRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryGetBridgeTransactionRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[125]
+	mi := &file_inference_inference_query_proto_msgTypes[130]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -60090,7 +62450,7 @@ func (x *QueryGetBridgeTransactionResponse) ProtoReflect() protoreflect.Message 
 }
 
 func (x *QueryGetBridgeTransactionResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[126]
+	mi := &file_inference_inference_query_proto_msgTypes[131]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -60533,7 +62893,7 @@ func (x *QueryAllBridgeTransactionsRequest) ProtoReflect() protoreflect.Message 
 }
 
 func (x *QueryAllBridgeTransactionsRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[127]
+	mi := &file_inference_inference_query_proto_msgTypes[132]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -61021,7 +63381,7 @@ func (x *QueryAllBridgeTransactionsResponse) ProtoReflect() protoreflect.Message
 }
 
 func (x *QueryAllBridgeTransactionsResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[128]
+	mi := &file_inference_inference_query_proto_msgTypes[133]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -61549,7 +63909,7 @@ func (x *WrappedTokenBalance) ProtoReflect() protoreflect.Message {
 }
 
 func (x *WrappedTokenBalance) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[129]
+	mi := &file_inference_inference_query_proto_msgTypes[134]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -62232,7 +64592,7 @@ func (x *QueryWrappedTokenBalancesRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryWrappedTokenBalancesRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[130]
+	mi := &file_inference_inference_query_proto_msgTypes[135]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -62703,7 +65063,7 @@ func (x *QueryWrappedTokenBalancesResponse) ProtoReflect() protoreflect.Message 
 }
 
 func (x *QueryWrappedTokenBalancesResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[131]
+	mi := &file_inference_inference_query_proto_msgTypes[136]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -63146,7 +65506,7 @@ func (x *QueryBridgeAddressesByChainRequest) ProtoReflect() protoreflect.Message
 }
 
 func (x *QueryBridgeAddressesByChainRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[132]
+	mi := &file_inference_inference_query_proto_msgTypes[137]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -63617,7 +65977,7 @@ func (x *QueryBridgeAddressesByChainResponse) ProtoReflect() protoreflect.Messag
 }
 
 func (x *QueryBridgeAddressesByChainResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[133]
+	mi := &file_inference_inference_query_proto_msgTypes[138]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -64060,7 +66420,7 @@ func (x *QueryValidateWrappedTokenForTradeRequest) ProtoReflect() protoreflect.M
 }
 
 func (x *QueryValidateWrappedTokenForTradeRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[134]
+	mi := &file_inference_inference_query_proto_msgTypes[139]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -64480,7 +66840,7 @@ func (x *QueryValidateWrappedTokenForTradeResponse) ProtoReflect() protoreflect.
 }
 
 func (x *QueryValidateWrappedTokenForTradeResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[135]
+	mi := &file_inference_inference_query_proto_msgTypes[140]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -64888,7 +67248,7 @@ func (x *QueryLiquidityPoolRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryLiquidityPoolRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[136]
+	mi := &file_inference_inference_query_proto_msgTypes[141]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -65250,7 +67610,7 @@ func (x *QueryLiquidityPoolResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryLiquidityPoolResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[137]
+	mi := &file_inference_inference_query_proto_msgTypes[142]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -65760,7 +68120,7 @@ func (x *QueryEpochInfoRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryEpochInfoRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[138]
+	mi := &file_inference_inference_query_proto_msgTypes[143]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -66126,7 +68486,7 @@ func (x *QueryEpochInfoResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryEpochInfoResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[139]
+	mi := &file_inference_inference_query_proto_msgTypes[144]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -66813,7 +69173,7 @@ func (x *QueryCountPoCbatchesAtHeightRequest) ProtoReflect() protoreflect.Messag
 }
 
 func (x *QueryCountPoCbatchesAtHeightRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[140]
+	mi := &file_inference_inference_query_proto_msgTypes[145]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -67217,7 +69577,7 @@ func (x *QueryCountPoCbatchesAtHeightResponse) ProtoReflect() protoreflect.Messa
 }
 
 func (x *QueryCountPoCbatchesAtHeightResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[141]
+	mi := &file_inference_inference_query_proto_msgTypes[146]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -67621,7 +69981,7 @@ func (x *QueryCountPoCvalidationsAtHeightRequest) ProtoReflect() protoreflect.Me
 }
 
 func (x *QueryCountPoCvalidationsAtHeightRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[142]
+	mi := &file_inference_inference_query_proto_msgTypes[147]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -68025,7 +70385,7 @@ func (x *QueryCountPoCvalidationsAtHeightResponse) ProtoReflect() protoreflect.M
 }
 
 func (x *QueryCountPoCvalidationsAtHeightResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[143]
+	mi := &file_inference_inference_query_proto_msgTypes[148]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -68427,7 +70787,7 @@ func (x *QueryApprovedTokensForTradeRequest) ProtoReflect() protoreflect.Message
 }
 
 func (x *QueryApprovedTokensForTradeRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[144]
+	mi := &file_inference_inference_query_proto_msgTypes[149]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -68836,7 +71196,7 @@ func (x *QueryApprovedTokensForTradeResponse) ProtoReflect() protoreflect.Messag
 }
 
 func (x *QueryApprovedTokensForTradeResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[145]
+	mi := &file_inference_inference_query_proto_msgTypes[150]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -69279,7 +71639,7 @@ func (x *QueryGetModelPerTokenPriceRequest) ProtoReflect() protoreflect.Message 
 }
 
 func (x *QueryGetModelPerTokenPriceRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[146]
+	mi := &file_inference_inference_query_proto_msgTypes[151]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -69701,7 +72061,7 @@ func (x *QueryGetModelPerTokenPriceResponse) ProtoReflect() protoreflect.Message
 }
 
 func (x *QueryGetModelPerTokenPriceResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[147]
+	mi := &file_inference_inference_query_proto_msgTypes[152]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -70155,7 +72515,7 @@ func (x *QueryGetAllModelPerTokenPricesRequest) ProtoReflect() protoreflect.Mess
 }
 
 func (x *QueryGetAllModelPerTokenPricesRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[148]
+	mi := &file_inference_inference_query_proto_msgTypes[153]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -70515,7 +72875,7 @@ func (x *ModelPrice) ProtoReflect() protoreflect.Message {
 }
 
 func (x *ModelPrice) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[149]
+	mi := &file_inference_inference_query_proto_msgTypes[154]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -71032,7 +73392,7 @@ func (x *QueryGetAllModelPerTokenPricesResponse) ProtoReflect() protoreflect.Mes
 }
 
 func (x *QueryGetAllModelPerTokenPricesResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[150]
+	mi := &file_inference_inference_query_proto_msgTypes[155]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -71475,7 +73835,7 @@ func (x *QueryGetModelCapacityRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryGetModelCapacityRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[151]
+	mi := &file_inference_inference_query_proto_msgTypes[156]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -71897,7 +74257,7 @@ func (x *QueryGetModelCapacityResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryGetModelCapacityResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[152]
+	mi := &file_inference_inference_query_proto_msgTypes[157]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -72351,7 +74711,7 @@ func (x *QueryGetAllModelCapacitiesRequest) ProtoReflect() protoreflect.Message 
 }
 
 func (x *QueryGetAllModelCapacitiesRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[153]
+	mi := &file_inference_inference_query_proto_msgTypes[158]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -72760,7 +75120,7 @@ func (x *QueryGetAllModelCapacitiesResponse) ProtoReflect() protoreflect.Message
 }
 
 func (x *QueryGetAllModelCapacitiesResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[154]
+	mi := &file_inference_inference_query_proto_msgTypes[159]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -73205,7 +75565,7 @@ func (x *ModelCapacity) ProtoReflect() protoreflect.Message {
 }
 
 func (x *ModelCapacity) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[155]
+	mi := &file_inference_inference_query_proto_msgTypes[160]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -73673,7 +76033,7 @@ func (x *QueryGranteesByMessageTypeRequest) ProtoReflect() protoreflect.Message 
 }
 
 func (x *QueryGranteesByMessageTypeRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[156]
+	mi := &file_inference_inference_query_proto_msgTypes[161]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -74157,7 +76517,7 @@ func (x *Grantee) ProtoReflect() protoreflect.Message {
 }
 
 func (x *Grantee) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[157]
+	mi := &file_inference_inference_query_proto_msgTypes[162]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -74690,7 +77050,7 @@ func (x *QueryGranteesByMessageTypeResponse) ProtoReflect() protoreflect.Message
 }
 
 func (x *QueryGranteesByMessageTypeResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[158]
+	mi := &file_inference_inference_query_proto_msgTypes[163]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -75133,7 +77493,7 @@ func (x *QueryTrainingAllowListRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryTrainingAllowListRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[159]
+	mi := &file_inference_inference_query_proto_msgTypes[164]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -75583,7 +77943,7 @@ func (x *QueryTrainingAllowListResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryTrainingAllowListResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[160]
+	mi := &file_inference_inference_query_proto_msgTypes[165]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -76015,7 +78375,7 @@ func (x *QueryParticipantAllowListRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryParticipantAllowListRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[161]
+	mi := &file_inference_inference_query_proto_msgTypes[166]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -76419,7 +78779,7 @@ func (x *QueryParticipantAllowListResponse) ProtoReflect() protoreflect.Message 
 }
 
 func (x *QueryParticipantAllowListResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[162]
+	mi := &file_inference_inference_query_proto_msgTypes[167]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -76851,7 +79211,7 @@ func (x *QueryGetMLNodeVersionRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryGetMLNodeVersionRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[163]
+	mi := &file_inference_inference_query_proto_msgTypes[168]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -77209,7 +79569,7 @@ func (x *QueryGetMLNodeVersionResponse) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryGetMLNodeVersionResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[164]
+	mi := &file_inference_inference_query_proto_msgTypes[169]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -77644,7 +80004,7 @@ func (x *QueryExcludedParticipantsRequest) ProtoReflect() protoreflect.Message {
 }
 
 func (x *QueryExcludedParticipantsRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[165]
+	mi := &file_inference_inference_query_proto_msgTypes[170]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -78099,7 +80459,7 @@ func (x *QueryExcludedParticipantsResponse) ProtoReflect() protoreflect.Message 
 }
 
 func (x *QueryExcludedParticipantsResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[166]
+	mi := &file_inference_inference_query_proto_msgTypes[171]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -78540,7 +80900,7 @@ func (x *QueryActiveConfirmationPoCEventRequest) ProtoReflect() protoreflect.Mes
 }
 
 func (x *QueryActiveConfirmationPoCEventRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[167]
+	mi := &file_inference_inference_query_proto_msgTypes[172]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -78900,7 +81260,7 @@ func (x *QueryActiveConfirmationPoCEventResponse) ProtoReflect() protoreflect.Me
 }
 
 func (x *QueryActiveConfirmationPoCEventResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[168]
+	mi := &file_inference_inference_query_proto_msgTypes[173]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -79387,7 +81747,7 @@ func (x *QueryConfirmationPoCEventsRequest) ProtoReflect() protoreflect.Message 
 }
 
 func (x *QueryConfirmationPoCEventsRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[169]
+	mi := &file_inference_inference_query_proto_msgTypes[174]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -79842,7 +82202,7 @@ func (x *QueryConfirmationPoCEventsResponse) ProtoReflect() protoreflect.Message
 }
 
 func (x *QueryConfirmationPoCEventsResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[170]
+	mi := &file_inference_inference_query_proto_msgTypes[175]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -80338,7 +82698,7 @@ func (x *ParticipantWithBalance) ProtoReflect() protoreflect.Message {
 }
 
 func (x *ParticipantWithBalance) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[171]
+	mi := &file_inference_inference_query_proto_msgTypes[176]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -80858,7 +83218,7 @@ func (x *QueryParticipantsWithBalancesRequest) ProtoReflect() protoreflect.Messa
 }
 
 func (x *QueryParticipantsWithBalancesRequest) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[172]
+	mi := &file_inference_inference_query_proto_msgTypes[177]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -81348,7 +83708,7 @@ func (x *QueryParticipantsWithBalancesResponse) ProtoReflect() protoreflect.Mess
 }
 
 func (x *QueryParticipantsWithBalancesResponse) slowProtoReflect() protoreflect.Message {
-	mi := &file_inference_inference_query_proto_msgTypes[173]
+	mi := &file_inference_inference_query_proto_msgTypes[178]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -83693,6 +86053,205 @@ func (x *MLNodeWeightDistributionWithAddress) GetWeights() []*MLNodeWeight {
 	return nil
 }
 
+type QueryPoCObservationsRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	PocStageStartBlockHeight int64 `protobuf:"varint,1,opt,name=poc_stage_start_block_height,json=pocStageStartBlockHeight,proto3" json:"poc_stage_start_block_height,omitempty"`
+}
+
+func (x *QueryPoCObservationsRequest) Reset() {
+	*x = QueryPoCObservationsRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_inference_inference_query_proto_msgTypes[45]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *QueryPoCObservationsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryPoCObservationsRequest) ProtoMessage() {}
+
+// Deprecated: Use QueryPoCObservationsRequest.ProtoReflect.Descriptor instead.
+func (*QueryPoCObservationsRequest) Descriptor() ([]byte, []int) {
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *QueryPoCObservationsRequest) GetPocStageStartBlockHeight() int64 {
+	if x != nil {
+		return x.PocStageStartBlockHeight
+	}
+	return 0
+}
+
+type QueryPoCObservationsResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Observations []*PoCObservation `protobuf:"bytes,1,rep,name=observations,proto3" json:"observations,omitempty"`
+}
+
+func (x *QueryPoCObservationsResponse) Reset() {
+	*x = QueryPoCObservationsResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_inference_inference_query_proto_msgTypes[46]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *QueryPoCObservationsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryPoCObservationsResponse) ProtoMessage() {}
+
+// Deprecated: Use QueryPoCObservationsResponse.ProtoReflect.Descriptor instead.
+func (*QueryPoCObservationsResponse) Descriptor() ([]byte, []int) {
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *QueryPoCObservationsResponse) GetObservations() []*PoCObservation {
+	if x != nil {
+		return x.Observations
+	}
+	return nil
+}
+
+type PoCConsensusEntry struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Participant     string `protobuf:"bytes,1,opt,name=participant,proto3" json:"participant,omitempty"`
+	AgreedCount     uint32 `protobuf:"varint,2,opt,name=agreed_count,json=agreedCount,proto3" json:"agreed_count,omitempty"`
+	TotalValidators int32  `protobuf:"varint,3,opt,name=total_validators,json=totalValidators,proto3" json:"total_validators,omitempty"`
+	AgreeingCount   int32  `protobuf:"varint,4,opt,name=agreeing_count,json=agreeingCount,proto3" json:"agreeing_count,omitempty"`
+}
+
+func (x *PoCConsensusEntry) Reset() {
+	*x = PoCConsensusEntry{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_inference_inference_query_proto_msgTypes[47]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *PoCConsensusEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PoCConsensusEntry) ProtoMessage() {}
+
+// Deprecated: Use PoCConsensusEntry.ProtoReflect.Descriptor instead.
+func (*PoCConsensusEntry) Descriptor() ([]byte, []int) {
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *PoCConsensusEntry) GetParticipant() string {
+	if x != nil {
+		return x.Participant
+	}
+	return ""
+}
+
+func (x *PoCConsensusEntry) GetAgreedCount() uint32 {
+	if x != nil {
+		return x.AgreedCount
+	}
+	return 0
+}
+
+func (x *PoCConsensusEntry) GetTotalValidators() int32 {
+	if x != nil {
+		return x.TotalValidators
+	}
+	return 0
+}
+
+func (x *PoCConsensusEntry) GetAgreeingCount() int32 {
+	if x != nil {
+		return x.AgreeingCount
+	}
+	return 0
+}
+
+type QueryPoCConsensusRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	PocStageStartBlockHeight int64 `protobuf:"varint,1,opt,name=poc_stage_start_block_height,json=pocStageStartBlockHeight,proto3" json:"poc_stage_start_block_height,omitempty"`
+}
+
+func (x *QueryPoCConsensusRequest) Reset() {
+	*x = QueryPoCConsensusRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_inference_inference_query_proto_msgTypes[48]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *QueryPoCConsensusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryPoCConsensusRequest) ProtoMessage() {}
+
+// Deprecated: Use QueryPoCConsensusRequest.ProtoReflect.Descriptor instead.
+func (*QueryPoCConsensusRequest) Descriptor() ([]byte, []int) {
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *QueryPoCConsensusRequest) GetPocStageStartBlockHeight() int64 {
+	if x != nil {
+		return x.PocStageStartBlockHeight
+	}
+	return 0
+}
+
+type QueryPoCConsensusResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Entries []*PoCConsensusEntry `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
+}
+
+func (x *QueryPoCConsensusResponse) Reset() {
+	*x = QueryPoCConsensusResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_inference_inference_query_proto_msgTypes[49]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *QueryPoCConsensusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueryPoCConsensusResponse) ProtoMessage() {}
+
+// Deprecated: Use QueryPoCConsensusResponse.ProtoReflect.Descriptor instead.
+func (*QueryPoCConsensusResponse) Descriptor() ([]byte, []int) {
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *QueryPoCConsensusResponse) GetEntries() []*PoCConsensusEntry {
+	if x != nil {
+		return x.Entries
+	}
+	return nil
+}
+
 type QueryGetCurrentEpochRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -83702,7 +86261,7 @@ type QueryGetCurrentEpochRequest struct {
 func (x *QueryGetCurrentEpochRequest) Reset() {
 	*x = QueryGetCurrentEpochRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[45]
+		mi := &file_inference_inference_query_proto_msgTypes[50]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -83716,7 +86275,7 @@ func (*QueryGetCurrentEpochRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryGetCurrentEpochRequest.ProtoReflect.Descriptor instead.
 func (*QueryGetCurrentEpochRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{45}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{50}
 }
 
 // DEPRECATED: ambiguous query, re-check what it expect as epoch: id, poc_start_block_height, or epoch_group_id
@@ -83731,7 +86290,7 @@ type QueryGetCurrentEpochResponse struct {
 func (x *QueryGetCurrentEpochResponse) Reset() {
 	*x = QueryGetCurrentEpochResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[46]
+		mi := &file_inference_inference_query_proto_msgTypes[51]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -83745,7 +86304,7 @@ func (*QueryGetCurrentEpochResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryGetCurrentEpochResponse.ProtoReflect.Descriptor instead.
 func (*QueryGetCurrentEpochResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{46}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *QueryGetCurrentEpochResponse) GetEpoch() uint64 {
@@ -83764,7 +86323,7 @@ type QueryGetTokenomicsDataRequest struct {
 func (x *QueryGetTokenomicsDataRequest) Reset() {
 	*x = QueryGetTokenomicsDataRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[47]
+		mi := &file_inference_inference_query_proto_msgTypes[52]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -83778,7 +86337,7 @@ func (*QueryGetTokenomicsDataRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryGetTokenomicsDataRequest.ProtoReflect.Descriptor instead.
 func (*QueryGetTokenomicsDataRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{47}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{52}
 }
 
 type QueryGetTokenomicsDataResponse struct {
@@ -83792,7 +86351,7 @@ type QueryGetTokenomicsDataResponse struct {
 func (x *QueryGetTokenomicsDataResponse) Reset() {
 	*x = QueryGetTokenomicsDataResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[48]
+		mi := &file_inference_inference_query_proto_msgTypes[53]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -83806,7 +86365,7 @@ func (*QueryGetTokenomicsDataResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryGetTokenomicsDataResponse.ProtoReflect.Descriptor instead.
 func (*QueryGetTokenomicsDataResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{48}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *QueryGetTokenomicsDataResponse) GetTokenomicsData() *TokenomicsData {
@@ -83827,7 +86386,7 @@ type QueryGetUnitOfComputePriceProposalRequest struct {
 func (x *QueryGetUnitOfComputePriceProposalRequest) Reset() {
 	*x = QueryGetUnitOfComputePriceProposalRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[49]
+		mi := &file_inference_inference_query_proto_msgTypes[54]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -83841,7 +86400,7 @@ func (*QueryGetUnitOfComputePriceProposalRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryGetUnitOfComputePriceProposalRequest.ProtoReflect.Descriptor instead.
 func (*QueryGetUnitOfComputePriceProposalRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{49}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *QueryGetUnitOfComputePriceProposalRequest) GetParticipant() string {
@@ -83863,7 +86422,7 @@ type QueryGetUnitOfComputePriceProposalResponse struct {
 func (x *QueryGetUnitOfComputePriceProposalResponse) Reset() {
 	*x = QueryGetUnitOfComputePriceProposalResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[50]
+		mi := &file_inference_inference_query_proto_msgTypes[55]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -83877,7 +86436,7 @@ func (*QueryGetUnitOfComputePriceProposalResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryGetUnitOfComputePriceProposalResponse.ProtoReflect.Descriptor instead.
 func (*QueryGetUnitOfComputePriceProposalResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{50}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *QueryGetUnitOfComputePriceProposalResponse) GetProposal() *UnitOfComputePriceProposal {
@@ -83903,7 +86462,7 @@ type QueryCurrentEpochGroupDataRequest struct {
 func (x *QueryCurrentEpochGroupDataRequest) Reset() {
 	*x = QueryCurrentEpochGroupDataRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[51]
+		mi := &file_inference_inference_query_proto_msgTypes[56]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -83917,7 +86476,7 @@ func (*QueryCurrentEpochGroupDataRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryCurrentEpochGroupDataRequest.ProtoReflect.Descriptor instead.
 func (*QueryCurrentEpochGroupDataRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{51}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{56}
 }
 
 type QueryCurrentEpochGroupDataResponse struct {
@@ -83931,7 +86490,7 @@ type QueryCurrentEpochGroupDataResponse struct {
 func (x *QueryCurrentEpochGroupDataResponse) Reset() {
 	*x = QueryCurrentEpochGroupDataResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[52]
+		mi := &file_inference_inference_query_proto_msgTypes[57]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -83945,7 +86504,7 @@ func (*QueryCurrentEpochGroupDataResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryCurrentEpochGroupDataResponse.ProtoReflect.Descriptor instead.
 func (*QueryCurrentEpochGroupDataResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{52}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *QueryCurrentEpochGroupDataResponse) GetEpochGroupData() *EpochGroupData {
@@ -83964,7 +86523,7 @@ type QueryPreviousEpochGroupDataRequest struct {
 func (x *QueryPreviousEpochGroupDataRequest) Reset() {
 	*x = QueryPreviousEpochGroupDataRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[53]
+		mi := &file_inference_inference_query_proto_msgTypes[58]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -83978,7 +86537,7 @@ func (*QueryPreviousEpochGroupDataRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryPreviousEpochGroupDataRequest.ProtoReflect.Descriptor instead.
 func (*QueryPreviousEpochGroupDataRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{53}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{58}
 }
 
 type QueryPreviousEpochGroupDataResponse struct {
@@ -83992,7 +86551,7 @@ type QueryPreviousEpochGroupDataResponse struct {
 func (x *QueryPreviousEpochGroupDataResponse) Reset() {
 	*x = QueryPreviousEpochGroupDataResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[54]
+		mi := &file_inference_inference_query_proto_msgTypes[59]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84006,7 +86565,7 @@ func (*QueryPreviousEpochGroupDataResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryPreviousEpochGroupDataResponse.ProtoReflect.Descriptor instead.
 func (*QueryPreviousEpochGroupDataResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{54}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *QueryPreviousEpochGroupDataResponse) GetEpochGroupData() *EpochGroupData {
@@ -84027,7 +86586,7 @@ type QueryModelsAllRequest struct {
 func (x *QueryModelsAllRequest) Reset() {
 	*x = QueryModelsAllRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[55]
+		mi := &file_inference_inference_query_proto_msgTypes[60]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84041,7 +86600,7 @@ func (*QueryModelsAllRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryModelsAllRequest.ProtoReflect.Descriptor instead.
 func (*QueryModelsAllRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{55}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *QueryModelsAllRequest) GetPagination() *v1beta1.PageRequest {
@@ -84063,7 +86622,7 @@ type QueryModelsAllResponse struct {
 func (x *QueryModelsAllResponse) Reset() {
 	*x = QueryModelsAllResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[56]
+		mi := &file_inference_inference_query_proto_msgTypes[61]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84077,7 +86636,7 @@ func (*QueryModelsAllResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryModelsAllResponse.ProtoReflect.Descriptor instead.
 func (*QueryModelsAllResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{56}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *QueryModelsAllResponse) GetModel() []*Model {
@@ -84105,7 +86664,7 @@ type QueryGetTopMinerRequest struct {
 func (x *QueryGetTopMinerRequest) Reset() {
 	*x = QueryGetTopMinerRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[57]
+		mi := &file_inference_inference_query_proto_msgTypes[62]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84119,7 +86678,7 @@ func (*QueryGetTopMinerRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryGetTopMinerRequest.ProtoReflect.Descriptor instead.
 func (*QueryGetTopMinerRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{57}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *QueryGetTopMinerRequest) GetAddress() string {
@@ -84140,7 +86699,7 @@ type QueryGetTopMinerResponse struct {
 func (x *QueryGetTopMinerResponse) Reset() {
 	*x = QueryGetTopMinerResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[58]
+		mi := &file_inference_inference_query_proto_msgTypes[63]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84154,7 +86713,7 @@ func (*QueryGetTopMinerResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryGetTopMinerResponse.ProtoReflect.Descriptor instead.
 func (*QueryGetTopMinerResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{58}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *QueryGetTopMinerResponse) GetTopMiner() *TopMiner {
@@ -84175,7 +86734,7 @@ type QueryAllTopMinerRequest struct {
 func (x *QueryAllTopMinerRequest) Reset() {
 	*x = QueryAllTopMinerRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[59]
+		mi := &file_inference_inference_query_proto_msgTypes[64]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84189,7 +86748,7 @@ func (*QueryAllTopMinerRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryAllTopMinerRequest.ProtoReflect.Descriptor instead.
 func (*QueryAllTopMinerRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{59}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *QueryAllTopMinerRequest) GetPagination() *v1beta1.PageRequest {
@@ -84211,7 +86770,7 @@ type QueryAllTopMinerResponse struct {
 func (x *QueryAllTopMinerResponse) Reset() {
 	*x = QueryAllTopMinerResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[60]
+		mi := &file_inference_inference_query_proto_msgTypes[65]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84225,7 +86784,7 @@ func (*QueryAllTopMinerResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryAllTopMinerResponse.ProtoReflect.Descriptor instead.
 func (*QueryAllTopMinerResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{60}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *QueryAllTopMinerResponse) GetTopMiner() []*TopMiner {
@@ -84254,7 +86813,7 @@ type QueryGetInferenceTimeoutRequest struct {
 func (x *QueryGetInferenceTimeoutRequest) Reset() {
 	*x = QueryGetInferenceTimeoutRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[61]
+		mi := &file_inference_inference_query_proto_msgTypes[66]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84268,7 +86827,7 @@ func (*QueryGetInferenceTimeoutRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryGetInferenceTimeoutRequest.ProtoReflect.Descriptor instead.
 func (*QueryGetInferenceTimeoutRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{61}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *QueryGetInferenceTimeoutRequest) GetExpirationHeight() uint64 {
@@ -84296,7 +86855,7 @@ type QueryGetInferenceTimeoutResponse struct {
 func (x *QueryGetInferenceTimeoutResponse) Reset() {
 	*x = QueryGetInferenceTimeoutResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[62]
+		mi := &file_inference_inference_query_proto_msgTypes[67]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84310,7 +86869,7 @@ func (*QueryGetInferenceTimeoutResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryGetInferenceTimeoutResponse.ProtoReflect.Descriptor instead.
 func (*QueryGetInferenceTimeoutResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{62}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *QueryGetInferenceTimeoutResponse) GetInferenceTimeout() *InferenceTimeout {
@@ -84331,7 +86890,7 @@ type QueryAllInferenceTimeoutRequest struct {
 func (x *QueryAllInferenceTimeoutRequest) Reset() {
 	*x = QueryAllInferenceTimeoutRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[63]
+		mi := &file_inference_inference_query_proto_msgTypes[68]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84345,7 +86904,7 @@ func (*QueryAllInferenceTimeoutRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryAllInferenceTimeoutRequest.ProtoReflect.Descriptor instead.
 func (*QueryAllInferenceTimeoutRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{63}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *QueryAllInferenceTimeoutRequest) GetPagination() *v1beta1.PageRequest {
@@ -84367,7 +86926,7 @@ type QueryAllInferenceTimeoutResponse struct {
 func (x *QueryAllInferenceTimeoutResponse) Reset() {
 	*x = QueryAllInferenceTimeoutResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[64]
+		mi := &file_inference_inference_query_proto_msgTypes[69]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84381,7 +86940,7 @@ func (*QueryAllInferenceTimeoutResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryAllInferenceTimeoutResponse.ProtoReflect.Descriptor instead.
 func (*QueryAllInferenceTimeoutResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{64}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *QueryAllInferenceTimeoutResponse) GetInferenceTimeout() []*InferenceTimeout {
@@ -84410,7 +86969,7 @@ type QueryGetInferenceValidationDetailsRequest struct {
 func (x *QueryGetInferenceValidationDetailsRequest) Reset() {
 	*x = QueryGetInferenceValidationDetailsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[65]
+		mi := &file_inference_inference_query_proto_msgTypes[70]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84424,7 +86983,7 @@ func (*QueryGetInferenceValidationDetailsRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryGetInferenceValidationDetailsRequest.ProtoReflect.Descriptor instead.
 func (*QueryGetInferenceValidationDetailsRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{65}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *QueryGetInferenceValidationDetailsRequest) GetEpochId() uint64 {
@@ -84452,7 +87011,7 @@ type QueryGetInferenceValidationDetailsResponse struct {
 func (x *QueryGetInferenceValidationDetailsResponse) Reset() {
 	*x = QueryGetInferenceValidationDetailsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[66]
+		mi := &file_inference_inference_query_proto_msgTypes[71]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84466,7 +87025,7 @@ func (*QueryGetInferenceValidationDetailsResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryGetInferenceValidationDetailsResponse.ProtoReflect.Descriptor instead.
 func (*QueryGetInferenceValidationDetailsResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{66}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *QueryGetInferenceValidationDetailsResponse) GetInferenceValidationDetails() *InferenceValidationDetails {
@@ -84487,7 +87046,7 @@ type QueryAllInferenceValidationDetailsRequest struct {
 func (x *QueryAllInferenceValidationDetailsRequest) Reset() {
 	*x = QueryAllInferenceValidationDetailsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[67]
+		mi := &file_inference_inference_query_proto_msgTypes[72]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84501,7 +87060,7 @@ func (*QueryAllInferenceValidationDetailsRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryAllInferenceValidationDetailsRequest.ProtoReflect.Descriptor instead.
 func (*QueryAllInferenceValidationDetailsRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{67}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *QueryAllInferenceValidationDetailsRequest) GetPagination() *v1beta1.PageRequest {
@@ -84523,7 +87082,7 @@ type QueryAllInferenceValidationDetailsResponse struct {
 func (x *QueryAllInferenceValidationDetailsResponse) Reset() {
 	*x = QueryAllInferenceValidationDetailsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[68]
+		mi := &file_inference_inference_query_proto_msgTypes[73]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84537,7 +87096,7 @@ func (*QueryAllInferenceValidationDetailsResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryAllInferenceValidationDetailsResponse.ProtoReflect.Descriptor instead.
 func (*QueryAllInferenceValidationDetailsResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{68}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *QueryAllInferenceValidationDetailsResponse) GetInferenceValidationDetails() []*InferenceValidationDetails {
@@ -84566,7 +87125,7 @@ type QueryGetInferenceValidationParametersRequest struct {
 func (x *QueryGetInferenceValidationParametersRequest) Reset() {
 	*x = QueryGetInferenceValidationParametersRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[69]
+		mi := &file_inference_inference_query_proto_msgTypes[74]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84580,7 +87139,7 @@ func (*QueryGetInferenceValidationParametersRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryGetInferenceValidationParametersRequest.ProtoReflect.Descriptor instead.
 func (*QueryGetInferenceValidationParametersRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{69}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *QueryGetInferenceValidationParametersRequest) GetIds() []string {
@@ -84611,7 +87170,7 @@ type QueryGetInferenceValidationParametersResponse struct {
 func (x *QueryGetInferenceValidationParametersResponse) Reset() {
 	*x = QueryGetInferenceValidationParametersResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[70]
+		mi := &file_inference_inference_query_proto_msgTypes[75]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84625,7 +87184,7 @@ func (*QueryGetInferenceValidationParametersResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryGetInferenceValidationParametersResponse.ProtoReflect.Descriptor instead.
 func (*QueryGetInferenceValidationParametersResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{70}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *QueryGetInferenceValidationParametersResponse) GetValidatorPowers() []*ValidatorPower {
@@ -84668,7 +87227,7 @@ type ValidatorPower struct {
 func (x *ValidatorPower) Reset() {
 	*x = ValidatorPower{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[71]
+		mi := &file_inference_inference_query_proto_msgTypes[76]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84682,7 +87241,7 @@ func (*ValidatorPower) ProtoMessage() {}
 
 // Deprecated: Use ValidatorPower.ProtoReflect.Descriptor instead.
 func (*ValidatorPower) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{71}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *ValidatorPower) GetPower() uint64 {
@@ -84710,7 +87269,7 @@ type QueryEpochPerformanceSummaryByEpochRequest struct {
 func (x *QueryEpochPerformanceSummaryByEpochRequest) Reset() {
 	*x = QueryEpochPerformanceSummaryByEpochRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[72]
+		mi := &file_inference_inference_query_proto_msgTypes[77]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84724,7 +87283,7 @@ func (*QueryEpochPerformanceSummaryByEpochRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryEpochPerformanceSummaryByEpochRequest.ProtoReflect.Descriptor instead.
 func (*QueryEpochPerformanceSummaryByEpochRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{72}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *QueryEpochPerformanceSummaryByEpochRequest) GetEpochIndex() uint64 {
@@ -84745,7 +87304,7 @@ type QueryEpochPerformanceSummaryByEpochResponse struct {
 func (x *QueryEpochPerformanceSummaryByEpochResponse) Reset() {
 	*x = QueryEpochPerformanceSummaryByEpochResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[73]
+		mi := &file_inference_inference_query_proto_msgTypes[78]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84759,7 +87318,7 @@ func (*QueryEpochPerformanceSummaryByEpochResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryEpochPerformanceSummaryByEpochResponse.ProtoReflect.Descriptor instead.
 func (*QueryEpochPerformanceSummaryByEpochResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{73}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *QueryEpochPerformanceSummaryByEpochResponse) GetEpochPerformanceSummary() []*EpochPerformanceSummary {
@@ -84781,7 +87340,7 @@ type QueryEpochPerformanceSummaryByParticipantRequest struct {
 func (x *QueryEpochPerformanceSummaryByParticipantRequest) Reset() {
 	*x = QueryEpochPerformanceSummaryByParticipantRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[74]
+		mi := &file_inference_inference_query_proto_msgTypes[79]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84795,7 +87354,7 @@ func (*QueryEpochPerformanceSummaryByParticipantRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryEpochPerformanceSummaryByParticipantRequest.ProtoReflect.Descriptor instead.
 func (*QueryEpochPerformanceSummaryByParticipantRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{74}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *QueryEpochPerformanceSummaryByParticipantRequest) GetEpochIndex() uint64 {
@@ -84823,7 +87382,7 @@ type QueryEpochPerformanceSummaryByParticipantResponse struct {
 func (x *QueryEpochPerformanceSummaryByParticipantResponse) Reset() {
 	*x = QueryEpochPerformanceSummaryByParticipantResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[75]
+		mi := &file_inference_inference_query_proto_msgTypes[80]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84837,7 +87396,7 @@ func (*QueryEpochPerformanceSummaryByParticipantResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryEpochPerformanceSummaryByParticipantResponse.ProtoReflect.Descriptor instead.
 func (*QueryEpochPerformanceSummaryByParticipantResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{75}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *QueryEpochPerformanceSummaryByParticipantResponse) GetEpochPerformanceSummary() *EpochPerformanceSummary {
@@ -84858,7 +87417,7 @@ type QueryAllEpochPerformanceSummaryRequest struct {
 func (x *QueryAllEpochPerformanceSummaryRequest) Reset() {
 	*x = QueryAllEpochPerformanceSummaryRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[76]
+		mi := &file_inference_inference_query_proto_msgTypes[81]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84872,7 +87431,7 @@ func (*QueryAllEpochPerformanceSummaryRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryAllEpochPerformanceSummaryRequest.ProtoReflect.Descriptor instead.
 func (*QueryAllEpochPerformanceSummaryRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{76}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *QueryAllEpochPerformanceSummaryRequest) GetPagination() *v1beta1.PageRequest {
@@ -84894,7 +87453,7 @@ type QueryAllEpochPerformanceSummaryResponse struct {
 func (x *QueryAllEpochPerformanceSummaryResponse) Reset() {
 	*x = QueryAllEpochPerformanceSummaryResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[77]
+		mi := &file_inference_inference_query_proto_msgTypes[82]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84908,7 +87467,7 @@ func (*QueryAllEpochPerformanceSummaryResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryAllEpochPerformanceSummaryResponse.ProtoReflect.Descriptor instead.
 func (*QueryAllEpochPerformanceSummaryResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{77}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *QueryAllEpochPerformanceSummaryResponse) GetEpochPerformanceSummary() []*EpochPerformanceSummary {
@@ -84936,7 +87495,7 @@ type QueryTrainingTaskRequest struct {
 func (x *QueryTrainingTaskRequest) Reset() {
 	*x = QueryTrainingTaskRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[78]
+		mi := &file_inference_inference_query_proto_msgTypes[83]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84950,7 +87509,7 @@ func (*QueryTrainingTaskRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryTrainingTaskRequest.ProtoReflect.Descriptor instead.
 func (*QueryTrainingTaskRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{78}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *QueryTrainingTaskRequest) GetId() uint64 {
@@ -84971,7 +87530,7 @@ type QueryTrainingTaskResponse struct {
 func (x *QueryTrainingTaskResponse) Reset() {
 	*x = QueryTrainingTaskResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[79]
+		mi := &file_inference_inference_query_proto_msgTypes[84]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -84985,7 +87544,7 @@ func (*QueryTrainingTaskResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryTrainingTaskResponse.ProtoReflect.Descriptor instead.
 func (*QueryTrainingTaskResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{79}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *QueryTrainingTaskResponse) GetTask() *TrainingTask {
@@ -85006,7 +87565,7 @@ type QueryHardwareNodesRequest struct {
 func (x *QueryHardwareNodesRequest) Reset() {
 	*x = QueryHardwareNodesRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[80]
+		mi := &file_inference_inference_query_proto_msgTypes[85]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85020,7 +87579,7 @@ func (*QueryHardwareNodesRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryHardwareNodesRequest.ProtoReflect.Descriptor instead.
 func (*QueryHardwareNodesRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{80}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *QueryHardwareNodesRequest) GetParticipant() string {
@@ -85041,7 +87600,7 @@ type QueryHardwareNodesResponse struct {
 func (x *QueryHardwareNodesResponse) Reset() {
 	*x = QueryHardwareNodesResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[81]
+		mi := &file_inference_inference_query_proto_msgTypes[86]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85055,7 +87614,7 @@ func (*QueryHardwareNodesResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryHardwareNodesResponse.ProtoReflect.Descriptor instead.
 func (*QueryHardwareNodesResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{81}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *QueryHardwareNodesResponse) GetNodes() *HardwareNodes {
@@ -85074,7 +87633,7 @@ type QueryHardwareNodesAllRequest struct {
 func (x *QueryHardwareNodesAllRequest) Reset() {
 	*x = QueryHardwareNodesAllRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[82]
+		mi := &file_inference_inference_query_proto_msgTypes[87]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85088,7 +87647,7 @@ func (*QueryHardwareNodesAllRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryHardwareNodesAllRequest.ProtoReflect.Descriptor instead.
 func (*QueryHardwareNodesAllRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{82}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{87}
 }
 
 type QueryHardwareNodesAllResponse struct {
@@ -85102,7 +87661,7 @@ type QueryHardwareNodesAllResponse struct {
 func (x *QueryHardwareNodesAllResponse) Reset() {
 	*x = QueryHardwareNodesAllResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[83]
+		mi := &file_inference_inference_query_proto_msgTypes[88]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85116,7 +87675,7 @@ func (*QueryHardwareNodesAllResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryHardwareNodesAllResponse.ProtoReflect.Descriptor instead.
 func (*QueryHardwareNodesAllResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{83}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *QueryHardwareNodesAllResponse) GetNodes() []*HardwareNodes {
@@ -85135,7 +87694,7 @@ type QueryQueuedTrainingTasksRequest struct {
 func (x *QueryQueuedTrainingTasksRequest) Reset() {
 	*x = QueryQueuedTrainingTasksRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[84]
+		mi := &file_inference_inference_query_proto_msgTypes[89]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85149,7 +87708,7 @@ func (*QueryQueuedTrainingTasksRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryQueuedTrainingTasksRequest.ProtoReflect.Descriptor instead.
 func (*QueryQueuedTrainingTasksRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{84}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{89}
 }
 
 type QueryQueuedTrainingTasksResponse struct {
@@ -85163,7 +87722,7 @@ type QueryQueuedTrainingTasksResponse struct {
 func (x *QueryQueuedTrainingTasksResponse) Reset() {
 	*x = QueryQueuedTrainingTasksResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[85]
+		mi := &file_inference_inference_query_proto_msgTypes[90]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85177,7 +87736,7 @@ func (*QueryQueuedTrainingTasksResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryQueuedTrainingTasksResponse.ProtoReflect.Descriptor instead.
 func (*QueryQueuedTrainingTasksResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{85}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *QueryQueuedTrainingTasksResponse) GetTasks() []*TrainingTask {
@@ -85196,7 +87755,7 @@ type QueryTrainingTaskAllRequest struct {
 func (x *QueryTrainingTaskAllRequest) Reset() {
 	*x = QueryTrainingTaskAllRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[86]
+		mi := &file_inference_inference_query_proto_msgTypes[91]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85210,7 +87769,7 @@ func (*QueryTrainingTaskAllRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryTrainingTaskAllRequest.ProtoReflect.Descriptor instead.
 func (*QueryTrainingTaskAllRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{86}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{91}
 }
 
 type QueryTrainingTaskAllResponse struct {
@@ -85224,7 +87783,7 @@ type QueryTrainingTaskAllResponse struct {
 func (x *QueryTrainingTaskAllResponse) Reset() {
 	*x = QueryTrainingTaskAllResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[87]
+		mi := &file_inference_inference_query_proto_msgTypes[92]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85238,7 +87797,7 @@ func (*QueryTrainingTaskAllResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryTrainingTaskAllResponse.ProtoReflect.Descriptor instead.
 func (*QueryTrainingTaskAllResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{87}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *QueryTrainingTaskAllResponse) GetTasks() []*TrainingTask {
@@ -85259,7 +87818,7 @@ type QueryGetParticipantCurrentStatsRequest struct {
 func (x *QueryGetParticipantCurrentStatsRequest) Reset() {
 	*x = QueryGetParticipantCurrentStatsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[88]
+		mi := &file_inference_inference_query_proto_msgTypes[93]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85273,7 +87832,7 @@ func (*QueryGetParticipantCurrentStatsRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryGetParticipantCurrentStatsRequest.ProtoReflect.Descriptor instead.
 func (*QueryGetParticipantCurrentStatsRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{88}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *QueryGetParticipantCurrentStatsRequest) GetParticipantId() string {
@@ -85295,7 +87854,7 @@ type QueryGetParticipantCurrentStatsResponse struct {
 func (x *QueryGetParticipantCurrentStatsResponse) Reset() {
 	*x = QueryGetParticipantCurrentStatsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[89]
+		mi := &file_inference_inference_query_proto_msgTypes[94]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85309,7 +87868,7 @@ func (*QueryGetParticipantCurrentStatsResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryGetParticipantCurrentStatsResponse.ProtoReflect.Descriptor instead.
 func (*QueryGetParticipantCurrentStatsResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{89}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *QueryGetParticipantCurrentStatsResponse) GetWeight() uint64 {
@@ -85335,7 +87894,7 @@ type QueryGetAllParticipantCurrentStatsRequest struct {
 func (x *QueryGetAllParticipantCurrentStatsRequest) Reset() {
 	*x = QueryGetAllParticipantCurrentStatsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[90]
+		mi := &file_inference_inference_query_proto_msgTypes[95]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85349,7 +87908,7 @@ func (*QueryGetAllParticipantCurrentStatsRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryGetAllParticipantCurrentStatsRequest.ProtoReflect.Descriptor instead.
 func (*QueryGetAllParticipantCurrentStatsRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{90}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{95}
 }
 
 type QueryGetAllParticipantCurrentStatsResponse struct {
@@ -85365,7 +87924,7 @@ type QueryGetAllParticipantCurrentStatsResponse struct {
 func (x *QueryGetAllParticipantCurrentStatsResponse) Reset() {
 	*x = QueryGetAllParticipantCurrentStatsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[91]
+		mi := &file_inference_inference_query_proto_msgTypes[96]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85379,7 +87938,7 @@ func (*QueryGetAllParticipantCurrentStatsResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryGetAllParticipantCurrentStatsResponse.ProtoReflect.Descriptor instead.
 func (*QueryGetAllParticipantCurrentStatsResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{91}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *QueryGetAllParticipantCurrentStatsResponse) GetParticipantCurrentStats() []*ParticipantCurrentStats {
@@ -85418,7 +87977,7 @@ type ParticipantCurrentStats struct {
 func (x *ParticipantCurrentStats) Reset() {
 	*x = ParticipantCurrentStats{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[92]
+		mi := &file_inference_inference_query_proto_msgTypes[97]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85432,7 +87991,7 @@ func (*ParticipantCurrentStats) ProtoMessage() {}
 
 // Deprecated: Use ParticipantCurrentStats.ProtoReflect.Descriptor instead.
 func (*ParticipantCurrentStats) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{92}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{97}
 }
 
 func (x *ParticipantCurrentStats) GetParticipantId() string {
@@ -85486,7 +88045,7 @@ type ParticipantFullStats struct {
 func (x *ParticipantFullStats) Reset() {
 	*x = ParticipantFullStats{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[93]
+		mi := &file_inference_inference_query_proto_msgTypes[98]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85500,7 +88059,7 @@ func (*ParticipantFullStats) ProtoMessage() {}
 
 // Deprecated: Use ParticipantFullStats.ProtoReflect.Descriptor instead.
 func (*ParticipantFullStats) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{93}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{98}
 }
 
 func (x *ParticipantFullStats) GetAccountAddress() string {
@@ -85554,7 +88113,7 @@ type QueryParticipantsFullStatsRequest struct {
 func (x *QueryParticipantsFullStatsRequest) Reset() {
 	*x = QueryParticipantsFullStatsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[94]
+		mi := &file_inference_inference_query_proto_msgTypes[99]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85568,7 +88127,7 @@ func (*QueryParticipantsFullStatsRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryParticipantsFullStatsRequest.ProtoReflect.Descriptor instead.
 func (*QueryParticipantsFullStatsRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{94}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{99}
 }
 
 type QueryParticipantsFullStatsResponse struct {
@@ -85582,7 +88141,7 @@ type QueryParticipantsFullStatsResponse struct {
 func (x *QueryParticipantsFullStatsResponse) Reset() {
 	*x = QueryParticipantsFullStatsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[95]
+		mi := &file_inference_inference_query_proto_msgTypes[100]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85596,7 +88155,7 @@ func (*QueryParticipantsFullStatsResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryParticipantsFullStatsResponse.ProtoReflect.Descriptor instead.
 func (*QueryParticipantsFullStatsResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{95}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{100}
 }
 
 func (x *QueryParticipantsFullStatsResponse) GetParticipantsStats() []*ParticipantFullStats {
@@ -85619,7 +88178,7 @@ type QueryStatsByTimePeriodByDeveloperRequest struct {
 func (x *QueryStatsByTimePeriodByDeveloperRequest) Reset() {
 	*x = QueryStatsByTimePeriodByDeveloperRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[96]
+		mi := &file_inference_inference_query_proto_msgTypes[101]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85633,7 +88192,7 @@ func (*QueryStatsByTimePeriodByDeveloperRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryStatsByTimePeriodByDeveloperRequest.ProtoReflect.Descriptor instead.
 func (*QueryStatsByTimePeriodByDeveloperRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{96}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{101}
 }
 
 func (x *QueryStatsByTimePeriodByDeveloperRequest) GetDeveloper() string {
@@ -85668,7 +88227,7 @@ type QueryStatsByTimePeriodByDeveloperResponse struct {
 func (x *QueryStatsByTimePeriodByDeveloperResponse) Reset() {
 	*x = QueryStatsByTimePeriodByDeveloperResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[97]
+		mi := &file_inference_inference_query_proto_msgTypes[102]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85682,7 +88241,7 @@ func (*QueryStatsByTimePeriodByDeveloperResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryStatsByTimePeriodByDeveloperResponse.ProtoReflect.Descriptor instead.
 func (*QueryStatsByTimePeriodByDeveloperResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{97}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{102}
 }
 
 func (x *QueryStatsByTimePeriodByDeveloperResponse) GetStats() []*DeveloperStatsByTime {
@@ -85704,7 +88263,7 @@ type QueryStatsByDeveloperAndEpochBackwardsRequest struct {
 func (x *QueryStatsByDeveloperAndEpochBackwardsRequest) Reset() {
 	*x = QueryStatsByDeveloperAndEpochBackwardsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[98]
+		mi := &file_inference_inference_query_proto_msgTypes[103]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85718,7 +88277,7 @@ func (*QueryStatsByDeveloperAndEpochBackwardsRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryStatsByDeveloperAndEpochBackwardsRequest.ProtoReflect.Descriptor instead.
 func (*QueryStatsByDeveloperAndEpochBackwardsRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{98}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{103}
 }
 
 func (x *QueryStatsByDeveloperAndEpochBackwardsRequest) GetDeveloper() string {
@@ -85746,7 +88305,7 @@ type QueryInferencesAndTokensStatsByEpochsBackwardsRequest struct {
 func (x *QueryInferencesAndTokensStatsByEpochsBackwardsRequest) Reset() {
 	*x = QueryInferencesAndTokensStatsByEpochsBackwardsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[99]
+		mi := &file_inference_inference_query_proto_msgTypes[104]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85760,7 +88319,7 @@ func (*QueryInferencesAndTokensStatsByEpochsBackwardsRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryInferencesAndTokensStatsByEpochsBackwardsRequest.ProtoReflect.Descriptor instead.
 func (*QueryInferencesAndTokensStatsByEpochsBackwardsRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{99}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{104}
 }
 
 func (x *QueryInferencesAndTokensStatsByEpochsBackwardsRequest) GetEpochsN() int32 {
@@ -85782,7 +88341,7 @@ type QueryInferencesAndTokensStatsByTimePeriodRequest struct {
 func (x *QueryInferencesAndTokensStatsByTimePeriodRequest) Reset() {
 	*x = QueryInferencesAndTokensStatsByTimePeriodRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[100]
+		mi := &file_inference_inference_query_proto_msgTypes[105]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85796,7 +88355,7 @@ func (*QueryInferencesAndTokensStatsByTimePeriodRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryInferencesAndTokensStatsByTimePeriodRequest.ProtoReflect.Descriptor instead.
 func (*QueryInferencesAndTokensStatsByTimePeriodRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{100}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{105}
 }
 
 func (x *QueryInferencesAndTokensStatsByTimePeriodRequest) GetTimeFrom() int64 {
@@ -85825,7 +88384,7 @@ type QueryInferencesAndTokensStatsByModelsRequest struct {
 func (x *QueryInferencesAndTokensStatsByModelsRequest) Reset() {
 	*x = QueryInferencesAndTokensStatsByModelsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[101]
+		mi := &file_inference_inference_query_proto_msgTypes[106]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85839,7 +88398,7 @@ func (*QueryInferencesAndTokensStatsByModelsRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryInferencesAndTokensStatsByModelsRequest.ProtoReflect.Descriptor instead.
 func (*QueryInferencesAndTokensStatsByModelsRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{101}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{106}
 }
 
 func (x *QueryInferencesAndTokensStatsByModelsRequest) GetTimeFrom() int64 {
@@ -85869,7 +88428,7 @@ type ModelStats struct {
 func (x *ModelStats) Reset() {
 	*x = ModelStats{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[102]
+		mi := &file_inference_inference_query_proto_msgTypes[107]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85883,7 +88442,7 @@ func (*ModelStats) ProtoMessage() {}
 
 // Deprecated: Use ModelStats.ProtoReflect.Descriptor instead.
 func (*ModelStats) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{102}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{107}
 }
 
 func (x *ModelStats) GetModel() string {
@@ -85918,7 +88477,7 @@ type QueryInferencesAndTokensStatsByModelsResponse struct {
 func (x *QueryInferencesAndTokensStatsByModelsResponse) Reset() {
 	*x = QueryInferencesAndTokensStatsByModelsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[103]
+		mi := &file_inference_inference_query_proto_msgTypes[108]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85932,7 +88491,7 @@ func (*QueryInferencesAndTokensStatsByModelsResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryInferencesAndTokensStatsByModelsResponse.ProtoReflect.Descriptor instead.
 func (*QueryInferencesAndTokensStatsByModelsResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{103}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{108}
 }
 
 func (x *QueryInferencesAndTokensStatsByModelsResponse) GetStatsModels() []*ModelStats {
@@ -85955,7 +88514,7 @@ type QueryInferencesAndTokensStatsResponse struct {
 func (x *QueryInferencesAndTokensStatsResponse) Reset() {
 	*x = QueryInferencesAndTokensStatsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[104]
+		mi := &file_inference_inference_query_proto_msgTypes[109]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -85969,7 +88528,7 @@ func (*QueryInferencesAndTokensStatsResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryInferencesAndTokensStatsResponse.ProtoReflect.Descriptor instead.
 func (*QueryInferencesAndTokensStatsResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{104}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{109}
 }
 
 func (x *QueryInferencesAndTokensStatsResponse) GetAiTokens() int64 {
@@ -86002,7 +88561,7 @@ type QueryCountAllParticipantsRequest struct {
 func (x *QueryCountAllParticipantsRequest) Reset() {
 	*x = QueryCountAllParticipantsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[105]
+		mi := &file_inference_inference_query_proto_msgTypes[110]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86016,7 +88575,7 @@ func (*QueryCountAllParticipantsRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryCountAllParticipantsRequest.ProtoReflect.Descriptor instead.
 func (*QueryCountAllParticipantsRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{105}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{110}
 }
 
 type QueryCountAllParticipantsResponse struct {
@@ -86030,7 +88589,7 @@ type QueryCountAllParticipantsResponse struct {
 func (x *QueryCountAllParticipantsResponse) Reset() {
 	*x = QueryCountAllParticipantsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[106]
+		mi := &file_inference_inference_query_proto_msgTypes[111]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86044,7 +88603,7 @@ func (*QueryCountAllParticipantsResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryCountAllParticipantsResponse.ProtoReflect.Descriptor instead.
 func (*QueryCountAllParticipantsResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{106}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{111}
 }
 
 func (x *QueryCountAllParticipantsResponse) GetTotal() int64 {
@@ -86063,7 +88622,7 @@ type QueryDebugStatsRequest struct {
 func (x *QueryDebugStatsRequest) Reset() {
 	*x = QueryDebugStatsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[107]
+		mi := &file_inference_inference_query_proto_msgTypes[112]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86077,7 +88636,7 @@ func (*QueryDebugStatsRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryDebugStatsRequest.ProtoReflect.Descriptor instead.
 func (*QueryDebugStatsRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{107}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{112}
 }
 
 type QueryDebugStatsResponse struct {
@@ -86092,7 +88651,7 @@ type QueryDebugStatsResponse struct {
 func (x *QueryDebugStatsResponse) Reset() {
 	*x = QueryDebugStatsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[108]
+		mi := &file_inference_inference_query_proto_msgTypes[113]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86106,7 +88665,7 @@ func (*QueryDebugStatsResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryDebugStatsResponse.ProtoReflect.Descriptor instead.
 func (*QueryDebugStatsResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{108}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{113}
 }
 
 func (x *QueryDebugStatsResponse) GetStatsByTime() []*QueryDebugStatsResponse_TemporaryTimeStat {
@@ -86132,7 +88691,7 @@ type QueryGetMinimumValidationAverageRequest struct {
 func (x *QueryGetMinimumValidationAverageRequest) Reset() {
 	*x = QueryGetMinimumValidationAverageRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[109]
+		mi := &file_inference_inference_query_proto_msgTypes[114]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86146,7 +88705,7 @@ func (*QueryGetMinimumValidationAverageRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryGetMinimumValidationAverageRequest.ProtoReflect.Descriptor instead.
 func (*QueryGetMinimumValidationAverageRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{109}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{114}
 }
 
 type QueryGetMinimumValidationAverageResponse struct {
@@ -86162,7 +88721,7 @@ type QueryGetMinimumValidationAverageResponse struct {
 func (x *QueryGetMinimumValidationAverageResponse) Reset() {
 	*x = QueryGetMinimumValidationAverageResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[110]
+		mi := &file_inference_inference_query_proto_msgTypes[115]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86176,7 +88735,7 @@ func (*QueryGetMinimumValidationAverageResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryGetMinimumValidationAverageResponse.ProtoReflect.Descriptor instead.
 func (*QueryGetMinimumValidationAverageResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{110}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{115}
 }
 
 func (x *QueryGetMinimumValidationAverageResponse) GetTrafficBasis() uint64 {
@@ -86209,7 +88768,7 @@ type QueryInProgressTrainingTasksRequest struct {
 func (x *QueryInProgressTrainingTasksRequest) Reset() {
 	*x = QueryInProgressTrainingTasksRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[111]
+		mi := &file_inference_inference_query_proto_msgTypes[116]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86223,7 +88782,7 @@ func (*QueryInProgressTrainingTasksRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryInProgressTrainingTasksRequest.ProtoReflect.Descriptor instead.
 func (*QueryInProgressTrainingTasksRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{111}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{116}
 }
 
 type QueryInProgressTrainingTasksResponse struct {
@@ -86237,7 +88796,7 @@ type QueryInProgressTrainingTasksResponse struct {
 func (x *QueryInProgressTrainingTasksResponse) Reset() {
 	*x = QueryInProgressTrainingTasksResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[112]
+		mi := &file_inference_inference_query_proto_msgTypes[117]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86251,7 +88810,7 @@ func (*QueryInProgressTrainingTasksResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryInProgressTrainingTasksResponse.ProtoReflect.Descriptor instead.
 func (*QueryInProgressTrainingTasksResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{112}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{117}
 }
 
 func (x *QueryInProgressTrainingTasksResponse) GetTasks() []*TrainingTask {
@@ -86272,7 +88831,7 @@ type QueryGetPartialUpgradeRequest struct {
 func (x *QueryGetPartialUpgradeRequest) Reset() {
 	*x = QueryGetPartialUpgradeRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[113]
+		mi := &file_inference_inference_query_proto_msgTypes[118]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86286,7 +88845,7 @@ func (*QueryGetPartialUpgradeRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryGetPartialUpgradeRequest.ProtoReflect.Descriptor instead.
 func (*QueryGetPartialUpgradeRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{113}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{118}
 }
 
 func (x *QueryGetPartialUpgradeRequest) GetHeight() uint64 {
@@ -86307,7 +88866,7 @@ type QueryGetPartialUpgradeResponse struct {
 func (x *QueryGetPartialUpgradeResponse) Reset() {
 	*x = QueryGetPartialUpgradeResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[114]
+		mi := &file_inference_inference_query_proto_msgTypes[119]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86321,7 +88880,7 @@ func (*QueryGetPartialUpgradeResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryGetPartialUpgradeResponse.ProtoReflect.Descriptor instead.
 func (*QueryGetPartialUpgradeResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{114}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{119}
 }
 
 func (x *QueryGetPartialUpgradeResponse) GetPartialUpgrade() *PartialUpgrade {
@@ -86342,7 +88901,7 @@ type QueryAllPartialUpgradeRequest struct {
 func (x *QueryAllPartialUpgradeRequest) Reset() {
 	*x = QueryAllPartialUpgradeRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[115]
+		mi := &file_inference_inference_query_proto_msgTypes[120]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86356,7 +88915,7 @@ func (*QueryAllPartialUpgradeRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryAllPartialUpgradeRequest.ProtoReflect.Descriptor instead.
 func (*QueryAllPartialUpgradeRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{115}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{120}
 }
 
 func (x *QueryAllPartialUpgradeRequest) GetPagination() *v1beta1.PageRequest {
@@ -86378,7 +88937,7 @@ type QueryAllPartialUpgradeResponse struct {
 func (x *QueryAllPartialUpgradeResponse) Reset() {
 	*x = QueryAllPartialUpgradeResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[116]
+		mi := &file_inference_inference_query_proto_msgTypes[121]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86392,7 +88951,7 @@ func (*QueryAllPartialUpgradeResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryAllPartialUpgradeResponse.ProtoReflect.Descriptor instead.
 func (*QueryAllPartialUpgradeResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{116}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{121}
 }
 
 func (x *QueryAllPartialUpgradeResponse) GetPartialUpgrade() []*PartialUpgrade {
@@ -86421,7 +88980,7 @@ type QueryTrainingKvRecordRequest struct {
 func (x *QueryTrainingKvRecordRequest) Reset() {
 	*x = QueryTrainingKvRecordRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[117]
+		mi := &file_inference_inference_query_proto_msgTypes[122]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86435,7 +88994,7 @@ func (*QueryTrainingKvRecordRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryTrainingKvRecordRequest.ProtoReflect.Descriptor instead.
 func (*QueryTrainingKvRecordRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{117}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{122}
 }
 
 func (x *QueryTrainingKvRecordRequest) GetTaskId() uint64 {
@@ -86463,7 +89022,7 @@ type QueryTrainingKvRecordResponse struct {
 func (x *QueryTrainingKvRecordResponse) Reset() {
 	*x = QueryTrainingKvRecordResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[118]
+		mi := &file_inference_inference_query_proto_msgTypes[123]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86477,7 +89036,7 @@ func (*QueryTrainingKvRecordResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryTrainingKvRecordResponse.ProtoReflect.Descriptor instead.
 func (*QueryTrainingKvRecordResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{118}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{123}
 }
 
 func (x *QueryTrainingKvRecordResponse) GetRecord() *TrainingTaskKVRecord {
@@ -86498,7 +89057,7 @@ type QueryListTrainingKvRecordKeysRequest struct {
 func (x *QueryListTrainingKvRecordKeysRequest) Reset() {
 	*x = QueryListTrainingKvRecordKeysRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[119]
+		mi := &file_inference_inference_query_proto_msgTypes[124]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86512,7 +89071,7 @@ func (*QueryListTrainingKvRecordKeysRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryListTrainingKvRecordKeysRequest.ProtoReflect.Descriptor instead.
 func (*QueryListTrainingKvRecordKeysRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{119}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{124}
 }
 
 func (x *QueryListTrainingKvRecordKeysRequest) GetTaskId() uint64 {
@@ -86533,7 +89092,7 @@ type QueryListTrainingKvRecordKeysResponse struct {
 func (x *QueryListTrainingKvRecordKeysResponse) Reset() {
 	*x = QueryListTrainingKvRecordKeysResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[120]
+		mi := &file_inference_inference_query_proto_msgTypes[125]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86547,7 +89106,7 @@ func (*QueryListTrainingKvRecordKeysResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryListTrainingKvRecordKeysResponse.ProtoReflect.Descriptor instead.
 func (*QueryListTrainingKvRecordKeysResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{120}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{125}
 }
 
 func (x *QueryListTrainingKvRecordKeysResponse) GetKeys() []string {
@@ -86568,7 +89127,7 @@ type QueryTrainingBarrierRequest struct {
 func (x *QueryTrainingBarrierRequest) Reset() {
 	*x = QueryTrainingBarrierRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[121]
+		mi := &file_inference_inference_query_proto_msgTypes[126]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86582,7 +89141,7 @@ func (*QueryTrainingBarrierRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryTrainingBarrierRequest.ProtoReflect.Descriptor instead.
 func (*QueryTrainingBarrierRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{121}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{126}
 }
 
 func (x *QueryTrainingBarrierRequest) GetReq() *GetBarrierStatusRequest {
@@ -86603,7 +89162,7 @@ type QueryTrainingBarrierResponse struct {
 func (x *QueryTrainingBarrierResponse) Reset() {
 	*x = QueryTrainingBarrierResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[122]
+		mi := &file_inference_inference_query_proto_msgTypes[127]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86617,7 +89176,7 @@ func (*QueryTrainingBarrierResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryTrainingBarrierResponse.ProtoReflect.Descriptor instead.
 func (*QueryTrainingBarrierResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{122}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{127}
 }
 
 func (x *QueryTrainingBarrierResponse) GetResp() *GetBarrierStatusResponse {
@@ -86638,7 +89197,7 @@ type QueryTrainingAliveNodesRequest struct {
 func (x *QueryTrainingAliveNodesRequest) Reset() {
 	*x = QueryTrainingAliveNodesRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[123]
+		mi := &file_inference_inference_query_proto_msgTypes[128]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86652,7 +89211,7 @@ func (*QueryTrainingAliveNodesRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryTrainingAliveNodesRequest.ProtoReflect.Descriptor instead.
 func (*QueryTrainingAliveNodesRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{123}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{128}
 }
 
 func (x *QueryTrainingAliveNodesRequest) GetReq() *GetAliveNodesRequest {
@@ -86673,7 +89232,7 @@ type QueryTrainingAliveNodesResponse struct {
 func (x *QueryTrainingAliveNodesResponse) Reset() {
 	*x = QueryTrainingAliveNodesResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[124]
+		mi := &file_inference_inference_query_proto_msgTypes[129]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86687,7 +89246,7 @@ func (*QueryTrainingAliveNodesResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryTrainingAliveNodesResponse.ProtoReflect.Descriptor instead.
 func (*QueryTrainingAliveNodesResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{124}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{129}
 }
 
 func (x *QueryTrainingAliveNodesResponse) GetResp() *GetAliveNodesResponse {
@@ -86710,7 +89269,7 @@ type QueryGetBridgeTransactionRequest struct {
 func (x *QueryGetBridgeTransactionRequest) Reset() {
 	*x = QueryGetBridgeTransactionRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[125]
+		mi := &file_inference_inference_query_proto_msgTypes[130]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86724,7 +89283,7 @@ func (*QueryGetBridgeTransactionRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryGetBridgeTransactionRequest.ProtoReflect.Descriptor instead.
 func (*QueryGetBridgeTransactionRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{125}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{130}
 }
 
 func (x *QueryGetBridgeTransactionRequest) GetOriginChain() string {
@@ -86759,7 +89318,7 @@ type QueryGetBridgeTransactionResponse struct {
 func (x *QueryGetBridgeTransactionResponse) Reset() {
 	*x = QueryGetBridgeTransactionResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[126]
+		mi := &file_inference_inference_query_proto_msgTypes[131]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86773,7 +89332,7 @@ func (*QueryGetBridgeTransactionResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryGetBridgeTransactionResponse.ProtoReflect.Descriptor instead.
 func (*QueryGetBridgeTransactionResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{126}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{131}
 }
 
 func (x *QueryGetBridgeTransactionResponse) GetBridgeTransactions() []*BridgeTransaction {
@@ -86794,7 +89353,7 @@ type QueryAllBridgeTransactionsRequest struct {
 func (x *QueryAllBridgeTransactionsRequest) Reset() {
 	*x = QueryAllBridgeTransactionsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[127]
+		mi := &file_inference_inference_query_proto_msgTypes[132]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86808,7 +89367,7 @@ func (*QueryAllBridgeTransactionsRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryAllBridgeTransactionsRequest.ProtoReflect.Descriptor instead.
 func (*QueryAllBridgeTransactionsRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{127}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{132}
 }
 
 func (x *QueryAllBridgeTransactionsRequest) GetPagination() *v1beta1.PageRequest {
@@ -86830,7 +89389,7 @@ type QueryAllBridgeTransactionsResponse struct {
 func (x *QueryAllBridgeTransactionsResponse) Reset() {
 	*x = QueryAllBridgeTransactionsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[128]
+		mi := &file_inference_inference_query_proto_msgTypes[133]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86844,7 +89403,7 @@ func (*QueryAllBridgeTransactionsResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryAllBridgeTransactionsResponse.ProtoReflect.Descriptor instead.
 func (*QueryAllBridgeTransactionsResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{128}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{133}
 }
 
 func (x *QueryAllBridgeTransactionsResponse) GetBridgeTransactions() []*BridgeTransaction {
@@ -86876,7 +89435,7 @@ type WrappedTokenBalance struct {
 func (x *WrappedTokenBalance) Reset() {
 	*x = WrappedTokenBalance{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[129]
+		mi := &file_inference_inference_query_proto_msgTypes[134]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86890,7 +89449,7 @@ func (*WrappedTokenBalance) ProtoMessage() {}
 
 // Deprecated: Use WrappedTokenBalance.ProtoReflect.Descriptor instead.
 func (*WrappedTokenBalance) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{129}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{134}
 }
 
 func (x *WrappedTokenBalance) GetTokenInfo() *BridgeWrappedTokenContract {
@@ -86939,7 +89498,7 @@ type QueryWrappedTokenBalancesRequest struct {
 func (x *QueryWrappedTokenBalancesRequest) Reset() {
 	*x = QueryWrappedTokenBalancesRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[130]
+		mi := &file_inference_inference_query_proto_msgTypes[135]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86953,7 +89512,7 @@ func (*QueryWrappedTokenBalancesRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryWrappedTokenBalancesRequest.ProtoReflect.Descriptor instead.
 func (*QueryWrappedTokenBalancesRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{130}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{135}
 }
 
 func (x *QueryWrappedTokenBalancesRequest) GetAddress() string {
@@ -86974,7 +89533,7 @@ type QueryWrappedTokenBalancesResponse struct {
 func (x *QueryWrappedTokenBalancesResponse) Reset() {
 	*x = QueryWrappedTokenBalancesResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[131]
+		mi := &file_inference_inference_query_proto_msgTypes[136]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -86988,7 +89547,7 @@ func (*QueryWrappedTokenBalancesResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryWrappedTokenBalancesResponse.ProtoReflect.Descriptor instead.
 func (*QueryWrappedTokenBalancesResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{131}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{136}
 }
 
 func (x *QueryWrappedTokenBalancesResponse) GetBalances() []*WrappedTokenBalance {
@@ -87009,7 +89568,7 @@ type QueryBridgeAddressesByChainRequest struct {
 func (x *QueryBridgeAddressesByChainRequest) Reset() {
 	*x = QueryBridgeAddressesByChainRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[132]
+		mi := &file_inference_inference_query_proto_msgTypes[137]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87023,7 +89582,7 @@ func (*QueryBridgeAddressesByChainRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryBridgeAddressesByChainRequest.ProtoReflect.Descriptor instead.
 func (*QueryBridgeAddressesByChainRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{132}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{137}
 }
 
 func (x *QueryBridgeAddressesByChainRequest) GetChainId() string {
@@ -87044,7 +89603,7 @@ type QueryBridgeAddressesByChainResponse struct {
 func (x *QueryBridgeAddressesByChainResponse) Reset() {
 	*x = QueryBridgeAddressesByChainResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[133]
+		mi := &file_inference_inference_query_proto_msgTypes[138]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87058,7 +89617,7 @@ func (*QueryBridgeAddressesByChainResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryBridgeAddressesByChainResponse.ProtoReflect.Descriptor instead.
 func (*QueryBridgeAddressesByChainResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{133}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{138}
 }
 
 func (x *QueryBridgeAddressesByChainResponse) GetAddresses() []*BridgeContractAddress {
@@ -87079,7 +89638,7 @@ type QueryValidateWrappedTokenForTradeRequest struct {
 func (x *QueryValidateWrappedTokenForTradeRequest) Reset() {
 	*x = QueryValidateWrappedTokenForTradeRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[134]
+		mi := &file_inference_inference_query_proto_msgTypes[139]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87093,7 +89652,7 @@ func (*QueryValidateWrappedTokenForTradeRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryValidateWrappedTokenForTradeRequest.ProtoReflect.Descriptor instead.
 func (*QueryValidateWrappedTokenForTradeRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{134}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{139}
 }
 
 func (x *QueryValidateWrappedTokenForTradeRequest) GetContractAddress() string {
@@ -87114,7 +89673,7 @@ type QueryValidateWrappedTokenForTradeResponse struct {
 func (x *QueryValidateWrappedTokenForTradeResponse) Reset() {
 	*x = QueryValidateWrappedTokenForTradeResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[135]
+		mi := &file_inference_inference_query_proto_msgTypes[140]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87128,7 +89687,7 @@ func (*QueryValidateWrappedTokenForTradeResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryValidateWrappedTokenForTradeResponse.ProtoReflect.Descriptor instead.
 func (*QueryValidateWrappedTokenForTradeResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{135}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{140}
 }
 
 func (x *QueryValidateWrappedTokenForTradeResponse) GetIsValid_() bool {
@@ -87147,7 +89706,7 @@ type QueryLiquidityPoolRequest struct {
 func (x *QueryLiquidityPoolRequest) Reset() {
 	*x = QueryLiquidityPoolRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[136]
+		mi := &file_inference_inference_query_proto_msgTypes[141]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87161,7 +89720,7 @@ func (*QueryLiquidityPoolRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryLiquidityPoolRequest.ProtoReflect.Descriptor instead.
 func (*QueryLiquidityPoolRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{136}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{141}
 }
 
 type QueryLiquidityPoolResponse struct {
@@ -87177,7 +89736,7 @@ type QueryLiquidityPoolResponse struct {
 func (x *QueryLiquidityPoolResponse) Reset() {
 	*x = QueryLiquidityPoolResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[137]
+		mi := &file_inference_inference_query_proto_msgTypes[142]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87191,7 +89750,7 @@ func (*QueryLiquidityPoolResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryLiquidityPoolResponse.ProtoReflect.Descriptor instead.
 func (*QueryLiquidityPoolResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{137}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{142}
 }
 
 func (x *QueryLiquidityPoolResponse) GetAddress() string {
@@ -87224,7 +89783,7 @@ type QueryEpochInfoRequest struct {
 func (x *QueryEpochInfoRequest) Reset() {
 	*x = QueryEpochInfoRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[138]
+		mi := &file_inference_inference_query_proto_msgTypes[143]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87238,7 +89797,7 @@ func (*QueryEpochInfoRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryEpochInfoRequest.ProtoReflect.Descriptor instead.
 func (*QueryEpochInfoRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{138}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{143}
 }
 
 type QueryEpochInfoResponse struct {
@@ -87256,7 +89815,7 @@ type QueryEpochInfoResponse struct {
 func (x *QueryEpochInfoResponse) Reset() {
 	*x = QueryEpochInfoResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[139]
+		mi := &file_inference_inference_query_proto_msgTypes[144]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87270,7 +89829,7 @@ func (*QueryEpochInfoResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryEpochInfoResponse.ProtoReflect.Descriptor instead.
 func (*QueryEpochInfoResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{139}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{144}
 }
 
 func (x *QueryEpochInfoResponse) GetBlockHeight() int64 {
@@ -87319,7 +89878,7 @@ type QueryCountPoCbatchesAtHeightRequest struct {
 func (x *QueryCountPoCbatchesAtHeightRequest) Reset() {
 	*x = QueryCountPoCbatchesAtHeightRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[140]
+		mi := &file_inference_inference_query_proto_msgTypes[145]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87333,7 +89892,7 @@ func (*QueryCountPoCbatchesAtHeightRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryCountPoCbatchesAtHeightRequest.ProtoReflect.Descriptor instead.
 func (*QueryCountPoCbatchesAtHeightRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{140}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{145}
 }
 
 func (x *QueryCountPoCbatchesAtHeightRequest) GetBlockHeight() int32 {
@@ -87354,7 +89913,7 @@ type QueryCountPoCbatchesAtHeightResponse struct {
 func (x *QueryCountPoCbatchesAtHeightResponse) Reset() {
 	*x = QueryCountPoCbatchesAtHeightResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[141]
+		mi := &file_inference_inference_query_proto_msgTypes[146]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87368,7 +89927,7 @@ func (*QueryCountPoCbatchesAtHeightResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryCountPoCbatchesAtHeightResponse.ProtoReflect.Descriptor instead.
 func (*QueryCountPoCbatchesAtHeightResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{141}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{146}
 }
 
 func (x *QueryCountPoCbatchesAtHeightResponse) GetCount() uint64 {
@@ -87389,7 +89948,7 @@ type QueryCountPoCvalidationsAtHeightRequest struct {
 func (x *QueryCountPoCvalidationsAtHeightRequest) Reset() {
 	*x = QueryCountPoCvalidationsAtHeightRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[142]
+		mi := &file_inference_inference_query_proto_msgTypes[147]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87403,7 +89962,7 @@ func (*QueryCountPoCvalidationsAtHeightRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryCountPoCvalidationsAtHeightRequest.ProtoReflect.Descriptor instead.
 func (*QueryCountPoCvalidationsAtHeightRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{142}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{147}
 }
 
 func (x *QueryCountPoCvalidationsAtHeightRequest) GetBlockHeight() int32 {
@@ -87424,7 +89983,7 @@ type QueryCountPoCvalidationsAtHeightResponse struct {
 func (x *QueryCountPoCvalidationsAtHeightResponse) Reset() {
 	*x = QueryCountPoCvalidationsAtHeightResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[143]
+		mi := &file_inference_inference_query_proto_msgTypes[148]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87438,7 +89997,7 @@ func (*QueryCountPoCvalidationsAtHeightResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryCountPoCvalidationsAtHeightResponse.ProtoReflect.Descriptor instead.
 func (*QueryCountPoCvalidationsAtHeightResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{143}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{148}
 }
 
 func (x *QueryCountPoCvalidationsAtHeightResponse) GetCount() uint64 {
@@ -87457,7 +90016,7 @@ type QueryApprovedTokensForTradeRequest struct {
 func (x *QueryApprovedTokensForTradeRequest) Reset() {
 	*x = QueryApprovedTokensForTradeRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[144]
+		mi := &file_inference_inference_query_proto_msgTypes[149]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87471,7 +90030,7 @@ func (*QueryApprovedTokensForTradeRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryApprovedTokensForTradeRequest.ProtoReflect.Descriptor instead.
 func (*QueryApprovedTokensForTradeRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{144}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{149}
 }
 
 type QueryApprovedTokensForTradeResponse struct {
@@ -87485,7 +90044,7 @@ type QueryApprovedTokensForTradeResponse struct {
 func (x *QueryApprovedTokensForTradeResponse) Reset() {
 	*x = QueryApprovedTokensForTradeResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[145]
+		mi := &file_inference_inference_query_proto_msgTypes[150]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87499,7 +90058,7 @@ func (*QueryApprovedTokensForTradeResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryApprovedTokensForTradeResponse.ProtoReflect.Descriptor instead.
 func (*QueryApprovedTokensForTradeResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{145}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{150}
 }
 
 func (x *QueryApprovedTokensForTradeResponse) GetApprovedTokens() []*BridgeTokenReference {
@@ -87521,7 +90080,7 @@ type QueryGetModelPerTokenPriceRequest struct {
 func (x *QueryGetModelPerTokenPriceRequest) Reset() {
 	*x = QueryGetModelPerTokenPriceRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[146]
+		mi := &file_inference_inference_query_proto_msgTypes[151]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87535,7 +90094,7 @@ func (*QueryGetModelPerTokenPriceRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryGetModelPerTokenPriceRequest.ProtoReflect.Descriptor instead.
 func (*QueryGetModelPerTokenPriceRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{146}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{151}
 }
 
 func (x *QueryGetModelPerTokenPriceRequest) GetModelId() string {
@@ -87557,7 +90116,7 @@ type QueryGetModelPerTokenPriceResponse struct {
 func (x *QueryGetModelPerTokenPriceResponse) Reset() {
 	*x = QueryGetModelPerTokenPriceResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[147]
+		mi := &file_inference_inference_query_proto_msgTypes[152]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87571,7 +90130,7 @@ func (*QueryGetModelPerTokenPriceResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryGetModelPerTokenPriceResponse.ProtoReflect.Descriptor instead.
 func (*QueryGetModelPerTokenPriceResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{147}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{152}
 }
 
 func (x *QueryGetModelPerTokenPriceResponse) GetPrice() uint64 {
@@ -87597,7 +90156,7 @@ type QueryGetAllModelPerTokenPricesRequest struct {
 func (x *QueryGetAllModelPerTokenPricesRequest) Reset() {
 	*x = QueryGetAllModelPerTokenPricesRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[148]
+		mi := &file_inference_inference_query_proto_msgTypes[153]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87611,7 +90170,7 @@ func (*QueryGetAllModelPerTokenPricesRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryGetAllModelPerTokenPricesRequest.ProtoReflect.Descriptor instead.
 func (*QueryGetAllModelPerTokenPricesRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{148}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{153}
 }
 
 type ModelPrice struct {
@@ -87626,7 +90185,7 @@ type ModelPrice struct {
 func (x *ModelPrice) Reset() {
 	*x = ModelPrice{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[149]
+		mi := &file_inference_inference_query_proto_msgTypes[154]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87640,7 +90199,7 @@ func (*ModelPrice) ProtoMessage() {}
 
 // Deprecated: Use ModelPrice.ProtoReflect.Descriptor instead.
 func (*ModelPrice) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{149}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{154}
 }
 
 func (x *ModelPrice) GetModelId() string {
@@ -87668,7 +90227,7 @@ type QueryGetAllModelPerTokenPricesResponse struct {
 func (x *QueryGetAllModelPerTokenPricesResponse) Reset() {
 	*x = QueryGetAllModelPerTokenPricesResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[150]
+		mi := &file_inference_inference_query_proto_msgTypes[155]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87682,7 +90241,7 @@ func (*QueryGetAllModelPerTokenPricesResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryGetAllModelPerTokenPricesResponse.ProtoReflect.Descriptor instead.
 func (*QueryGetAllModelPerTokenPricesResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{150}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{155}
 }
 
 func (x *QueryGetAllModelPerTokenPricesResponse) GetModelPrices() []*ModelPrice {
@@ -87703,7 +90262,7 @@ type QueryGetModelCapacityRequest struct {
 func (x *QueryGetModelCapacityRequest) Reset() {
 	*x = QueryGetModelCapacityRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[151]
+		mi := &file_inference_inference_query_proto_msgTypes[156]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87717,7 +90276,7 @@ func (*QueryGetModelCapacityRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryGetModelCapacityRequest.ProtoReflect.Descriptor instead.
 func (*QueryGetModelCapacityRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{151}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{156}
 }
 
 func (x *QueryGetModelCapacityRequest) GetModelId() string {
@@ -87739,7 +90298,7 @@ type QueryGetModelCapacityResponse struct {
 func (x *QueryGetModelCapacityResponse) Reset() {
 	*x = QueryGetModelCapacityResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[152]
+		mi := &file_inference_inference_query_proto_msgTypes[157]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87753,7 +90312,7 @@ func (*QueryGetModelCapacityResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryGetModelCapacityResponse.ProtoReflect.Descriptor instead.
 func (*QueryGetModelCapacityResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{152}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{157}
 }
 
 func (x *QueryGetModelCapacityResponse) GetCapacity() uint64 {
@@ -87779,7 +90338,7 @@ type QueryGetAllModelCapacitiesRequest struct {
 func (x *QueryGetAllModelCapacitiesRequest) Reset() {
 	*x = QueryGetAllModelCapacitiesRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[153]
+		mi := &file_inference_inference_query_proto_msgTypes[158]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87793,7 +90352,7 @@ func (*QueryGetAllModelCapacitiesRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryGetAllModelCapacitiesRequest.ProtoReflect.Descriptor instead.
 func (*QueryGetAllModelCapacitiesRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{153}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{158}
 }
 
 type QueryGetAllModelCapacitiesResponse struct {
@@ -87807,7 +90366,7 @@ type QueryGetAllModelCapacitiesResponse struct {
 func (x *QueryGetAllModelCapacitiesResponse) Reset() {
 	*x = QueryGetAllModelCapacitiesResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[154]
+		mi := &file_inference_inference_query_proto_msgTypes[159]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87821,7 +90380,7 @@ func (*QueryGetAllModelCapacitiesResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryGetAllModelCapacitiesResponse.ProtoReflect.Descriptor instead.
 func (*QueryGetAllModelCapacitiesResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{154}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{159}
 }
 
 func (x *QueryGetAllModelCapacitiesResponse) GetModelCapacities() []*ModelCapacity {
@@ -87843,7 +90402,7 @@ type ModelCapacity struct {
 func (x *ModelCapacity) Reset() {
 	*x = ModelCapacity{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[155]
+		mi := &file_inference_inference_query_proto_msgTypes[160]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87857,7 +90416,7 @@ func (*ModelCapacity) ProtoMessage() {}
 
 // Deprecated: Use ModelCapacity.ProtoReflect.Descriptor instead.
 func (*ModelCapacity) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{155}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{160}
 }
 
 func (x *ModelCapacity) GetModelId() string {
@@ -87886,7 +90445,7 @@ type QueryGranteesByMessageTypeRequest struct {
 func (x *QueryGranteesByMessageTypeRequest) Reset() {
 	*x = QueryGranteesByMessageTypeRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[156]
+		mi := &file_inference_inference_query_proto_msgTypes[161]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87900,7 +90459,7 @@ func (*QueryGranteesByMessageTypeRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryGranteesByMessageTypeRequest.ProtoReflect.Descriptor instead.
 func (*QueryGranteesByMessageTypeRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{156}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{161}
 }
 
 func (x *QueryGranteesByMessageTypeRequest) GetGranterAddress() string {
@@ -87929,7 +90488,7 @@ type Grantee struct {
 func (x *Grantee) Reset() {
 	*x = Grantee{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[157]
+		mi := &file_inference_inference_query_proto_msgTypes[162]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87943,7 +90502,7 @@ func (*Grantee) ProtoMessage() {}
 
 // Deprecated: Use Grantee.ProtoReflect.Descriptor instead.
 func (*Grantee) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{157}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{162}
 }
 
 func (x *Grantee) GetAddress() string {
@@ -87971,7 +90530,7 @@ type QueryGranteesByMessageTypeResponse struct {
 func (x *QueryGranteesByMessageTypeResponse) Reset() {
 	*x = QueryGranteesByMessageTypeResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[158]
+		mi := &file_inference_inference_query_proto_msgTypes[163]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -87985,7 +90544,7 @@ func (*QueryGranteesByMessageTypeResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryGranteesByMessageTypeResponse.ProtoReflect.Descriptor instead.
 func (*QueryGranteesByMessageTypeResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{158}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{163}
 }
 
 func (x *QueryGranteesByMessageTypeResponse) GetGrantees() []*Grantee {
@@ -88006,7 +90565,7 @@ type QueryTrainingAllowListRequest struct {
 func (x *QueryTrainingAllowListRequest) Reset() {
 	*x = QueryTrainingAllowListRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[159]
+		mi := &file_inference_inference_query_proto_msgTypes[164]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -88020,7 +90579,7 @@ func (*QueryTrainingAllowListRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryTrainingAllowListRequest.ProtoReflect.Descriptor instead.
 func (*QueryTrainingAllowListRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{159}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{164}
 }
 
 func (x *QueryTrainingAllowListRequest) GetRole() int32 {
@@ -88041,7 +90600,7 @@ type QueryTrainingAllowListResponse struct {
 func (x *QueryTrainingAllowListResponse) Reset() {
 	*x = QueryTrainingAllowListResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[160]
+		mi := &file_inference_inference_query_proto_msgTypes[165]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -88055,7 +90614,7 @@ func (*QueryTrainingAllowListResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryTrainingAllowListResponse.ProtoReflect.Descriptor instead.
 func (*QueryTrainingAllowListResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{160}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{165}
 }
 
 func (x *QueryTrainingAllowListResponse) GetAddresses() []string {
@@ -88074,7 +90633,7 @@ type QueryParticipantAllowListRequest struct {
 func (x *QueryParticipantAllowListRequest) Reset() {
 	*x = QueryParticipantAllowListRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[161]
+		mi := &file_inference_inference_query_proto_msgTypes[166]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -88088,7 +90647,7 @@ func (*QueryParticipantAllowListRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryParticipantAllowListRequest.ProtoReflect.Descriptor instead.
 func (*QueryParticipantAllowListRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{161}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{166}
 }
 
 type QueryParticipantAllowListResponse struct {
@@ -88102,7 +90661,7 @@ type QueryParticipantAllowListResponse struct {
 func (x *QueryParticipantAllowListResponse) Reset() {
 	*x = QueryParticipantAllowListResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[162]
+		mi := &file_inference_inference_query_proto_msgTypes[167]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -88116,7 +90675,7 @@ func (*QueryParticipantAllowListResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryParticipantAllowListResponse.ProtoReflect.Descriptor instead.
 func (*QueryParticipantAllowListResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{162}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{167}
 }
 
 func (x *QueryParticipantAllowListResponse) GetAddresses() []string {
@@ -88135,7 +90694,7 @@ type QueryGetMLNodeVersionRequest struct {
 func (x *QueryGetMLNodeVersionRequest) Reset() {
 	*x = QueryGetMLNodeVersionRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[163]
+		mi := &file_inference_inference_query_proto_msgTypes[168]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -88149,7 +90708,7 @@ func (*QueryGetMLNodeVersionRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryGetMLNodeVersionRequest.ProtoReflect.Descriptor instead.
 func (*QueryGetMLNodeVersionRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{163}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{168}
 }
 
 type QueryGetMLNodeVersionResponse struct {
@@ -88163,7 +90722,7 @@ type QueryGetMLNodeVersionResponse struct {
 func (x *QueryGetMLNodeVersionResponse) Reset() {
 	*x = QueryGetMLNodeVersionResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[164]
+		mi := &file_inference_inference_query_proto_msgTypes[169]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -88177,7 +90736,7 @@ func (*QueryGetMLNodeVersionResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryGetMLNodeVersionResponse.ProtoReflect.Descriptor instead.
 func (*QueryGetMLNodeVersionResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{164}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{169}
 }
 
 func (x *QueryGetMLNodeVersionResponse) GetMlnodeVersion() *MLNodeVersion {
@@ -88200,7 +90759,7 @@ type QueryExcludedParticipantsRequest struct {
 func (x *QueryExcludedParticipantsRequest) Reset() {
 	*x = QueryExcludedParticipantsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[165]
+		mi := &file_inference_inference_query_proto_msgTypes[170]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -88214,7 +90773,7 @@ func (*QueryExcludedParticipantsRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryExcludedParticipantsRequest.ProtoReflect.Descriptor instead.
 func (*QueryExcludedParticipantsRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{165}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{170}
 }
 
 func (x *QueryExcludedParticipantsRequest) GetEpochIndex() uint64 {
@@ -88236,7 +90795,7 @@ type QueryExcludedParticipantsResponse struct {
 func (x *QueryExcludedParticipantsResponse) Reset() {
 	*x = QueryExcludedParticipantsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[166]
+		mi := &file_inference_inference_query_proto_msgTypes[171]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -88250,7 +90809,7 @@ func (*QueryExcludedParticipantsResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryExcludedParticipantsResponse.ProtoReflect.Descriptor instead.
 func (*QueryExcludedParticipantsResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{166}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{171}
 }
 
 func (x *QueryExcludedParticipantsResponse) GetItems() []*ExcludedParticipant {
@@ -88270,7 +90829,7 @@ type QueryActiveConfirmationPoCEventRequest struct {
 func (x *QueryActiveConfirmationPoCEventRequest) Reset() {
 	*x = QueryActiveConfirmationPoCEventRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[167]
+		mi := &file_inference_inference_query_proto_msgTypes[172]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -88284,7 +90843,7 @@ func (*QueryActiveConfirmationPoCEventRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryActiveConfirmationPoCEventRequest.ProtoReflect.Descriptor instead.
 func (*QueryActiveConfirmationPoCEventRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{167}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{172}
 }
 
 // QueryActiveConfirmationPoCEventResponse is response type for the Query/ActiveConfirmationPoCEvent RPC method.
@@ -88300,7 +90859,7 @@ type QueryActiveConfirmationPoCEventResponse struct {
 func (x *QueryActiveConfirmationPoCEventResponse) Reset() {
 	*x = QueryActiveConfirmationPoCEventResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[168]
+		mi := &file_inference_inference_query_proto_msgTypes[173]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -88314,7 +90873,7 @@ func (*QueryActiveConfirmationPoCEventResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryActiveConfirmationPoCEventResponse.ProtoReflect.Descriptor instead.
 func (*QueryActiveConfirmationPoCEventResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{168}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{173}
 }
 
 func (x *QueryActiveConfirmationPoCEventResponse) GetIsActive() bool {
@@ -88343,7 +90902,7 @@ type QueryConfirmationPoCEventsRequest struct {
 func (x *QueryConfirmationPoCEventsRequest) Reset() {
 	*x = QueryConfirmationPoCEventsRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[169]
+		mi := &file_inference_inference_query_proto_msgTypes[174]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -88357,7 +90916,7 @@ func (*QueryConfirmationPoCEventsRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryConfirmationPoCEventsRequest.ProtoReflect.Descriptor instead.
 func (*QueryConfirmationPoCEventsRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{169}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{174}
 }
 
 func (x *QueryConfirmationPoCEventsRequest) GetEpochIndex() uint64 {
@@ -88379,7 +90938,7 @@ type QueryConfirmationPoCEventsResponse struct {
 func (x *QueryConfirmationPoCEventsResponse) Reset() {
 	*x = QueryConfirmationPoCEventsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[170]
+		mi := &file_inference_inference_query_proto_msgTypes[175]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -88393,7 +90952,7 @@ func (*QueryConfirmationPoCEventsResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryConfirmationPoCEventsResponse.ProtoReflect.Descriptor instead.
 func (*QueryConfirmationPoCEventsResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{170}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{175}
 }
 
 func (x *QueryConfirmationPoCEventsResponse) GetEvents() []*ConfirmationPoCEvent {
@@ -88416,7 +90975,7 @@ type ParticipantWithBalance struct {
 func (x *ParticipantWithBalance) Reset() {
 	*x = ParticipantWithBalance{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[171]
+		mi := &file_inference_inference_query_proto_msgTypes[176]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -88430,7 +90989,7 @@ func (*ParticipantWithBalance) ProtoMessage() {}
 
 // Deprecated: Use ParticipantWithBalance.ProtoReflect.Descriptor instead.
 func (*ParticipantWithBalance) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{171}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{176}
 }
 
 func (x *ParticipantWithBalance) GetParticipant() *Participant {
@@ -88459,7 +91018,7 @@ type QueryParticipantsWithBalancesRequest struct {
 func (x *QueryParticipantsWithBalancesRequest) Reset() {
 	*x = QueryParticipantsWithBalancesRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[172]
+		mi := &file_inference_inference_query_proto_msgTypes[177]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -88473,7 +91032,7 @@ func (*QueryParticipantsWithBalancesRequest) ProtoMessage() {}
 
 // Deprecated: Use QueryParticipantsWithBalancesRequest.ProtoReflect.Descriptor instead.
 func (*QueryParticipantsWithBalancesRequest) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{172}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{177}
 }
 
 func (x *QueryParticipantsWithBalancesRequest) GetPagination() *v1beta1.PageRequest {
@@ -88497,7 +91056,7 @@ type QueryParticipantsWithBalancesResponse struct {
 func (x *QueryParticipantsWithBalancesResponse) Reset() {
 	*x = QueryParticipantsWithBalancesResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[173]
+		mi := &file_inference_inference_query_proto_msgTypes[178]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -88511,7 +91070,7 @@ func (*QueryParticipantsWithBalancesResponse) ProtoMessage() {}
 
 // Deprecated: Use QueryParticipantsWithBalancesResponse.ProtoReflect.Descriptor instead.
 func (*QueryParticipantsWithBalancesResponse) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{173}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{178}
 }
 
 func (x *QueryParticipantsWithBalancesResponse) GetParticipants() []*ParticipantWithBalance {
@@ -88547,7 +91106,7 @@ type QueryDebugStatsResponse_TemporaryTimeStat struct {
 func (x *QueryDebugStatsResponse_TemporaryTimeStat) Reset() {
 	*x = QueryDebugStatsResponse_TemporaryTimeStat{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[174]
+		mi := &file_inference_inference_query_proto_msgTypes[179]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -88561,7 +91120,7 @@ func (*QueryDebugStatsResponse_TemporaryTimeStat) ProtoMessage() {}
 
 // Deprecated: Use QueryDebugStatsResponse_TemporaryTimeStat.ProtoReflect.Descriptor instead.
 func (*QueryDebugStatsResponse_TemporaryTimeStat) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{108, 0}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{113, 0}
 }
 
 func (x *QueryDebugStatsResponse_TemporaryTimeStat) GetDeveloper() string {
@@ -88590,7 +91149,7 @@ type QueryDebugStatsResponse_TemporaryEpochStat struct {
 func (x *QueryDebugStatsResponse_TemporaryEpochStat) Reset() {
 	*x = QueryDebugStatsResponse_TemporaryEpochStat{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_inference_inference_query_proto_msgTypes[175]
+		mi := &file_inference_inference_query_proto_msgTypes[180]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -88604,7 +91163,7 @@ func (*QueryDebugStatsResponse_TemporaryEpochStat) ProtoMessage() {}
 
 // Deprecated: Use QueryDebugStatsResponse_TemporaryEpochStat.ProtoReflect.Descriptor instead.
 func (*QueryDebugStatsResponse_TemporaryEpochStat) Descriptor() ([]byte, []int) {
-	return file_inference_inference_query_proto_rawDescGZIP(), []int{108, 1}
+	return file_inference_inference_query_proto_rawDescGZIP(), []int{113, 1}
 }
 
 func (x *QueryDebugStatsResponse_TemporaryEpochStat) GetDeveloper() string {
@@ -89046,7 +91605,42 @@ var file_inference_inference_query_proto_rawDesc = []byte{
 	0x68, 0x74, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x21, 0x2e, 0x69, 0x6e, 0x66, 0x65,
 	0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e,
 	0x4d, 0x4c, 0x4e, 0x6f, 0x64, 0x65, 0x57, 0x65, 0x69, 0x67, 0x68, 0x74, 0x52, 0x07, 0x77, 0x65,
-	0x69, 0x67, 0x68, 0x74, 0x73, 0x22, 0x1d, 0x0a, 0x1b, 0x51, 0x75, 0x65, 0x72, 0x79, 0x47, 0x65,
+	0x69, 0x67, 0x68, 0x74, 0x73, 0x22, 0x5d, 0x0a, 0x1b, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x6f,
+	0x43, 0x4f, 0x62, 0x73, 0x65, 0x72, 0x76, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x71,
+	0x75, 0x65, 0x73, 0x74, 0x12, 0x3e, 0x0a, 0x1c, 0x70, 0x6f, 0x63, 0x5f, 0x73, 0x74, 0x61, 0x67,
+	0x65, 0x5f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x5f, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x5f, 0x68, 0x65,
+	0x69, 0x67, 0x68, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x18, 0x70, 0x6f, 0x63, 0x53,
+	0x74, 0x61, 0x67, 0x65, 0x53, 0x74, 0x61, 0x72, 0x74, 0x42, 0x6c, 0x6f, 0x63, 0x6b, 0x48, 0x65,
+	0x69, 0x67, 0x68, 0x74, 0x22, 0x67, 0x0a, 0x1c, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x6f, 0x43,
+	0x4f, 0x62, 0x73, 0x65, 0x72, 0x76, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x73, 0x70,
+	0x6f, 0x6e, 0x73, 0x65, 0x12, 0x47, 0x0a, 0x0c, 0x6f, 0x62, 0x73, 0x65, 0x72, 0x76, 0x61, 0x74,
+	0x69, 0x6f, 0x6e, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x23, 0x2e, 0x69, 0x6e, 0x66,
+	0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65,
+	0x2e, 0x50, 0x6f, 0x43, 0x4f, 0x62, 0x73, 0x65, 0x72, 0x76, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52,
+	0x0c, 0x6f, 0x62, 0x73, 0x65, 0x72, 0x76, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x22, 0xaa, 0x01,
+	0x0a, 0x11, 0x50, 0x6f, 0x43, 0x43, 0x6f, 0x6e, 0x73, 0x65, 0x6e, 0x73, 0x75, 0x73, 0x45, 0x6e,
+	0x74, 0x72, 0x79, 0x12, 0x20, 0x0a, 0x0b, 0x70, 0x61, 0x72, 0x74, 0x69, 0x63, 0x69, 0x70, 0x61,
+	0x6e, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0b, 0x70, 0x61, 0x72, 0x74, 0x69, 0x63,
+	0x69, 0x70, 0x61, 0x6e, 0x74, 0x12, 0x21, 0x0a, 0x0c, 0x61, 0x67, 0x72, 0x65, 0x65, 0x64, 0x5f,
+	0x63, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x0b, 0x61, 0x67, 0x72,
+	0x65, 0x65, 0x64, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x12, 0x29, 0x0a, 0x10, 0x74, 0x6f, 0x74, 0x61,
+	0x6c, 0x5f, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x6f, 0x72, 0x73, 0x18, 0x03, 0x20, 0x01,
+	0x28, 0x05, 0x52, 0x0f, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x56, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74,
+	0x6f, 0x72, 0x73, 0x12, 0x25, 0x0a, 0x0e, 0x61, 0x67, 0x72, 0x65, 0x65, 0x69, 0x6e, 0x67, 0x5f,
+	0x63, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x04, 0x20, 0x01, 0x28, 0x05, 0x52, 0x0d, 0x61, 0x67, 0x72,
+	0x65, 0x65, 0x69, 0x6e, 0x67, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x22, 0x5a, 0x0a, 0x18, 0x51, 0x75,
+	0x65, 0x72, 0x79, 0x50, 0x6f, 0x43, 0x43, 0x6f, 0x6e, 0x73, 0x65, 0x6e, 0x73, 0x75, 0x73, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x3e, 0x0a, 0x1c, 0x70, 0x6f, 0x63, 0x5f, 0x73, 0x74,
+	0x61, 0x67, 0x65, 0x5f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x5f, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x5f,
+	0x68, 0x65, 0x69, 0x67, 0x68, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x18, 0x70, 0x6f,
+	0x63, 0x53, 0x74, 0x61, 0x67, 0x65, 0x53, 0x74, 0x61, 0x72, 0x74, 0x42, 0x6c, 0x6f, 0x63, 0x6b,
+	0x48, 0x65, 0x69, 0x67, 0x68, 0x74, 0x22, 0x5d, 0x0a, 0x19, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50,
+	0x6f, 0x43, 0x43, 0x6f, 0x6e, 0x73, 0x65, 0x6e, 0x73, 0x75, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f,
+	0x6e, 0x73, 0x65, 0x12, 0x40, 0x0a, 0x07, 0x65, 0x6e, 0x74, 0x72, 0x69, 0x65, 0x73, 0x18, 0x01,
+	0x20, 0x03, 0x28, 0x0b, 0x32, 0x26, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65,
+	0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x50, 0x6f, 0x43, 0x43, 0x6f,
+	0x6e, 0x73, 0x65, 0x6e, 0x73, 0x75, 0x73, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x52, 0x07, 0x65, 0x6e,
+	0x74, 0x72, 0x69, 0x65, 0x73, 0x22, 0x1d, 0x0a, 0x1b, 0x51, 0x75, 0x65, 0x72, 0x79, 0x47, 0x65,
 	0x74, 0x43, 0x75, 0x72, 0x72, 0x65, 0x6e, 0x74, 0x45, 0x70, 0x6f, 0x63, 0x68, 0x52, 0x65, 0x71,
 	0x75, 0x65, 0x73, 0x74, 0x22, 0x34, 0x0a, 0x1c, 0x51, 0x75, 0x65, 0x72, 0x79, 0x47, 0x65, 0x74,
 	0x43, 0x75, 0x72, 0x72, 0x65, 0x6e, 0x74, 0x45, 0x70, 0x6f, 0x63, 0x68, 0x52, 0x65, 0x73, 0x70,
@@ -89894,7 +92488,7 @@ var file_inference_inference_query_proto_rawDesc = []byte{
 	0x50, 0x61, 0x67, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x52, 0x0a, 0x70, 0x61,
 	0x67, 0x69, 0x6e, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x21, 0x0a, 0x0c, 0x62, 0x6c, 0x6f, 0x63,
 	0x6b, 0x5f, 0x68, 0x65, 0x69, 0x67, 0x68, 0x74, 0x18, 0x03, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0b,
-	0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x48, 0x65, 0x69, 0x67, 0x68, 0x74, 0x32, 0xba, 0x85, 0x01, 0x0a,
+	0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x48, 0x65, 0x69, 0x67, 0x68, 0x74, 0x32, 0xda, 0x88, 0x01, 0x0a,
 	0x05, 0x51, 0x75, 0x65, 0x72, 0x79, 0x12, 0x8f, 0x01, 0x0a, 0x06, 0x50, 0x61, 0x72, 0x61, 0x6d,
 	0x73, 0x12, 0x27, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e,
 	0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x61, 0x72,
@@ -90157,6 +92751,32 @@ var file_inference_inference_query_proto_rawDesc = []byte{
 	0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2f, 0x61, 0x6c, 0x6c, 0x5f, 0x6d, 0x6c, 0x6e,
 	0x6f, 0x64, 0x65, 0x5f, 0x77, 0x65, 0x69, 0x67, 0x68, 0x74, 0x5f, 0x64, 0x69, 0x73, 0x74, 0x72,
 	0x69, 0x62, 0x75, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x2f, 0x7b, 0x70, 0x6f, 0x63, 0x5f, 0x73, 0x74,
+	0x61, 0x67, 0x65, 0x5f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x5f, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x5f,
+	0x68, 0x65, 0x69, 0x67, 0x68, 0x74, 0x7d, 0x12, 0xd3, 0x01, 0x0a, 0x0f, 0x50, 0x6f, 0x43, 0x4f,
+	0x62, 0x73, 0x65, 0x72, 0x76, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x30, 0x2e, 0x69, 0x6e,
+	0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63,
+	0x65, 0x2e, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x6f, 0x43, 0x4f, 0x62, 0x73, 0x65, 0x72, 0x76,
+	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x31, 0x2e,
+	0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65,
+	0x6e, 0x63, 0x65, 0x2e, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x6f, 0x43, 0x4f, 0x62, 0x73, 0x65,
+	0x72, 0x76, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
+	0x22, 0x5b, 0x82, 0xd3, 0xe4, 0x93, 0x02, 0x55, 0x12, 0x53, 0x2f, 0x70, 0x72, 0x6f, 0x64, 0x75,
+	0x63, 0x74, 0x73, 0x63, 0x69, 0x65, 0x6e, 0x63, 0x65, 0x2f, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65,
+	0x6e, 0x63, 0x65, 0x2f, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2f, 0x70, 0x6f,
+	0x63, 0x5f, 0x6f, 0x62, 0x73, 0x65, 0x72, 0x76, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x2f, 0x7b,
+	0x70, 0x6f, 0x63, 0x5f, 0x73, 0x74, 0x61, 0x67, 0x65, 0x5f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x5f,
+	0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x5f, 0x68, 0x65, 0x69, 0x67, 0x68, 0x74, 0x7d, 0x12, 0xc7, 0x01,
+	0x0a, 0x0c, 0x50, 0x6f, 0x43, 0x43, 0x6f, 0x6e, 0x73, 0x65, 0x6e, 0x73, 0x75, 0x73, 0x12, 0x2d,
+	0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72,
+	0x65, 0x6e, 0x63, 0x65, 0x2e, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x6f, 0x43, 0x43, 0x6f, 0x6e,
+	0x73, 0x65, 0x6e, 0x73, 0x75, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2e, 0x2e,
+	0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65,
+	0x6e, 0x63, 0x65, 0x2e, 0x51, 0x75, 0x65, 0x72, 0x79, 0x50, 0x6f, 0x43, 0x43, 0x6f, 0x6e, 0x73,
+	0x65, 0x6e, 0x73, 0x75, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x58, 0x82,
+	0xd3, 0xe4, 0x93, 0x02, 0x52, 0x12, 0x50, 0x2f, 0x70, 0x72, 0x6f, 0x64, 0x75, 0x63, 0x74, 0x73,
+	0x63, 0x69, 0x65, 0x6e, 0x63, 0x65, 0x2f, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65,
+	0x2f, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2f, 0x70, 0x6f, 0x63, 0x5f, 0x63,
+	0x6f, 0x6e, 0x73, 0x65, 0x6e, 0x73, 0x75, 0x73, 0x2f, 0x7b, 0x70, 0x6f, 0x63, 0x5f, 0x73, 0x74,
 	0x61, 0x67, 0x65, 0x5f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x5f, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x5f,
 	0x68, 0x65, 0x69, 0x67, 0x68, 0x74, 0x7d, 0x12, 0xb5, 0x01, 0x0a, 0x0f, 0x47, 0x65, 0x74, 0x43,
 	0x75, 0x72, 0x72, 0x65, 0x6e, 0x74, 0x45, 0x70, 0x6f, 0x63, 0x68, 0x12, 0x30, 0x2e, 0x69, 0x6e,
@@ -90989,7 +93609,7 @@ func file_inference_inference_query_proto_rawDescGZIP() []byte {
 	return file_inference_inference_query_proto_rawDescData
 }
 
-var file_inference_inference_query_proto_msgTypes = make([]protoimpl.MessageInfo, 176)
+var file_inference_inference_query_proto_msgTypes = make([]protoimpl.MessageInfo, 181)
 var file_inference_inference_query_proto_goTypes = []interface{}{
 	(*QueryParamsRequest)(nil),                                    // 0: inference.inference.QueryParamsRequest
 	(*QueryParamsResponse)(nil),                                   // 1: inference.inference.QueryParamsResponse
@@ -91036,448 +93656,460 @@ var file_inference_inference_query_proto_goTypes = []interface{}{
 	(*QueryAllMLNodeWeightDistributionsForStageRequest)(nil),      // 42: inference.inference.QueryAllMLNodeWeightDistributionsForStageRequest
 	(*QueryAllMLNodeWeightDistributionsForStageResponse)(nil),     // 43: inference.inference.QueryAllMLNodeWeightDistributionsForStageResponse
 	(*MLNodeWeightDistributionWithAddress)(nil),                   // 44: inference.inference.MLNodeWeightDistributionWithAddress
-	(*QueryGetCurrentEpochRequest)(nil),                           // 45: inference.inference.QueryGetCurrentEpochRequest
-	(*QueryGetCurrentEpochResponse)(nil),                          // 46: inference.inference.QueryGetCurrentEpochResponse
-	(*QueryGetTokenomicsDataRequest)(nil),                         // 47: inference.inference.QueryGetTokenomicsDataRequest
-	(*QueryGetTokenomicsDataResponse)(nil),                        // 48: inference.inference.QueryGetTokenomicsDataResponse
-	(*QueryGetUnitOfComputePriceProposalRequest)(nil),             // 49: inference.inference.QueryGetUnitOfComputePriceProposalRequest
-	(*QueryGetUnitOfComputePriceProposalResponse)(nil),            // 50: inference.inference.QueryGetUnitOfComputePriceProposalResponse
-	(*QueryCurrentEpochGroupDataRequest)(nil),                     // 51: inference.inference.QueryCurrentEpochGroupDataRequest
-	(*QueryCurrentEpochGroupDataResponse)(nil),                    // 52: inference.inference.QueryCurrentEpochGroupDataResponse
-	(*QueryPreviousEpochGroupDataRequest)(nil),                    // 53: inference.inference.QueryPreviousEpochGroupDataRequest
-	(*QueryPreviousEpochGroupDataResponse)(nil),                   // 54: inference.inference.QueryPreviousEpochGroupDataResponse
-	(*QueryModelsAllRequest)(nil),                                 // 55: inference.inference.QueryModelsAllRequest
-	(*QueryModelsAllResponse)(nil),                                // 56: inference.inference.QueryModelsAllResponse
-	(*QueryGetTopMinerRequest)(nil),                               // 57: inference.inference.QueryGetTopMinerRequest
-	(*QueryGetTopMinerResponse)(nil),                              // 58: inference.inference.QueryGetTopMinerResponse
-	(*QueryAllTopMinerRequest)(nil),                               // 59: inference.inference.QueryAllTopMinerRequest
-	(*QueryAllTopMinerResponse)(nil),                              // 60: inference.inference.QueryAllTopMinerResponse
-	(*QueryGetInferenceTimeoutRequest)(nil),                       // 61: inference.inference.QueryGetInferenceTimeoutRequest
-	(*QueryGetInferenceTimeoutResponse)(nil),                      // 62: inference.inference.QueryGetInferenceTimeoutResponse
-	(*QueryAllInferenceTimeoutRequest)(nil),                       // 63: inference.inference.QueryAllInferenceTimeoutRequest
-	(*QueryAllInferenceTimeoutResponse)(nil),                      // 64: inference.inference.QueryAllInferenceTimeoutResponse
-	(*QueryGetInferenceValidationDetailsRequest)(nil),             // 65: inference.inference.QueryGetInferenceValidationDetailsRequest
-	(*QueryGetInferenceValidationDetailsResponse)(nil),            // 66: inference.inference.QueryGetInferenceValidationDetailsResponse
-	(*QueryAllInferenceValidationDetailsRequest)(nil),             // 67: inference.inference.QueryAllInferenceValidationDetailsRequest
-	(*QueryAllInferenceValidationDetailsResponse)(nil),            // 68: inference.inference.QueryAllInferenceValidationDetailsResponse
-	(*QueryGetInferenceValidationParametersRequest)(nil),          // 69: inference.inference.QueryGetInferenceValidationParametersRequest
-	(*QueryGetInferenceValidationParametersResponse)(nil),         // 70: inference.inference.QueryGetInferenceValidationParametersResponse
-	(*ValidatorPower)(nil),                                        // 71: inference.inference.ValidatorPower
-	(*QueryEpochPerformanceSummaryByEpochRequest)(nil),            // 72: inference.inference.QueryEpochPerformanceSummaryByEpochRequest
-	(*QueryEpochPerformanceSummaryByEpochResponse)(nil),           // 73: inference.inference.QueryEpochPerformanceSummaryByEpochResponse
-	(*QueryEpochPerformanceSummaryByParticipantRequest)(nil),      // 74: inference.inference.QueryEpochPerformanceSummaryByParticipantRequest
-	(*QueryEpochPerformanceSummaryByParticipantResponse)(nil),     // 75: inference.inference.QueryEpochPerformanceSummaryByParticipantResponse
-	(*QueryAllEpochPerformanceSummaryRequest)(nil),                // 76: inference.inference.QueryAllEpochPerformanceSummaryRequest
-	(*QueryAllEpochPerformanceSummaryResponse)(nil),               // 77: inference.inference.QueryAllEpochPerformanceSummaryResponse
-	(*QueryTrainingTaskRequest)(nil),                              // 78: inference.inference.QueryTrainingTaskRequest
-	(*QueryTrainingTaskResponse)(nil),                             // 79: inference.inference.QueryTrainingTaskResponse
-	(*QueryHardwareNodesRequest)(nil),                             // 80: inference.inference.QueryHardwareNodesRequest
-	(*QueryHardwareNodesResponse)(nil),                            // 81: inference.inference.QueryHardwareNodesResponse
-	(*QueryHardwareNodesAllRequest)(nil),                          // 82: inference.inference.QueryHardwareNodesAllRequest
-	(*QueryHardwareNodesAllResponse)(nil),                         // 83: inference.inference.QueryHardwareNodesAllResponse
-	(*QueryQueuedTrainingTasksRequest)(nil),                       // 84: inference.inference.QueryQueuedTrainingTasksRequest
-	(*QueryQueuedTrainingTasksResponse)(nil),                      // 85: inference.inference.QueryQueuedTrainingTasksResponse
-	(*QueryTrainingTaskAllRequest)(nil),                           // 86: inference.inference.QueryTrainingTaskAllRequest
-	(*QueryTrainingTaskAllResponse)(nil),                          // 87: inference.inference.QueryTrainingTaskAllResponse
-	(*QueryGetParticipantCurrentStatsRequest)(nil),                // 88: inference.inference.QueryGetParticipantCurrentStatsRequest
-	(*QueryGetParticipantCurrentStatsResponse)(nil),               // 89: inference.inference.QueryGetParticipantCurrentStatsResponse
-	(*QueryGetAllParticipantCurrentStatsRequest)(nil),             // 90: inference.inference.QueryGetAllParticipantCurrentStatsRequest
-	(*QueryGetAllParticipantCurrentStatsResponse)(nil),            // 91: inference.inference.QueryGetAllParticipantCurrentStatsResponse
-	(*ParticipantCurrentStats)(nil),                               // 92: inference.inference.ParticipantCurrentStats
-	(*ParticipantFullStats)(nil),                                  // 93: inference.inference.ParticipantFullStats
-	(*QueryParticipantsFullStatsRequest)(nil),                     // 94: inference.inference.QueryParticipantsFullStatsRequest
-	(*QueryParticipantsFullStatsResponse)(nil),                    // 95: inference.inference.QueryParticipantsFullStatsResponse
-	(*QueryStatsByTimePeriodByDeveloperRequest)(nil),              // 96: inference.inference.QueryStatsByTimePeriodByDeveloperRequest
-	(*QueryStatsByTimePeriodByDeveloperResponse)(nil),             // 97: inference.inference.QueryStatsByTimePeriodByDeveloperResponse
-	(*QueryStatsByDeveloperAndEpochBackwardsRequest)(nil),         // 98: inference.inference.QueryStatsByDeveloperAndEpochBackwardsRequest
-	(*QueryInferencesAndTokensStatsByEpochsBackwardsRequest)(nil), // 99: inference.inference.QueryInferencesAndTokensStatsByEpochsBackwardsRequest
-	(*QueryInferencesAndTokensStatsByTimePeriodRequest)(nil),      // 100: inference.inference.QueryInferencesAndTokensStatsByTimePeriodRequest
-	(*QueryInferencesAndTokensStatsByModelsRequest)(nil),          // 101: inference.inference.QueryInferencesAndTokensStatsByModelsRequest
-	(*ModelStats)(nil),                                            // 102: inference.inference.ModelStats
-	(*QueryInferencesAndTokensStatsByModelsResponse)(nil),         // 103: inference.inference.QueryInferencesAndTokensStatsByModelsResponse
-	(*QueryInferencesAndTokensStatsResponse)(nil),                 // 104: inference.inference.QueryInferencesAndTokensStatsResponse
-	(*QueryCountAllParticipantsRequest)(nil),                      // 105: inference.inference.QueryCountAllParticipantsRequest
-	(*QueryCountAllParticipantsResponse)(nil),                     // 106: inference.inference.QueryCountAllParticipantsResponse
-	(*QueryDebugStatsRequest)(nil),                                // 107: inference.inference.QueryDebugStatsRequest
-	(*QueryDebugStatsResponse)(nil),                               // 108: inference.inference.QueryDebugStatsResponse
-	(*QueryGetMinimumValidationAverageRequest)(nil),               // 109: inference.inference.QueryGetMinimumValidationAverageRequest
-	(*QueryGetMinimumValidationAverageResponse)(nil),              // 110: inference.inference.QueryGetMinimumValidationAverageResponse
-	(*QueryInProgressTrainingTasksRequest)(nil),                   // 111: inference.inference.QueryInProgressTrainingTasksRequest
-	(*QueryInProgressTrainingTasksResponse)(nil),                  // 112: inference.inference.QueryInProgressTrainingTasksResponse
-	(*QueryGetPartialUpgradeRequest)(nil),                         // 113: inference.inference.QueryGetPartialUpgradeRequest
-	(*QueryGetPartialUpgradeResponse)(nil),                        // 114: inference.inference.QueryGetPartialUpgradeResponse
-	(*QueryAllPartialUpgradeRequest)(nil),                         // 115: inference.inference.QueryAllPartialUpgradeRequest
-	(*QueryAllPartialUpgradeResponse)(nil),                        // 116: inference.inference.QueryAllPartialUpgradeResponse
-	(*QueryTrainingKvRecordRequest)(nil),                          // 117: inference.inference.QueryTrainingKvRecordRequest
-	(*QueryTrainingKvRecordResponse)(nil),                         // 118: inference.inference.QueryTrainingKvRecordResponse
-	(*QueryListTrainingKvRecordKeysRequest)(nil),                  // 119: inference.inference.QueryListTrainingKvRecordKeysRequest
-	(*QueryListTrainingKvRecordKeysResponse)(nil),                 // 120: inference.inference.QueryListTrainingKvRecordKeysResponse
-	(*QueryTrainingBarrierRequest)(nil),                           // 121: inference.inference.QueryTrainingBarrierRequest
-	(*QueryTrainingBarrierResponse)(nil),                          // 122: inference.inference.QueryTrainingBarrierResponse
-	(*QueryTrainingAliveNodesRequest)(nil),                        // 123: inference.inference.QueryTrainingAliveNodesRequest
-	(*QueryTrainingAliveNodesResponse)(nil),                       // 124: inference.inference.QueryTrainingAliveNodesResponse
-	(*QueryGetBridgeTransactionRequest)(nil),                      // 125: inference.inference.QueryGetBridgeTransactionRequest
-	(*QueryGetBridgeTransactionResponse)(nil),                     // 126: inference.inference.QueryGetBridgeTransactionResponse
-	(*QueryAllBridgeTransactionsRequest)(nil),                     // 127: inference.inference.QueryAllBridgeTransactionsRequest
-	(*QueryAllBridgeTransactionsResponse)(nil),                    // 128: inference.inference.QueryAllBridgeTransactionsResponse
-	(*WrappedTokenBalance)(nil),                                   // 129: inference.inference.WrappedTokenBalance
-	(*QueryWrappedTokenBalancesRequest)(nil),                      // 130: inference.inference.QueryWrappedTokenBalancesRequest
-	(*QueryWrappedTokenBalancesResponse)(nil),                     // 131: inference.inference.QueryWrappedTokenBalancesResponse
-	(*QueryBridgeAddressesByChainRequest)(nil),                    // 132: inference.inference.QueryBridgeAddressesByChainRequest
-	(*QueryBridgeAddressesByChainResponse)(nil),                   // 133: inference.inference.QueryBridgeAddressesByChainResponse
-	(*QueryValidateWrappedTokenForTradeRequest)(nil),              // 134: inference.inference.QueryValidateWrappedTokenForTradeRequest
-	(*QueryValidateWrappedTokenForTradeResponse)(nil),             // 135: inference.inference.QueryValidateWrappedTokenForTradeResponse
-	(*QueryLiquidityPoolRequest)(nil),                             // 136: inference.inference.QueryLiquidityPoolRequest
-	(*QueryLiquidityPoolResponse)(nil),                            // 137: inference.inference.QueryLiquidityPoolResponse
-	(*QueryEpochInfoRequest)(nil),                                 // 138: inference.inference.QueryEpochInfoRequest
-	(*QueryEpochInfoResponse)(nil),                                // 139: inference.inference.QueryEpochInfoResponse
-	(*QueryCountPoCbatchesAtHeightRequest)(nil),                   // 140: inference.inference.QueryCountPoCbatchesAtHeightRequest
-	(*QueryCountPoCbatchesAtHeightResponse)(nil),                  // 141: inference.inference.QueryCountPoCbatchesAtHeightResponse
-	(*QueryCountPoCvalidationsAtHeightRequest)(nil),               // 142: inference.inference.QueryCountPoCvalidationsAtHeightRequest
-	(*QueryCountPoCvalidationsAtHeightResponse)(nil),              // 143: inference.inference.QueryCountPoCvalidationsAtHeightResponse
-	(*QueryApprovedTokensForTradeRequest)(nil),                    // 144: inference.inference.QueryApprovedTokensForTradeRequest
-	(*QueryApprovedTokensForTradeResponse)(nil),                   // 145: inference.inference.QueryApprovedTokensForTradeResponse
-	(*QueryGetModelPerTokenPriceRequest)(nil),                     // 146: inference.inference.QueryGetModelPerTokenPriceRequest
-	(*QueryGetModelPerTokenPriceResponse)(nil),                    // 147: inference.inference.QueryGetModelPerTokenPriceResponse
-	(*QueryGetAllModelPerTokenPricesRequest)(nil),                 // 148: inference.inference.QueryGetAllModelPerTokenPricesRequest
-	(*ModelPrice)(nil),                                            // 149: inference.inference.ModelPrice
-	(*QueryGetAllModelPerTokenPricesResponse)(nil),                // 150: inference.inference.QueryGetAllModelPerTokenPricesResponse
-	(*QueryGetModelCapacityRequest)(nil),                          // 151: inference.inference.QueryGetModelCapacityRequest
-	(*QueryGetModelCapacityResponse)(nil),                         // 152: inference.inference.QueryGetModelCapacityResponse
-	(*QueryGetAllModelCapacitiesRequest)(nil),                     // 153: inference.inference.QueryGetAllModelCapacitiesRequest
-	(*QueryGetAllModelCapacitiesResponse)(nil),                    // 154: inference.inference.QueryGetAllModelCapacitiesResponse
-	(*ModelCapacity)(nil),                                         // 155: inference.inference.ModelCapacity
-	(*QueryGranteesByMessageTypeRequest)(nil),                     // 156: inference.inference.QueryGranteesByMessageTypeRequest
-	(*Grantee)(nil), // 157: inference.inference.Grantee
-	(*QueryGranteesByMessageTypeResponse)(nil),         // 158: inference.inference.QueryGranteesByMessageTypeResponse
-	(*QueryTrainingAllowListRequest)(nil),              // 159: inference.inference.QueryTrainingAllowListRequest
-	(*QueryTrainingAllowListResponse)(nil),             // 160: inference.inference.QueryTrainingAllowListResponse
-	(*QueryParticipantAllowListRequest)(nil),           // 161: inference.inference.QueryParticipantAllowListRequest
-	(*QueryParticipantAllowListResponse)(nil),          // 162: inference.inference.QueryParticipantAllowListResponse
-	(*QueryGetMLNodeVersionRequest)(nil),               // 163: inference.inference.QueryGetMLNodeVersionRequest
-	(*QueryGetMLNodeVersionResponse)(nil),              // 164: inference.inference.QueryGetMLNodeVersionResponse
-	(*QueryExcludedParticipantsRequest)(nil),           // 165: inference.inference.QueryExcludedParticipantsRequest
-	(*QueryExcludedParticipantsResponse)(nil),          // 166: inference.inference.QueryExcludedParticipantsResponse
-	(*QueryActiveConfirmationPoCEventRequest)(nil),     // 167: inference.inference.QueryActiveConfirmationPoCEventRequest
-	(*QueryActiveConfirmationPoCEventResponse)(nil),    // 168: inference.inference.QueryActiveConfirmationPoCEventResponse
-	(*QueryConfirmationPoCEventsRequest)(nil),          // 169: inference.inference.QueryConfirmationPoCEventsRequest
-	(*QueryConfirmationPoCEventsResponse)(nil),         // 170: inference.inference.QueryConfirmationPoCEventsResponse
-	(*ParticipantWithBalance)(nil),                     // 171: inference.inference.ParticipantWithBalance
-	(*QueryParticipantsWithBalancesRequest)(nil),       // 172: inference.inference.QueryParticipantsWithBalancesRequest
-	(*QueryParticipantsWithBalancesResponse)(nil),      // 173: inference.inference.QueryParticipantsWithBalancesResponse
-	(*QueryDebugStatsResponse_TemporaryTimeStat)(nil),  // 174: inference.inference.QueryDebugStatsResponse.TemporaryTimeStat
-	(*QueryDebugStatsResponse_TemporaryEpochStat)(nil), // 175: inference.inference.QueryDebugStatsResponse.TemporaryEpochStat
-	(*Params)(nil),                     // 176: inference.inference.Params
-	(*Inference)(nil),                  // 177: inference.inference.Inference
-	(*v1beta1.PageRequest)(nil),        // 178: cosmos.base.query.v1beta1.PageRequest
-	(*v1beta1.PageResponse)(nil),       // 179: cosmos.base.query.v1beta1.PageResponse
-	(*Participant)(nil),                // 180: inference.inference.Participant
-	(*EpochGroupData)(nil),             // 181: inference.inference.EpochGroupData
-	(*SettleAmount)(nil),               // 182: inference.inference.SettleAmount
-	(*EpochGroupValidations)(nil),      // 183: inference.inference.EpochGroupValidations
-	(*PoCBatch)(nil),                   // 184: inference.inference.PoCBatch
-	(*PoCValidation)(nil),              // 185: inference.inference.PoCValidation
-	(*PoCValidationV2)(nil),            // 186: inference.inference.PoCValidationV2
-	(*MLNodeWeight)(nil),               // 187: inference.inference.MLNodeWeight
-	(*TokenomicsData)(nil),             // 188: inference.inference.TokenomicsData
-	(*UnitOfComputePriceProposal)(nil), // 189: inference.inference.UnitOfComputePriceProposal
-	(*Model)(nil),                      // 190: inference.inference.Model
-	(*TopMiner)(nil),                   // 191: inference.inference.TopMiner
-	(*InferenceTimeout)(nil),           // 192: inference.inference.InferenceTimeout
-	(*InferenceValidationDetails)(nil), // 193: inference.inference.InferenceValidationDetails
-	(*ValidationParams)(nil),           // 194: inference.inference.ValidationParams
-	(*EpochPerformanceSummary)(nil),    // 195: inference.inference.EpochPerformanceSummary
-	(*TrainingTask)(nil),               // 196: inference.inference.TrainingTask
-	(*HardwareNodes)(nil),              // 197: inference.inference.HardwareNodes
-	(*DeveloperStatsByTime)(nil),       // 198: inference.inference.DeveloperStatsByTime
-	(*PartialUpgrade)(nil),             // 199: inference.inference.PartialUpgrade
-	(*TrainingTaskKVRecord)(nil),       // 200: inference.inference.TrainingTaskKVRecord
-	(*GetBarrierStatusRequest)(nil),    // 201: inference.inference.GetBarrierStatusRequest
-	(*GetBarrierStatusResponse)(nil),   // 202: inference.inference.GetBarrierStatusResponse
-	(*GetAliveNodesRequest)(nil),       // 203: inference.inference.GetAliveNodesRequest
-	(*GetAliveNodesResponse)(nil),      // 204: inference.inference.GetAliveNodesResponse
-	(*BridgeTransaction)(nil),          // 205: inference.inference.BridgeTransaction
-	(*BridgeWrappedTokenContract)(nil), // 206: inference.inference.BridgeWrappedTokenContract
-	(*BridgeContractAddress)(nil),      // 207: inference.inference.BridgeContractAddress
-	(*Epoch)(nil),                      // 208: inference.inference.Epoch
-	(*ConfirmationPoCEvent)(nil),       // 209: inference.inference.ConfirmationPoCEvent
-	(*BridgeTokenReference)(nil),       // 210: inference.inference.BridgeTokenReference
-	(*MLNodeVersion)(nil),              // 211: inference.inference.MLNodeVersion
-	(*ExcludedParticipant)(nil),        // 212: inference.inference.ExcludedParticipant
-	(*v1beta11.Coin)(nil),              // 213: cosmos.base.v1beta1.Coin
-	(*DeveloperStatsByEpoch)(nil),      // 214: inference.inference.DeveloperStatsByEpoch
+	(*QueryPoCObservationsRequest)(nil),                           // 45: inference.inference.QueryPoCObservationsRequest
+	(*QueryPoCObservationsResponse)(nil),                          // 46: inference.inference.QueryPoCObservationsResponse
+	(*PoCConsensusEntry)(nil),                                     // 47: inference.inference.PoCConsensusEntry
+	(*QueryPoCConsensusRequest)(nil),                              // 48: inference.inference.QueryPoCConsensusRequest
+	(*QueryPoCConsensusResponse)(nil),                             // 49: inference.inference.QueryPoCConsensusResponse
+	(*QueryGetCurrentEpochRequest)(nil),                           // 50: inference.inference.QueryGetCurrentEpochRequest
+	(*QueryGetCurrentEpochResponse)(nil),                          // 51: inference.inference.QueryGetCurrentEpochResponse
+	(*QueryGetTokenomicsDataRequest)(nil),                         // 52: inference.inference.QueryGetTokenomicsDataRequest
+	(*QueryGetTokenomicsDataResponse)(nil),                        // 53: inference.inference.QueryGetTokenomicsDataResponse
+	(*QueryGetUnitOfComputePriceProposalRequest)(nil),             // 54: inference.inference.QueryGetUnitOfComputePriceProposalRequest
+	(*QueryGetUnitOfComputePriceProposalResponse)(nil),            // 55: inference.inference.QueryGetUnitOfComputePriceProposalResponse
+	(*QueryCurrentEpochGroupDataRequest)(nil),                     // 56: inference.inference.QueryCurrentEpochGroupDataRequest
+	(*QueryCurrentEpochGroupDataResponse)(nil),                    // 57: inference.inference.QueryCurrentEpochGroupDataResponse
+	(*QueryPreviousEpochGroupDataRequest)(nil),                    // 58: inference.inference.QueryPreviousEpochGroupDataRequest
+	(*QueryPreviousEpochGroupDataResponse)(nil),                   // 59: inference.inference.QueryPreviousEpochGroupDataResponse
+	(*QueryModelsAllRequest)(nil),                                 // 60: inference.inference.QueryModelsAllRequest
+	(*QueryModelsAllResponse)(nil),                                // 61: inference.inference.QueryModelsAllResponse
+	(*QueryGetTopMinerRequest)(nil),                               // 62: inference.inference.QueryGetTopMinerRequest
+	(*QueryGetTopMinerResponse)(nil),                              // 63: inference.inference.QueryGetTopMinerResponse
+	(*QueryAllTopMinerRequest)(nil),                               // 64: inference.inference.QueryAllTopMinerRequest
+	(*QueryAllTopMinerResponse)(nil),                              // 65: inference.inference.QueryAllTopMinerResponse
+	(*QueryGetInferenceTimeoutRequest)(nil),                       // 66: inference.inference.QueryGetInferenceTimeoutRequest
+	(*QueryGetInferenceTimeoutResponse)(nil),                      // 67: inference.inference.QueryGetInferenceTimeoutResponse
+	(*QueryAllInferenceTimeoutRequest)(nil),                       // 68: inference.inference.QueryAllInferenceTimeoutRequest
+	(*QueryAllInferenceTimeoutResponse)(nil),                      // 69: inference.inference.QueryAllInferenceTimeoutResponse
+	(*QueryGetInferenceValidationDetailsRequest)(nil),             // 70: inference.inference.QueryGetInferenceValidationDetailsRequest
+	(*QueryGetInferenceValidationDetailsResponse)(nil),            // 71: inference.inference.QueryGetInferenceValidationDetailsResponse
+	(*QueryAllInferenceValidationDetailsRequest)(nil),             // 72: inference.inference.QueryAllInferenceValidationDetailsRequest
+	(*QueryAllInferenceValidationDetailsResponse)(nil),            // 73: inference.inference.QueryAllInferenceValidationDetailsResponse
+	(*QueryGetInferenceValidationParametersRequest)(nil),          // 74: inference.inference.QueryGetInferenceValidationParametersRequest
+	(*QueryGetInferenceValidationParametersResponse)(nil),         // 75: inference.inference.QueryGetInferenceValidationParametersResponse
+	(*ValidatorPower)(nil),                                        // 76: inference.inference.ValidatorPower
+	(*QueryEpochPerformanceSummaryByEpochRequest)(nil),            // 77: inference.inference.QueryEpochPerformanceSummaryByEpochRequest
+	(*QueryEpochPerformanceSummaryByEpochResponse)(nil),           // 78: inference.inference.QueryEpochPerformanceSummaryByEpochResponse
+	(*QueryEpochPerformanceSummaryByParticipantRequest)(nil),      // 79: inference.inference.QueryEpochPerformanceSummaryByParticipantRequest
+	(*QueryEpochPerformanceSummaryByParticipantResponse)(nil),     // 80: inference.inference.QueryEpochPerformanceSummaryByParticipantResponse
+	(*QueryAllEpochPerformanceSummaryRequest)(nil),                // 81: inference.inference.QueryAllEpochPerformanceSummaryRequest
+	(*QueryAllEpochPerformanceSummaryResponse)(nil),               // 82: inference.inference.QueryAllEpochPerformanceSummaryResponse
+	(*QueryTrainingTaskRequest)(nil),                              // 83: inference.inference.QueryTrainingTaskRequest
+	(*QueryTrainingTaskResponse)(nil),                             // 84: inference.inference.QueryTrainingTaskResponse
+	(*QueryHardwareNodesRequest)(nil),                             // 85: inference.inference.QueryHardwareNodesRequest
+	(*QueryHardwareNodesResponse)(nil),                            // 86: inference.inference.QueryHardwareNodesResponse
+	(*QueryHardwareNodesAllRequest)(nil),                          // 87: inference.inference.QueryHardwareNodesAllRequest
+	(*QueryHardwareNodesAllResponse)(nil),                         // 88: inference.inference.QueryHardwareNodesAllResponse
+	(*QueryQueuedTrainingTasksRequest)(nil),                       // 89: inference.inference.QueryQueuedTrainingTasksRequest
+	(*QueryQueuedTrainingTasksResponse)(nil),                      // 90: inference.inference.QueryQueuedTrainingTasksResponse
+	(*QueryTrainingTaskAllRequest)(nil),                           // 91: inference.inference.QueryTrainingTaskAllRequest
+	(*QueryTrainingTaskAllResponse)(nil),                          // 92: inference.inference.QueryTrainingTaskAllResponse
+	(*QueryGetParticipantCurrentStatsRequest)(nil),                // 93: inference.inference.QueryGetParticipantCurrentStatsRequest
+	(*QueryGetParticipantCurrentStatsResponse)(nil),               // 94: inference.inference.QueryGetParticipantCurrentStatsResponse
+	(*QueryGetAllParticipantCurrentStatsRequest)(nil),             // 95: inference.inference.QueryGetAllParticipantCurrentStatsRequest
+	(*QueryGetAllParticipantCurrentStatsResponse)(nil),            // 96: inference.inference.QueryGetAllParticipantCurrentStatsResponse
+	(*ParticipantCurrentStats)(nil),                               // 97: inference.inference.ParticipantCurrentStats
+	(*ParticipantFullStats)(nil),                                  // 98: inference.inference.ParticipantFullStats
+	(*QueryParticipantsFullStatsRequest)(nil),                     // 99: inference.inference.QueryParticipantsFullStatsRequest
+	(*QueryParticipantsFullStatsResponse)(nil),                    // 100: inference.inference.QueryParticipantsFullStatsResponse
+	(*QueryStatsByTimePeriodByDeveloperRequest)(nil),              // 101: inference.inference.QueryStatsByTimePeriodByDeveloperRequest
+	(*QueryStatsByTimePeriodByDeveloperResponse)(nil),             // 102: inference.inference.QueryStatsByTimePeriodByDeveloperResponse
+	(*QueryStatsByDeveloperAndEpochBackwardsRequest)(nil),         // 103: inference.inference.QueryStatsByDeveloperAndEpochBackwardsRequest
+	(*QueryInferencesAndTokensStatsByEpochsBackwardsRequest)(nil), // 104: inference.inference.QueryInferencesAndTokensStatsByEpochsBackwardsRequest
+	(*QueryInferencesAndTokensStatsByTimePeriodRequest)(nil),      // 105: inference.inference.QueryInferencesAndTokensStatsByTimePeriodRequest
+	(*QueryInferencesAndTokensStatsByModelsRequest)(nil),          // 106: inference.inference.QueryInferencesAndTokensStatsByModelsRequest
+	(*ModelStats)(nil),                                            // 107: inference.inference.ModelStats
+	(*QueryInferencesAndTokensStatsByModelsResponse)(nil),         // 108: inference.inference.QueryInferencesAndTokensStatsByModelsResponse
+	(*QueryInferencesAndTokensStatsResponse)(nil),                 // 109: inference.inference.QueryInferencesAndTokensStatsResponse
+	(*QueryCountAllParticipantsRequest)(nil),                      // 110: inference.inference.QueryCountAllParticipantsRequest
+	(*QueryCountAllParticipantsResponse)(nil),                     // 111: inference.inference.QueryCountAllParticipantsResponse
+	(*QueryDebugStatsRequest)(nil),                                // 112: inference.inference.QueryDebugStatsRequest
+	(*QueryDebugStatsResponse)(nil),                               // 113: inference.inference.QueryDebugStatsResponse
+	(*QueryGetMinimumValidationAverageRequest)(nil),               // 114: inference.inference.QueryGetMinimumValidationAverageRequest
+	(*QueryGetMinimumValidationAverageResponse)(nil),              // 115: inference.inference.QueryGetMinimumValidationAverageResponse
+	(*QueryInProgressTrainingTasksRequest)(nil),                   // 116: inference.inference.QueryInProgressTrainingTasksRequest
+	(*QueryInProgressTrainingTasksResponse)(nil),                  // 117: inference.inference.QueryInProgressTrainingTasksResponse
+	(*QueryGetPartialUpgradeRequest)(nil),                         // 118: inference.inference.QueryGetPartialUpgradeRequest
+	(*QueryGetPartialUpgradeResponse)(nil),                        // 119: inference.inference.QueryGetPartialUpgradeResponse
+	(*QueryAllPartialUpgradeRequest)(nil),                         // 120: inference.inference.QueryAllPartialUpgradeRequest
+	(*QueryAllPartialUpgradeResponse)(nil),                        // 121: inference.inference.QueryAllPartialUpgradeResponse
+	(*QueryTrainingKvRecordRequest)(nil),                          // 122: inference.inference.QueryTrainingKvRecordRequest
+	(*QueryTrainingKvRecordResponse)(nil),                         // 123: inference.inference.QueryTrainingKvRecordResponse
+	(*QueryListTrainingKvRecordKeysRequest)(nil),                  // 124: inference.inference.QueryListTrainingKvRecordKeysRequest
+	(*QueryListTrainingKvRecordKeysResponse)(nil),                 // 125: inference.inference.QueryListTrainingKvRecordKeysResponse
+	(*QueryTrainingBarrierRequest)(nil),                           // 126: inference.inference.QueryTrainingBarrierRequest
+	(*QueryTrainingBarrierResponse)(nil),                          // 127: inference.inference.QueryTrainingBarrierResponse
+	(*QueryTrainingAliveNodesRequest)(nil),                        // 128: inference.inference.QueryTrainingAliveNodesRequest
+	(*QueryTrainingAliveNodesResponse)(nil),                       // 129: inference.inference.QueryTrainingAliveNodesResponse
+	(*QueryGetBridgeTransactionRequest)(nil),                      // 130: inference.inference.QueryGetBridgeTransactionRequest
+	(*QueryGetBridgeTransactionResponse)(nil),                     // 131: inference.inference.QueryGetBridgeTransactionResponse
+	(*QueryAllBridgeTransactionsRequest)(nil),                     // 132: inference.inference.QueryAllBridgeTransactionsRequest
+	(*QueryAllBridgeTransactionsResponse)(nil),                    // 133: inference.inference.QueryAllBridgeTransactionsResponse
+	(*WrappedTokenBalance)(nil),                                   // 134: inference.inference.WrappedTokenBalance
+	(*QueryWrappedTokenBalancesRequest)(nil),                      // 135: inference.inference.QueryWrappedTokenBalancesRequest
+	(*QueryWrappedTokenBalancesResponse)(nil),                     // 136: inference.inference.QueryWrappedTokenBalancesResponse
+	(*QueryBridgeAddressesByChainRequest)(nil),                    // 137: inference.inference.QueryBridgeAddressesByChainRequest
+	(*QueryBridgeAddressesByChainResponse)(nil),                   // 138: inference.inference.QueryBridgeAddressesByChainResponse
+	(*QueryValidateWrappedTokenForTradeRequest)(nil),              // 139: inference.inference.QueryValidateWrappedTokenForTradeRequest
+	(*QueryValidateWrappedTokenForTradeResponse)(nil),             // 140: inference.inference.QueryValidateWrappedTokenForTradeResponse
+	(*QueryLiquidityPoolRequest)(nil),                             // 141: inference.inference.QueryLiquidityPoolRequest
+	(*QueryLiquidityPoolResponse)(nil),                            // 142: inference.inference.QueryLiquidityPoolResponse
+	(*QueryEpochInfoRequest)(nil),                                 // 143: inference.inference.QueryEpochInfoRequest
+	(*QueryEpochInfoResponse)(nil),                                // 144: inference.inference.QueryEpochInfoResponse
+	(*QueryCountPoCbatchesAtHeightRequest)(nil),                   // 145: inference.inference.QueryCountPoCbatchesAtHeightRequest
+	(*QueryCountPoCbatchesAtHeightResponse)(nil),                  // 146: inference.inference.QueryCountPoCbatchesAtHeightResponse
+	(*QueryCountPoCvalidationsAtHeightRequest)(nil),               // 147: inference.inference.QueryCountPoCvalidationsAtHeightRequest
+	(*QueryCountPoCvalidationsAtHeightResponse)(nil),              // 148: inference.inference.QueryCountPoCvalidationsAtHeightResponse
+	(*QueryApprovedTokensForTradeRequest)(nil),                    // 149: inference.inference.QueryApprovedTokensForTradeRequest
+	(*QueryApprovedTokensForTradeResponse)(nil),                   // 150: inference.inference.QueryApprovedTokensForTradeResponse
+	(*QueryGetModelPerTokenPriceRequest)(nil),                     // 151: inference.inference.QueryGetModelPerTokenPriceRequest
+	(*QueryGetModelPerTokenPriceResponse)(nil),                    // 152: inference.inference.QueryGetModelPerTokenPriceResponse
+	(*QueryGetAllModelPerTokenPricesRequest)(nil),                 // 153: inference.inference.QueryGetAllModelPerTokenPricesRequest
+	(*ModelPrice)(nil),                                            // 154: inference.inference.ModelPrice
+	(*QueryGetAllModelPerTokenPricesResponse)(nil),                // 155: inference.inference.QueryGetAllModelPerTokenPricesResponse
+	(*QueryGetModelCapacityRequest)(nil),                          // 156: inference.inference.QueryGetModelCapacityRequest
+	(*QueryGetModelCapacityResponse)(nil),                         // 157: inference.inference.QueryGetModelCapacityResponse
+	(*QueryGetAllModelCapacitiesRequest)(nil),                     // 158: inference.inference.QueryGetAllModelCapacitiesRequest
+	(*QueryGetAllModelCapacitiesResponse)(nil),                    // 159: inference.inference.QueryGetAllModelCapacitiesResponse
+	(*ModelCapacity)(nil),                                         // 160: inference.inference.ModelCapacity
+	(*QueryGranteesByMessageTypeRequest)(nil),                     // 161: inference.inference.QueryGranteesByMessageTypeRequest
+	(*Grantee)(nil), // 162: inference.inference.Grantee
+	(*QueryGranteesByMessageTypeResponse)(nil),         // 163: inference.inference.QueryGranteesByMessageTypeResponse
+	(*QueryTrainingAllowListRequest)(nil),              // 164: inference.inference.QueryTrainingAllowListRequest
+	(*QueryTrainingAllowListResponse)(nil),             // 165: inference.inference.QueryTrainingAllowListResponse
+	(*QueryParticipantAllowListRequest)(nil),           // 166: inference.inference.QueryParticipantAllowListRequest
+	(*QueryParticipantAllowListResponse)(nil),          // 167: inference.inference.QueryParticipantAllowListResponse
+	(*QueryGetMLNodeVersionRequest)(nil),               // 168: inference.inference.QueryGetMLNodeVersionRequest
+	(*QueryGetMLNodeVersionResponse)(nil),              // 169: inference.inference.QueryGetMLNodeVersionResponse
+	(*QueryExcludedParticipantsRequest)(nil),           // 170: inference.inference.QueryExcludedParticipantsRequest
+	(*QueryExcludedParticipantsResponse)(nil),          // 171: inference.inference.QueryExcludedParticipantsResponse
+	(*QueryActiveConfirmationPoCEventRequest)(nil),     // 172: inference.inference.QueryActiveConfirmationPoCEventRequest
+	(*QueryActiveConfirmationPoCEventResponse)(nil),    // 173: inference.inference.QueryActiveConfirmationPoCEventResponse
+	(*QueryConfirmationPoCEventsRequest)(nil),          // 174: inference.inference.QueryConfirmationPoCEventsRequest
+	(*QueryConfirmationPoCEventsResponse)(nil),         // 175: inference.inference.QueryConfirmationPoCEventsResponse
+	(*ParticipantWithBalance)(nil),                     // 176: inference.inference.ParticipantWithBalance
+	(*QueryParticipantsWithBalancesRequest)(nil),       // 177: inference.inference.QueryParticipantsWithBalancesRequest
+	(*QueryParticipantsWithBalancesResponse)(nil),      // 178: inference.inference.QueryParticipantsWithBalancesResponse
+	(*QueryDebugStatsResponse_TemporaryTimeStat)(nil),  // 179: inference.inference.QueryDebugStatsResponse.TemporaryTimeStat
+	(*QueryDebugStatsResponse_TemporaryEpochStat)(nil), // 180: inference.inference.QueryDebugStatsResponse.TemporaryEpochStat
+	(*Params)(nil),                     // 181: inference.inference.Params
+	(*Inference)(nil),                  // 182: inference.inference.Inference
+	(*v1beta1.PageRequest)(nil),        // 183: cosmos.base.query.v1beta1.PageRequest
+	(*v1beta1.PageResponse)(nil),       // 184: cosmos.base.query.v1beta1.PageResponse
+	(*Participant)(nil),                // 185: inference.inference.Participant
+	(*EpochGroupData)(nil),             // 186: inference.inference.EpochGroupData
+	(*SettleAmount)(nil),               // 187: inference.inference.SettleAmount
+	(*EpochGroupValidations)(nil),      // 188: inference.inference.EpochGroupValidations
+	(*PoCBatch)(nil),                   // 189: inference.inference.PoCBatch
+	(*PoCValidation)(nil),              // 190: inference.inference.PoCValidation
+	(*PoCValidationV2)(nil),            // 191: inference.inference.PoCValidationV2
+	(*MLNodeWeight)(nil),               // 192: inference.inference.MLNodeWeight
+	(*PoCObservation)(nil),             // 193: inference.inference.PoCObservation
+	(*TokenomicsData)(nil),             // 194: inference.inference.TokenomicsData
+	(*UnitOfComputePriceProposal)(nil), // 195: inference.inference.UnitOfComputePriceProposal
+	(*Model)(nil),                      // 196: inference.inference.Model
+	(*TopMiner)(nil),                   // 197: inference.inference.TopMiner
+	(*InferenceTimeout)(nil),           // 198: inference.inference.InferenceTimeout
+	(*InferenceValidationDetails)(nil), // 199: inference.inference.InferenceValidationDetails
+	(*ValidationParams)(nil),           // 200: inference.inference.ValidationParams
+	(*EpochPerformanceSummary)(nil),    // 201: inference.inference.EpochPerformanceSummary
+	(*TrainingTask)(nil),               // 202: inference.inference.TrainingTask
+	(*HardwareNodes)(nil),              // 203: inference.inference.HardwareNodes
+	(*DeveloperStatsByTime)(nil),       // 204: inference.inference.DeveloperStatsByTime
+	(*PartialUpgrade)(nil),             // 205: inference.inference.PartialUpgrade
+	(*TrainingTaskKVRecord)(nil),       // 206: inference.inference.TrainingTaskKVRecord
+	(*GetBarrierStatusRequest)(nil),    // 207: inference.inference.GetBarrierStatusRequest
+	(*GetBarrierStatusResponse)(nil),   // 208: inference.inference.GetBarrierStatusResponse
+	(*GetAliveNodesRequest)(nil),       // 209: inference.inference.GetAliveNodesRequest
+	(*GetAliveNodesResponse)(nil),      // 210: inference.inference.GetAliveNodesResponse
+	(*BridgeTransaction)(nil),          // 211: inference.inference.BridgeTransaction
+	(*BridgeWrappedTokenContract)(nil), // 212: inference.inference.BridgeWrappedTokenContract
+	(*BridgeContractAddress)(nil),      // 213: inference.inference.BridgeContractAddress
+	(*Epoch)(nil),                      // 214: inference.inference.Epoch
+	(*ConfirmationPoCEvent)(nil),       // 215: inference.inference.ConfirmationPoCEvent
+	(*BridgeTokenReference)(nil),       // 216: inference.inference.BridgeTokenReference
+	(*MLNodeVersion)(nil),              // 217: inference.inference.MLNodeVersion
+	(*ExcludedParticipant)(nil),        // 218: inference.inference.ExcludedParticipant
+	(*v1beta11.Coin)(nil),              // 219: cosmos.base.v1beta1.Coin
+	(*DeveloperStatsByEpoch)(nil),      // 220: inference.inference.DeveloperStatsByEpoch
 }
 var file_inference_inference_query_proto_depIdxs = []int32{
-	176, // 0: inference.inference.QueryParamsResponse.params:type_name -> inference.inference.Params
-	177, // 1: inference.inference.QueryGetInferenceResponse.inference:type_name -> inference.inference.Inference
-	178, // 2: inference.inference.QueryAllInferenceRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
-	177, // 3: inference.inference.QueryAllInferenceResponse.inference:type_name -> inference.inference.Inference
-	179, // 4: inference.inference.QueryAllInferenceResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
-	180, // 5: inference.inference.QueryGetParticipantResponse.participant:type_name -> inference.inference.Participant
-	178, // 6: inference.inference.QueryAllParticipantRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
-	180, // 7: inference.inference.QueryAllParticipantResponse.participant:type_name -> inference.inference.Participant
-	179, // 8: inference.inference.QueryAllParticipantResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
-	180, // 9: inference.inference.QueryGetRandomExecutorResponse.executor:type_name -> inference.inference.Participant
-	181, // 10: inference.inference.QueryGetEpochGroupDataResponse.epoch_group_data:type_name -> inference.inference.EpochGroupData
-	178, // 11: inference.inference.QueryAllEpochGroupDataRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
-	181, // 12: inference.inference.QueryAllEpochGroupDataResponse.epoch_group_data:type_name -> inference.inference.EpochGroupData
-	179, // 13: inference.inference.QueryAllEpochGroupDataResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
-	182, // 14: inference.inference.QueryGetSettleAmountResponse.settle_amount:type_name -> inference.inference.SettleAmount
-	178, // 15: inference.inference.QueryAllSettleAmountRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
-	182, // 16: inference.inference.QueryAllSettleAmountResponse.settle_amount:type_name -> inference.inference.SettleAmount
-	179, // 17: inference.inference.QueryAllSettleAmountResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
-	183, // 18: inference.inference.QueryGetEpochGroupValidationsResponse.epoch_group_validations:type_name -> inference.inference.EpochGroupValidations
-	178, // 19: inference.inference.QueryAllEpochGroupValidationsRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
-	183, // 20: inference.inference.QueryAllEpochGroupValidationsResponse.epoch_group_validations:type_name -> inference.inference.EpochGroupValidations
-	179, // 21: inference.inference.QueryAllEpochGroupValidationsResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
+	181, // 0: inference.inference.QueryParamsResponse.params:type_name -> inference.inference.Params
+	182, // 1: inference.inference.QueryGetInferenceResponse.inference:type_name -> inference.inference.Inference
+	183, // 2: inference.inference.QueryAllInferenceRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
+	182, // 3: inference.inference.QueryAllInferenceResponse.inference:type_name -> inference.inference.Inference
+	184, // 4: inference.inference.QueryAllInferenceResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
+	185, // 5: inference.inference.QueryGetParticipantResponse.participant:type_name -> inference.inference.Participant
+	183, // 6: inference.inference.QueryAllParticipantRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
+	185, // 7: inference.inference.QueryAllParticipantResponse.participant:type_name -> inference.inference.Participant
+	184, // 8: inference.inference.QueryAllParticipantResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
+	185, // 9: inference.inference.QueryGetRandomExecutorResponse.executor:type_name -> inference.inference.Participant
+	186, // 10: inference.inference.QueryGetEpochGroupDataResponse.epoch_group_data:type_name -> inference.inference.EpochGroupData
+	183, // 11: inference.inference.QueryAllEpochGroupDataRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
+	186, // 12: inference.inference.QueryAllEpochGroupDataResponse.epoch_group_data:type_name -> inference.inference.EpochGroupData
+	184, // 13: inference.inference.QueryAllEpochGroupDataResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
+	187, // 14: inference.inference.QueryGetSettleAmountResponse.settle_amount:type_name -> inference.inference.SettleAmount
+	183, // 15: inference.inference.QueryAllSettleAmountRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
+	187, // 16: inference.inference.QueryAllSettleAmountResponse.settle_amount:type_name -> inference.inference.SettleAmount
+	184, // 17: inference.inference.QueryAllSettleAmountResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
+	188, // 18: inference.inference.QueryGetEpochGroupValidationsResponse.epoch_group_validations:type_name -> inference.inference.EpochGroupValidations
+	183, // 19: inference.inference.QueryAllEpochGroupValidationsRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
+	188, // 20: inference.inference.QueryAllEpochGroupValidationsResponse.epoch_group_validations:type_name -> inference.inference.EpochGroupValidations
+	184, // 21: inference.inference.QueryAllEpochGroupValidationsResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
 	28,  // 22: inference.inference.QueryPocBatchesForStageResponse.poc_batch:type_name -> inference.inference.PoCBatchesWithParticipants
-	184, // 23: inference.inference.PoCBatchesWithParticipants.poc_batch:type_name -> inference.inference.PoCBatch
+	189, // 23: inference.inference.PoCBatchesWithParticipants.poc_batch:type_name -> inference.inference.PoCBatch
 	31,  // 24: inference.inference.QueryPocValidationsForStageResponse.poc_validation:type_name -> inference.inference.PoCValidationsWithParticipants
-	185, // 25: inference.inference.PoCValidationsWithParticipants.poc_validation:type_name -> inference.inference.PoCValidation
+	190, // 25: inference.inference.PoCValidationsWithParticipants.poc_validation:type_name -> inference.inference.PoCValidation
 	34,  // 26: inference.inference.QueryPocV2ValidationsForStageResponse.poc_validation:type_name -> inference.inference.PoCValidationsWithParticipantsV2
-	186, // 27: inference.inference.PoCValidationsWithParticipantsV2.poc_validation:type_name -> inference.inference.PoCValidationV2
-	187, // 28: inference.inference.QueryMLNodeWeightDistributionResponse.weights:type_name -> inference.inference.MLNodeWeight
+	191, // 27: inference.inference.PoCValidationsWithParticipantsV2.poc_validation:type_name -> inference.inference.PoCValidationV2
+	192, // 28: inference.inference.QueryMLNodeWeightDistributionResponse.weights:type_name -> inference.inference.MLNodeWeight
 	41,  // 29: inference.inference.QueryAllPoCV2StoreCommitsForStageResponse.commits:type_name -> inference.inference.PoCV2StoreCommitWithAddress
 	44,  // 30: inference.inference.QueryAllMLNodeWeightDistributionsForStageResponse.distributions:type_name -> inference.inference.MLNodeWeightDistributionWithAddress
-	187, // 31: inference.inference.MLNodeWeightDistributionWithAddress.weights:type_name -> inference.inference.MLNodeWeight
-	188, // 32: inference.inference.QueryGetTokenomicsDataResponse.tokenomics_data:type_name -> inference.inference.TokenomicsData
-	189, // 33: inference.inference.QueryGetUnitOfComputePriceProposalResponse.proposal:type_name -> inference.inference.UnitOfComputePriceProposal
-	181, // 34: inference.inference.QueryCurrentEpochGroupDataResponse.epoch_group_data:type_name -> inference.inference.EpochGroupData
-	181, // 35: inference.inference.QueryPreviousEpochGroupDataResponse.epoch_group_data:type_name -> inference.inference.EpochGroupData
-	178, // 36: inference.inference.QueryModelsAllRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
-	190, // 37: inference.inference.QueryModelsAllResponse.model:type_name -> inference.inference.Model
-	179, // 38: inference.inference.QueryModelsAllResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
-	191, // 39: inference.inference.QueryGetTopMinerResponse.top_miner:type_name -> inference.inference.TopMiner
-	178, // 40: inference.inference.QueryAllTopMinerRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
-	191, // 41: inference.inference.QueryAllTopMinerResponse.top_miner:type_name -> inference.inference.TopMiner
-	179, // 42: inference.inference.QueryAllTopMinerResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
-	192, // 43: inference.inference.QueryGetInferenceTimeoutResponse.inference_timeout:type_name -> inference.inference.InferenceTimeout
-	178, // 44: inference.inference.QueryAllInferenceTimeoutRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
-	192, // 45: inference.inference.QueryAllInferenceTimeoutResponse.inference_timeout:type_name -> inference.inference.InferenceTimeout
-	179, // 46: inference.inference.QueryAllInferenceTimeoutResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
-	193, // 47: inference.inference.QueryGetInferenceValidationDetailsResponse.inferenceValidationDetails:type_name -> inference.inference.InferenceValidationDetails
-	178, // 48: inference.inference.QueryAllInferenceValidationDetailsRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
-	193, // 49: inference.inference.QueryAllInferenceValidationDetailsResponse.inferenceValidationDetails:type_name -> inference.inference.InferenceValidationDetails
-	179, // 50: inference.inference.QueryAllInferenceValidationDetailsResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
-	71,  // 51: inference.inference.QueryGetInferenceValidationParametersResponse.validator_powers:type_name -> inference.inference.ValidatorPower
-	193, // 52: inference.inference.QueryGetInferenceValidationParametersResponse.details:type_name -> inference.inference.InferenceValidationDetails
-	194, // 53: inference.inference.QueryGetInferenceValidationParametersResponse.parameters:type_name -> inference.inference.ValidationParams
-	195, // 54: inference.inference.QueryEpochPerformanceSummaryByEpochResponse.epochPerformanceSummary:type_name -> inference.inference.EpochPerformanceSummary
-	195, // 55: inference.inference.QueryEpochPerformanceSummaryByParticipantResponse.epochPerformanceSummary:type_name -> inference.inference.EpochPerformanceSummary
-	178, // 56: inference.inference.QueryAllEpochPerformanceSummaryRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
-	195, // 57: inference.inference.QueryAllEpochPerformanceSummaryResponse.epochPerformanceSummary:type_name -> inference.inference.EpochPerformanceSummary
-	179, // 58: inference.inference.QueryAllEpochPerformanceSummaryResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
-	196, // 59: inference.inference.QueryTrainingTaskResponse.task:type_name -> inference.inference.TrainingTask
-	197, // 60: inference.inference.QueryHardwareNodesResponse.nodes:type_name -> inference.inference.HardwareNodes
-	197, // 61: inference.inference.QueryHardwareNodesAllResponse.nodes:type_name -> inference.inference.HardwareNodes
-	196, // 62: inference.inference.QueryQueuedTrainingTasksResponse.tasks:type_name -> inference.inference.TrainingTask
-	196, // 63: inference.inference.QueryTrainingTaskAllResponse.tasks:type_name -> inference.inference.TrainingTask
-	92,  // 64: inference.inference.QueryGetAllParticipantCurrentStatsResponse.participant_current_stats:type_name -> inference.inference.ParticipantCurrentStats
-	93,  // 65: inference.inference.QueryParticipantsFullStatsResponse.participants_stats:type_name -> inference.inference.ParticipantFullStats
-	198, // 66: inference.inference.QueryStatsByTimePeriodByDeveloperResponse.stats:type_name -> inference.inference.DeveloperStatsByTime
-	102, // 67: inference.inference.QueryInferencesAndTokensStatsByModelsResponse.stats_models:type_name -> inference.inference.ModelStats
-	174, // 68: inference.inference.QueryDebugStatsResponse.stats_by_time:type_name -> inference.inference.QueryDebugStatsResponse.TemporaryTimeStat
-	175, // 69: inference.inference.QueryDebugStatsResponse.stats_by_epoch:type_name -> inference.inference.QueryDebugStatsResponse.TemporaryEpochStat
-	196, // 70: inference.inference.QueryInProgressTrainingTasksResponse.tasks:type_name -> inference.inference.TrainingTask
-	199, // 71: inference.inference.QueryGetPartialUpgradeResponse.partialUpgrade:type_name -> inference.inference.PartialUpgrade
-	178, // 72: inference.inference.QueryAllPartialUpgradeRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
-	199, // 73: inference.inference.QueryAllPartialUpgradeResponse.partialUpgrade:type_name -> inference.inference.PartialUpgrade
-	179, // 74: inference.inference.QueryAllPartialUpgradeResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
-	200, // 75: inference.inference.QueryTrainingKvRecordResponse.record:type_name -> inference.inference.TrainingTaskKVRecord
-	201, // 76: inference.inference.QueryTrainingBarrierRequest.req:type_name -> inference.inference.GetBarrierStatusRequest
-	202, // 77: inference.inference.QueryTrainingBarrierResponse.resp:type_name -> inference.inference.GetBarrierStatusResponse
-	203, // 78: inference.inference.QueryTrainingAliveNodesRequest.req:type_name -> inference.inference.GetAliveNodesRequest
-	204, // 79: inference.inference.QueryTrainingAliveNodesResponse.resp:type_name -> inference.inference.GetAliveNodesResponse
-	205, // 80: inference.inference.QueryGetBridgeTransactionResponse.bridgeTransactions:type_name -> inference.inference.BridgeTransaction
-	178, // 81: inference.inference.QueryAllBridgeTransactionsRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
-	205, // 82: inference.inference.QueryAllBridgeTransactionsResponse.bridgeTransactions:type_name -> inference.inference.BridgeTransaction
-	179, // 83: inference.inference.QueryAllBridgeTransactionsResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
-	206, // 84: inference.inference.WrappedTokenBalance.token_info:type_name -> inference.inference.BridgeWrappedTokenContract
-	129, // 85: inference.inference.QueryWrappedTokenBalancesResponse.balances:type_name -> inference.inference.WrappedTokenBalance
-	207, // 86: inference.inference.QueryBridgeAddressesByChainResponse.addresses:type_name -> inference.inference.BridgeContractAddress
-	176, // 87: inference.inference.QueryEpochInfoResponse.params:type_name -> inference.inference.Params
-	208, // 88: inference.inference.QueryEpochInfoResponse.latest_epoch:type_name -> inference.inference.Epoch
-	209, // 89: inference.inference.QueryEpochInfoResponse.active_confirmation_poc_event:type_name -> inference.inference.ConfirmationPoCEvent
-	210, // 90: inference.inference.QueryApprovedTokensForTradeResponse.approved_tokens:type_name -> inference.inference.BridgeTokenReference
-	149, // 91: inference.inference.QueryGetAllModelPerTokenPricesResponse.model_prices:type_name -> inference.inference.ModelPrice
-	155, // 92: inference.inference.QueryGetAllModelCapacitiesResponse.model_capacities:type_name -> inference.inference.ModelCapacity
-	157, // 93: inference.inference.QueryGranteesByMessageTypeResponse.grantees:type_name -> inference.inference.Grantee
-	211, // 94: inference.inference.QueryGetMLNodeVersionResponse.mlnode_version:type_name -> inference.inference.MLNodeVersion
-	212, // 95: inference.inference.QueryExcludedParticipantsResponse.items:type_name -> inference.inference.ExcludedParticipant
-	209, // 96: inference.inference.QueryActiveConfirmationPoCEventResponse.event:type_name -> inference.inference.ConfirmationPoCEvent
-	209, // 97: inference.inference.QueryConfirmationPoCEventsResponse.events:type_name -> inference.inference.ConfirmationPoCEvent
-	180, // 98: inference.inference.ParticipantWithBalance.participant:type_name -> inference.inference.Participant
-	213, // 99: inference.inference.ParticipantWithBalance.balances:type_name -> cosmos.base.v1beta1.Coin
-	178, // 100: inference.inference.QueryParticipantsWithBalancesRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
-	171, // 101: inference.inference.QueryParticipantsWithBalancesResponse.participants:type_name -> inference.inference.ParticipantWithBalance
-	179, // 102: inference.inference.QueryParticipantsWithBalancesResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
-	198, // 103: inference.inference.QueryDebugStatsResponse.TemporaryTimeStat.stats:type_name -> inference.inference.DeveloperStatsByTime
-	214, // 104: inference.inference.QueryDebugStatsResponse.TemporaryEpochStat.stats:type_name -> inference.inference.DeveloperStatsByEpoch
-	0,   // 105: inference.inference.Query.Params:input_type -> inference.inference.QueryParamsRequest
-	2,   // 106: inference.inference.Query.Inference:input_type -> inference.inference.QueryGetInferenceRequest
-	4,   // 107: inference.inference.Query.InferenceAll:input_type -> inference.inference.QueryAllInferenceRequest
-	6,   // 108: inference.inference.Query.Participant:input_type -> inference.inference.QueryGetParticipantRequest
-	8,   // 109: inference.inference.Query.ParticipantAll:input_type -> inference.inference.QueryAllParticipantRequest
-	10,  // 110: inference.inference.Query.InferenceParticipant:input_type -> inference.inference.QueryInferenceParticipantRequest
-	12,  // 111: inference.inference.Query.GetRandomExecutor:input_type -> inference.inference.QueryGetRandomExecutorRequest
-	14,  // 112: inference.inference.Query.EpochGroupData:input_type -> inference.inference.QueryGetEpochGroupDataRequest
-	16,  // 113: inference.inference.Query.EpochGroupDataAll:input_type -> inference.inference.QueryAllEpochGroupDataRequest
-	18,  // 114: inference.inference.Query.SettleAmount:input_type -> inference.inference.QueryGetSettleAmountRequest
-	20,  // 115: inference.inference.Query.SettleAmountAll:input_type -> inference.inference.QueryAllSettleAmountRequest
-	22,  // 116: inference.inference.Query.EpochGroupValidations:input_type -> inference.inference.QueryGetEpochGroupValidationsRequest
-	24,  // 117: inference.inference.Query.EpochGroupValidationsAll:input_type -> inference.inference.QueryAllEpochGroupValidationsRequest
-	26,  // 118: inference.inference.Query.PocBatchesForStage:input_type -> inference.inference.QueryPocBatchesForStageRequest
-	29,  // 119: inference.inference.Query.PocValidationsForStage:input_type -> inference.inference.QueryPocValidationsForStageRequest
-	32,  // 120: inference.inference.Query.PocV2ValidationsForStage:input_type -> inference.inference.QueryPocV2ValidationsForStageRequest
-	35,  // 121: inference.inference.Query.PoCV2StoreCommit:input_type -> inference.inference.QueryPoCV2StoreCommitRequest
-	37,  // 122: inference.inference.Query.MLNodeWeightDistribution:input_type -> inference.inference.QueryMLNodeWeightDistributionRequest
-	39,  // 123: inference.inference.Query.AllPoCV2StoreCommitsForStage:input_type -> inference.inference.QueryAllPoCV2StoreCommitsForStageRequest
-	42,  // 124: inference.inference.Query.AllMLNodeWeightDistributionsForStage:input_type -> inference.inference.QueryAllMLNodeWeightDistributionsForStageRequest
-	45,  // 125: inference.inference.Query.GetCurrentEpoch:input_type -> inference.inference.QueryGetCurrentEpochRequest
-	47,  // 126: inference.inference.Query.TokenomicsData:input_type -> inference.inference.QueryGetTokenomicsDataRequest
-	49,  // 127: inference.inference.Query.GetUnitOfComputePriceProposal:input_type -> inference.inference.QueryGetUnitOfComputePriceProposalRequest
-	51,  // 128: inference.inference.Query.CurrentEpochGroupData:input_type -> inference.inference.QueryCurrentEpochGroupDataRequest
-	55,  // 129: inference.inference.Query.ModelsAll:input_type -> inference.inference.QueryModelsAllRequest
-	57,  // 130: inference.inference.Query.TopMiner:input_type -> inference.inference.QueryGetTopMinerRequest
-	59,  // 131: inference.inference.Query.TopMinerAll:input_type -> inference.inference.QueryAllTopMinerRequest
-	61,  // 132: inference.inference.Query.InferenceTimeout:input_type -> inference.inference.QueryGetInferenceTimeoutRequest
-	63,  // 133: inference.inference.Query.InferenceTimeoutAll:input_type -> inference.inference.QueryAllInferenceTimeoutRequest
-	65,  // 134: inference.inference.Query.InferenceValidationDetails:input_type -> inference.inference.QueryGetInferenceValidationDetailsRequest
-	67,  // 135: inference.inference.Query.InferenceValidationDetailsAll:input_type -> inference.inference.QueryAllInferenceValidationDetailsRequest
-	69,  // 136: inference.inference.Query.GetInferenceValidationParameters:input_type -> inference.inference.QueryGetInferenceValidationParametersRequest
-	72,  // 137: inference.inference.Query.EpochPerformanceSummary:input_type -> inference.inference.QueryEpochPerformanceSummaryByEpochRequest
-	74,  // 138: inference.inference.Query.EpochPerformanceSummaryByParticipant:input_type -> inference.inference.QueryEpochPerformanceSummaryByParticipantRequest
-	76,  // 139: inference.inference.Query.EpochPerformanceSummaryAll:input_type -> inference.inference.QueryAllEpochPerformanceSummaryRequest
-	78,  // 140: inference.inference.Query.TrainingTask:input_type -> inference.inference.QueryTrainingTaskRequest
-	80,  // 141: inference.inference.Query.HardwareNodes:input_type -> inference.inference.QueryHardwareNodesRequest
-	82,  // 142: inference.inference.Query.HardwareNodesAll:input_type -> inference.inference.QueryHardwareNodesAllRequest
-	84,  // 143: inference.inference.Query.QueuedTrainingTasks:input_type -> inference.inference.QueryQueuedTrainingTasksRequest
-	86,  // 144: inference.inference.Query.TrainingTaskAll:input_type -> inference.inference.QueryTrainingTaskAllRequest
-	88,  // 145: inference.inference.Query.GetParticipantCurrentStats:input_type -> inference.inference.QueryGetParticipantCurrentStatsRequest
-	90,  // 146: inference.inference.Query.GetAllParticipantCurrentStats:input_type -> inference.inference.QueryGetAllParticipantCurrentStatsRequest
-	94,  // 147: inference.inference.Query.GetParticipantsFullStats:input_type -> inference.inference.QueryParticipantsFullStatsRequest
-	96,  // 148: inference.inference.Query.StatsByTimePeriodByDeveloper:input_type -> inference.inference.QueryStatsByTimePeriodByDeveloperRequest
-	98,  // 149: inference.inference.Query.StatsByDeveloperAndEpochsBackwards:input_type -> inference.inference.QueryStatsByDeveloperAndEpochBackwardsRequest
-	105, // 150: inference.inference.Query.CountParticipants:input_type -> inference.inference.QueryCountAllParticipantsRequest
-	107, // 151: inference.inference.Query.DebugStatsDeveloperStats:input_type -> inference.inference.QueryDebugStatsRequest
-	99,  // 152: inference.inference.Query.InferencesAndTokensStatsByEpochsBackwards:input_type -> inference.inference.QueryInferencesAndTokensStatsByEpochsBackwardsRequest
-	100, // 153: inference.inference.Query.InferencesAndTokensStatsByTimePeriod:input_type -> inference.inference.QueryInferencesAndTokensStatsByTimePeriodRequest
-	101, // 154: inference.inference.Query.InferencesAndTokensStatsByModels:input_type -> inference.inference.QueryInferencesAndTokensStatsByModelsRequest
-	109, // 155: inference.inference.Query.GetMinimumValidationAverage:input_type -> inference.inference.QueryGetMinimumValidationAverageRequest
-	111, // 156: inference.inference.Query.InProgressTrainingTasks:input_type -> inference.inference.QueryInProgressTrainingTasksRequest
-	113, // 157: inference.inference.Query.PartialUpgrade:input_type -> inference.inference.QueryGetPartialUpgradeRequest
-	115, // 158: inference.inference.Query.PartialUpgradeAll:input_type -> inference.inference.QueryAllPartialUpgradeRequest
-	125, // 159: inference.inference.Query.BridgeTransaction:input_type -> inference.inference.QueryGetBridgeTransactionRequest
-	127, // 160: inference.inference.Query.BridgeTransactions:input_type -> inference.inference.QueryAllBridgeTransactionsRequest
-	132, // 161: inference.inference.Query.BridgeAddressesByChain:input_type -> inference.inference.QueryBridgeAddressesByChainRequest
-	136, // 162: inference.inference.Query.LiquidityPool:input_type -> inference.inference.QueryLiquidityPoolRequest
-	130, // 163: inference.inference.Query.WrappedTokenBalances:input_type -> inference.inference.QueryWrappedTokenBalancesRequest
-	134, // 164: inference.inference.Query.ValidateWrappedTokenForTrade:input_type -> inference.inference.QueryValidateWrappedTokenForTradeRequest
-	144, // 165: inference.inference.Query.ApprovedTokensForTrade:input_type -> inference.inference.QueryApprovedTokensForTradeRequest
-	117, // 166: inference.inference.Query.TrainingKvRecord:input_type -> inference.inference.QueryTrainingKvRecordRequest
-	119, // 167: inference.inference.Query.ListTrainingKvRecordKeys:input_type -> inference.inference.QueryListTrainingKvRecordKeysRequest
-	121, // 168: inference.inference.Query.TrainingBarrier:input_type -> inference.inference.QueryTrainingBarrierRequest
-	123, // 169: inference.inference.Query.TrainingAliveNodes:input_type -> inference.inference.QueryTrainingAliveNodesRequest
-	138, // 170: inference.inference.Query.EpochInfo:input_type -> inference.inference.QueryEpochInfoRequest
-	140, // 171: inference.inference.Query.CountPoCbatchesAtHeight:input_type -> inference.inference.QueryCountPoCbatchesAtHeightRequest
-	142, // 172: inference.inference.Query.CountPoCvalidationsAtHeight:input_type -> inference.inference.QueryCountPoCvalidationsAtHeightRequest
-	146, // 173: inference.inference.Query.GetModelPerTokenPrice:input_type -> inference.inference.QueryGetModelPerTokenPriceRequest
-	148, // 174: inference.inference.Query.GetAllModelPerTokenPrices:input_type -> inference.inference.QueryGetAllModelPerTokenPricesRequest
-	151, // 175: inference.inference.Query.GetModelCapacity:input_type -> inference.inference.QueryGetModelCapacityRequest
-	153, // 176: inference.inference.Query.GetAllModelCapacities:input_type -> inference.inference.QueryGetAllModelCapacitiesRequest
-	156, // 177: inference.inference.Query.GranteesByMessageType:input_type -> inference.inference.QueryGranteesByMessageTypeRequest
-	163, // 178: inference.inference.Query.MLNodeVersion:input_type -> inference.inference.QueryGetMLNodeVersionRequest
-	159, // 179: inference.inference.Query.TrainingAllowList:input_type -> inference.inference.QueryTrainingAllowListRequest
-	161, // 180: inference.inference.Query.ParticipantAllowList:input_type -> inference.inference.QueryParticipantAllowListRequest
-	165, // 181: inference.inference.Query.ExcludedParticipants:input_type -> inference.inference.QueryExcludedParticipantsRequest
-	167, // 182: inference.inference.Query.ActiveConfirmationPoCEvent:input_type -> inference.inference.QueryActiveConfirmationPoCEventRequest
-	169, // 183: inference.inference.Query.ListConfirmationPoCEvents:input_type -> inference.inference.QueryConfirmationPoCEventsRequest
-	172, // 184: inference.inference.Query.ParticipantsWithBalances:input_type -> inference.inference.QueryParticipantsWithBalancesRequest
-	1,   // 185: inference.inference.Query.Params:output_type -> inference.inference.QueryParamsResponse
-	3,   // 186: inference.inference.Query.Inference:output_type -> inference.inference.QueryGetInferenceResponse
-	5,   // 187: inference.inference.Query.InferenceAll:output_type -> inference.inference.QueryAllInferenceResponse
-	7,   // 188: inference.inference.Query.Participant:output_type -> inference.inference.QueryGetParticipantResponse
-	9,   // 189: inference.inference.Query.ParticipantAll:output_type -> inference.inference.QueryAllParticipantResponse
-	11,  // 190: inference.inference.Query.InferenceParticipant:output_type -> inference.inference.QueryInferenceParticipantResponse
-	13,  // 191: inference.inference.Query.GetRandomExecutor:output_type -> inference.inference.QueryGetRandomExecutorResponse
-	15,  // 192: inference.inference.Query.EpochGroupData:output_type -> inference.inference.QueryGetEpochGroupDataResponse
-	17,  // 193: inference.inference.Query.EpochGroupDataAll:output_type -> inference.inference.QueryAllEpochGroupDataResponse
-	19,  // 194: inference.inference.Query.SettleAmount:output_type -> inference.inference.QueryGetSettleAmountResponse
-	21,  // 195: inference.inference.Query.SettleAmountAll:output_type -> inference.inference.QueryAllSettleAmountResponse
-	23,  // 196: inference.inference.Query.EpochGroupValidations:output_type -> inference.inference.QueryGetEpochGroupValidationsResponse
-	25,  // 197: inference.inference.Query.EpochGroupValidationsAll:output_type -> inference.inference.QueryAllEpochGroupValidationsResponse
-	27,  // 198: inference.inference.Query.PocBatchesForStage:output_type -> inference.inference.QueryPocBatchesForStageResponse
-	30,  // 199: inference.inference.Query.PocValidationsForStage:output_type -> inference.inference.QueryPocValidationsForStageResponse
-	33,  // 200: inference.inference.Query.PocV2ValidationsForStage:output_type -> inference.inference.QueryPocV2ValidationsForStageResponse
-	36,  // 201: inference.inference.Query.PoCV2StoreCommit:output_type -> inference.inference.QueryPoCV2StoreCommitResponse
-	38,  // 202: inference.inference.Query.MLNodeWeightDistribution:output_type -> inference.inference.QueryMLNodeWeightDistributionResponse
-	40,  // 203: inference.inference.Query.AllPoCV2StoreCommitsForStage:output_type -> inference.inference.QueryAllPoCV2StoreCommitsForStageResponse
-	43,  // 204: inference.inference.Query.AllMLNodeWeightDistributionsForStage:output_type -> inference.inference.QueryAllMLNodeWeightDistributionsForStageResponse
-	46,  // 205: inference.inference.Query.GetCurrentEpoch:output_type -> inference.inference.QueryGetCurrentEpochResponse
-	48,  // 206: inference.inference.Query.TokenomicsData:output_type -> inference.inference.QueryGetTokenomicsDataResponse
-	50,  // 207: inference.inference.Query.GetUnitOfComputePriceProposal:output_type -> inference.inference.QueryGetUnitOfComputePriceProposalResponse
-	52,  // 208: inference.inference.Query.CurrentEpochGroupData:output_type -> inference.inference.QueryCurrentEpochGroupDataResponse
-	56,  // 209: inference.inference.Query.ModelsAll:output_type -> inference.inference.QueryModelsAllResponse
-	58,  // 210: inference.inference.Query.TopMiner:output_type -> inference.inference.QueryGetTopMinerResponse
-	60,  // 211: inference.inference.Query.TopMinerAll:output_type -> inference.inference.QueryAllTopMinerResponse
-	62,  // 212: inference.inference.Query.InferenceTimeout:output_type -> inference.inference.QueryGetInferenceTimeoutResponse
-	64,  // 213: inference.inference.Query.InferenceTimeoutAll:output_type -> inference.inference.QueryAllInferenceTimeoutResponse
-	66,  // 214: inference.inference.Query.InferenceValidationDetails:output_type -> inference.inference.QueryGetInferenceValidationDetailsResponse
-	68,  // 215: inference.inference.Query.InferenceValidationDetailsAll:output_type -> inference.inference.QueryAllInferenceValidationDetailsResponse
-	70,  // 216: inference.inference.Query.GetInferenceValidationParameters:output_type -> inference.inference.QueryGetInferenceValidationParametersResponse
-	73,  // 217: inference.inference.Query.EpochPerformanceSummary:output_type -> inference.inference.QueryEpochPerformanceSummaryByEpochResponse
-	75,  // 218: inference.inference.Query.EpochPerformanceSummaryByParticipant:output_type -> inference.inference.QueryEpochPerformanceSummaryByParticipantResponse
-	77,  // 219: inference.inference.Query.EpochPerformanceSummaryAll:output_type -> inference.inference.QueryAllEpochPerformanceSummaryResponse
-	79,  // 220: inference.inference.Query.TrainingTask:output_type -> inference.inference.QueryTrainingTaskResponse
-	81,  // 221: inference.inference.Query.HardwareNodes:output_type -> inference.inference.QueryHardwareNodesResponse
-	83,  // 222: inference.inference.Query.HardwareNodesAll:output_type -> inference.inference.QueryHardwareNodesAllResponse
-	85,  // 223: inference.inference.Query.QueuedTrainingTasks:output_type -> inference.inference.QueryQueuedTrainingTasksResponse
-	87,  // 224: inference.inference.Query.TrainingTaskAll:output_type -> inference.inference.QueryTrainingTaskAllResponse
-	89,  // 225: inference.inference.Query.GetParticipantCurrentStats:output_type -> inference.inference.QueryGetParticipantCurrentStatsResponse
-	91,  // 226: inference.inference.Query.GetAllParticipantCurrentStats:output_type -> inference.inference.QueryGetAllParticipantCurrentStatsResponse
-	95,  // 227: inference.inference.Query.GetParticipantsFullStats:output_type -> inference.inference.QueryParticipantsFullStatsResponse
-	97,  // 228: inference.inference.Query.StatsByTimePeriodByDeveloper:output_type -> inference.inference.QueryStatsByTimePeriodByDeveloperResponse
-	104, // 229: inference.inference.Query.StatsByDeveloperAndEpochsBackwards:output_type -> inference.inference.QueryInferencesAndTokensStatsResponse
-	106, // 230: inference.inference.Query.CountParticipants:output_type -> inference.inference.QueryCountAllParticipantsResponse
-	108, // 231: inference.inference.Query.DebugStatsDeveloperStats:output_type -> inference.inference.QueryDebugStatsResponse
-	104, // 232: inference.inference.Query.InferencesAndTokensStatsByEpochsBackwards:output_type -> inference.inference.QueryInferencesAndTokensStatsResponse
-	104, // 233: inference.inference.Query.InferencesAndTokensStatsByTimePeriod:output_type -> inference.inference.QueryInferencesAndTokensStatsResponse
-	103, // 234: inference.inference.Query.InferencesAndTokensStatsByModels:output_type -> inference.inference.QueryInferencesAndTokensStatsByModelsResponse
-	110, // 235: inference.inference.Query.GetMinimumValidationAverage:output_type -> inference.inference.QueryGetMinimumValidationAverageResponse
-	112, // 236: inference.inference.Query.InProgressTrainingTasks:output_type -> inference.inference.QueryInProgressTrainingTasksResponse
-	114, // 237: inference.inference.Query.PartialUpgrade:output_type -> inference.inference.QueryGetPartialUpgradeResponse
-	116, // 238: inference.inference.Query.PartialUpgradeAll:output_type -> inference.inference.QueryAllPartialUpgradeResponse
-	126, // 239: inference.inference.Query.BridgeTransaction:output_type -> inference.inference.QueryGetBridgeTransactionResponse
-	128, // 240: inference.inference.Query.BridgeTransactions:output_type -> inference.inference.QueryAllBridgeTransactionsResponse
-	133, // 241: inference.inference.Query.BridgeAddressesByChain:output_type -> inference.inference.QueryBridgeAddressesByChainResponse
-	137, // 242: inference.inference.Query.LiquidityPool:output_type -> inference.inference.QueryLiquidityPoolResponse
-	131, // 243: inference.inference.Query.WrappedTokenBalances:output_type -> inference.inference.QueryWrappedTokenBalancesResponse
-	135, // 244: inference.inference.Query.ValidateWrappedTokenForTrade:output_type -> inference.inference.QueryValidateWrappedTokenForTradeResponse
-	145, // 245: inference.inference.Query.ApprovedTokensForTrade:output_type -> inference.inference.QueryApprovedTokensForTradeResponse
-	118, // 246: inference.inference.Query.TrainingKvRecord:output_type -> inference.inference.QueryTrainingKvRecordResponse
-	120, // 247: inference.inference.Query.ListTrainingKvRecordKeys:output_type -> inference.inference.QueryListTrainingKvRecordKeysResponse
-	122, // 248: inference.inference.Query.TrainingBarrier:output_type -> inference.inference.QueryTrainingBarrierResponse
-	124, // 249: inference.inference.Query.TrainingAliveNodes:output_type -> inference.inference.QueryTrainingAliveNodesResponse
-	139, // 250: inference.inference.Query.EpochInfo:output_type -> inference.inference.QueryEpochInfoResponse
-	141, // 251: inference.inference.Query.CountPoCbatchesAtHeight:output_type -> inference.inference.QueryCountPoCbatchesAtHeightResponse
-	143, // 252: inference.inference.Query.CountPoCvalidationsAtHeight:output_type -> inference.inference.QueryCountPoCvalidationsAtHeightResponse
-	147, // 253: inference.inference.Query.GetModelPerTokenPrice:output_type -> inference.inference.QueryGetModelPerTokenPriceResponse
-	150, // 254: inference.inference.Query.GetAllModelPerTokenPrices:output_type -> inference.inference.QueryGetAllModelPerTokenPricesResponse
-	152, // 255: inference.inference.Query.GetModelCapacity:output_type -> inference.inference.QueryGetModelCapacityResponse
-	154, // 256: inference.inference.Query.GetAllModelCapacities:output_type -> inference.inference.QueryGetAllModelCapacitiesResponse
-	158, // 257: inference.inference.Query.GranteesByMessageType:output_type -> inference.inference.QueryGranteesByMessageTypeResponse
-	164, // 258: inference.inference.Query.MLNodeVersion:output_type -> inference.inference.QueryGetMLNodeVersionResponse
-	160, // 259: inference.inference.Query.TrainingAllowList:output_type -> inference.inference.QueryTrainingAllowListResponse
-	162, // 260: inference.inference.Query.ParticipantAllowList:output_type -> inference.inference.QueryParticipantAllowListResponse
-	166, // 261: inference.inference.Query.ExcludedParticipants:output_type -> inference.inference.QueryExcludedParticipantsResponse
-	168, // 262: inference.inference.Query.ActiveConfirmationPoCEvent:output_type -> inference.inference.QueryActiveConfirmationPoCEventResponse
-	170, // 263: inference.inference.Query.ListConfirmationPoCEvents:output_type -> inference.inference.QueryConfirmationPoCEventsResponse
-	173, // 264: inference.inference.Query.ParticipantsWithBalances:output_type -> inference.inference.QueryParticipantsWithBalancesResponse
-	185, // [185:265] is the sub-list for method output_type
-	105, // [105:185] is the sub-list for method input_type
-	105, // [105:105] is the sub-list for extension type_name
-	105, // [105:105] is the sub-list for extension extendee
-	0,   // [0:105] is the sub-list for field type_name
+	192, // 31: inference.inference.MLNodeWeightDistributionWithAddress.weights:type_name -> inference.inference.MLNodeWeight
+	193, // 32: inference.inference.QueryPoCObservationsResponse.observations:type_name -> inference.inference.PoCObservation
+	47,  // 33: inference.inference.QueryPoCConsensusResponse.entries:type_name -> inference.inference.PoCConsensusEntry
+	194, // 34: inference.inference.QueryGetTokenomicsDataResponse.tokenomics_data:type_name -> inference.inference.TokenomicsData
+	195, // 35: inference.inference.QueryGetUnitOfComputePriceProposalResponse.proposal:type_name -> inference.inference.UnitOfComputePriceProposal
+	186, // 36: inference.inference.QueryCurrentEpochGroupDataResponse.epoch_group_data:type_name -> inference.inference.EpochGroupData
+	186, // 37: inference.inference.QueryPreviousEpochGroupDataResponse.epoch_group_data:type_name -> inference.inference.EpochGroupData
+	183, // 38: inference.inference.QueryModelsAllRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
+	196, // 39: inference.inference.QueryModelsAllResponse.model:type_name -> inference.inference.Model
+	184, // 40: inference.inference.QueryModelsAllResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
+	197, // 41: inference.inference.QueryGetTopMinerResponse.top_miner:type_name -> inference.inference.TopMiner
+	183, // 42: inference.inference.QueryAllTopMinerRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
+	197, // 43: inference.inference.QueryAllTopMinerResponse.top_miner:type_name -> inference.inference.TopMiner
+	184, // 44: inference.inference.QueryAllTopMinerResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
+	198, // 45: inference.inference.QueryGetInferenceTimeoutResponse.inference_timeout:type_name -> inference.inference.InferenceTimeout
+	183, // 46: inference.inference.QueryAllInferenceTimeoutRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
+	198, // 47: inference.inference.QueryAllInferenceTimeoutResponse.inference_timeout:type_name -> inference.inference.InferenceTimeout
+	184, // 48: inference.inference.QueryAllInferenceTimeoutResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
+	199, // 49: inference.inference.QueryGetInferenceValidationDetailsResponse.inferenceValidationDetails:type_name -> inference.inference.InferenceValidationDetails
+	183, // 50: inference.inference.QueryAllInferenceValidationDetailsRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
+	199, // 51: inference.inference.QueryAllInferenceValidationDetailsResponse.inferenceValidationDetails:type_name -> inference.inference.InferenceValidationDetails
+	184, // 52: inference.inference.QueryAllInferenceValidationDetailsResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
+	76,  // 53: inference.inference.QueryGetInferenceValidationParametersResponse.validator_powers:type_name -> inference.inference.ValidatorPower
+	199, // 54: inference.inference.QueryGetInferenceValidationParametersResponse.details:type_name -> inference.inference.InferenceValidationDetails
+	200, // 55: inference.inference.QueryGetInferenceValidationParametersResponse.parameters:type_name -> inference.inference.ValidationParams
+	201, // 56: inference.inference.QueryEpochPerformanceSummaryByEpochResponse.epochPerformanceSummary:type_name -> inference.inference.EpochPerformanceSummary
+	201, // 57: inference.inference.QueryEpochPerformanceSummaryByParticipantResponse.epochPerformanceSummary:type_name -> inference.inference.EpochPerformanceSummary
+	183, // 58: inference.inference.QueryAllEpochPerformanceSummaryRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
+	201, // 59: inference.inference.QueryAllEpochPerformanceSummaryResponse.epochPerformanceSummary:type_name -> inference.inference.EpochPerformanceSummary
+	184, // 60: inference.inference.QueryAllEpochPerformanceSummaryResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
+	202, // 61: inference.inference.QueryTrainingTaskResponse.task:type_name -> inference.inference.TrainingTask
+	203, // 62: inference.inference.QueryHardwareNodesResponse.nodes:type_name -> inference.inference.HardwareNodes
+	203, // 63: inference.inference.QueryHardwareNodesAllResponse.nodes:type_name -> inference.inference.HardwareNodes
+	202, // 64: inference.inference.QueryQueuedTrainingTasksResponse.tasks:type_name -> inference.inference.TrainingTask
+	202, // 65: inference.inference.QueryTrainingTaskAllResponse.tasks:type_name -> inference.inference.TrainingTask
+	97,  // 66: inference.inference.QueryGetAllParticipantCurrentStatsResponse.participant_current_stats:type_name -> inference.inference.ParticipantCurrentStats
+	98,  // 67: inference.inference.QueryParticipantsFullStatsResponse.participants_stats:type_name -> inference.inference.ParticipantFullStats
+	204, // 68: inference.inference.QueryStatsByTimePeriodByDeveloperResponse.stats:type_name -> inference.inference.DeveloperStatsByTime
+	107, // 69: inference.inference.QueryInferencesAndTokensStatsByModelsResponse.stats_models:type_name -> inference.inference.ModelStats
+	179, // 70: inference.inference.QueryDebugStatsResponse.stats_by_time:type_name -> inference.inference.QueryDebugStatsResponse.TemporaryTimeStat
+	180, // 71: inference.inference.QueryDebugStatsResponse.stats_by_epoch:type_name -> inference.inference.QueryDebugStatsResponse.TemporaryEpochStat
+	202, // 72: inference.inference.QueryInProgressTrainingTasksResponse.tasks:type_name -> inference.inference.TrainingTask
+	205, // 73: inference.inference.QueryGetPartialUpgradeResponse.partialUpgrade:type_name -> inference.inference.PartialUpgrade
+	183, // 74: inference.inference.QueryAllPartialUpgradeRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
+	205, // 75: inference.inference.QueryAllPartialUpgradeResponse.partialUpgrade:type_name -> inference.inference.PartialUpgrade
+	184, // 76: inference.inference.QueryAllPartialUpgradeResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
+	206, // 77: inference.inference.QueryTrainingKvRecordResponse.record:type_name -> inference.inference.TrainingTaskKVRecord
+	207, // 78: inference.inference.QueryTrainingBarrierRequest.req:type_name -> inference.inference.GetBarrierStatusRequest
+	208, // 79: inference.inference.QueryTrainingBarrierResponse.resp:type_name -> inference.inference.GetBarrierStatusResponse
+	209, // 80: inference.inference.QueryTrainingAliveNodesRequest.req:type_name -> inference.inference.GetAliveNodesRequest
+	210, // 81: inference.inference.QueryTrainingAliveNodesResponse.resp:type_name -> inference.inference.GetAliveNodesResponse
+	211, // 82: inference.inference.QueryGetBridgeTransactionResponse.bridgeTransactions:type_name -> inference.inference.BridgeTransaction
+	183, // 83: inference.inference.QueryAllBridgeTransactionsRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
+	211, // 84: inference.inference.QueryAllBridgeTransactionsResponse.bridgeTransactions:type_name -> inference.inference.BridgeTransaction
+	184, // 85: inference.inference.QueryAllBridgeTransactionsResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
+	212, // 86: inference.inference.WrappedTokenBalance.token_info:type_name -> inference.inference.BridgeWrappedTokenContract
+	134, // 87: inference.inference.QueryWrappedTokenBalancesResponse.balances:type_name -> inference.inference.WrappedTokenBalance
+	213, // 88: inference.inference.QueryBridgeAddressesByChainResponse.addresses:type_name -> inference.inference.BridgeContractAddress
+	181, // 89: inference.inference.QueryEpochInfoResponse.params:type_name -> inference.inference.Params
+	214, // 90: inference.inference.QueryEpochInfoResponse.latest_epoch:type_name -> inference.inference.Epoch
+	215, // 91: inference.inference.QueryEpochInfoResponse.active_confirmation_poc_event:type_name -> inference.inference.ConfirmationPoCEvent
+	216, // 92: inference.inference.QueryApprovedTokensForTradeResponse.approved_tokens:type_name -> inference.inference.BridgeTokenReference
+	154, // 93: inference.inference.QueryGetAllModelPerTokenPricesResponse.model_prices:type_name -> inference.inference.ModelPrice
+	160, // 94: inference.inference.QueryGetAllModelCapacitiesResponse.model_capacities:type_name -> inference.inference.ModelCapacity
+	162, // 95: inference.inference.QueryGranteesByMessageTypeResponse.grantees:type_name -> inference.inference.Grantee
+	217, // 96: inference.inference.QueryGetMLNodeVersionResponse.mlnode_version:type_name -> inference.inference.MLNodeVersion
+	218, // 97: inference.inference.QueryExcludedParticipantsResponse.items:type_name -> inference.inference.ExcludedParticipant
+	215, // 98: inference.inference.QueryActiveConfirmationPoCEventResponse.event:type_name -> inference.inference.ConfirmationPoCEvent
+	215, // 99: inference.inference.QueryConfirmationPoCEventsResponse.events:type_name -> inference.inference.ConfirmationPoCEvent
+	185, // 100: inference.inference.ParticipantWithBalance.participant:type_name -> inference.inference.Participant
+	219, // 101: inference.inference.ParticipantWithBalance.balances:type_name -> cosmos.base.v1beta1.Coin
+	183, // 102: inference.inference.QueryParticipantsWithBalancesRequest.pagination:type_name -> cosmos.base.query.v1beta1.PageRequest
+	176, // 103: inference.inference.QueryParticipantsWithBalancesResponse.participants:type_name -> inference.inference.ParticipantWithBalance
+	184, // 104: inference.inference.QueryParticipantsWithBalancesResponse.pagination:type_name -> cosmos.base.query.v1beta1.PageResponse
+	204, // 105: inference.inference.QueryDebugStatsResponse.TemporaryTimeStat.stats:type_name -> inference.inference.DeveloperStatsByTime
+	220, // 106: inference.inference.QueryDebugStatsResponse.TemporaryEpochStat.stats:type_name -> inference.inference.DeveloperStatsByEpoch
+	0,   // 107: inference.inference.Query.Params:input_type -> inference.inference.QueryParamsRequest
+	2,   // 108: inference.inference.Query.Inference:input_type -> inference.inference.QueryGetInferenceRequest
+	4,   // 109: inference.inference.Query.InferenceAll:input_type -> inference.inference.QueryAllInferenceRequest
+	6,   // 110: inference.inference.Query.Participant:input_type -> inference.inference.QueryGetParticipantRequest
+	8,   // 111: inference.inference.Query.ParticipantAll:input_type -> inference.inference.QueryAllParticipantRequest
+	10,  // 112: inference.inference.Query.InferenceParticipant:input_type -> inference.inference.QueryInferenceParticipantRequest
+	12,  // 113: inference.inference.Query.GetRandomExecutor:input_type -> inference.inference.QueryGetRandomExecutorRequest
+	14,  // 114: inference.inference.Query.EpochGroupData:input_type -> inference.inference.QueryGetEpochGroupDataRequest
+	16,  // 115: inference.inference.Query.EpochGroupDataAll:input_type -> inference.inference.QueryAllEpochGroupDataRequest
+	18,  // 116: inference.inference.Query.SettleAmount:input_type -> inference.inference.QueryGetSettleAmountRequest
+	20,  // 117: inference.inference.Query.SettleAmountAll:input_type -> inference.inference.QueryAllSettleAmountRequest
+	22,  // 118: inference.inference.Query.EpochGroupValidations:input_type -> inference.inference.QueryGetEpochGroupValidationsRequest
+	24,  // 119: inference.inference.Query.EpochGroupValidationsAll:input_type -> inference.inference.QueryAllEpochGroupValidationsRequest
+	26,  // 120: inference.inference.Query.PocBatchesForStage:input_type -> inference.inference.QueryPocBatchesForStageRequest
+	29,  // 121: inference.inference.Query.PocValidationsForStage:input_type -> inference.inference.QueryPocValidationsForStageRequest
+	32,  // 122: inference.inference.Query.PocV2ValidationsForStage:input_type -> inference.inference.QueryPocV2ValidationsForStageRequest
+	35,  // 123: inference.inference.Query.PoCV2StoreCommit:input_type -> inference.inference.QueryPoCV2StoreCommitRequest
+	37,  // 124: inference.inference.Query.MLNodeWeightDistribution:input_type -> inference.inference.QueryMLNodeWeightDistributionRequest
+	39,  // 125: inference.inference.Query.AllPoCV2StoreCommitsForStage:input_type -> inference.inference.QueryAllPoCV2StoreCommitsForStageRequest
+	42,  // 126: inference.inference.Query.AllMLNodeWeightDistributionsForStage:input_type -> inference.inference.QueryAllMLNodeWeightDistributionsForStageRequest
+	45,  // 127: inference.inference.Query.PoCObservations:input_type -> inference.inference.QueryPoCObservationsRequest
+	48,  // 128: inference.inference.Query.PoCConsensus:input_type -> inference.inference.QueryPoCConsensusRequest
+	50,  // 129: inference.inference.Query.GetCurrentEpoch:input_type -> inference.inference.QueryGetCurrentEpochRequest
+	52,  // 130: inference.inference.Query.TokenomicsData:input_type -> inference.inference.QueryGetTokenomicsDataRequest
+	54,  // 131: inference.inference.Query.GetUnitOfComputePriceProposal:input_type -> inference.inference.QueryGetUnitOfComputePriceProposalRequest
+	56,  // 132: inference.inference.Query.CurrentEpochGroupData:input_type -> inference.inference.QueryCurrentEpochGroupDataRequest
+	60,  // 133: inference.inference.Query.ModelsAll:input_type -> inference.inference.QueryModelsAllRequest
+	62,  // 134: inference.inference.Query.TopMiner:input_type -> inference.inference.QueryGetTopMinerRequest
+	64,  // 135: inference.inference.Query.TopMinerAll:input_type -> inference.inference.QueryAllTopMinerRequest
+	66,  // 136: inference.inference.Query.InferenceTimeout:input_type -> inference.inference.QueryGetInferenceTimeoutRequest
+	68,  // 137: inference.inference.Query.InferenceTimeoutAll:input_type -> inference.inference.QueryAllInferenceTimeoutRequest
+	70,  // 138: inference.inference.Query.InferenceValidationDetails:input_type -> inference.inference.QueryGetInferenceValidationDetailsRequest
+	72,  // 139: inference.inference.Query.InferenceValidationDetailsAll:input_type -> inference.inference.QueryAllInferenceValidationDetailsRequest
+	74,  // 140: inference.inference.Query.GetInferenceValidationParameters:input_type -> inference.inference.QueryGetInferenceValidationParametersRequest
+	77,  // 141: inference.inference.Query.EpochPerformanceSummary:input_type -> inference.inference.QueryEpochPerformanceSummaryByEpochRequest
+	79,  // 142: inference.inference.Query.EpochPerformanceSummaryByParticipant:input_type -> inference.inference.QueryEpochPerformanceSummaryByParticipantRequest
+	81,  // 143: inference.inference.Query.EpochPerformanceSummaryAll:input_type -> inference.inference.QueryAllEpochPerformanceSummaryRequest
+	83,  // 144: inference.inference.Query.TrainingTask:input_type -> inference.inference.QueryTrainingTaskRequest
+	85,  // 145: inference.inference.Query.HardwareNodes:input_type -> inference.inference.QueryHardwareNodesRequest
+	87,  // 146: inference.inference.Query.HardwareNodesAll:input_type -> inference.inference.QueryHardwareNodesAllRequest
+	89,  // 147: inference.inference.Query.QueuedTrainingTasks:input_type -> inference.inference.QueryQueuedTrainingTasksRequest
+	91,  // 148: inference.inference.Query.TrainingTaskAll:input_type -> inference.inference.QueryTrainingTaskAllRequest
+	93,  // 149: inference.inference.Query.GetParticipantCurrentStats:input_type -> inference.inference.QueryGetParticipantCurrentStatsRequest
+	95,  // 150: inference.inference.Query.GetAllParticipantCurrentStats:input_type -> inference.inference.QueryGetAllParticipantCurrentStatsRequest
+	99,  // 151: inference.inference.Query.GetParticipantsFullStats:input_type -> inference.inference.QueryParticipantsFullStatsRequest
+	101, // 152: inference.inference.Query.StatsByTimePeriodByDeveloper:input_type -> inference.inference.QueryStatsByTimePeriodByDeveloperRequest
+	103, // 153: inference.inference.Query.StatsByDeveloperAndEpochsBackwards:input_type -> inference.inference.QueryStatsByDeveloperAndEpochBackwardsRequest
+	110, // 154: inference.inference.Query.CountParticipants:input_type -> inference.inference.QueryCountAllParticipantsRequest
+	112, // 155: inference.inference.Query.DebugStatsDeveloperStats:input_type -> inference.inference.QueryDebugStatsRequest
+	104, // 156: inference.inference.Query.InferencesAndTokensStatsByEpochsBackwards:input_type -> inference.inference.QueryInferencesAndTokensStatsByEpochsBackwardsRequest
+	105, // 157: inference.inference.Query.InferencesAndTokensStatsByTimePeriod:input_type -> inference.inference.QueryInferencesAndTokensStatsByTimePeriodRequest
+	106, // 158: inference.inference.Query.InferencesAndTokensStatsByModels:input_type -> inference.inference.QueryInferencesAndTokensStatsByModelsRequest
+	114, // 159: inference.inference.Query.GetMinimumValidationAverage:input_type -> inference.inference.QueryGetMinimumValidationAverageRequest
+	116, // 160: inference.inference.Query.InProgressTrainingTasks:input_type -> inference.inference.QueryInProgressTrainingTasksRequest
+	118, // 161: inference.inference.Query.PartialUpgrade:input_type -> inference.inference.QueryGetPartialUpgradeRequest
+	120, // 162: inference.inference.Query.PartialUpgradeAll:input_type -> inference.inference.QueryAllPartialUpgradeRequest
+	130, // 163: inference.inference.Query.BridgeTransaction:input_type -> inference.inference.QueryGetBridgeTransactionRequest
+	132, // 164: inference.inference.Query.BridgeTransactions:input_type -> inference.inference.QueryAllBridgeTransactionsRequest
+	137, // 165: inference.inference.Query.BridgeAddressesByChain:input_type -> inference.inference.QueryBridgeAddressesByChainRequest
+	141, // 166: inference.inference.Query.LiquidityPool:input_type -> inference.inference.QueryLiquidityPoolRequest
+	135, // 167: inference.inference.Query.WrappedTokenBalances:input_type -> inference.inference.QueryWrappedTokenBalancesRequest
+	139, // 168: inference.inference.Query.ValidateWrappedTokenForTrade:input_type -> inference.inference.QueryValidateWrappedTokenForTradeRequest
+	149, // 169: inference.inference.Query.ApprovedTokensForTrade:input_type -> inference.inference.QueryApprovedTokensForTradeRequest
+	122, // 170: inference.inference.Query.TrainingKvRecord:input_type -> inference.inference.QueryTrainingKvRecordRequest
+	124, // 171: inference.inference.Query.ListTrainingKvRecordKeys:input_type -> inference.inference.QueryListTrainingKvRecordKeysRequest
+	126, // 172: inference.inference.Query.TrainingBarrier:input_type -> inference.inference.QueryTrainingBarrierRequest
+	128, // 173: inference.inference.Query.TrainingAliveNodes:input_type -> inference.inference.QueryTrainingAliveNodesRequest
+	143, // 174: inference.inference.Query.EpochInfo:input_type -> inference.inference.QueryEpochInfoRequest
+	145, // 175: inference.inference.Query.CountPoCbatchesAtHeight:input_type -> inference.inference.QueryCountPoCbatchesAtHeightRequest
+	147, // 176: inference.inference.Query.CountPoCvalidationsAtHeight:input_type -> inference.inference.QueryCountPoCvalidationsAtHeightRequest
+	151, // 177: inference.inference.Query.GetModelPerTokenPrice:input_type -> inference.inference.QueryGetModelPerTokenPriceRequest
+	153, // 178: inference.inference.Query.GetAllModelPerTokenPrices:input_type -> inference.inference.QueryGetAllModelPerTokenPricesRequest
+	156, // 179: inference.inference.Query.GetModelCapacity:input_type -> inference.inference.QueryGetModelCapacityRequest
+	158, // 180: inference.inference.Query.GetAllModelCapacities:input_type -> inference.inference.QueryGetAllModelCapacitiesRequest
+	161, // 181: inference.inference.Query.GranteesByMessageType:input_type -> inference.inference.QueryGranteesByMessageTypeRequest
+	168, // 182: inference.inference.Query.MLNodeVersion:input_type -> inference.inference.QueryGetMLNodeVersionRequest
+	164, // 183: inference.inference.Query.TrainingAllowList:input_type -> inference.inference.QueryTrainingAllowListRequest
+	166, // 184: inference.inference.Query.ParticipantAllowList:input_type -> inference.inference.QueryParticipantAllowListRequest
+	170, // 185: inference.inference.Query.ExcludedParticipants:input_type -> inference.inference.QueryExcludedParticipantsRequest
+	172, // 186: inference.inference.Query.ActiveConfirmationPoCEvent:input_type -> inference.inference.QueryActiveConfirmationPoCEventRequest
+	174, // 187: inference.inference.Query.ListConfirmationPoCEvents:input_type -> inference.inference.QueryConfirmationPoCEventsRequest
+	177, // 188: inference.inference.Query.ParticipantsWithBalances:input_type -> inference.inference.QueryParticipantsWithBalancesRequest
+	1,   // 189: inference.inference.Query.Params:output_type -> inference.inference.QueryParamsResponse
+	3,   // 190: inference.inference.Query.Inference:output_type -> inference.inference.QueryGetInferenceResponse
+	5,   // 191: inference.inference.Query.InferenceAll:output_type -> inference.inference.QueryAllInferenceResponse
+	7,   // 192: inference.inference.Query.Participant:output_type -> inference.inference.QueryGetParticipantResponse
+	9,   // 193: inference.inference.Query.ParticipantAll:output_type -> inference.inference.QueryAllParticipantResponse
+	11,  // 194: inference.inference.Query.InferenceParticipant:output_type -> inference.inference.QueryInferenceParticipantResponse
+	13,  // 195: inference.inference.Query.GetRandomExecutor:output_type -> inference.inference.QueryGetRandomExecutorResponse
+	15,  // 196: inference.inference.Query.EpochGroupData:output_type -> inference.inference.QueryGetEpochGroupDataResponse
+	17,  // 197: inference.inference.Query.EpochGroupDataAll:output_type -> inference.inference.QueryAllEpochGroupDataResponse
+	19,  // 198: inference.inference.Query.SettleAmount:output_type -> inference.inference.QueryGetSettleAmountResponse
+	21,  // 199: inference.inference.Query.SettleAmountAll:output_type -> inference.inference.QueryAllSettleAmountResponse
+	23,  // 200: inference.inference.Query.EpochGroupValidations:output_type -> inference.inference.QueryGetEpochGroupValidationsResponse
+	25,  // 201: inference.inference.Query.EpochGroupValidationsAll:output_type -> inference.inference.QueryAllEpochGroupValidationsResponse
+	27,  // 202: inference.inference.Query.PocBatchesForStage:output_type -> inference.inference.QueryPocBatchesForStageResponse
+	30,  // 203: inference.inference.Query.PocValidationsForStage:output_type -> inference.inference.QueryPocValidationsForStageResponse
+	33,  // 204: inference.inference.Query.PocV2ValidationsForStage:output_type -> inference.inference.QueryPocV2ValidationsForStageResponse
+	36,  // 205: inference.inference.Query.PoCV2StoreCommit:output_type -> inference.inference.QueryPoCV2StoreCommitResponse
+	38,  // 206: inference.inference.Query.MLNodeWeightDistribution:output_type -> inference.inference.QueryMLNodeWeightDistributionResponse
+	40,  // 207: inference.inference.Query.AllPoCV2StoreCommitsForStage:output_type -> inference.inference.QueryAllPoCV2StoreCommitsForStageResponse
+	43,  // 208: inference.inference.Query.AllMLNodeWeightDistributionsForStage:output_type -> inference.inference.QueryAllMLNodeWeightDistributionsForStageResponse
+	46,  // 209: inference.inference.Query.PoCObservations:output_type -> inference.inference.QueryPoCObservationsResponse
+	49,  // 210: inference.inference.Query.PoCConsensus:output_type -> inference.inference.QueryPoCConsensusResponse
+	51,  // 211: inference.inference.Query.GetCurrentEpoch:output_type -> inference.inference.QueryGetCurrentEpochResponse
+	53,  // 212: inference.inference.Query.TokenomicsData:output_type -> inference.inference.QueryGetTokenomicsDataResponse
+	55,  // 213: inference.inference.Query.GetUnitOfComputePriceProposal:output_type -> inference.inference.QueryGetUnitOfComputePriceProposalResponse
+	57,  // 214: inference.inference.Query.CurrentEpochGroupData:output_type -> inference.inference.QueryCurrentEpochGroupDataResponse
+	61,  // 215: inference.inference.Query.ModelsAll:output_type -> inference.inference.QueryModelsAllResponse
+	63,  // 216: inference.inference.Query.TopMiner:output_type -> inference.inference.QueryGetTopMinerResponse
+	65,  // 217: inference.inference.Query.TopMinerAll:output_type -> inference.inference.QueryAllTopMinerResponse
+	67,  // 218: inference.inference.Query.InferenceTimeout:output_type -> inference.inference.QueryGetInferenceTimeoutResponse
+	69,  // 219: inference.inference.Query.InferenceTimeoutAll:output_type -> inference.inference.QueryAllInferenceTimeoutResponse
+	71,  // 220: inference.inference.Query.InferenceValidationDetails:output_type -> inference.inference.QueryGetInferenceValidationDetailsResponse
+	73,  // 221: inference.inference.Query.InferenceValidationDetailsAll:output_type -> inference.inference.QueryAllInferenceValidationDetailsResponse
+	75,  // 222: inference.inference.Query.GetInferenceValidationParameters:output_type -> inference.inference.QueryGetInferenceValidationParametersResponse
+	78,  // 223: inference.inference.Query.EpochPerformanceSummary:output_type -> inference.inference.QueryEpochPerformanceSummaryByEpochResponse
+	80,  // 224: inference.inference.Query.EpochPerformanceSummaryByParticipant:output_type -> inference.inference.QueryEpochPerformanceSummaryByParticipantResponse
+	82,  // 225: inference.inference.Query.EpochPerformanceSummaryAll:output_type -> inference.inference.QueryAllEpochPerformanceSummaryResponse
+	84,  // 226: inference.inference.Query.TrainingTask:output_type -> inference.inference.QueryTrainingTaskResponse
+	86,  // 227: inference.inference.Query.HardwareNodes:output_type -> inference.inference.QueryHardwareNodesResponse
+	88,  // 228: inference.inference.Query.HardwareNodesAll:output_type -> inference.inference.QueryHardwareNodesAllResponse
+	90,  // 229: inference.inference.Query.QueuedTrainingTasks:output_type -> inference.inference.QueryQueuedTrainingTasksResponse
+	92,  // 230: inference.inference.Query.TrainingTaskAll:output_type -> inference.inference.QueryTrainingTaskAllResponse
+	94,  // 231: inference.inference.Query.GetParticipantCurrentStats:output_type -> inference.inference.QueryGetParticipantCurrentStatsResponse
+	96,  // 232: inference.inference.Query.GetAllParticipantCurrentStats:output_type -> inference.inference.QueryGetAllParticipantCurrentStatsResponse
+	100, // 233: inference.inference.Query.GetParticipantsFullStats:output_type -> inference.inference.QueryParticipantsFullStatsResponse
+	102, // 234: inference.inference.Query.StatsByTimePeriodByDeveloper:output_type -> inference.inference.QueryStatsByTimePeriodByDeveloperResponse
+	109, // 235: inference.inference.Query.StatsByDeveloperAndEpochsBackwards:output_type -> inference.inference.QueryInferencesAndTokensStatsResponse
+	111, // 236: inference.inference.Query.CountParticipants:output_type -> inference.inference.QueryCountAllParticipantsResponse
+	113, // 237: inference.inference.Query.DebugStatsDeveloperStats:output_type -> inference.inference.QueryDebugStatsResponse
+	109, // 238: inference.inference.Query.InferencesAndTokensStatsByEpochsBackwards:output_type -> inference.inference.QueryInferencesAndTokensStatsResponse
+	109, // 239: inference.inference.Query.InferencesAndTokensStatsByTimePeriod:output_type -> inference.inference.QueryInferencesAndTokensStatsResponse
+	108, // 240: inference.inference.Query.InferencesAndTokensStatsByModels:output_type -> inference.inference.QueryInferencesAndTokensStatsByModelsResponse
+	115, // 241: inference.inference.Query.GetMinimumValidationAverage:output_type -> inference.inference.QueryGetMinimumValidationAverageResponse
+	117, // 242: inference.inference.Query.InProgressTrainingTasks:output_type -> inference.inference.QueryInProgressTrainingTasksResponse
+	119, // 243: inference.inference.Query.PartialUpgrade:output_type -> inference.inference.QueryGetPartialUpgradeResponse
+	121, // 244: inference.inference.Query.PartialUpgradeAll:output_type -> inference.inference.QueryAllPartialUpgradeResponse
+	131, // 245: inference.inference.Query.BridgeTransaction:output_type -> inference.inference.QueryGetBridgeTransactionResponse
+	133, // 246: inference.inference.Query.BridgeTransactions:output_type -> inference.inference.QueryAllBridgeTransactionsResponse
+	138, // 247: inference.inference.Query.BridgeAddressesByChain:output_type -> inference.inference.QueryBridgeAddressesByChainResponse
+	142, // 248: inference.inference.Query.LiquidityPool:output_type -> inference.inference.QueryLiquidityPoolResponse
+	136, // 249: inference.inference.Query.WrappedTokenBalances:output_type -> inference.inference.QueryWrappedTokenBalancesResponse
+	140, // 250: inference.inference.Query.ValidateWrappedTokenForTrade:output_type -> inference.inference.QueryValidateWrappedTokenForTradeResponse
+	150, // 251: inference.inference.Query.ApprovedTokensForTrade:output_type -> inference.inference.QueryApprovedTokensForTradeResponse
+	123, // 252: inference.inference.Query.TrainingKvRecord:output_type -> inference.inference.QueryTrainingKvRecordResponse
+	125, // 253: inference.inference.Query.ListTrainingKvRecordKeys:output_type -> inference.inference.QueryListTrainingKvRecordKeysResponse
+	127, // 254: inference.inference.Query.TrainingBarrier:output_type -> inference.inference.QueryTrainingBarrierResponse
+	129, // 255: inference.inference.Query.TrainingAliveNodes:output_type -> inference.inference.QueryTrainingAliveNodesResponse
+	144, // 256: inference.inference.Query.EpochInfo:output_type -> inference.inference.QueryEpochInfoResponse
+	146, // 257: inference.inference.Query.CountPoCbatchesAtHeight:output_type -> inference.inference.QueryCountPoCbatchesAtHeightResponse
+	148, // 258: inference.inference.Query.CountPoCvalidationsAtHeight:output_type -> inference.inference.QueryCountPoCvalidationsAtHeightResponse
+	152, // 259: inference.inference.Query.GetModelPerTokenPrice:output_type -> inference.inference.QueryGetModelPerTokenPriceResponse
+	155, // 260: inference.inference.Query.GetAllModelPerTokenPrices:output_type -> inference.inference.QueryGetAllModelPerTokenPricesResponse
+	157, // 261: inference.inference.Query.GetModelCapacity:output_type -> inference.inference.QueryGetModelCapacityResponse
+	159, // 262: inference.inference.Query.GetAllModelCapacities:output_type -> inference.inference.QueryGetAllModelCapacitiesResponse
+	163, // 263: inference.inference.Query.GranteesByMessageType:output_type -> inference.inference.QueryGranteesByMessageTypeResponse
+	169, // 264: inference.inference.Query.MLNodeVersion:output_type -> inference.inference.QueryGetMLNodeVersionResponse
+	165, // 265: inference.inference.Query.TrainingAllowList:output_type -> inference.inference.QueryTrainingAllowListResponse
+	167, // 266: inference.inference.Query.ParticipantAllowList:output_type -> inference.inference.QueryParticipantAllowListResponse
+	171, // 267: inference.inference.Query.ExcludedParticipants:output_type -> inference.inference.QueryExcludedParticipantsResponse
+	173, // 268: inference.inference.Query.ActiveConfirmationPoCEvent:output_type -> inference.inference.QueryActiveConfirmationPoCEventResponse
+	175, // 269: inference.inference.Query.ListConfirmationPoCEvents:output_type -> inference.inference.QueryConfirmationPoCEventsResponse
+	178, // 270: inference.inference.Query.ParticipantsWithBalances:output_type -> inference.inference.QueryParticipantsWithBalancesResponse
+	189, // [189:271] is the sub-list for method output_type
+	107, // [107:189] is the sub-list for method input_type
+	107, // [107:107] is the sub-list for extension type_name
+	107, // [107:107] is the sub-list for extension extendee
+	0,   // [0:107] is the sub-list for field type_name
 }
 
 func init() { file_inference_inference_query_proto_init() }
@@ -92054,7 +94686,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[45].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetCurrentEpochRequest); i {
+			switch v := v.(*QueryPoCObservationsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92066,7 +94698,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[46].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetCurrentEpochResponse); i {
+			switch v := v.(*QueryPoCObservationsResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92078,7 +94710,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[47].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetTokenomicsDataRequest); i {
+			switch v := v.(*PoCConsensusEntry); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92090,7 +94722,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[48].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetTokenomicsDataResponse); i {
+			switch v := v.(*QueryPoCConsensusRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92102,7 +94734,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[49].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetUnitOfComputePriceProposalRequest); i {
+			switch v := v.(*QueryPoCConsensusResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92114,7 +94746,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[50].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetUnitOfComputePriceProposalResponse); i {
+			switch v := v.(*QueryGetCurrentEpochRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92126,7 +94758,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[51].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryCurrentEpochGroupDataRequest); i {
+			switch v := v.(*QueryGetCurrentEpochResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92138,7 +94770,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[52].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryCurrentEpochGroupDataResponse); i {
+			switch v := v.(*QueryGetTokenomicsDataRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92150,7 +94782,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[53].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryPreviousEpochGroupDataRequest); i {
+			switch v := v.(*QueryGetTokenomicsDataResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92162,7 +94794,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[54].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryPreviousEpochGroupDataResponse); i {
+			switch v := v.(*QueryGetUnitOfComputePriceProposalRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92174,7 +94806,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[55].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryModelsAllRequest); i {
+			switch v := v.(*QueryGetUnitOfComputePriceProposalResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92186,7 +94818,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[56].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryModelsAllResponse); i {
+			switch v := v.(*QueryCurrentEpochGroupDataRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92198,7 +94830,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[57].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetTopMinerRequest); i {
+			switch v := v.(*QueryCurrentEpochGroupDataResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92210,7 +94842,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[58].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetTopMinerResponse); i {
+			switch v := v.(*QueryPreviousEpochGroupDataRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92222,7 +94854,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[59].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryAllTopMinerRequest); i {
+			switch v := v.(*QueryPreviousEpochGroupDataResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92234,7 +94866,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[60].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryAllTopMinerResponse); i {
+			switch v := v.(*QueryModelsAllRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92246,7 +94878,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[61].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetInferenceTimeoutRequest); i {
+			switch v := v.(*QueryModelsAllResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92258,7 +94890,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[62].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetInferenceTimeoutResponse); i {
+			switch v := v.(*QueryGetTopMinerRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92270,7 +94902,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[63].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryAllInferenceTimeoutRequest); i {
+			switch v := v.(*QueryGetTopMinerResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92282,7 +94914,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[64].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryAllInferenceTimeoutResponse); i {
+			switch v := v.(*QueryAllTopMinerRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92294,7 +94926,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[65].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetInferenceValidationDetailsRequest); i {
+			switch v := v.(*QueryAllTopMinerResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92306,7 +94938,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[66].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetInferenceValidationDetailsResponse); i {
+			switch v := v.(*QueryGetInferenceTimeoutRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92318,7 +94950,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[67].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryAllInferenceValidationDetailsRequest); i {
+			switch v := v.(*QueryGetInferenceTimeoutResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92330,7 +94962,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[68].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryAllInferenceValidationDetailsResponse); i {
+			switch v := v.(*QueryAllInferenceTimeoutRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92342,7 +94974,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[69].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetInferenceValidationParametersRequest); i {
+			switch v := v.(*QueryAllInferenceTimeoutResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92354,7 +94986,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[70].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetInferenceValidationParametersResponse); i {
+			switch v := v.(*QueryGetInferenceValidationDetailsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92366,7 +94998,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[71].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ValidatorPower); i {
+			switch v := v.(*QueryGetInferenceValidationDetailsResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92378,7 +95010,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[72].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryEpochPerformanceSummaryByEpochRequest); i {
+			switch v := v.(*QueryAllInferenceValidationDetailsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92390,7 +95022,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[73].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryEpochPerformanceSummaryByEpochResponse); i {
+			switch v := v.(*QueryAllInferenceValidationDetailsResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92402,7 +95034,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[74].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryEpochPerformanceSummaryByParticipantRequest); i {
+			switch v := v.(*QueryGetInferenceValidationParametersRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92414,7 +95046,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[75].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryEpochPerformanceSummaryByParticipantResponse); i {
+			switch v := v.(*QueryGetInferenceValidationParametersResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92426,7 +95058,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[76].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryAllEpochPerformanceSummaryRequest); i {
+			switch v := v.(*ValidatorPower); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92438,7 +95070,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[77].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryAllEpochPerformanceSummaryResponse); i {
+			switch v := v.(*QueryEpochPerformanceSummaryByEpochRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92450,7 +95082,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[78].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryTrainingTaskRequest); i {
+			switch v := v.(*QueryEpochPerformanceSummaryByEpochResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92462,7 +95094,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[79].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryTrainingTaskResponse); i {
+			switch v := v.(*QueryEpochPerformanceSummaryByParticipantRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92474,7 +95106,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[80].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryHardwareNodesRequest); i {
+			switch v := v.(*QueryEpochPerformanceSummaryByParticipantResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92486,7 +95118,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[81].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryHardwareNodesResponse); i {
+			switch v := v.(*QueryAllEpochPerformanceSummaryRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92498,7 +95130,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[82].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryHardwareNodesAllRequest); i {
+			switch v := v.(*QueryAllEpochPerformanceSummaryResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92510,7 +95142,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[83].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryHardwareNodesAllResponse); i {
+			switch v := v.(*QueryTrainingTaskRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92522,7 +95154,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[84].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryQueuedTrainingTasksRequest); i {
+			switch v := v.(*QueryTrainingTaskResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92534,7 +95166,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[85].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryQueuedTrainingTasksResponse); i {
+			switch v := v.(*QueryHardwareNodesRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92546,7 +95178,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[86].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryTrainingTaskAllRequest); i {
+			switch v := v.(*QueryHardwareNodesResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92558,7 +95190,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[87].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryTrainingTaskAllResponse); i {
+			switch v := v.(*QueryHardwareNodesAllRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92570,7 +95202,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[88].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetParticipantCurrentStatsRequest); i {
+			switch v := v.(*QueryHardwareNodesAllResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92582,7 +95214,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[89].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetParticipantCurrentStatsResponse); i {
+			switch v := v.(*QueryQueuedTrainingTasksRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92594,7 +95226,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[90].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetAllParticipantCurrentStatsRequest); i {
+			switch v := v.(*QueryQueuedTrainingTasksResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92606,7 +95238,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[91].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetAllParticipantCurrentStatsResponse); i {
+			switch v := v.(*QueryTrainingTaskAllRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92618,7 +95250,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[92].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ParticipantCurrentStats); i {
+			switch v := v.(*QueryTrainingTaskAllResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92630,7 +95262,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[93].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ParticipantFullStats); i {
+			switch v := v.(*QueryGetParticipantCurrentStatsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92642,7 +95274,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[94].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryParticipantsFullStatsRequest); i {
+			switch v := v.(*QueryGetParticipantCurrentStatsResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92654,7 +95286,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[95].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryParticipantsFullStatsResponse); i {
+			switch v := v.(*QueryGetAllParticipantCurrentStatsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92666,7 +95298,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[96].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryStatsByTimePeriodByDeveloperRequest); i {
+			switch v := v.(*QueryGetAllParticipantCurrentStatsResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92678,7 +95310,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[97].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryStatsByTimePeriodByDeveloperResponse); i {
+			switch v := v.(*ParticipantCurrentStats); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92690,7 +95322,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[98].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryStatsByDeveloperAndEpochBackwardsRequest); i {
+			switch v := v.(*ParticipantFullStats); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92702,7 +95334,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[99].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryInferencesAndTokensStatsByEpochsBackwardsRequest); i {
+			switch v := v.(*QueryParticipantsFullStatsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92714,7 +95346,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[100].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryInferencesAndTokensStatsByTimePeriodRequest); i {
+			switch v := v.(*QueryParticipantsFullStatsResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92726,7 +95358,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[101].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryInferencesAndTokensStatsByModelsRequest); i {
+			switch v := v.(*QueryStatsByTimePeriodByDeveloperRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92738,7 +95370,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[102].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ModelStats); i {
+			switch v := v.(*QueryStatsByTimePeriodByDeveloperResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92750,7 +95382,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[103].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryInferencesAndTokensStatsByModelsResponse); i {
+			switch v := v.(*QueryStatsByDeveloperAndEpochBackwardsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92762,7 +95394,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[104].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryInferencesAndTokensStatsResponse); i {
+			switch v := v.(*QueryInferencesAndTokensStatsByEpochsBackwardsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92774,7 +95406,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[105].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryCountAllParticipantsRequest); i {
+			switch v := v.(*QueryInferencesAndTokensStatsByTimePeriodRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92786,7 +95418,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[106].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryCountAllParticipantsResponse); i {
+			switch v := v.(*QueryInferencesAndTokensStatsByModelsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92798,7 +95430,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[107].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryDebugStatsRequest); i {
+			switch v := v.(*ModelStats); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92810,7 +95442,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[108].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryDebugStatsResponse); i {
+			switch v := v.(*QueryInferencesAndTokensStatsByModelsResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92822,7 +95454,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[109].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetMinimumValidationAverageRequest); i {
+			switch v := v.(*QueryInferencesAndTokensStatsResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92834,7 +95466,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[110].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetMinimumValidationAverageResponse); i {
+			switch v := v.(*QueryCountAllParticipantsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92846,7 +95478,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[111].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryInProgressTrainingTasksRequest); i {
+			switch v := v.(*QueryCountAllParticipantsResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92858,7 +95490,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[112].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryInProgressTrainingTasksResponse); i {
+			switch v := v.(*QueryDebugStatsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92870,7 +95502,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[113].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetPartialUpgradeRequest); i {
+			switch v := v.(*QueryDebugStatsResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92882,7 +95514,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[114].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetPartialUpgradeResponse); i {
+			switch v := v.(*QueryGetMinimumValidationAverageRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92894,7 +95526,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[115].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryAllPartialUpgradeRequest); i {
+			switch v := v.(*QueryGetMinimumValidationAverageResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92906,7 +95538,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[116].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryAllPartialUpgradeResponse); i {
+			switch v := v.(*QueryInProgressTrainingTasksRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92918,7 +95550,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[117].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryTrainingKvRecordRequest); i {
+			switch v := v.(*QueryInProgressTrainingTasksResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92930,7 +95562,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[118].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryTrainingKvRecordResponse); i {
+			switch v := v.(*QueryGetPartialUpgradeRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92942,7 +95574,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[119].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryListTrainingKvRecordKeysRequest); i {
+			switch v := v.(*QueryGetPartialUpgradeResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92954,7 +95586,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[120].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryListTrainingKvRecordKeysResponse); i {
+			switch v := v.(*QueryAllPartialUpgradeRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92966,7 +95598,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[121].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryTrainingBarrierRequest); i {
+			switch v := v.(*QueryAllPartialUpgradeResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92978,7 +95610,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[122].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryTrainingBarrierResponse); i {
+			switch v := v.(*QueryTrainingKvRecordRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -92990,7 +95622,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[123].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryTrainingAliveNodesRequest); i {
+			switch v := v.(*QueryTrainingKvRecordResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93002,7 +95634,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[124].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryTrainingAliveNodesResponse); i {
+			switch v := v.(*QueryListTrainingKvRecordKeysRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93014,7 +95646,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[125].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetBridgeTransactionRequest); i {
+			switch v := v.(*QueryListTrainingKvRecordKeysResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93026,7 +95658,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[126].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetBridgeTransactionResponse); i {
+			switch v := v.(*QueryTrainingBarrierRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93038,7 +95670,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[127].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryAllBridgeTransactionsRequest); i {
+			switch v := v.(*QueryTrainingBarrierResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93050,7 +95682,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[128].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryAllBridgeTransactionsResponse); i {
+			switch v := v.(*QueryTrainingAliveNodesRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93062,7 +95694,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[129].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*WrappedTokenBalance); i {
+			switch v := v.(*QueryTrainingAliveNodesResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93074,7 +95706,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[130].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryWrappedTokenBalancesRequest); i {
+			switch v := v.(*QueryGetBridgeTransactionRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93086,7 +95718,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[131].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryWrappedTokenBalancesResponse); i {
+			switch v := v.(*QueryGetBridgeTransactionResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93098,7 +95730,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[132].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryBridgeAddressesByChainRequest); i {
+			switch v := v.(*QueryAllBridgeTransactionsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93110,7 +95742,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[133].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryBridgeAddressesByChainResponse); i {
+			switch v := v.(*QueryAllBridgeTransactionsResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93122,7 +95754,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[134].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryValidateWrappedTokenForTradeRequest); i {
+			switch v := v.(*WrappedTokenBalance); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93134,7 +95766,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[135].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryValidateWrappedTokenForTradeResponse); i {
+			switch v := v.(*QueryWrappedTokenBalancesRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93146,7 +95778,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[136].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryLiquidityPoolRequest); i {
+			switch v := v.(*QueryWrappedTokenBalancesResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93158,7 +95790,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[137].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryLiquidityPoolResponse); i {
+			switch v := v.(*QueryBridgeAddressesByChainRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93170,7 +95802,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[138].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryEpochInfoRequest); i {
+			switch v := v.(*QueryBridgeAddressesByChainResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93182,7 +95814,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[139].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryEpochInfoResponse); i {
+			switch v := v.(*QueryValidateWrappedTokenForTradeRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93194,7 +95826,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[140].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryCountPoCbatchesAtHeightRequest); i {
+			switch v := v.(*QueryValidateWrappedTokenForTradeResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93206,7 +95838,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[141].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryCountPoCbatchesAtHeightResponse); i {
+			switch v := v.(*QueryLiquidityPoolRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93218,7 +95850,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[142].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryCountPoCvalidationsAtHeightRequest); i {
+			switch v := v.(*QueryLiquidityPoolResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93230,7 +95862,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[143].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryCountPoCvalidationsAtHeightResponse); i {
+			switch v := v.(*QueryEpochInfoRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93242,7 +95874,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[144].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryApprovedTokensForTradeRequest); i {
+			switch v := v.(*QueryEpochInfoResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93254,7 +95886,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[145].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryApprovedTokensForTradeResponse); i {
+			switch v := v.(*QueryCountPoCbatchesAtHeightRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93266,7 +95898,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[146].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetModelPerTokenPriceRequest); i {
+			switch v := v.(*QueryCountPoCbatchesAtHeightResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93278,7 +95910,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[147].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetModelPerTokenPriceResponse); i {
+			switch v := v.(*QueryCountPoCvalidationsAtHeightRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93290,7 +95922,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[148].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetAllModelPerTokenPricesRequest); i {
+			switch v := v.(*QueryCountPoCvalidationsAtHeightResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93302,7 +95934,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[149].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ModelPrice); i {
+			switch v := v.(*QueryApprovedTokensForTradeRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93314,7 +95946,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[150].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetAllModelPerTokenPricesResponse); i {
+			switch v := v.(*QueryApprovedTokensForTradeResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93326,7 +95958,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[151].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetModelCapacityRequest); i {
+			switch v := v.(*QueryGetModelPerTokenPriceRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93338,7 +95970,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[152].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetModelCapacityResponse); i {
+			switch v := v.(*QueryGetModelPerTokenPriceResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93350,7 +95982,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[153].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetAllModelCapacitiesRequest); i {
+			switch v := v.(*QueryGetAllModelPerTokenPricesRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93362,7 +95994,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[154].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetAllModelCapacitiesResponse); i {
+			switch v := v.(*ModelPrice); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93374,7 +96006,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[155].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ModelCapacity); i {
+			switch v := v.(*QueryGetAllModelPerTokenPricesResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93386,7 +96018,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[156].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGranteesByMessageTypeRequest); i {
+			switch v := v.(*QueryGetModelCapacityRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93398,7 +96030,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[157].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*Grantee); i {
+			switch v := v.(*QueryGetModelCapacityResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93410,7 +96042,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[158].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGranteesByMessageTypeResponse); i {
+			switch v := v.(*QueryGetAllModelCapacitiesRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93422,7 +96054,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[159].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryTrainingAllowListRequest); i {
+			switch v := v.(*QueryGetAllModelCapacitiesResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93434,7 +96066,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[160].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryTrainingAllowListResponse); i {
+			switch v := v.(*ModelCapacity); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93446,7 +96078,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[161].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryParticipantAllowListRequest); i {
+			switch v := v.(*QueryGranteesByMessageTypeRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93458,7 +96090,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[162].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryParticipantAllowListResponse); i {
+			switch v := v.(*Grantee); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93470,7 +96102,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[163].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetMLNodeVersionRequest); i {
+			switch v := v.(*QueryGranteesByMessageTypeResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93482,7 +96114,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[164].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryGetMLNodeVersionResponse); i {
+			switch v := v.(*QueryTrainingAllowListRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93494,7 +96126,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[165].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryExcludedParticipantsRequest); i {
+			switch v := v.(*QueryTrainingAllowListResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93506,7 +96138,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[166].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryExcludedParticipantsResponse); i {
+			switch v := v.(*QueryParticipantAllowListRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93518,7 +96150,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[167].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryActiveConfirmationPoCEventRequest); i {
+			switch v := v.(*QueryParticipantAllowListResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93530,7 +96162,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[168].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryActiveConfirmationPoCEventResponse); i {
+			switch v := v.(*QueryGetMLNodeVersionRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93542,7 +96174,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[169].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryConfirmationPoCEventsRequest); i {
+			switch v := v.(*QueryGetMLNodeVersionResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93554,7 +96186,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[170].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryConfirmationPoCEventsResponse); i {
+			switch v := v.(*QueryExcludedParticipantsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93566,7 +96198,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[171].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*ParticipantWithBalance); i {
+			switch v := v.(*QueryExcludedParticipantsResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93578,7 +96210,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[172].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryParticipantsWithBalancesRequest); i {
+			switch v := v.(*QueryActiveConfirmationPoCEventRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93590,7 +96222,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[173].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryParticipantsWithBalancesResponse); i {
+			switch v := v.(*QueryActiveConfirmationPoCEventResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93602,7 +96234,7 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[174].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*QueryDebugStatsResponse_TemporaryTimeStat); i {
+			switch v := v.(*QueryConfirmationPoCEventsRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -93614,6 +96246,66 @@ func file_inference_inference_query_proto_init() {
 			}
 		}
 		file_inference_inference_query_proto_msgTypes[175].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*QueryConfirmationPoCEventsResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_inference_inference_query_proto_msgTypes[176].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*ParticipantWithBalance); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_inference_inference_query_proto_msgTypes[177].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*QueryParticipantsWithBalancesRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_inference_inference_query_proto_msgTypes[178].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*QueryParticipantsWithBalancesResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_inference_inference_query_proto_msgTypes[179].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*QueryDebugStatsResponse_TemporaryTimeStat); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_inference_inference_query_proto_msgTypes[180].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*QueryDebugStatsResponse_TemporaryEpochStat); i {
 			case 0:
 				return &v.state
@@ -93632,7 +96324,7 @@ func file_inference_inference_query_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_inference_inference_query_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   176,
+			NumMessages:   181,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

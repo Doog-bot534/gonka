@@ -142,6 +142,11 @@ func (m *MockCosmosMessageClient) SubmitPoCV2StoreCommit(transaction *inference.
 	return args.Error(0)
 }
 
+func (m *MockCosmosMessageClient) SubmitPoCObservation(transaction *inference.MsgSubmitPoCObservation) error {
+	args := m.Called(transaction)
+	return args.Error(0)
+}
+
 func (m *MockCosmosMessageClient) SubmitMLNodeWeightDistribution(transaction *inference.MsgMLNodeWeightDistribution) error {
 	args := m.Called(transaction)
 	return args.Error(0)

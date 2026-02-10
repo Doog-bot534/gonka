@@ -47,3 +47,15 @@ message MLNodeWeightDistribution {
   int64 poc_stage_start_block_height = 2;
   repeated MLNodeWeight weights = 3;
 }
+
+message PoCObservationArrival {
+  string participant = 1;
+  uint32 count = 2;
+}
+
+message PoCObservation {
+  string validator_address = 1;
+  int64 poc_stage_start_block_height = 2;
+  repeated PoCObservationArrival arrivals = 3;
+  int64 block_height = 4;
+}

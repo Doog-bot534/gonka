@@ -9,9 +9,8 @@ import (
 )
 
 type PropagationHandlers struct {
-	transport           *propagation.HTTPTransport
-	cache               *propagation.Cache
-	consensusCalculator *propagation.ConsensusCalculator
+	transport *propagation.HTTPTransport
+	cache     *propagation.Cache
 }
 
 func NewPropagationHandlers(transport *propagation.HTTPTransport) *PropagationHandlers {
@@ -22,7 +21,6 @@ func NewPropagationHandlers(transport *propagation.HTTPTransport) *PropagationHa
 
 func (h *PropagationHandlers) SetCache(cache *propagation.Cache) {
 	h.cache = cache
-	h.consensusCalculator = propagation.NewConsensusCalculator(cache)
 }
 
 func (h *PropagationHandlers) HandleHeader(c echo.Context) error {
@@ -58,7 +56,7 @@ func (h *PropagationHandlers) HandleProofs(c echo.Context) error {
 
 func (h *PropagationHandlers) HandleGetProofs(c echo.Context) error {
 	bundleIDStr := c.Param("bundle_id")
-	
+
 	if len(bundleIDStr) != 64 {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid bundle_id: must be 64 hex characters")
 	}
@@ -117,78 +115,10 @@ func (h *PropagationHandlers) HandleGetFirstArrivals(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
-func (h *PropagationHandlers) HandleObservation(c echo.Context) error {
-	h.transport.HandleObservationHTTP(c.Response().Writer, c.Request())
-	return nil
-}
-
-func (h *PropagationHandlers) HandleGetObservations(c echo.Context) error {
-	pocHeightStr := c.Param("poc_height")
-	pocHeight, err := strconv.ParseInt(pocHeightStr, 10, 64)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid poc_height")
-	}
-
-	if h.cache == nil {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "cache not available")
-	}
-
-	observations, err := h.cache.GetObservations(pocHeight)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to get observations")
-	}
-
-	response := map[string]interface{}{
-		"poc_height":   pocHeight,
-		"observations": observations,
-	}
-
-	return c.JSON(http.StatusOK, response)
-}
-
-func (h *PropagationHandlers) HandleGetConsensus(c echo.Context) error {
-	pocHeightStr := c.Param("poc_height")
-	pocHeight, err := strconv.ParseInt(pocHeightStr, 10, 64)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid poc_height")
-	}
-
-	deadlineStr := c.QueryParam("deadline")
-	var deadline int64
-	if deadlineStr != "" {
-		deadline, err = strconv.ParseInt(deadlineStr, 10, 64)
-		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, "invalid deadline")
-		}
-	} else {
-		deadline = 0x7FFFFFFFFFFFFFFF
-	}
-
-	if h.consensusCalculator == nil {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "consensus calculator not available")
-	}
-
-	results, err := h.consensusCalculator.Calculate(pocHeight, deadline)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to calculate consensus")
-	}
-
-	response := map[string]interface{}{
-		"poc_height": pocHeight,
-		"deadline":   deadline,
-		"consensus":  results,
-	}
-
-	return c.JSON(http.StatusOK, response)
-}
-
 func (h *PropagationHandlers) RegisterRoutes(e *echo.Group) {
 	e.POST("propagation/header", h.HandleHeader)
 	e.POST("propagation/proofs", h.HandleProofs)
-	e.POST("propagation/observation", h.HandleObservation)
 	e.GET("propagation/cache/:poc_height", h.HandleGetCache)
 	e.GET("propagation/proofs/:bundle_id", h.HandleGetProofs)
 	e.GET("propagation/first-arrivals/:poc_height", h.HandleGetFirstArrivals)
-	e.GET("propagation/observations/:poc_height", h.HandleGetObservations)
-	e.GET("propagation/consensus/:poc_height", h.HandleGetConsensus)
 }

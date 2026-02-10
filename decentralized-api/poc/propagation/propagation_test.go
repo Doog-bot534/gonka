@@ -565,81 +565,6 @@ func TestFirstArrivalTimeRecordedOnHeader(t *testing.T) {
 	}
 }
 
-func TestObservationBroadcastAndForwarding(t *testing.T) {
-	numParticipants := 3
-	fanout := 2
-
-	participants := make([]string, numParticipants)
-	privKeys := make(map[string][]byte)
-	pubKeys := make(map[string]string)
-
-	for i := 0; i < numParticipants; i++ {
-		addr := fmt.Sprintf("validator%d", i)
-		participants[i] = addr
-
-		privKey := ed25519.GenPrivKey()
-		privKeys[addr] = privKey.Bytes()
-		pubKeys[addr] = base64.StdEncoding.EncodeToString(privKey.PubKey().Bytes())
-	}
-
-	blockHash := sha256.Sum256([]byte("test-block"))
-	pocHeight := int64(1000)
-
-	trees := BuildTrees(participants, blockHash[:], 1, fanout)
-
-	transport := NewMockTransport()
-	pubKeyProvider := NewMockPubKeyProvider()
-	for addr, pubKey := range pubKeys {
-		pubKeyProvider.RegisterKey(addr, pubKey)
-	}
-
-	tempDir := t.TempDir()
-
-	caches := make(map[string]*Cache)
-	bundlers := make(map[string]*Bundler)
-
-	for _, addr := range participants {
-		storageDir := filepath.Join(tempDir, addr, "bundles")
-		storage, err := NewFileBundleStorage(storageDir)
-		require.NoError(t, err)
-		cache := NewCache(storage)
-		caches[addr] = cache
-
-		perParticipantSender := transport.NewSenderFor(addr)
-		receiver := NewReceiver(cache, trees, pubKeyProvider, addr, perParticipantSender)
-		transport.RegisterReceiver(addr, receiver)
-
-		bundler := NewBundler(&testKeySigner{key: privKeys[addr]}, cache, trees, perParticipantSender, addr)
-		bundlers[addr] = bundler
-	}
-
-	broadcaster := participants[0]
-	broadcasterCache := caches[broadcaster]
-
-	err := broadcasterCache.StoreFirstArrival("participant_a", pocHeight, 1000, 50)
-	require.NoError(t, err)
-	err = broadcasterCache.StoreFirstArrival("participant_b", pocHeight, 2000, 75)
-	require.NoError(t, err)
-
-	err = bundlers[broadcaster].BroadcastObservation(pocHeight)
-	require.NoError(t, err)
-
-	time.Sleep(100 * time.Millisecond)
-
-	for _, addr := range participants {
-		observations, err := caches[addr].GetObservations(pocHeight)
-		require.NoError(t, err, "participant %s should be able to get observations", addr)
-		require.Len(t, observations, 1, "participant %s should have 1 observation", addr)
-
-		obs := observations[0]
-		require.Equal(t, broadcaster, obs.ValidatorAddress)
-		require.Equal(t, pocHeight, obs.PocHeight)
-		require.Len(t, obs.Arrivals, 2)
-		require.Equal(t, ArrivalInfo{Time: 1000, Count: 50}, obs.Arrivals["participant_a"])
-		require.Equal(t, ArrivalInfo{Time: 2000, Count: 75}, obs.Arrivals["participant_b"])
-	}
-}
-
 func TestReceiverClearProcessedState(t *testing.T) {
 	tempDir := t.TempDir()
 	storageDir := filepath.Join(tempDir, "bundles")
@@ -655,7 +580,6 @@ func TestReceiverClearProcessedState(t *testing.T) {
 	receiver.mu.Lock()
 	receiver.processedHeaders[[32]byte{1}] = true
 	receiver.processedProofs[[32]byte{2}] = true
-	receiver.processedObservations[[32]byte{3}] = true
 	receiver.mu.Unlock()
 
 	receiver.ClearProcessedState()
@@ -663,6 +587,5 @@ func TestReceiverClearProcessedState(t *testing.T) {
 	receiver.mu.RLock()
 	require.Empty(t, receiver.processedHeaders)
 	require.Empty(t, receiver.processedProofs)
-	require.Empty(t, receiver.processedObservations)
 	receiver.mu.RUnlock()
 }

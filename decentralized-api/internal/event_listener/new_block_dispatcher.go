@@ -403,27 +403,6 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 		}
 	}
 
-	observationBroadcastHeight := epochContext.PoCExchangeDeadline() - poc.DefaultObservationBuffer
-	maxBroadcastHeight := epochContext.EndOfPoCGeneration() - 1
-	if observationBroadcastHeight > maxBroadcastHeight {
-		observationBroadcastHeight = maxBroadcastHeight
-	}
-	minBroadcastHeight := epochContext.PocStartBlockHeight + 1
-	if observationBroadcastHeight < minBroadcastHeight {
-		observationBroadcastHeight = minBroadcastHeight
-	}
-	if blockHeight == observationBroadcastHeight && d.propagationBundler != nil {
-		logging.Info("DapiStage:ObservationBroadcast. Broadcasting observation", types.Stages,
-			"blockHeight", blockHeight, "pocHeight", epochContext.PocStartBlockHeight,
-			"deadline", epochContext.PoCExchangeDeadline())
-		go func() {
-			if err := d.propagationBundler.BroadcastObservation(epochContext.PocStartBlockHeight); err != nil {
-				logging.Error("Failed to broadcast observation", types.PoC,
-					"pocHeight", epochContext.PocStartBlockHeight, "error", err)
-			}
-		}()
-	}
-
 	if epochContext.IsStartOfPoCValidationStage(blockHeight) {
 		logging.Info("DapiStage:IsStartOfPoCValidationStage", types.Stages, "blockHeight", blockHeight, "blockHash", blockHash, "pocStartBlockHeight", epochContext.PocStartBlockHeight)
 		pocStartBlockHeight := epochContext.PocStartBlockHeight

@@ -327,13 +327,9 @@ func main() {
 		commitInterval,
 		propConfig.Enabled,
 		propagationBundler,
+		propagationCache,
 	)
 	defer commitWorker.Close()
-
-	if propagationCache != nil {
-		consensusCalculator := propagation.NewConsensusCalculator(propagationCache)
-		commitWorker.SetConsensusCalculator(consensusCalculator)
-	}
 
 	// Build server options
 	serverOpts := []pserver.ServerOption{pserver.WithArtifactStore(artifactStore)}
