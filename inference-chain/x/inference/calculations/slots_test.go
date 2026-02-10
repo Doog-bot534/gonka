@@ -216,13 +216,13 @@ func TestGetSlots_MoreSlotsThanValidators(t *testing.T) {
 	slots := GetSlotsFromSorted(appHash, participant, sortedEntries, totalWeight, nSlots)
 	require.Len(t, slots, nSlots)
 
-	// Both validators should appear multiple times
+	// Algorithm is deterministic - assert exact counts
 	counts := make(map[string]int)
 	for _, slot := range slots {
 		counts[slot]++
 	}
-	require.Greater(t, counts["node1"], 100, "node1 should appear many times")
-	require.Greater(t, counts["node2"], 100, "node2 should appear many times")
+	require.Equal(t, 362, counts["node1"], "node1 count must be exact (deterministic)")
+	require.Equal(t, 638, counts["node2"], "node2 count must be exact (deterministic)")
 }
 
 func TestGetSlots_LargeWeightDisparity(t *testing.T) {
@@ -237,15 +237,13 @@ func TestGetSlots_LargeWeightDisparity(t *testing.T) {
 	sortedEntries, totalWeight := PrepareSortedEntries(weights)
 	slots := GetSlotsFromSorted(appHash, participant, sortedEntries, totalWeight, nSlots)
 
+	// Algorithm is deterministic - assert exact counts
 	counts := make(map[string]int)
 	for _, slot := range slots {
 		counts[slot]++
 	}
-
-	// whale should have ~99% of slots, small ~1%
-	total := float64(nSlots)
-	require.InDelta(t, 0.99, float64(counts["whale"])/total, 0.05)
-	require.InDelta(t, 0.01, float64(counts["small"])/total, 0.05)
+	require.Equal(t, 988, counts["whale"], "whale count must be exact (deterministic)")
+	require.Equal(t, 12, counts["small"], "small count must be exact (deterministic)")
 }
 
 func TestGetSlots_DifferentAppHash(t *testing.T) {

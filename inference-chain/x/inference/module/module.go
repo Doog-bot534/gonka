@@ -1,11 +1,12 @@
 package inference
 
 import (
+	"cmp"
 	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"sort"
+	"slices"
 
 	"cosmossdk.io/core/appmodule"
 	"cosmossdk.io/core/store"
@@ -708,8 +709,8 @@ func validatorWeightsMapToSlice(weights map[string]int64) []*types.ValidatorWeig
 	for addr, w := range weights {
 		result = append(result, &types.ValidatorWeight{Address: addr, Weight: w})
 	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Address < result[j].Address
+	slices.SortFunc(result, func(a, b *types.ValidatorWeight) int {
+		return cmp.Compare(a.Address, b.Address)
 	})
 	return result
 }
