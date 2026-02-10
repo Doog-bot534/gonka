@@ -28,6 +28,7 @@ The on-chain migration logic is defined in [`upgrades.go`](https://github.com/go
 
 Migration tasks:
 - **Validation slots default**: explicitly sets `PocParams.ValidationSlots=0` during migration. This keeps existing O(N^2) validation behavior after upgrade until sampling is enabled by governance parameter update.
+- **PoC normalization default**: explicitly sets `PocParams.PocNormalizationEnabled=true` during migration to enable time-based weight normalization.
 
 ## PoC Validation Sampling Optimization
 
@@ -41,12 +42,29 @@ Key points:
 - Decision threshold is strict supermajority of assigned slots (>66.7%).
 - The feature is shipped in this release but **disabled by default** (`ValidationSlots=0`) and can be enabled via governance once rollout conditions are met.
 
+## PoC Weight Normalization by Real PoC Time
+
+This upgrade normalizes PoC participant weights by actual PoC elapsed time to reduce block-time drift effects and keep weight outcomes consistent with real execution duration.
+
+Key points:
+- Adds `PocParams.PocNormalizationEnabled` parameter for time-based normalization control.
+- Captures generation start and exchange end timestamps in `PoCValidationSnapshot`.
+- Applies a normalization factor derived from expected stage duration vs actual elapsed time.
+- Applies to both regular PoC and confirmation PoC weight calculations.
+- Enabled by default in this upgrade (`PocNormalizationEnabled=true`).
+
 ## Changes
 
 ### [PR #710](https://github.com/gonka-ai/gonka/pull/710) PoC Validation Sampling Optimization
 * Reduces validation complexity from quadratic to slot-based sampling.
 * Adds deterministic slot assignment shared by chain and API, with snapshot-backed weight synchronization.
 * Keeps backward-compatible fallback path when `ValidationSlots=0` and includes upgrade-time default of `ValidationSlots=0` for safe rollout.
+
+### [PR #725](https://github.com/gonka-ai/gonka/pull/725) PoC weight normalization on real PoC time
+* Adds time-based PoC weight normalization to reduce sensitivity to block-time variance.
+* Introduces `PocNormalizationEnabled` in PoC params and uses validation snapshot timestamps to compute normalization factor.
+* Integrates normalization into both regular PoC and confirmation PoC weight calculations.
+* Upgrade handler enables normalization by default for `v0.2.10`.
 
 ### [PR #708](https://github.com/gonka-ai/gonka/pull/708) IBC Upgrade to v8.7.0
 * Upgrades IBC stack to v8.7.0.
