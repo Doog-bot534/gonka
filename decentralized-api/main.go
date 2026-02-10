@@ -171,14 +171,8 @@ func main() {
 	// Bridge external block queue
 	blockQueue := pserver.NewBlockQueue(recorder)
 
-	// Shared payload storage for both public and admin servers
-	// Uses PostgreSQL if PGHOST is set and accessible, otherwise file-based
-	// ManagedStorage provides read caching + automatic epoch pruning (retains last 3 epochs)
-	payloadStore := payloadstorage.NewManagedStorage(
-		payloadstorage.NewPayloadStorage(ctx, "/root/.dapi/data/inference"),
-		3,             // retain current + 2 previous epochs
-		3*time.Minute, // cache TTL
-	)
+	payloadStore := newManagedPayloadStorage(ctx, "/root/.dapi/data/inference")
+	promptStore := newManagedPayloadStorage(ctx, "/root/.dapi/data/inference-prompt")
 
 	// Shared managed artifact store for off-chain PoC (used by both mlnode and public servers)
 	// Manages per-height directories with automatic pruning (retains last 10)
@@ -192,7 +186,7 @@ func main() {
 	commitWorker := poc.NewCommitWorker(artifactStore, recorder, chainPhaseTracker, participantInfo.GetAddress(), commitInterval)
 	defer commitWorker.Close()
 
-	publicServer := pserver.NewServer(nodeBroker, config, recorder, trainingExecutor, blockQueue, chainPhaseTracker, payloadStore, pserver.WithArtifactStore(artifactStore))
+	publicServer := pserver.NewServer(nodeBroker, config, recorder, trainingExecutor, blockQueue, chainPhaseTracker, payloadStore, promptStore, pserver.WithArtifactStore(artifactStore))
 	publicServer.Start(addr)
 
 	addr = fmt.Sprintf(":%v", config.GetApiConfig().MLServerPort)
@@ -278,4 +272,15 @@ func getParams(ctx context.Context, transactionRecorder cosmosclient.InferenceCo
 	}
 	logging.Error("Exhausted all retries to get chain params", types.System, "error", err)
 	return nil, err
+}
+
+// Shared payload storage for both public and admin servers
+// Uses PostgreSQL if PGHOST is set and accessible, otherwise file-based
+// ManagedStorage provides read caching + automatic epoch pruning (retains last 3 epochs)
+func newManagedPayloadStorage(ctx context.Context, fileBasePath string) *payloadstorage.ManagedStorage {
+	return payloadstorage.NewManagedStorage(
+		payloadstorage.NewPayloadStorage(ctx, fileBasePath),
+		3,             // retain current + 2 previous epochs
+		3*time.Minute, // cache TTL
+	)
 }
