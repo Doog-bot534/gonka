@@ -140,6 +140,7 @@ message PocParams {
   bool confirmation_poc_v2_enabled = 9;  // Enables V2 for Confirmation PoC only. Migration mode: poc_v2_enabled=false + confirmation_poc_v2_enabled=true
   PoCStatTestParams stat_test = 10;  // Statistical test parameters for V2 validation
   uint32 validation_slots = 11;  // Number of validators sampled per participant (0 = disabled)
+  bool poc_normalization_enabled = 12;  // Enables time-based weight normalization for PoC (default: true)
 }
 
 message Decimal {

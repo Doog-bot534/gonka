@@ -923,18 +923,21 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 			appHash = snapshot.AppHash
 			validationSlots = int(params.PocParams.ValidationSlots)
 		}
-		timeNormalizationFactor = CalculateTimeNormalizationFactor(
-			snapshot.GenerationStartTimestamp,
-			snapshot.ExchangeEndTimestamp,
-			params.EpochParams.PocStageDuration,
-			params.EpochParams.PocExchangeDuration,
-		)
+		if params.PocParams.PocNormalizationEnabled {
+			timeNormalizationFactor = CalculateTimeNormalizationFactor(
+				snapshot.GenerationStartTimestamp,
+				snapshot.ExchangeEndTimestamp,
+				params.EpochParams.PocStageDuration,
+				params.EpochParams.PocExchangeDuration,
+			)
+		}
 		am.LogInfo("ComputeNewWeights: Using validation snapshot", types.PoC,
 			"appHash", appHash,
 			"validationSlots", validationSlots,
 			"generationStartTimestamp", snapshot.GenerationStartTimestamp,
 			"exchangeEndTimestamp", snapshot.ExchangeEndTimestamp,
 			"timeNormalizationFactor", timeNormalizationFactor.String(),
+			"pocNormalizationEnabled", params.PocParams.PocNormalizationEnabled,
 		)
 	} else {
 		am.LogWarn("ComputeNewWeights: Validation snapshot not found", types.PoC,

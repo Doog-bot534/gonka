@@ -543,18 +543,21 @@ func (am AppModule) updateConfirmationWeightsV2(
 			appHash = snapshot.AppHash
 			validationSlots = int(params.PocParams.ValidationSlots)
 		}
-		timeNormalizationFactor = CalculateTimeNormalizationFactor(
-			snapshot.GenerationStartTimestamp,
-			snapshot.ExchangeEndTimestamp,
-			params.EpochParams.PocStageDuration,
-			params.EpochParams.PocExchangeDuration,
-		)
+		if params.PocParams.PocNormalizationEnabled {
+			timeNormalizationFactor = CalculateTimeNormalizationFactor(
+				snapshot.GenerationStartTimestamp,
+				snapshot.ExchangeEndTimestamp,
+				params.EpochParams.PocStageDuration,
+				params.EpochParams.PocExchangeDuration,
+			)
+		}
 		am.LogInfo("updateConfirmationWeightsV2: Using validation snapshot", types.PoC,
 			"appHash", appHash,
 			"validationSlots", validationSlots,
 			"generationStartTimestamp", snapshot.GenerationStartTimestamp,
 			"exchangeEndTimestamp", snapshot.ExchangeEndTimestamp,
 			"timeNormalizationFactor", timeNormalizationFactor.String(),
+			"pocNormalizationEnabled", params.PocParams.PocNormalizationEnabled,
 		)
 	} else {
 		am.LogWarn("updateConfirmationWeightsV2: Validation snapshot not found", types.PoC,
