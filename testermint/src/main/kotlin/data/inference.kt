@@ -166,3 +166,14 @@ data class StorePayloadResponse(
     @com.google.gson.annotations.SerializedName("epoch_id")
     val epochId: Long
 )
+
+data class PayloadResponse(
+    @com.google.gson.annotations.SerializedName("inference_id")
+    val inferenceId: String,
+    @com.google.gson.annotations.SerializedName("prompt_payload")
+    val promptPayload: String,
+    @com.google.gson.annotations.SerializedName("response_payload")
+    val responsePayload: String,
+    @com.google.gson.annotations.SerializedName("executor_signature")
+    val executorSignature: String,
+)

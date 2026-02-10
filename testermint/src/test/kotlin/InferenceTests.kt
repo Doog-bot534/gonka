@@ -562,6 +562,53 @@ class InferenceTests : TestermintTest() {
         assertThat(response).isFailure()
     }
 
+    @Test
+    fun `can request payload`() {
+        cluster.allPairs.forEach { it.waitForMlNodesToLoad() }
+        genesis.waitForNextInferenceWindow()
+
+        val inferenceTimestamp = Instant.now().toEpochNanos()
+        val genesisAddress = genesis.node.getColdAddress()
+        val inferenceSignature = genesis.node.signRequest(
+            inferenceRequest,
+            accountAddress = null,
+            timestamp = inferenceTimestamp,
+            endpointAccount = genesisAddress,
+        )
+        val inferenceResponse = genesis.api.makeInferenceRequest(
+            inferenceRequest,
+            genesisAddress,
+            inferenceSignature,
+            inferenceTimestamp,
+        )
+        genesis.node.waitForNextBlock(2)
+        val inference = genesis.node.getInference(inferenceResponse.id)?.inference
+        assertNotNull(inference)
+
+        val retrievalTimestamp = Instant.now().toEpochNanos()
+        val promptRetrievalSignature = genesis.node.signPromptRetrievalRequest(
+            inference.inferenceId,
+            inference.epochId,
+            retrievalTimestamp,
+            genesisAddress,
+        )
+        val promptRetrievalResponse = genesis.api.makePromptRetrievalRequest(
+            inference.inferenceId,
+            genesisAddress,
+            promptRetrievalSignature,
+            retrievalTimestamp,
+            inference.epochId,
+        )
+        assertThat(promptRetrievalResponse.inferenceId).isEqualTo(inference.inferenceId)
+        assertThat(
+            String(
+                Base64.getDecoder().decode(promptRetrievalResponse.promptPayload),
+                Charsets.UTF_8,
+            ),
+        ).isEqualTo(inferenceRequest)
+        assertThat(promptRetrievalResponse.responsePayload).isNull()
+        assertThat(promptRetrievalResponse.executorSignature).isNotEmpty()
+    }
 
     companion object {
         @JvmStatic

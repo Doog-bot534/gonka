@@ -134,6 +134,28 @@ data class ApplicationAPI(
             response.third.get()
         }
 
+    fun makePromptRetrievalRequest(
+        inferenceId: String,
+        address: String,
+        signature: String,
+        timestamp: Long,
+        epochId: Long,
+    ): PayloadResponse =
+        wrapLog("MakePromptRetrievalRequest", true) {
+            val url = urlFor(SERVER_TYPE_PUBLIC)
+            val params = listOf(Pair("inference_id", inferenceId))
+            val response = Fuel.get("$url/v1/inference/prompt", params)
+                .header("X-Requester-Address", address)
+                .header("Authorization", signature)
+                .header("X-Timestamp", timestamp)
+                .header("X-Epoch-Id", epochId)
+                .timeout(1000 * 60)
+                .timeoutRead(1000 * 60)
+                .responseObject<PayloadResponse>(gsonDeserializer(cosmosJson))
+            logResponse(response)
+            response.third.get()
+        }
+
     fun makeStreamedInferenceRequest(
         request: String,
         address: String,

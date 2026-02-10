@@ -7,6 +7,7 @@ import (
 	"decentralized-api/broker"
 	"decentralized-api/completionapi"
 	"decentralized-api/logging"
+	"decentralized-api/payloadstorage"
 	"decentralized-api/utils"
 	"encoding/json"
 	"fmt"
@@ -349,6 +350,9 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 		logging.Error("Failed to create inference start request", types.Inferences, "error", err)
 		return err
 	}
+
+	// The executor, pinger nodes, or validators might request the prompt again from the TA, so we need to store it
+	s.storePromptToStorage(request.Request.Context(), inferenceUUID, request.Body)
 
 	go func() {
 		logging.Debug("Starting inference", types.Inferences, "id", inferenceRequest.InferenceId)
@@ -836,28 +840,43 @@ func (s *Server) sendInferenceTransaction(inferenceId string, response completio
 }
 
 func (s *Server) storePayloadsToStorage(ctx context.Context, inferenceId string, promptPayload, responsePayload []byte) {
-	if s.payloadStorage == nil {
-		logging.Warn("Cannot store payload: payloadStorage is nil", types.Inferences, "inferenceId", inferenceId)
+	s.storeToStorageImpl(ctx, inferenceId, promptPayload, responsePayload, s.payloadStorage, "payloadStorage")
+}
+
+func (s *Server) storePromptToStorage(ctx context.Context, inferenceId string, promptPayload []byte) {
+	s.storeToStorageImpl(ctx, inferenceId, promptPayload, nil, s.promptStorage, "promptStorage")
+}
+
+func (s *Server) storeToStorageImpl(
+	ctx context.Context,
+	inferenceId string,
+	promptPayload,
+	responsePayload []byte,
+	storage payloadstorage.PayloadStorage,
+	storageName string,
+) {
+	if storage == nil {
+		logging.Warn("Cannot store payload: storage is nil", types.Inferences, "inferenceId", inferenceId, "storageName", storageName)
 		return
 	}
 	if s.phaseTracker == nil {
-		logging.Warn("Cannot store payload: phaseTracker is nil", types.Inferences, "inferenceId", inferenceId)
+		logging.Warn("Cannot store payload: phaseTracker is nil", types.Inferences, "inferenceId", inferenceId, "storageName", storageName)
 		return
 	}
 
 	epochState := s.phaseTracker.GetCurrentEpochState()
 	if epochState == nil {
-		logging.Warn("Cannot store payload: epoch state is nil", types.Inferences, "inferenceId", inferenceId)
+		logging.Warn("Cannot store payload: epoch state is nil", types.Inferences, "inferenceId", inferenceId, "storageName", storageName)
 		return
 	}
 	epochId := epochState.LatestEpoch.EpochIndex
 
-	err := s.payloadStorage.Store(ctx, inferenceId, epochId, promptPayload, responsePayload)
+	err := storage.Store(ctx, inferenceId, epochId, promptPayload, responsePayload)
 	if err != nil {
-		logging.Error("Failed to store payloads locally", types.Inferences, "inferenceId", inferenceId, "epochId", epochId, "error", err)
+		logging.Error("Failed to store payloads locally", types.Inferences, "inferenceId", inferenceId, "epochId", epochId, "error", err, "storageName", storageName)
 		return
 	}
-	logging.Debug("Stored payloads locally", types.Inferences, "inferenceId", inferenceId, "epochId", epochId)
+	logging.Debug("Stored payloads locally", types.Inferences, "inferenceId", inferenceId, "epochId", epochId, "storageName", storageName)
 }
 
 func getModifiedPromptHash(requestBytes []byte) (string, []byte, error) {

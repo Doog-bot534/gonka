@@ -32,6 +32,7 @@ type Server struct {
 	epochGroupDataCache *internal.EpochGroupDataCache
 	artifactStore       *artifacts.ManagedArtifactStore
 	authzCache          *authzcache.AuthzCache
+	promptStorage       payloadstorage.PayloadStorage
 }
 
 // ServerOption configures optional Server dependencies.
@@ -52,6 +53,7 @@ func NewServer(
 	blockQueue *BridgeQueue,
 	phaseTracker *chainphase.ChainPhaseTracker,
 	payloadStorage payloadstorage.PayloadStorage,
+	promptStorage payloadstorage.PayloadStorage,
 	opts ...ServerOption) *Server {
 	e := echo.New()
 	e.HTTPErrorHandler = middleware.TransparentErrorHandler
@@ -71,6 +73,7 @@ func NewServer(
 		phaseTracker:        phaseTracker,
 		epochGroupDataCache: internal.NewEpochGroupDataCache(recorder),
 		authzCache:          authzcache.NewAuthzCache(recorder),
+		promptStorage:       promptStorage,
 	}
 
 	for _, opt := range opts {
@@ -88,6 +91,7 @@ func NewServer(
 	g.POST("chat/completions", s.postChat)
 	g.GET("chat/completions", s.getChatById)
 	g.GET("inference/payloads", s.getInferencePayloads)
+	g.GET("inference/prompt", s.getInferencePrompt)
 
 	g.GET("participants/:address", s.getInferenceParticipantByAddress)
 	g.GET("participants", s.getAllParticipants)
