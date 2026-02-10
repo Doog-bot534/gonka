@@ -1,10 +1,11 @@
 package calculations
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-	"sort"
+	"slices"
 )
 
 type WeightEntry struct {
@@ -24,29 +25,33 @@ func PrepareSortedEntries(weights map[string]int64) ([]WeightEntry, int64) {
 		return nil, 0
 	}
 
-	sortedEntries := make([]WeightEntry, 0, len(weights))
+	keys := make([]string, 0, len(weights))
+	for addr := range weights {
+		keys = append(keys, addr)
+	}
+	slices.Sort(keys)
+
+	sortedEntries := make([]WeightEntry, 0, len(keys))
 	var totalWeight int64
-	for addr, w := range weights {
+	for _, addr := range keys {
+		w := weights[addr]
 		if w <= 0 {
 			continue
 		}
 		sortedEntries = append(sortedEntries, WeightEntry{addr, w})
 		totalWeight += w
 	}
+
 	if totalWeight == 0 || len(sortedEntries) == 0 {
 		return nil, 0
 	}
-
-	sort.Slice(sortedEntries, func(i, j int) bool {
-		return sortedEntries[i].Address < sortedEntries[j].Address
-	})
 
 	return sortedEntries, totalWeight
 }
 
 // GetSlotsFromSorted uses pre-sorted entries to avoid sorting per call.
 func GetSlotsFromSorted(appHash, participantAddress string, sortedEntries []WeightEntry, totalWeight int64, nSlots int) []string {
-	if nSlots == 0 {
+	if nSlots == 0 || totalWeight <= 0 {
 		return nil
 	}
 
@@ -57,8 +62,8 @@ func GetSlotsFromSorted(appHash, participantAddress string, sortedEntries []Weig
 			origIdx:   i,
 		}
 	}
-	sort.Slice(randoms, func(i, j int) bool {
-		return randoms[i].randomVal < randoms[j].randomVal
+	slices.SortFunc(randoms, func(a, b slotRandom) int {
+		return cmp.Compare(a.randomVal, b.randomVal)
 	})
 
 	result := make([]string, nSlots)
@@ -78,7 +83,7 @@ func GetSlotsFromSorted(appHash, participantAddress string, sortedEntries []Weig
 
 // GetSlotFromSorted returns a single slot by index using pre-sorted entries.
 func GetSlotFromSorted(appHash, participantAddress string, sortedEntries []WeightEntry, totalWeight int64, slotIdx int) string {
-	if len(sortedEntries) == 0 {
+	if len(sortedEntries) == 0 || totalWeight <= 0 {
 		return ""
 	}
 
