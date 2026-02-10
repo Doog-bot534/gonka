@@ -46,7 +46,7 @@ Key points:
 ### [PR #710](https://github.com/gonka-ai/gonka/pull/710) PoC Validation Sampling Optimization
 * Reduces validation complexity from quadratic to slot-based sampling.
 * Adds deterministic slot assignment shared by chain and API, with snapshot-backed weight synchronization.
-* Keeps backward-compatible fallback path when `ValidationSlots=0`.
+* Keeps backward-compatible fallback path when `ValidationSlots=0` and includes upgrade-time default of `ValidationSlots=0` for safe rollout.
 
 ### [PR #708](https://github.com/gonka-ai/gonka/pull/708) IBC Upgrade to v8.7.0
 * Upgrades IBC stack to v8.7.0.
@@ -72,6 +72,10 @@ Key points:
 
 ### [PR #711](https://github.com/gonka-ai/gonka/pull/711) PoC test params from chain state
 * Replaces hardcoded PoC test defaults with chain state parameters.
+
+### [PR #641](https://github.com/gonka-ai/gonka/pull/641) Streamvesting transfer with vesting
+* Adds `MsgTransferWithVesting` RPC and message type in the `streamvesting` module. Enables sender-to-recipient token transfers with vesting over N epochs (default: 180 epochs when not specified).
+* Adds safety limits to prevent abusive requests: max `3650` vesting epochs and max `10` coin denoms per transfer.
 
 ### API hardening and reliability fixes
 * [PR #634](https://github.com/gonka-ai/gonka/pull/634): add request body size limits to reduce DoS risk.
