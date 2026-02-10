@@ -11,9 +11,11 @@ import (
 	"github.com/productscience/inference/x/inference/calculations"
 	"github.com/productscience/inference/x/inference/types"
 	"github.com/productscience/inference/x/inference/utils"
+	"github.com/shopspring/decimal"
 )
 
-const ExpectedBlockDurationSec = 5.41
+// expectedBlockDurationSec is the expected duration of a block in seconds (5.41).
+var expectedBlockDurationSec = decimal.New(541, -2)
 
 func CalculateTimeNormalizationFactor(
 	genStartTimestamp, exchangeEndTimestamp int64,
@@ -23,17 +25,20 @@ func CalculateTimeNormalizationFactor(
 		return mathsdk.LegacyOneDec()
 	}
 
-	actualDurationSec := float64(exchangeEndTimestamp - genStartTimestamp)
+	actualDurationSec := exchangeEndTimestamp - genStartTimestamp
 	if actualDurationSec <= 0 {
 		return mathsdk.LegacyOneDec()
 	}
 
 	expectedBlocks := pocStageDuration + pocExchangeDuration
-	expectedDurationSec := float64(expectedBlocks) * ExpectedBlockDurationSec
+	expectedDurationSec := decimal.NewFromInt(expectedBlocks).Mul(expectedBlockDurationSec)
+	actualDurationDecimal := decimal.NewFromInt(actualDurationSec)
 
-	return mathsdk.LegacyMustNewDecFromStr(
-		strconv.FormatFloat(expectedDurationSec/actualDurationSec, 'f', 18, 64),
-	)
+	factor, err := decimalToLegacyDec(expectedDurationSec.Div(actualDurationDecimal))
+	if err != nil {
+		return mathsdk.LegacyOneDec()
+	}
+	return factor
 }
 
 // WeightCalculator encapsulates all the data needed to calculate new weights for participants.
