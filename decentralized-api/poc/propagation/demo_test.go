@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"decentralized-api/poc/artifacts"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -443,14 +444,15 @@ func testProofPropagation(t *testing.T, numParticipants int, storageFactory prop
 		}
 		headerReceivedCount++
 
-		cachedProofs, err := caches[addr].GetProofs(bundleID)
-		if err != nil {
+		cachedProofSets, err := caches[addr].GetProofs(bundleID)
+		if err != nil || len(cachedProofSets) == 0 {
 			continue
 		}
 
-		if len(cachedProofs) != len(proofs) {
+		// Check first proof set
+		if len(cachedProofSets[0]) != len(proofs) {
 			t.Errorf("participant %s: wrong proof count: got %d, want %d",
-				addr, len(cachedProofs), len(proofs))
+				addr, len(cachedProofSets[0]), len(proofs))
 		}
 		proofReceivedCount++
 	}
@@ -758,4 +760,87 @@ func TestBundleSigning(t *testing.T) {
 	}
 
 	t.Log("Bundle signing and verification works correctly")
+}
+
+// TestMultipleProofSetsValidation tests that when multiple proof sets are stored,
+// the system correctly iterates through them until finding a valid one.
+// This simulates the attack scenario where an attacker sends fake proofs before real ones.
+func TestMultipleProofSetsValidation(t *testing.T) {
+	tmpDir := t.TempDir()
+	storageDir := filepath.Join(tmpDir, "bundles")
+
+	store, err := NewFileBundleStorage(storageDir)
+	require.NoError(t, err)
+	defer store.Close()
+
+	cache := NewCache(store)
+
+	participant := "test-participant"
+	pocHeight := int64(100)
+
+	vectorData := []byte("test vector data")
+	nonce := int32(42)
+
+	leafData := make([]byte, 4+len(vectorData))
+	binary.LittleEndian.PutUint32(leafData[0:4], uint32(nonce))
+	copy(leafData[4:], vectorData)
+
+	leafHash := sha256.Sum256(append([]byte{0x00}, leafData...))
+	rootHash := leafHash[:]
+	count := uint32(1)
+
+	bundleID := MakeBundleID(participant, pocHeight, rootHash, count)
+
+	validProof := []string{}
+
+	vectorB64 := base64.StdEncoding.EncodeToString(vectorData)
+
+	validProofItem := ProofItem{
+		LeafIndex:   0,
+		NonceValue:  nonce,
+		VectorBytes: vectorB64,
+		Proof:       validProof,
+	}
+
+	// Invalid proof item (wrong nonce)
+	invalidProofItem := ProofItem{
+		LeafIndex:   0,
+		NonceValue:  999,
+		VectorBytes: vectorB64,
+		Proof:       validProof,
+	}
+
+	// Store invalid proof first
+	err = cache.StoreProofs(context.Background(), bundleID, []ProofItem{invalidProofItem})
+	require.NoError(t, err)
+
+	err = cache.StoreProofs(context.Background(), bundleID, []ProofItem{validProofItem})
+	require.NoError(t, err)
+
+	// Retrieve all proof sets
+	proofSets, err := cache.GetProofs(bundleID)
+	require.NoError(t, err)
+	require.Len(t, proofSets, 2, "should have 2 proof sets stored")
+
+	// Simulate the validator's iteration logic
+	var foundValid bool
+	var validIndex int
+	for i, proofSet := range proofSets {
+		item := proofSet[0]
+		testLeafData := make([]byte, 4+len(vectorData))
+		binary.LittleEndian.PutUint32(testLeafData[0:4], uint32(item.NonceValue))
+		vec, _ := base64.StdEncoding.DecodeString(item.VectorBytes)
+		copy(testLeafData[4:], vec)
+
+		if artifacts.VerifyProof(rootHash, count, item.LeafIndex, testLeafData, [][]byte{}) {
+			foundValid = true
+			validIndex = i
+			break
+		}
+	}
+
+	require.True(t, foundValid, "should find a valid proof set")
+	require.Equal(t, 1, validIndex, "valid proof should be at index 1 (second proof set)")
+
+	t.Log("Multiple proof sets validation works correctly - invalid proofs are skipped, valid proof is found")
 }
