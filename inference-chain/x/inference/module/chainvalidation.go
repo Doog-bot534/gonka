@@ -410,6 +410,14 @@ func (wc *WeightCalculator) calculateParticipantWeight(participantAddress string
 	sort.Slice(nodeWeightsSlice, func(i, j int) bool {
 		return nodeWeightsSlice[i].nodeId < nodeWeightsSlice[j].nodeId
 	})
+	wc.Logger.LogInfo("Calculate: Calculating participant weight", types.PoC,
+		"participant", participantAddress,
+		"weightScaleFactor", combinedFactor,
+		"timeNormalizationFactor", wc.TimeNormalizationFactor,
+		"count", commit.Count,
+		"combinedFactor", combinedFactor,
+		"totalWeight", totalWeight,
+	)
 
 	return nodeWeightsSlice, totalWeight
 }

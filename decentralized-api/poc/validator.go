@@ -184,7 +184,7 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 			logging.Warn("OffChainValidator: failed to query validation snapshot, falling back to O(N^2)", types.PoC,
 				"error", err)
 			validationSlots = 0 // Disable sampling on error
-		} else if snapshotResp.Found && snapshotResp.Snapshot != nil {
+		} else if snapshotResp.Found && snapshotResp.Snapshot != nil && snapshotResp.Snapshot.ValidatorWeights != nil {
 			snapshotWeights = validatorWeightsSliceToMap(snapshotResp.Snapshot.ValidatorWeights)
 			snapshotAppHash = snapshotResp.Snapshot.AppHash
 			sortedValidatorEntries, validatorTotalWeight = calculations.PrepareSortedEntries(snapshotWeights)
