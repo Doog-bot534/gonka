@@ -88,10 +88,10 @@ func TestComputeNewWeightsWithStakingValidators(t *testing.T) {
 	// Set up weight distribution (per-node weights)
 	setWeightDistribution(ctx, k, testutil.Executor2, 100, []nodeDistWeight{{"node-1", 1}})
 
-	// Set up V2 validations
+	// Set up V2 validation - need >2/3 of total weight (300) to pass, so 201 is sufficient
 	validation := types.PoCValidationV2{
 		ParticipantAddress:          testutil.Executor2,
-		ValidatorParticipantAddress: validatorAccAddress2, // Set validation only for participant with large weight
+		ValidatorParticipantAddress: validatorAccAddress2,
 		PocStageStartBlockHeight:    100,
 		ValidatedWeight:             100,
 	}

@@ -22,6 +22,7 @@ func CreateUpgradeHandler(
 		}
 
 		setValidationSlots(ctx, k)
+		setPocNormalizationEnabled(ctx, k)
 
 		toVM, err := mm.RunMigrations(ctx, configurator, fromVM)
 		if err != nil {
@@ -56,4 +57,27 @@ func setValidationSlots(ctx context.Context, k keeper.Keeper) {
 	}
 
 	k.LogInfo("set validation slots", types.Upgrades, "validation_slots", params.PocParams.ValidationSlots)
+}
+
+// setPocNormalizationEnabled explicitly enables time-based weight normalization for PoC.
+func setPocNormalizationEnabled(ctx context.Context, k keeper.Keeper) {
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		k.LogError("failed to get params during upgrade", types.Upgrades, "error", err)
+		return
+	}
+
+	if params.PocParams == nil {
+		k.LogError("poc params not initialized", types.Upgrades)
+		return
+	}
+
+	params.PocParams.PocNormalizationEnabled = true
+
+	if err := k.SetParams(ctx, params); err != nil {
+		k.LogError("failed to set params with poc normalization enabled", types.Upgrades, "error", err)
+		return
+	}
+
+	k.LogInfo("set poc normalization enabled", types.Upgrades, "poc_normalization_enabled", params.PocParams.PocNormalizationEnabled)
 }
