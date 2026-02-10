@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sync"
 
 	"decentralized-api/logging"
@@ -14,11 +15,13 @@ import (
 	"github.com/productscience/inference/x/inference/types"
 )
 
+var proofsFileRegex = regexp.MustCompile(`^[0-9a-fA-F]{64}_proofs(_\d+)?\.json$`)
+
 type FileBundleStorage struct {
 	baseDir      string
 	mu           sync.RWMutex
 	bundles      map[[32]byte]BundleHeader
-	proofs       map[[32]byte][]ProofItem
+	proofs       map[[32]byte][][]ProofItem // Multiple proof sets per bundleID
 	arrivals     map[participantPocKey]ArrivalInfo
 	observations map[observationKey]FirstArrivalObservation
 }
@@ -35,7 +38,7 @@ func NewFileBundleStorage(baseDir string) (*FileBundleStorage, error) {
 	s := &FileBundleStorage{
 		baseDir:      baseDir,
 		bundles:      make(map[[32]byte]BundleHeader),
-		proofs:       make(map[[32]byte][]ProofItem),
+		proofs:       make(map[[32]byte][][]ProofItem),
 		arrivals:     make(map[participantPocKey]ArrivalInfo),
 		observations: make(map[observationKey]FirstArrivalObservation),
 	}
@@ -53,8 +56,13 @@ func (s *FileBundleStorage) bundleFilePath(bundleID [32]byte) string {
 	return filepath.Join(s.baseDir, filename)
 }
 
-func (s *FileBundleStorage) proofsFilePath(bundleID [32]byte) string {
-	filename := hex.EncodeToString(bundleID[:]) + "_proofs.json"
+func (s *FileBundleStorage) proofsFilePath(bundleID [32]byte, index int) string {
+	if index == 0 {
+		// Backward compatible: first proof set uses original filename
+		filename := hex.EncodeToString(bundleID[:]) + "_proofs.json"
+		return filepath.Join(s.baseDir, filename)
+	}
+	filename := fmt.Sprintf("%s_proofs_%d.json", hex.EncodeToString(bundleID[:]), index)
 	return filepath.Join(s.baseDir, filename)
 }
 
@@ -89,7 +97,8 @@ func (s *FileBundleStorage) loadBundles() error {
 
 		name := entry.Name()
 
-		if filepath.Ext(name) == ".json" && len(name) > 11 && name[len(name)-11:] == "_proofs.json" {
+		// Match proof files: {bundleID}_proofs.json or {bundleID}_proofs_{index}.json
+		if proofsFileRegex.MatchString(name) {
 			filePath := filepath.Join(s.baseDir, name)
 			data, err := os.ReadFile(filePath)
 			if err != nil {
@@ -103,15 +112,15 @@ func (s *FileBundleStorage) loadBundles() error {
 				continue
 			}
 
-			bundleIDHex := name[:len(name)-11]
-			bundleIDBytes, err := hex.DecodeString(bundleIDHex)
+			bundleIDBytes, err := hex.DecodeString(name[:64])
 			if err != nil || len(bundleIDBytes) != 32 {
 				logging.Warn("Invalid bundle ID in proofs filename", types.PoC, "file", name)
 				continue
 			}
+
 			var bundleID [32]byte
 			copy(bundleID[:], bundleIDBytes)
-			s.proofs[bundleID] = proofs
+			s.proofs[bundleID] = append(s.proofs[bundleID], proofs)
 			continue
 		}
 
@@ -259,34 +268,38 @@ func (s *FileBundleStorage) AllBundlesForHeight(ctx context.Context, pocHeight i
 
 func (s *FileBundleStorage) StoreProofs(ctx context.Context, bundleID [32]byte, proofs []ProofItem) error {
 	s.mu.Lock()
-	if _, exists := s.proofs[bundleID]; exists {
-		s.mu.Unlock()
-		return nil
-	}
-	s.proofs[bundleID] = proofs
+	proofIndex := len(s.proofs[bundleID])
+	s.proofs[bundleID] = append(s.proofs[bundleID], proofs)
 	s.mu.Unlock()
 
 	data, err := json.Marshal(proofs)
 	if err != nil {
 		s.mu.Lock()
-		delete(s.proofs, bundleID)
+		// Remove the last added proof set on error
+		if len(s.proofs[bundleID]) > 0 {
+			s.proofs[bundleID] = s.proofs[bundleID][:len(s.proofs[bundleID])-1]
+		}
 		s.mu.Unlock()
 		return fmt.Errorf("marshal proofs: %w", err)
 	}
 
 	if err := os.MkdirAll(s.baseDir, 0755); err != nil {
 		s.mu.Lock()
-		delete(s.proofs, bundleID)
+		if len(s.proofs[bundleID]) > 0 {
+			s.proofs[bundleID] = s.proofs[bundleID][:len(s.proofs[bundleID])-1]
+		}
 		s.mu.Unlock()
 		return fmt.Errorf("ensure directory exists: %w", err)
 	}
 
-	filePath := s.proofsFilePath(bundleID)
+	filePath := s.proofsFilePath(bundleID, proofIndex)
 	tempPath := filePath + ".tmp"
 
 	if err := os.WriteFile(tempPath, data, 0644); err != nil {
 		s.mu.Lock()
-		delete(s.proofs, bundleID)
+		if len(s.proofs[bundleID]) > 0 {
+			s.proofs[bundleID] = s.proofs[bundleID][:len(s.proofs[bundleID])-1]
+		}
 		s.mu.Unlock()
 		return fmt.Errorf("write temp file: %w", err)
 	}
@@ -294,7 +307,9 @@ func (s *FileBundleStorage) StoreProofs(ctx context.Context, bundleID [32]byte, 
 	if err := os.Rename(tempPath, filePath); err != nil {
 		os.Remove(tempPath)
 		s.mu.Lock()
-		delete(s.proofs, bundleID)
+		if len(s.proofs[bundleID]) > 0 {
+			s.proofs[bundleID] = s.proofs[bundleID][:len(s.proofs[bundleID])-1]
+		}
 		s.mu.Unlock()
 		return fmt.Errorf("rename to target: %w", err)
 	}
@@ -302,15 +317,15 @@ func (s *FileBundleStorage) StoreProofs(ctx context.Context, bundleID [32]byte, 
 	return nil
 }
 
-func (s *FileBundleStorage) GetProofs(ctx context.Context, bundleID [32]byte) ([]ProofItem, error) {
+func (s *FileBundleStorage) GetProofs(ctx context.Context, bundleID [32]byte) ([][]ProofItem, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	proofs, exists := s.proofs[bundleID]
-	if !exists {
+	proofSets, exists := s.proofs[bundleID]
+	if !exists || len(proofSets) == 0 {
 		return nil, ErrProofsNotFound
 	}
-	return proofs, nil
+	return proofSets, nil
 }
 
 func (s *FileBundleStorage) StoreFirstArrival(ctx context.Context, participant string, pocHeight int64, arrivalTime int64, count uint32) error {

@@ -436,18 +436,28 @@ func (v *OffChainValidator) validateParticipant(
 	var verified []VerifiedArtifact
 	var err error
 
-	// Try propagation cache first
+	// Try propagation cache first - iterate through all proof sets until one verifies
 	bundleID := propagation.MakeBundleID(work.address, pocHeight, work.rootHash, work.count)
 	if v.propagationCache != nil {
-		cachedProofs, cacheErr := v.propagationCache.GetProofs(bundleID)
-		if cacheErr == nil {
-			logging.Debug("OffChainValidator: using proofs from propagation cache", types.PoC,
-				"participant", work.address, "proofCount", len(cachedProofs))
+		allProofSets, cacheErr := v.propagationCache.GetProofs(bundleID)
+		if cacheErr == nil && len(allProofSets) > 0 {
+			logging.Debug("OffChainValidator: trying proof sets from propagation cache", types.PoC,
+				"participant", work.address, "proofSetsCount", len(allProofSets))
 
-			verified, err = v.verifyProofsFromCache(cachedProofs, leafIndices, work.rootHash, work.count, work.address)
-			if err != nil {
-				logging.Warn("OffChainValidator: cached proof verification failed, falling back to direct API", types.PoC,
-					"participant", work.address, "error", err)
+			for i, proofSet := range allProofSets {
+				verified, err = v.verifyProofsFromCache(proofSet, leafIndices, work.rootHash, work.count, work.address)
+				if err == nil {
+					logging.Debug("OffChainValidator: proof set verified successfully", types.PoC,
+						"participant", work.address, "proofSetIndex", i, "totalSets", len(allProofSets))
+					break
+				}
+				logging.Debug("OffChainValidator: proof set verification failed, trying next", types.PoC,
+					"participant", work.address, "proofSetIndex", i, "error", err)
+			}
+
+			if verified == nil {
+				logging.Warn("OffChainValidator: all cached proof sets failed verification, falling back to direct API", types.PoC,
+					"participant", work.address, "triedSets", len(allProofSets))
 			}
 		} else {
 			logging.Debug("OffChainValidator: proofs not in cache, using direct API", types.PoC,

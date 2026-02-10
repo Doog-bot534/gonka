@@ -35,7 +35,7 @@ func (c *Cache) StoreProofs(ctx context.Context, bundleID [32]byte, proofs []Pro
 	return c.storage.StoreProofs(ctx, bundleID, proofs)
 }
 
-func (c *Cache) GetProofs(bundleID [32]byte) ([]ProofItem, error) {
+func (c *Cache) GetProofs(bundleID [32]byte) ([][]ProofItem, error) {
 	return c.storage.GetProofs(context.Background(), bundleID)
 }
 

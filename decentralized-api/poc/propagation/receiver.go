@@ -171,11 +171,10 @@ func (r *Receiver) OnProofs(bundleID [32]byte, proofs []ProofItem, from string) 
 
 	r.mu.Lock()
 	if r.processedProofs[bundleID] {
-		r.mu.Unlock()
-		logging.Debug("Receiver: duplicate proofs ignored (already processed)", types.PoC,
+		logging.Debug("Receiver: duplicate proofs", types.PoC,
 			"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", bundleID[:8]))
-		return nil
 	}
+	
 	r.processedProofs[bundleID] = true
 	trees := r.trees
 	r.mu.Unlock()
@@ -183,6 +182,7 @@ func (r *Receiver) OnProofs(bundleID [32]byte, proofs []ProofItem, from string) 
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
+		// Store all proof sets (not just the first one)
 		if err := r.cache.StoreProofs(context.Background(), bundleID, proofs); err != nil {
 			logging.Warn("Receiver: failed to store proofs", types.PoC,
 				"bundleID", fmt.Sprintf("%x", bundleID[:8]), "error", err)
