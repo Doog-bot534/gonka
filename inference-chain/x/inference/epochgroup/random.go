@@ -1,11 +1,15 @@
 package epochgroup
 
 import (
+	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"strconv"
 
+	"github.com/cometbft/cometbft/libs/bytes"
 	"github.com/cosmos/cosmos-sdk/x/group"
 	"github.com/productscience/inference/x/inference/types"
 	"google.golang.org/grpc/codes"
@@ -57,7 +61,7 @@ func (eg *EpochGroup) GetRandomMember(
 	participant, ok := eg.ParticipantKeeper.GetParticipant(ctx, participantIndex)
 	if !ok {
 		msg := fmt.Sprintf(
-			"Selected active participant, but not found in participants list. index =  %s", participantIndex,
+			"Selected active participant, but not found in participants list. index = %s", participantIndex,
 		)
 		return nil, status.Error(codes.Internal, msg)
 	}
@@ -92,4 +96,120 @@ func getWeight(participant *group.GroupMember) int64 {
 		return 0
 	}
 	return int64(weight)
+}
+
+type ReplayableRandomContext struct {
+	Participants []*group.GroupMember
+	Seed [32]byte
+	SeenIndices map[int]bool
+	CumulativeArray []int64
+}
+
+func InitialSeed(blockHash bytes.HexBytes) [32]byte {
+	bytes := blockHash
+	seed := sha256.Sum256(bytes)
+	return seed
+}
+
+func (eg *EpochGroup) NewReplayableRandomContext(
+	ctx context.Context,
+	blockHash bytes.HexBytes,
+) (*ReplayableRandomContext, error) {
+	blockHash = blockHash.Bytes()
+
+	participants, err := eg.GetGroupMembers(ctx)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if len(participants) == 0 {
+		return nil, status.Error(codes.Internal, "Active participants found, but length is 0")
+	}
+
+	seed := InitialSeed(blockHash)
+
+	cumulativeArray := computeCumulativeArray(participants)
+	seenIndices := map[int]bool{}
+
+	replayableRandomCtx := &ReplayableRandomContext{
+		participants,
+		seed,
+		seenIndices,
+		cumulativeArray,
+	}
+	return replayableRandomCtx, nil
+}
+
+func (eg *EpochGroup) MakeRandomMemberReplayableFn(
+	goCtx context.Context,
+	blockHash bytes.HexBytes,
+) func() (*types.Participant, error) {
+	replayableRandomCtx, err := eg.NewReplayableRandomContext(goCtx, blockHash)
+	if err != nil {
+		return func() (*types.Participant, error) { return nil, err }
+	}
+	return func() (*types.Participant, error) {
+		return eg.GetRandomMemberReplayable(goCtx, replayableRandomCtx)
+	}
+}
+
+func (eg *EpochGroup) GetRandomMemberReplayable(
+	goCtx context.Context,
+	replayableRandomCtx *ReplayableRandomContext,
+) (*types.Participant, error) {
+	if len(replayableRandomCtx.Participants) == 0 {
+		return nil, status.Error(codes.Internal, "Active participants found, but length is 0")
+	}
+
+	participantAddress, err := selectRandomParticipantReplayable(replayableRandomCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	participant, ok := eg.ParticipantKeeper.GetParticipant(goCtx, participantAddress)
+	if !ok {
+		msg := fmt.Sprintf(
+			"Selected active participant, but not found in participants list. index = %s", participantAddress,
+		)
+		return nil, status.Error(codes.Internal, msg)
+	}
+	return &participant, nil
+}
+
+func selectRandomParticipantReplayable(ctx *ReplayableRandomContext) (string, error) {
+	participantsCnt := len(ctx.Participants)
+	if len(ctx.SeenIndices) >= participantsCnt {
+		return "", status.Error(codes.Internal, "No participants to sample")
+	}
+
+	weightSum := ctx.CumulativeArray[participantsCnt-1]
+	for {
+		currentSeed := ctx.Seed[:]
+		randomWeight := int64(binary.LittleEndian.Uint64(currentSeed)) % weightSum
+
+		index := UpperBound(randomWeight, ctx.CumulativeArray)
+		if index >= participantsCnt {
+			index = participantsCnt-1
+		}
+
+		ctx.Seed = sha256.Sum256(currentSeed)
+		if !ctx.SeenIndices[index] {
+			ctx.SeenIndices[index] = true
+			return ctx.Participants[index].Member.Address, nil
+		}
+	}
+}
+
+// Performs a binary search, searching for the lowest value greater than the needle in the haystack.
+// Assumes the input array is already sorted.
+func UpperBound[T cmp.Ordered](needle T, haystack []T) int {
+	low, high := 0, len(haystack)
+	for low < high {
+		middle := low + (high - low) / 2
+		if needle < haystack[middle] {
+			high = middle
+		} else {
+			low = middle + 1
+		}
+	}
+	return low
 }

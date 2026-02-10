@@ -111,7 +111,7 @@ func ValidateSignature(components SignatureComponents, signatureType SignatureTy
 	slog.Info("Validating signature", "type", signatureType, "pubKey", pubKey, "signature", signature)
 	slog.Debug("Components", "payload", components.Payload, "epochId", components.EpochId, "timestamp", components.Timestamp, "transferAddress", components.TransferAddress, "executorAddress", components.ExecutorAddress)
 	bytes := getSignatureBytes(components, signatureType)
-	return validateSignature(bytes, pubKey, signature)
+	return ValidateSignatureBytes(bytes, pubKey, signature)
 }
 
 func ValidateSignatureWithGrantees(components SignatureComponents, signatureType SignatureType, pubKeys []string, signature string) error {
@@ -143,7 +143,7 @@ func validateSignatureWithGrantees(
 ) error {
 	errors := map[string]error{}
 	for _, pubKey := range pubKeys {
-		err := validateSignature(bytes, pubKey, signature)
+		err := ValidateSignatureBytes(bytes, pubKey, signature)
 		if err == nil {
 			return nil
 		}
@@ -157,7 +157,7 @@ func validateSignatureWithGrantees(
 	return nil
 }
 
-func validateSignature(bytes []byte, pubKey string, signature string) error {
+func ValidateSignatureBytes(bytes []byte, pubKey string, signature string) error {
 	pubKeyBytes, err := base64.StdEncoding.DecodeString(pubKey)
 	if err != nil {
 		return err
