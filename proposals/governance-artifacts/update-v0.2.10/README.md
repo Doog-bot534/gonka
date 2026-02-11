@@ -110,3 +110,20 @@ Key points:
 ### Other fixes
 * [PR #659](https://github.com/gonka-ai/gonka/pull/659): model assignment checks previous-epoch rewards.
 * [PR #716](https://github.com/gonka-ai/gonka/pull/716): rename PoC weight function for clarity and correctness.
+
+## Proposed bounties
+## Proposed Bounties
+
+| PR/Issue | Sum GNK | Bounty Explanation |
+|-----------|---------|---------------------|
+| PR #661 | 500 | Valid fix for minor vulnerability that was previously reported in issue #422 |
+| PR #644 | 700 | Planned task, not a vulnerability, important for the network. |
+| PR #659 | 10,000 | Detailed report and fix for a Medium risk vulnerability. |
+| — | 5,000 | First report of the vulnerability fixed in #659 |
+| PR #545 | 1,000 | Report and fix of low risk vulnerability. Extra appreciation for discovering and reporting it during the review of another PR. |
+| PR #640 | 100 | Valid minor bug fix. |
+| Issue #422 | 500 | First report and suggested fix. Fixed in PR #661 |
+| PR #638 | 100 | Valid minor bug fix. |
+| PR #634 | 100 | Valid minor bug fix. |
+| — | 5,000 | Independent report on the issue addressed by PR #710. |
+| PR #643 | 500 | Report and fix of low risk vulnerability. |
