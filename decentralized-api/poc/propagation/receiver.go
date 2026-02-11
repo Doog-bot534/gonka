@@ -20,9 +20,8 @@ type Receiver struct {
 	sender   Sender
 
 	mu                    sync.RWMutex
-	processedHeaders      map[[32]byte]bool
-	processedProofs       map[[32]byte]bool
-	processedObservations map[[32]byte]bool
+	processedHeaders map[[32]byte]bool
+	processedProofs  map[[32]byte]bool
 	forwardedProofs       map[[32]byte]map[string]bool
 	pendingHeaders        map[[32]byte]*BundleHeader
 	lastHeaderTime        map[[32]byte]time.Time
@@ -41,9 +40,8 @@ func NewReceiver(cache *Cache, trees []*Tree, verifier PubKeyProvider, myAddr st
 		verifier:              verifier,
 		myAddr:                myAddr,
 		sender:                sender,
-		processedHeaders:      make(map[[32]byte]bool),
-		processedProofs:       make(map[[32]byte]bool),
-		processedObservations: make(map[[32]byte]bool),
+		processedHeaders: make(map[[32]byte]bool),
+		processedProofs:  make(map[[32]byte]bool),
 		forwardedProofs:       make(map[[32]byte]map[string]bool),
 		pendingHeaders:        make(map[[32]byte]*BundleHeader),
 		lastHeaderTime:        make(map[[32]byte]time.Time),
@@ -262,91 +260,9 @@ func (r *Receiver) ClearProcessedState() {
 	defer r.mu.Unlock()
 	r.processedHeaders = make(map[[32]byte]bool)
 	r.processedProofs = make(map[[32]byte]bool)
-	r.processedObservations = make(map[[32]byte]bool)
 	r.forwardedProofs = make(map[[32]byte]map[string]bool)
 	r.pendingHeaders = make(map[[32]byte]*BundleHeader)
 	r.lastHeaderTime = make(map[[32]byte]time.Time)
-}
-
-func (r *Receiver) OnObservation(obs FirstArrivalObservation, from string) error {
-	logging.Info("Receiver: received observation", types.PoC,
-		"receiver", r.myAddr, "from", from, "validator", obs.ValidatorAddress,
-		"pocHeight", obs.PocHeight, "arrivals", len(obs.Arrivals))
-
-	obsID := MakeObservationID(obs.ValidatorAddress, obs.PocHeight)
-
-	r.mu.Lock()
-	if r.processedObservations[obsID] {
-		r.mu.Unlock()
-		logging.Debug("Receiver: duplicate observation ignored (already processed)", types.PoC,
-			"receiver", r.myAddr, "validator", obs.ValidatorAddress, "pocHeight", obs.PocHeight)
-		return nil
-	}
-	r.processedObservations[obsID] = true
-	trees := r.trees
-	r.mu.Unlock()
-
-	pubKey, err := r.verifier.GetPubKey(obs.ValidatorAddress)
-	if err != nil {
-		logging.Warn("Receiver: failed to get public key for observation", types.PoC,
-			"validatorAddress", obs.ValidatorAddress, "error", err)
-		return fmt.Errorf("get pubkey: %w", err)
-	}
-
-	if err := VerifyObservation(obs, pubKey); err != nil {
-		logging.Warn("Receiver: observation signature verification failed", types.PoC,
-			"validatorAddress", obs.ValidatorAddress, "error", err)
-		return fmt.Errorf("verify observation: %w", err)
-	}
-
-	if err := r.cache.StoreObservation(obs); err != nil {
-		logging.Warn("Receiver: failed to store observation", types.PoC,
-			"validatorAddress", obs.ValidatorAddress, "error", err)
-		return fmt.Errorf("store observation: %w", err)
-	}
-
-	logging.Info("Receiver: observation stored", types.PoC,
-		"receiver", r.myAddr, "validator", obs.ValidatorAddress, "pocHeight", obs.PocHeight)
-
-	go r.forwardObservationAllTrees(obs, trees)
-
-	return nil
-}
-
-func (r *Receiver) forwardObservationAllTrees(obs FirstArrivalObservation, trees []*Tree) {
-	obsSender, ok := r.sender.(ObservationSender)
-	if !ok {
-		return
-	}
-
-	var wg sync.WaitGroup
-
-	for _, tree := range trees {
-		node := tree.GetNode(r.myAddr)
-		if node == nil || len(node.Children) == 0 {
-			continue
-		}
-
-		logging.Info("Receiver: forwarding observation to children", types.PoC,
-			"forwarder", r.myAddr, "validator", obs.ValidatorAddress,
-			"tree", tree.Index, "children", len(node.Children))
-
-		for _, child := range node.Children {
-			wg.Add(1)
-			go func(childAddr string) {
-				defer wg.Done()
-				if err := obsSender.SendObservation(childAddr, obs); err != nil {
-					logging.Warn("Receiver: failed to forward observation to child", types.PoC,
-						"forwarder", r.myAddr, "child", childAddr, "error", err)
-				} else {
-					logging.Debug("Receiver: forwarded observation to child", types.PoC,
-						"forwarder", r.myAddr, "child", childAddr)
-				}
-			}(child.Address)
-		}
-	}
-
-	wg.Wait()
 }
 
 func (r *Receiver) Wait() {

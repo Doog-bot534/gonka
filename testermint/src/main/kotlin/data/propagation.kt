@@ -69,34 +69,26 @@ data class PropagationFirstArrivalsResponse(
     val arrivals: Map<String, ArrivalInfo>
 )
 
-/**
- * Observation of first arrival times from a validator
- */
-data class FirstArrivalObservation(
+data class PoCObservationArrivalEntry(
+    val participant: String,
+    val count: Long
+)
+
+data class PoCObservationEntry(
     @SerializedName("validator_address")
     val validatorAddress: String,
-    @SerializedName("poc_height")
-    val pocHeight: Long,
-    val arrivals: Map<String, ArrivalInfo>,
-    val timestamp: Long,
-    val signature: String
+    @SerializedName("poc_stage_start_block_height")
+    val pocStageStartBlockHeight: Long,
+    val arrivals: List<PoCObservationArrivalEntry>,
+    @SerializedName("block_height")
+    val blockHeight: Long
 )
 
-/**
- * Response from GET /v1/propagation/observations/{poc_height}
- */
-data class PropagationObservationsResponse(
-    @SerializedName("poc_height")
-    val pocHeight: Long,
-    val observations: List<FirstArrivalObservation>
+data class PoCObservationsResponse(
+    val observations: List<PoCObservationEntry>
 )
 
-/**
- * Consensus result for a single participant
- */
-data class ConsensusResult(
-    @SerializedName("poc_height")
-    val pocHeight: Long,
+data class PoCConsensusEntryData(
     val participant: String,
     @SerializedName("agreed_count")
     val agreedCount: Long,
@@ -106,12 +98,6 @@ data class ConsensusResult(
     val agreeingCount: Int
 )
 
-/**
- * Response from GET /v1/propagation/consensus/{poc_height}
- */
-data class PropagationConsensusResponse(
-    @SerializedName("poc_height")
-    val pocHeight: Long,
-    val deadline: Long,
-    val consensus: Map<String, ConsensusResult>
+data class PoCConsensusResponse(
+    val entries: List<PoCConsensusEntryData>
 )

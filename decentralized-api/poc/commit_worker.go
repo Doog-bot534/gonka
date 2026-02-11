@@ -44,10 +44,11 @@ type CommitWorker struct {
 	lastDistributionAttempt time.Time
 	lastCommitted           map[int64]commitState
 
-	propagationEnabled  bool
-	bundler             *propagation.Bundler
-	consensusCalculator *propagation.ConsensusCalculator
-	consensusSubmitted  map[int64]bool
+	propagationEnabled   bool
+	bundler              *propagation.Bundler
+	propagationCache     *propagation.Cache
+	observationSubmitted map[int64]bool
+	consensusSubmitted   map[int64]bool
 }
 
 func NewCommitWorker(
@@ -59,23 +60,25 @@ func NewCommitWorker(
 	interval time.Duration,
 	propagationEnabled bool,
 	bundler *propagation.Bundler,
+	propagationCache *propagation.Cache,
 ) *CommitWorker {
 	w := &CommitWorker{
-		store:              store,
-		recorder:           recorder,
-		tracker:            tracker,
-		participantAddress: participantAddress,
-		pubKey:             pubKey,
-		interval:           interval,
-		stop:               make(chan struct{}),
-		done:               make(chan struct{}),
-		lastCommitted:      make(map[int64]commitState),
-		propagationEnabled: propagationEnabled,
-		bundler:            bundler,
-		consensusSubmitted: make(map[int64]bool),
+		store:                store,
+		recorder:             recorder,
+		tracker:              tracker,
+		participantAddress:   participantAddress,
+		pubKey:               pubKey,
+		interval:             interval,
+		stop:                 make(chan struct{}),
+		done:                 make(chan struct{}),
+		lastCommitted:        make(map[int64]commitState),
+		propagationEnabled:   propagationEnabled,
+		bundler:              bundler,
+		propagationCache:     propagationCache,
+		observationSubmitted: make(map[int64]bool),
+		consensusSubmitted:   make(map[int64]bool),
 	}
 
-	// Start flush - always on (same interval as commits)
 	store.StartPeriodicFlush(interval)
 
 	go w.run()
@@ -83,13 +86,6 @@ func NewCommitWorker(
 	return w
 }
 
-func (w *CommitWorker) SetConsensusCalculator(calc *propagation.ConsensusCalculator) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.consensusCalculator = calc
-}
-
-// Close stops the worker and waits for it to finish.
 func (w *CommitWorker) Close() {
 	close(w.stop)
 	<-w.done
@@ -131,6 +127,7 @@ func (w *CommitWorker) tick() {
 		w.currentPocHeight = pocHeight
 		w.lastDistributionAttempt = time.Time{}
 		w.lastCommitted = make(map[int64]commitState)
+		w.observationSubmitted = make(map[int64]bool)
 		w.consensusSubmitted = make(map[int64]bool)
 	}
 
@@ -147,6 +144,7 @@ func (w *CommitWorker) tick() {
 			w.maybePublishHeaders(pocHeight)
 		}
 		if canCommit {
+			w.maybeSubmitObservation(pocHeight)
 			w.maybeSubmitConsensusCommit(pocHeight)
 		}
 	}
@@ -208,8 +206,52 @@ func (w *CommitWorker) maybePublishHeaders(pocHeight int64) {
 	w.lastCommitted[pocHeight] = commitState{count, rootHash}
 }
 
+func (w *CommitWorker) maybeSubmitObservation(pocHeight int64) {
+	if !w.propagationEnabled || w.propagationCache == nil {
+		return
+	}
+
+	if w.observationSubmitted[pocHeight] {
+		return
+	}
+
+	arrivals, err := w.propagationCache.GetAllFirstArrivals(pocHeight)
+	if err != nil || len(arrivals) == 0 {
+		return
+	}
+
+	protoArrivals := make([]*inference.PoCObservationArrival, 0, len(arrivals))
+	for participant, info := range arrivals {
+		if info.Count > 0 {
+			protoArrivals = append(protoArrivals, &inference.PoCObservationArrival{
+				Participant: participant,
+				Count:       info.Count,
+			})
+		}
+	}
+
+	if len(protoArrivals) == 0 {
+		return
+	}
+
+	msg := &inference.MsgSubmitPoCObservation{
+		PocStageStartBlockHeight: pocHeight,
+		Arrivals:                 protoArrivals,
+	}
+
+	if err := w.recorder.SubmitPoCObservation(msg); err != nil {
+		logging.Warn("CommitWorker: observation submission failed", types.PoC,
+			"pocHeight", pocHeight, "error", err)
+		return
+	}
+
+	w.observationSubmitted[pocHeight] = true
+	logging.Info("CommitWorker: observation submitted on-chain", types.PoC,
+		"pocHeight", pocHeight, "arrivals", len(protoArrivals))
+}
+
 func (w *CommitWorker) maybeSubmitConsensusCommit(pocHeight int64) {
-	if !w.propagationEnabled || w.consensusCalculator == nil {
+	if !w.propagationEnabled {
 		store, err := w.store.GetStore(pocHeight)
 		if err != nil || store == nil {
 			return
@@ -233,18 +275,34 @@ func (w *CommitWorker) maybeSubmitConsensusCommit(pocHeight int64) {
 		return
 	}
 
-	count, rootHash := store.GetFlushedRoot()
-	if count == 0 || rootHash == nil {
-		logging.Debug("CommitWorker: no flushed data", types.PoC, "pocHeight", pocHeight, "count", count)
+	_, rootHash := store.GetFlushedRoot()
+	if rootHash == nil {
+		logging.Debug("CommitWorker: no flushed data", types.PoC, "pocHeight", pocHeight)
 		return
 	}
 
-	agreedCount := w.getConsensusCount(pocHeight)
+	queryClient := w.recorder.NewInferenceQueryClient()
+	resp, err := queryClient.PoCConsensus(context.Background(), &types.QueryPoCConsensusRequest{
+		PocStageStartBlockHeight: pocHeight,
+	})
+	if err != nil {
+		logging.Warn("CommitWorker: failed to query on-chain consensus", types.PoC,
+			"pocHeight", pocHeight, "error", err)
+		return
+	}
+
+	var agreedCount uint32
+	for _, entry := range resp.Entries {
+		if entry.Participant == w.participantAddress && entry.AgreedCount > 0 {
+			agreedCount = entry.AgreedCount
+			logging.Info("CommitWorker: on-chain consensus reached", types.PoC,
+				"pocHeight", pocHeight, "agreedCount", agreedCount,
+				"validators", entry.TotalValidators, "agreeing", entry.AgreeingCount)
+			break
+		}
+	}
 
 	if agreedCount > 0 {
-		logging.Info("CommitWorker: submitting consensus-based commit", types.PoC,
-			"pocHeight", pocHeight, "localCount", count, "agreedCount", agreedCount)
-
 		msg := &inference.MsgPoCV2StoreCommit{
 			PocStageStartBlockHeight: pocHeight,
 			Count:                    agreedCount,
@@ -263,30 +321,8 @@ func (w *CommitWorker) maybeSubmitConsensusCommit(pocHeight int64) {
 		return
 	}
 
-	logging.Debug("CommitWorker: waiting for consensus, will retry", types.PoC,
+	logging.Debug("CommitWorker: waiting for on-chain consensus, will retry", types.PoC,
 		"pocHeight", pocHeight)
-}
-
-func (w *CommitWorker) getConsensusCount(pocHeight int64) uint32 {
-	if w.consensusCalculator == nil {
-		return 0
-	}
-
-	result, err := w.consensusCalculator.CalculateForParticipantWithDeadlineFromObservations(pocHeight, w.participantAddress)
-	if err != nil {
-		logging.Warn("CommitWorker: failed to calculate consensus", types.PoC,
-			"pocHeight", pocHeight, "error", err)
-		return 0
-	}
-
-	if result != nil && result.AgreedCount > 0 {
-		logging.Info("CommitWorker: consensus reached", types.PoC,
-			"pocHeight", pocHeight, "agreedCount", result.AgreedCount,
-			"validators", result.TotalValidators, "agreeing", result.AgreeingCount)
-		return uint32(result.AgreedCount)
-	}
-
-	return 0
 }
 
 func (w *CommitWorker) publishProofsViaPropagation(store *artifacts.ArtifactStore, bundleID [32]byte, count uint32) error {
@@ -480,5 +516,3 @@ func formatWeightDistribution(weights []*inference.MLNodeWeight) string {
 	}
 	return "{" + strings.Join(parts, ", ") + "}"
 }
-
-

@@ -393,6 +393,14 @@ data class ApplicationCLI(
         execAndParse(listOf("query", "inference", "list-top-miner"))
     }
 
+    fun getPoCObservations(pocHeight: Long): PoCObservationsResponse = wrapLog("getPoCObservations", false) {
+        execAndParse(listOf("query", "inference", "poc-observations", pocHeight.toString()))
+    }
+
+    fun getPoCConsensus(pocHeight: Long): PoCConsensusResponse = wrapLog("getPoCConsensus", false) {
+        execAndParse(listOf("query", "inference", "poc-consensus", pocHeight.toString()))
+    }
+
     fun queryBLSEpochData(epochId: Long): EpochBLSDataWrapper = wrapLog("queryBLSEpochData", false) {
         execAndParse(listOf("query", "bls", "epoch-data", epochId.toString()))
     }
