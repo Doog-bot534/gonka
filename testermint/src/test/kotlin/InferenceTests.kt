@@ -564,7 +564,6 @@ class InferenceTests : TestermintTest() {
 
     @Test
     fun `can request payload`() {
-        cluster.allPairs.forEach { it.waitForMlNodesToLoad() }
         genesis.waitForNextInferenceWindow()
 
         val inferenceTimestamp = Instant.now().toEpochNanos()
@@ -599,13 +598,23 @@ class InferenceTests : TestermintTest() {
             retrievalTimestamp,
             inference.epochId,
         )
-        assertThat(promptRetrievalResponse.inferenceId).isEqualTo(inference.inferenceId)
-        assertThat(
+        val promptPayload = cosmosJson.fromJson(
             String(
                 Base64.getDecoder().decode(promptRetrievalResponse.promptPayload),
                 Charsets.UTF_8,
             ),
-        ).isEqualTo(inferenceRequest)
+            ChatRequest::class.java,
+        )
+        val body = cosmosJson.fromJson(
+            String(
+                Base64.getDecoder().decode(promptPayload.body),
+                Charsets.UTF_8,
+            ),
+            InferenceRequestPayload::class.java,
+        )
+
+        assertThat(promptRetrievalResponse.inferenceId).isEqualTo(inference.inferenceId)
+        assertThat(body).isEqualTo(inferenceRequestObject)
         assertThat(promptRetrievalResponse.responsePayload).isNull()
         assertThat(promptRetrievalResponse.executorSignature).isNotEmpty()
     }

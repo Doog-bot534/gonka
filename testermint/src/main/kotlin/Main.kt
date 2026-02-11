@@ -557,6 +557,37 @@ data class InferenceRequestPayload(
     }
 }
 
+data class ChatRequest(
+    val body: String,
+    val openAiRequest: OpenAiRequest,
+    val authKey: String, // signature signing inference request
+    val seed: String,
+    val inferenceId: String,
+    val requesterAddress: String, // address of participant, who signed inference request
+    val transferAddress: String,
+    val timestamp: Long, // timestamp of the request
+    val transferSignature: String, // signature of the transfer address
+    val promptHash: String
+) {
+    fun toJson() = cosmosJson.toJson(this)
+}
+
+data class OpenAiRequest(
+    val model: String,
+    val seed: Int,
+    val maxTokens: Int,
+    val maxCompletionTokens: Int,
+    val messages: List<Message>
+) {
+    fun toJson() = cosmosJson.toJson(this)
+}
+
+data class Message(
+    val content: String // The content of the message
+) {
+    fun toJson() = cosmosJson.toJson(this)
+}
+
 const val defaultModel = "Qwen/Qwen2.5-7B-Instruct"
 const val secondModel = "Qwen/QwQ-32B"
 

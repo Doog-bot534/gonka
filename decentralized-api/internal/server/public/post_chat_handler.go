@@ -352,7 +352,17 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 	}
 
 	// The executor, pinger nodes, or validators might request the prompt again from the TA, so we need to store it
-	s.storePromptToStorage(request.Request.Context(), inferenceUUID, request.Body)
+	request.InferenceId = inferenceUUID
+	request.Seed = strconv.Itoa(int(seed))
+	request.TransferAddress = s.recorder.GetAccountAddress()
+	request.TransferSignature = inferenceRequest.TransferSignature
+	request.PromptHash = inferenceRequest.PromptHash
+	requestBytes, err := json.Marshal(request)
+	if err != nil {
+		logging.Error("Failed to marshal chat request", types.Inferences, "error", err)
+		return err
+	}
+	s.storePromptToStorage(request.Request.Context(), inferenceUUID, requestBytes)
 
 	go func() {
 		logging.Debug("Starting inference", types.Inferences, "id", inferenceRequest.InferenceId)
@@ -373,13 +383,6 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 
 	if s.configManager.GetApiConfig().PublicUrl == executor.Url {
 		// node found itself as executor
-
-		request.InferenceId = inferenceUUID
-		request.Seed = strconv.Itoa(int(seed))
-		request.TransferAddress = s.recorder.GetAccountAddress()
-		request.TransferSignature = inferenceRequest.TransferSignature
-		request.PromptHash = inferenceRequest.PromptHash
-
 		logging.Info("Execute request on same node, fill request with extra data", types.Inferences, "inferenceId", request.InferenceId, "seed", request.Seed)
 		return s.handleExecutorRequest(ctx, request, ctx.Response().Writer)
 	}
