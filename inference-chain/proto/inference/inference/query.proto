@@ -147,6 +147,16 @@ service Query {
 
   }
 
+  rpc PoCObservations (QueryPoCObservationsRequest) returns (QueryPoCObservationsResponse) {
+    option (google.api.http).get = "/productscience/inference/inference/poc_observations/{poc_stage_start_block_height}";
+
+  }
+
+  rpc PoCConsensus (QueryPoCConsensusRequest) returns (QueryPoCConsensusResponse) {
+    option (google.api.http).get = "/productscience/inference/inference/poc_consensus/{poc_stage_start_block_height}";
+
+  }
+
   // Queries a list of GetCurrentEpoch items.
   rpc GetCurrentEpoch (QueryGetCurrentEpochRequest) returns (QueryGetCurrentEpochResponse) {
     option (google.api.http).get = "/productscience/inference/inference/get_current_epoch";
@@ -684,6 +694,29 @@ message QueryAllMLNodeWeightDistributionsForStageResponse {
 message MLNodeWeightDistributionWithAddress {
   string participant_address = 1;
   repeated MLNodeWeight weights = 2;
+}
+
+message QueryPoCObservationsRequest {
+  int64 poc_stage_start_block_height = 1;
+}
+
+message QueryPoCObservationsResponse {
+  repeated PoCObservation observations = 1;
+}
+
+message PoCConsensusEntry {
+  string participant = 1;
+  uint32 agreed_count = 2;
+  int32 total_validators = 3;
+  int32 agreeing_count = 4;
+}
+
+message QueryPoCConsensusRequest {
+  int64 poc_stage_start_block_height = 1;
+}
+
+message QueryPoCConsensusResponse {
+  repeated PoCConsensusEntry entries = 1;
 }
 
 message QueryGetCurrentEpochRequest {}

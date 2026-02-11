@@ -48,6 +48,9 @@ func RegisterInterfaces(registry cdctypes.InterfaceRegistry) {
 		&MsgMLNodeWeightDistribution{},
 	)
 	registry.RegisterImplementations((*sdk.Msg)(nil),
+		&MsgSubmitPoCObservation{},
+	)
+	registry.RegisterImplementations((*sdk.Msg)(nil),
 		&MsgSubmitSeed{},
 	)
 	registry.RegisterImplementations((*sdk.Msg)(nil),

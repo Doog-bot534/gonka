@@ -474,21 +474,6 @@ data class ApplicationAPI(
         get(url, "v1/propagation/first-arrivals/$pocHeight")
     }
 
-    fun getPropagationObservations(pocHeight: Long): PropagationObservationsResponse = wrapLog("GetPropagationObservations", true) {
-        val url = urlFor(SERVER_TYPE_PUBLIC)
-        get(url, "v1/propagation/observations/$pocHeight")
-    }
-
-    fun getPropagationConsensus(pocHeight: Long, deadline: Long? = null): PropagationConsensusResponse = wrapLog("GetPropagationConsensus", true) {
-        val url = urlFor(SERVER_TYPE_PUBLIC)
-        val path = if (deadline != null) {
-            "v1/propagation/consensus/$pocHeight?deadline=$deadline"
-        } else {
-            "v1/propagation/consensus/$pocHeight"
-        }
-        get(url, path)
-    }
-
 }
 
 

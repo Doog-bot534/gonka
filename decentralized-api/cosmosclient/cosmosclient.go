@@ -215,6 +215,7 @@ type CosmosMessageClient interface {
 	SubmitPocValidationsV2(transaction *inference.MsgSubmitPocValidationsV2) error
 	SubmitPoCV2StoreCommit(transaction *inference.MsgPoCV2StoreCommit) error
 	SubmitMLNodeWeightDistribution(transaction *inference.MsgMLNodeWeightDistribution) error
+	SubmitPoCObservation(transaction *inference.MsgSubmitPoCObservation) error
 	SubmitSeed(transaction *inference.MsgSubmitSeed) error
 	ClaimRewards(transaction *inference.MsgClaimRewards) error
 	CreateTrainingTask(transaction *inference.MsgCreateTrainingTask) (*inference.MsgCreateTrainingTaskResponse, error)
@@ -377,6 +378,12 @@ func (icc *InferenceCosmosClient) SubmitPocValidationsV2(transaction *inference.
 }
 
 func (icc *InferenceCosmosClient) SubmitPoCV2StoreCommit(transaction *inference.MsgPoCV2StoreCommit) error {
+	transaction.Creator = icc.Address
+	_, err := icc.manager.SendTransactionAsyncNoRetry(transaction)
+	return err
+}
+
+func (icc *InferenceCosmosClient) SubmitPoCObservation(transaction *inference.MsgSubmitPoCObservation) error {
 	transaction.Creator = icc.Address
 	_, err := icc.manager.SendTransactionAsyncNoRetry(transaction)
 	return err

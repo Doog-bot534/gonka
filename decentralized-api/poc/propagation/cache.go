@@ -50,11 +50,3 @@ func (c *Cache) GetFirstArrival(participant string, pocHeight int64) (ArrivalInf
 func (c *Cache) GetAllFirstArrivals(pocHeight int64) (map[string]ArrivalInfo, error) {
 	return c.storage.GetAllFirstArrivals(context.Background(), pocHeight)
 }
-
-func (c *Cache) StoreObservation(obs FirstArrivalObservation) error {
-	return c.storage.StoreObservation(context.Background(), obs)
-}
-
-func (c *Cache) GetObservations(pocHeight int64) ([]FirstArrivalObservation, error) {
-	return c.storage.GetObservations(context.Background(), pocHeight)
-}

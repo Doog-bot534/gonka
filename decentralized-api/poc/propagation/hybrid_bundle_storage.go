@@ -180,31 +180,6 @@ func (h *HybridBundleStorage) GetAllFirstArrivals(ctx context.Context, pocHeight
 	return h.file.GetAllFirstArrivals(ctx, pocHeight)
 }
 
-func (h *HybridBundleStorage) StoreObservation(ctx context.Context, obs FirstArrivalObservation) error {
-	if pg := h.currentPg(); pg != nil {
-		err := pg.StoreObservation(ctx, obs)
-		if err == nil {
-			return nil
-		}
-		logging.Warn("PostgreSQL store observation failed, falling back to file", types.PoC,
-			"validatorAddress", obs.ValidatorAddress, "pocHeight", obs.PocHeight, "error", err)
-	}
-	return h.file.StoreObservation(ctx, obs)
-}
-
-func (h *HybridBundleStorage) GetObservations(ctx context.Context, pocHeight int64) ([]FirstArrivalObservation, error) {
-	if pg := h.currentPg(); pg != nil {
-		observations, err := pg.GetObservations(ctx, pocHeight)
-		if err == nil {
-			return observations, nil
-		}
-		logging.Debug("PostgreSQL get observations failed, checking file", types.PoC,
-			"pocHeight", pocHeight, "error", err)
-	}
-
-	return h.file.GetObservations(ctx, pocHeight)
-}
-
 func (h *HybridBundleStorage) Close() error {
 	var pgErr, fileErr error
 

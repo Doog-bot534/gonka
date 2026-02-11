@@ -31,18 +31,10 @@ type BundleStorage interface {
 	GetFirstArrival(ctx context.Context, participant string, pocHeight int64) (ArrivalInfo, error)
 	GetAllFirstArrivals(ctx context.Context, pocHeight int64) (map[string]ArrivalInfo, error)
 
-	StoreObservation(ctx context.Context, obs FirstArrivalObservation) error
-	GetObservations(ctx context.Context, pocHeight int64) ([]FirstArrivalObservation, error)
-
 	Close() error
 }
 
 type participantPocKey struct {
 	Participant string
 	PocHeight   int64
-}
-
-type observationKey struct {
-	ValidatorAddress string
-	PocHeight        int64
 }

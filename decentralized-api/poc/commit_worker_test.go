@@ -10,13 +10,26 @@ import (
 	"decentralized-api/chainphase"
 	"decentralized-api/cosmosclient"
 	"decentralized-api/poc/artifacts"
-	"decentralized-api/poc/propagation"
 
 	"github.com/productscience/inference/api/inference/inference"
 	"github.com/productscience/inference/x/inference/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"google.golang.org/grpc"
 )
+
+type mockInferenceQueryClient struct {
+	types.QueryClient
+	mock.Mock
+}
+
+func (m *mockInferenceQueryClient) PoCConsensus(ctx context.Context, in *types.QueryPoCConsensusRequest, opts ...grpc.CallOption) (*types.QueryPoCConsensusResponse, error) {
+	args := m.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.QueryPoCConsensusResponse), args.Error(1)
+}
 
 func TestCommitWorker_ShouldAcceptStoreCommit_RegularPoC(t *testing.T) {
 	tests := []struct {
@@ -116,23 +129,14 @@ func TestCommitWorker_MaybeSubmitConsensusCommit_SkipsUnchanged(t *testing.T) {
 
 	mockRecorder := &cosmosclient.MockCosmosMessageClient{}
 
-	bundleDir, err := os.MkdirTemp("", "bundle_storage_test")
-	assert.NoError(t, err)
-	defer os.RemoveAll(bundleDir)
-
-	fileStorage, err := propagation.NewFileBundleStorage(bundleDir)
-	assert.NoError(t, err)
-	cache := propagation.NewCache(fileStorage)
-	consensusCalc := propagation.NewConsensusCalculator(cache)
-
 	worker := &CommitWorker{
-		store:               store,
-		recorder:            mockRecorder,
-		participantAddress:  "test_addr",
-		lastCommitted:       make(map[int64]commitState),
-		consensusSubmitted:  make(map[int64]bool),
-		propagationEnabled:  true,
-		consensusCalculator: consensusCalc,
+		store:                store,
+		recorder:             mockRecorder,
+		participantAddress:   "test_addr",
+		lastCommitted:        make(map[int64]commitState),
+		observationSubmitted: make(map[int64]bool),
+		consensusSubmitted:   make(map[int64]bool),
+		propagationEnabled:   true,
 	}
 
 	pocHeight := int64(100)
@@ -149,26 +153,20 @@ func TestCommitWorker_MaybeSubmitConsensusCommit_SkipsUnchanged(t *testing.T) {
 	assert.True(t, count > 0)
 	assert.NotNil(t, rootHash)
 
-	err = cache.StoreHeader(context.Background(), propagation.BundleHeader{
-		Participant: "test_addr",
-		PocHeight:   pocHeight,
-		Count:       count,
-		RootHash:    rootHash,
-		BundleID:    propagation.MakeBundleID("test_addr", pocHeight, rootHash, count),
-	})
-	assert.NoError(t, err)
-
-	obs := propagation.FirstArrivalObservation{
-		ValidatorAddress: "validator1",
-		PocHeight:        pocHeight,
-		Arrivals: map[string]propagation.ArrivalInfo{
-			"test_addr": {Time: time.Now().UnixMilli(), Count: count},
-		},
-		Timestamp: time.Now().UnixMilli(),
-	}
-	err = cache.StoreObservation(obs)
-	assert.NoError(t, err)
-
+	mockQueryClient := &mockInferenceQueryClient{}
+	mockQueryClient.On("PoCConsensus", mock.Anything, mock.AnythingOfType("*types.QueryPoCConsensusRequest")).Return(
+		&types.QueryPoCConsensusResponse{
+			Entries: []*types.PoCConsensusEntry{
+				{
+					Participant:     "test_addr",
+					AgreedCount:     count,
+					TotalValidators: 1,
+					AgreeingCount:   1,
+				},
+			},
+		}, nil,
+	)
+	mockRecorder.On("NewInferenceQueryClient").Return(mockQueryClient)
 	mockRecorder.On("SubmitPoCV2StoreCommit", mock.AnythingOfType("*inference.MsgPoCV2StoreCommit")).Return(nil).Once()
 
 	worker.maybeSubmitConsensusCommit(pocHeight)
@@ -187,7 +185,7 @@ func TestCommitWorker_StartAndStop(t *testing.T) {
 	mockRecorder := &cosmosclient.MockCosmosMessageClient{}
 	tracker := chainphase.NewChainPhaseTracker()
 
-	worker := NewCommitWorker(store, mockRecorder, tracker, "participant_addr", "test_pubkey", 100*time.Millisecond, false, nil)
+	worker := NewCommitWorker(store, mockRecorder, tracker, "participant_addr", "test_pubkey", 100*time.Millisecond, false, nil, nil)
 
 	// Worker should start
 	assert.NotNil(t, worker)

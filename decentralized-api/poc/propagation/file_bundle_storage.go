@@ -22,8 +22,7 @@ type FileBundleStorage struct {
 	mu           sync.RWMutex
 	bundles      map[[32]byte]BundleHeader
 	proofs       map[[32]byte][][]ProofItem // Multiple proof sets per bundleID
-	arrivals     map[participantPocKey]ArrivalInfo
-	observations map[observationKey]FirstArrivalObservation
+	arrivals map[participantPocKey]ArrivalInfo
 }
 
 func NewFileBundleStorage(baseDir string) (*FileBundleStorage, error) {
@@ -40,7 +39,6 @@ func NewFileBundleStorage(baseDir string) (*FileBundleStorage, error) {
 		bundles:      make(map[[32]byte]BundleHeader),
 		proofs:       make(map[[32]byte][][]ProofItem),
 		arrivals:     make(map[participantPocKey]ArrivalInfo),
-		observations: make(map[observationKey]FirstArrivalObservation),
 	}
 
 	if err := s.loadBundles(); err != nil {
@@ -68,10 +66,6 @@ func (s *FileBundleStorage) proofsFilePath(bundleID [32]byte, index int) string 
 
 func (s *FileBundleStorage) arrivalsFilePath() string {
 	return filepath.Join(s.baseDir, "arrivals.json")
-}
-
-func (s *FileBundleStorage) observationsFilePath() string {
-	return filepath.Join(s.baseDir, "observations.json")
 }
 
 type firstArrivalEntry struct {
@@ -144,11 +138,7 @@ func (s *FileBundleStorage) loadBundles() error {
 		logging.Warn("Failed to load arrivals", types.PoC, "error", err)
 	}
 
-	if err := s.loadObservations(); err != nil {
-		logging.Warn("Failed to load observations", types.PoC, "error", err)
-	}
-
-	logging.Info("Loaded bundles from disk", types.PoC, "count", len(s.bundles), "proofs", len(s.proofs), "arrivals", len(s.arrivals), "observations", len(s.observations))
+	logging.Info("Loaded bundles from disk", types.PoC, "count", len(s.bundles), "proofs", len(s.proofs), "arrivals", len(s.arrivals))
 	return nil
 }
 
@@ -387,77 +377,6 @@ func (s *FileBundleStorage) GetAllFirstArrivals(ctx context.Context, pocHeight i
 	for key, info := range s.arrivals {
 		if key.PocHeight == pocHeight {
 			result[key.Participant] = info
-		}
-	}
-	return result, nil
-}
-
-func (s *FileBundleStorage) loadObservations() error {
-	filePath := s.observationsFilePath()
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("read observations file: %w", err)
-	}
-
-	var observations []FirstArrivalObservation
-	if err := json.Unmarshal(data, &observations); err != nil {
-		return fmt.Errorf("unmarshal observations: %w", err)
-	}
-
-	for _, obs := range observations {
-		key := observationKey{ValidatorAddress: obs.ValidatorAddress, PocHeight: obs.PocHeight}
-		s.observations[key] = obs
-	}
-
-	return nil
-}
-
-func (s *FileBundleStorage) StoreObservation(ctx context.Context, obs FirstArrivalObservation) error {
-	s.mu.Lock()
-	key := observationKey{ValidatorAddress: obs.ValidatorAddress, PocHeight: obs.PocHeight}
-	if _, exists := s.observations[key]; exists {
-		s.mu.Unlock()
-		return nil
-	}
-	s.observations[key] = obs
-
-	observations := make([]FirstArrivalObservation, 0, len(s.observations))
-	for _, o := range s.observations {
-		observations = append(observations, o)
-	}
-	s.mu.Unlock()
-
-	data, err := json.Marshal(observations)
-	if err != nil {
-		return fmt.Errorf("marshal observations: %w", err)
-	}
-
-	filePath := s.observationsFilePath()
-	tempPath := filePath + ".tmp"
-
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		return fmt.Errorf("write temp file: %w", err)
-	}
-
-	if err := os.Rename(tempPath, filePath); err != nil {
-		os.Remove(tempPath)
-		return fmt.Errorf("rename to target: %w", err)
-	}
-
-	return nil
-}
-
-func (s *FileBundleStorage) GetObservations(ctx context.Context, pocHeight int64) ([]FirstArrivalObservation, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	result := make([]FirstArrivalObservation, 0)
-	for key, obs := range s.observations {
-		if key.PocHeight == pocHeight {
-			result = append(result, obs)
 		}
 	}
 	return result, nil
