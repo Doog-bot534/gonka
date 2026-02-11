@@ -13,7 +13,7 @@ Existing hosts are **not** required to upgrade their `api` and `node` containers
 ## Proposed Process
 
 1. Active hosts review this proposal on GitHub.
-2. Once the PR is approved by a majority, a `v0.2.10` release will be created from this branch, and an on-chain upgrade proposal for this version will be submitted.
+2. Once the PR is reviewed by the community, a `v0.2.10` release will be created from this branch, and an on-chain upgrade proposal for this version will be submitted.
 3. If the on-chain proposal is approved, this PR will be merged immediately after the upgrade is executed on-chain.
 
 Creating the release from this branch (instead of `main`) minimizes the time that the `/deploy/join/` directory on the `main` branch contains container versions that do not match the on-chain binary versions, ensuring a smoother onboarding experience for new hosts.
@@ -28,7 +28,7 @@ Reviewers are encouraged to request access to testnet environments to validate b
 
 The on-chain migration logic is defined in [`upgrades.go`](https://github.com/gonka-ai/gonka/blob/upgrade-v0.2.10/inference-chain/app/upgrades/v0_2_10/upgrades.go).
 
-Migration tasks:
+Migrations:
 - **Validation slots default**: explicitly sets `PocParams.ValidationSlots=0` during migration. This keeps existing O(N^2) validation behavior after upgrade until sampling is enabled by governance parameter update.
 - **PoC normalization default**: explicitly sets `PocParams.PocNormalizationEnabled=true` during migration to enable time-based weight normalization.
 
