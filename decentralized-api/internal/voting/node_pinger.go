@@ -75,8 +75,6 @@ type PayloadPingResponse struct {
 
 // PingResult contains the result of pinging a node for payload.
 type PingResult struct {
-	// Success indicates if the ping was successful and data was retrieved.
-	Success bool
 	// Payload contains the retrieved payload data (if successful).
 	Payload *PayloadPingResponse
 	// PromptHash is the computed hash of the prompt payload.
@@ -127,12 +125,12 @@ func (np *NodePinger) PingRespondentForPayload(
 	// Build URL with inference_id as query parameter
 	baseUrl, err := url.JoinPath(respondentURL, "v1/inference/prompt")
 	if err != nil {
-		return &PingResult{Success: false, Error: fmt.Errorf("failed to build URL: %w", err)}, err
+		return &PingResult{Error: fmt.Errorf("failed to build URL: %w", err)}, err
 	}
 
 	parsedUrl, err := url.Parse(baseUrl)
 	if err != nil {
-		return &PingResult{Success: false, Error: fmt.Errorf("failed to parse URL: %w", err)}, err
+		return &PingResult{Error: fmt.Errorf("failed to parse URL: %w", err)}, err
 	}
 
 	query := parsedUrl.Query()
@@ -146,13 +144,13 @@ func (np *NodePinger) PingRespondentForPayload(
 
 	signature, err := np.signPayloadRequest(inferenceId, timestamp, voterAddress, epochId)
 	if err != nil {
-		return &PingResult{Success: false, Error: fmt.Errorf("failed to sign request: %w", err)}, err
+		return &PingResult{Error: fmt.Errorf("failed to sign request: %w", err)}, err
 	}
 
 	// Create request
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestUrl, nil)
 	if err != nil {
-		return &PingResult{Success: false, Error: fmt.Errorf("failed to create request: %w", err)}, err
+		return &PingResult{Error: fmt.Errorf("failed to create request: %w", err)}, err
 	}
 
 	// Set authentication headers
@@ -166,7 +164,7 @@ func (np *NodePinger) PingRespondentForPayload(
 	if err != nil {
 		logging.Debug("Payload ping to respondent failed", types.Validation,
 			"respondentURL", respondentURL, "inferenceId", inferenceId, "error", err)
-		return &PingResult{Success: false, Error: fmt.Errorf("request failed: %w", err)}, err
+		return &PingResult{Error: fmt.Errorf("request failed: %w", err)}, err
 	}
 	defer resp.Body.Close()
 
@@ -174,19 +172,19 @@ func (np *NodePinger) PingRespondentForPayload(
 	if resp.StatusCode == http.StatusNotFound {
 		logging.Debug("Payload not found on respondent", types.Validation,
 			"respondentURL", respondentURL, "inferenceId", inferenceId)
-		return &PingResult{Success: false, Error: nil}, nil // Not found is not an error, just no data
+		return &PingResult{Error: nil}, nil // Not found is not an error, just no data
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		err := fmt.Errorf("respondent returned status %d: %s", resp.StatusCode, string(body))
-		return &PingResult{Success: false, Error: err}, err
+		return &PingResult{Error: err}, err
 	}
 
 	// Parse response
 	var payloadResp PayloadPingResponse
 	if err := json.NewDecoder(resp.Body).Decode(&payloadResp); err != nil {
-		return &PingResult{Success: false, Error: fmt.Errorf("failed to decode response: %w", err)}, err
+		return &PingResult{Error: fmt.Errorf("failed to decode response: %w", err)}, err
 	}
 
 	// Compute prompt hash
@@ -201,7 +199,7 @@ func (np *NodePinger) PingRespondentForPayload(
 		"respondentURL", respondentURL, "inferenceId", inferenceId, "promptHash", promptHash)
 
 	return &PingResult{
-		Success:    true,
+
 		Payload:    &payloadResp,
 		PromptHash: promptHash,
 	}, nil
@@ -236,7 +234,7 @@ func (np *NodePinger) VerifyRespondent(
 		return response
 	}
 
-	if !pingResult.Success || pingResult.Payload == nil {
+	if pingResult.Error != nil || pingResult.Payload == nil {
 		// Respondent doesn't have payload - negative vote
 		response.Vote = VoteNegative
 		response.DataFound = false
