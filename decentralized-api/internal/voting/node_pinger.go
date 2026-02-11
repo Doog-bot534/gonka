@@ -127,7 +127,7 @@ func (np *NodePinger) PingRespondentForPayload(
 	epochId uint64,
 ) (*PingResult, error) {
 	// Build URL with inference_id as query parameter
-	baseUrl, err := url.JoinPath(respondentURL, "v1/inference/payloads")
+	baseUrl, err := url.JoinPath(respondentURL, "v1/inference/prompt")
 	if err != nil {
 		return &PingResult{Success: false, Error: fmt.Errorf("failed to build URL: %w", err)}, err
 	}
