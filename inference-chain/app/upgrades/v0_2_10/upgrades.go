@@ -147,7 +147,7 @@ func setPocNormalizationEnabled(ctx context.Context, k keeper.Keeper) {
 
 // setPocTimingParams updates PoC timing parameters:
 // - Reduces poc_stage_duration from 60 to 35 blocks
-// - Reduces poc_validation_duration from 480 to 120 blocks
+// - Reduces poc_validation_duration from 480 to 240 blocks
 // - Scales weight_scale_factor proportionally from 0.262 to 0.449 to maintain same total weight
 func setPocTimingParams(ctx context.Context, k keeper.Keeper) {
 	params, err := k.GetParams(ctx)
@@ -167,8 +167,8 @@ func setPocTimingParams(ctx context.Context, k keeper.Keeper) {
 
 	// Update PoC timing: reduce from 60 to 35 blocks
 	params.EpochParams.PocStageDuration = 35
-	// Update validation duration: reduce from 480 to 120 blocks
-	params.EpochParams.PocValidationDuration = 120
+	// Update validation duration: reduce from 480 to 240 blocks
+	params.EpochParams.PocValidationDuration = 240
 	// Scale weight factor proportionally: 0.262 * (60/35) ≈ 0.449
 	// Keeps total weight accumulation the same: 0.449 * 35 ≈ 0.262 * 60
 	params.PocParams.WeightScaleFactor = &types.Decimal{Value: 449, Exponent: -3}
