@@ -23,9 +23,9 @@ import (
 	"github.com/productscience/inference/x/inference/types"
 )
 
-// NodePinger handles HTTP communication with nodes for payload verification and relay.
+// NodePinger handles HTTP communication with nodes for payload verification.
 // Used by:
-// - Voters: to ping respondent and verify payload exists, relay to challenger if found
+// - Voters: to ping respondent and verify payload exists, return payload in vote response
 // - Challengers: to request verification from pre-sampled voters
 type NodePinger struct {
 	httpClient   *http.Client
@@ -94,7 +94,6 @@ type VerificationRequest struct {
 	InferenceId       string `json:"inference_id"`
 	RespondentAddress string `json:"respondent_address"`
 	RespondentURL     string `json:"respondent_url"`
-	ChallengerURL     string `json:"challenger_url"` // Where voter should relay payload if found
 	EpochId           uint64 `json:"epoch_id"`
 	PromptHash        string `json:"prompt_hash"` // Expected hash from on-chain
 	ChallengerSig     string `json:"challenger_signature"`
@@ -108,8 +107,9 @@ type VerificationResponse struct {
 	VoterSignature string   `json:"voter_signature"`
 	// DataFound indicates if respondent had the payload
 	DataFound bool `json:"data_found"`
-	// DataRelayed indicates if payload was successfully relayed to challenger
-	DataRelayed bool `json:"data_relayed"`
+	// Payload contains the actual payload data retrieved from respondent (if found).
+	// Returned synchronously to challenger in the same response.
+	Payload *PayloadPingResponse `json:"payload,omitempty"`
 	// PromptHash is the hash of payload found (if any)
 	PromptHash string `json:"prompt_hash,omitempty"`
 	// Error message if verification failed
@@ -209,74 +209,16 @@ func (np *NodePinger) PingRespondentForPayload(
 	}, nil
 }
 
-// RelayPayloadToChallenger sends the payload to the challenger.
-// Used by voters after retrieving payload from respondent.
-func (np *NodePinger) RelayPayloadToChallenger(
-	ctx context.Context,
-	challengerURL string,
-	inferenceId string,
-	payload *PayloadPingResponse,
-) (bool, error) {
-	// Build URL for relay endpoint
-	// TODO! Add the relay endpoint to the challenger's URL.
-	relayUrl, err := url.JoinPath(challengerURL, "v1/inference/payloads/relay")
-	if err != nil {
-		return false, fmt.Errorf("failed to build relay URL: %w", err)
-	}
+// Payload returned synchronously in VerificationResponse.
+// - Challenger requests verification from voter
+// - Voter pings respondent and returns vote + payload in same response
+// - Challenger receives everything in one HTTP transaction
 
-	// Marshal payload
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		return false, fmt.Errorf("failed to marshal payload: %w", err)
-	}
-
-	// Create request
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, relayUrl, bytes.NewReader(payloadBytes))
-	if err != nil {
-		return false, fmt.Errorf("failed to create relay request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	// Sign the relay request
-	timestamp := time.Now().UnixNano()
-	voterAddress := np.cosmosClient.GetAccountAddress()
-
-	signature, err := np.signRelayRequest(inferenceId, timestamp, voterAddress)
-	if err != nil {
-		return false, fmt.Errorf("failed to sign relay request: %w", err)
-	}
-
-	req.Header.Set(apiutils.XValidatorAddressHeader, voterAddress)
-	req.Header.Set(apiutils.XTimestampHeader, strconv.FormatInt(timestamp, 10))
-	req.Header.Set(apiutils.AuthorizationHeader, signature)
-
-	// Execute request
-	resp, err := np.httpClient.Do(req)
-	if err != nil {
-		logging.Warn("Relay to challenger failed", types.Validation,
-			"challengerURL", challengerURL, "inferenceId", inferenceId, "error", err)
-		return false, fmt.Errorf("relay request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
-		body, _ := io.ReadAll(resp.Body)
-		return false, fmt.Errorf("relay returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	logging.Info("Successfully relayed payload to challenger", types.Validation,
-		"challengerURL", challengerURL, "inferenceId", inferenceId)
-
-	return true, nil
-}
-
-// VerifyAndRelay is the main voter function: ping respondent, relay to challenger if found.
-// Returns the verification result that will be used for voting.
-func (np *NodePinger) VerifyAndRelay(
+// VerifyRespondent is the main voter function: ping respondent and return result.
+// Returns the verification result with payload (if found) that will be sent back to challenger.
+func (np *NodePinger) VerifyRespondent(
 	ctx context.Context,
 	respondentURL string,
-	challengerURL string,
 	inferenceId string,
 	epochId uint64,
 	expectedPromptHash string,
@@ -308,6 +250,7 @@ func (np *NodePinger) VerifyAndRelay(
 	// Respondent has payload
 	response.DataFound = true
 	response.PromptHash = pingResult.PromptHash
+	response.Payload = pingResult.Payload // Include payload in response for challenger
 
 	// Step 2: Verify hash matches (if expected hash provided)
 	if expectedPromptHash != "" && pingResult.PromptHash != expectedPromptHash {
@@ -318,20 +261,10 @@ func (np *NodePinger) VerifyAndRelay(
 		return response
 	}
 
-	// Step 3: Relay to challenger (if URL provided)
-	if challengerURL != "" {
-		relayed, err := np.RelayPayloadToChallenger(ctx, challengerURL, inferenceId, pingResult.Payload)
-		if err != nil {
-			logging.Warn("Voter verification: relay to challenger failed", types.Validation,
-				"inferenceId", inferenceId, "error", err)
-		}
-		response.DataRelayed = relayed
-	}
-
 	// Respondent has correct payload - positive vote
 	response.Vote = VotePositive
 	logging.Info("Voter verification: respondent has correct payload", types.Validation,
-		"inferenceId", inferenceId, "voterAddress", voterAddress, "relayed", response.DataRelayed)
+		"inferenceId", inferenceId, "voterAddress", voterAddress)
 
 	return response
 }
@@ -599,23 +532,6 @@ func (np *NodePinger) signPayloadRequest(
 	components := calculations.SignatureComponents{
 		Payload:         inferenceId,
 		EpochId:         epochId,
-		Timestamp:       timestamp,
-		TransferAddress: voterAddress,
-		ExecutorAddress: "",
-	}
-
-	return np.sign(components)
-}
-
-// signRelayRequest signs a payload relay request.
-func (np *NodePinger) signRelayRequest(
-	inferenceId string,
-	timestamp int64,
-	voterAddress string,
-) (string, error) {
-	components := calculations.SignatureComponents{
-		Payload:         inferenceId,
-		EpochId:         0,
 		Timestamp:       timestamp,
 		TransferAddress: voterAddress,
 		ExecutorAddress: "",
