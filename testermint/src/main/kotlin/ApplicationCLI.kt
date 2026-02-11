@@ -552,6 +552,16 @@ data class ApplicationCLI(
         return signPayload(requestHash, accountAddress, timestamp, endpointAccount)
     }
 
+    fun signPromptRetrievalRequest(
+        inferenceId: String,
+        epochId: Long,
+        timestamp: Long,
+        requesterAddress: String,
+    ): String {
+        val payload = "$inferenceId$epochId$timestamp$requesterAddress"
+        return signPayload(payload, requesterAddress, timestamp = null, endpointAccount = null)
+    }
+
     fun getTxStatus(txHash: String): TxResponse = wrapLog("getTxStatus", false) {
         execAndParse(listOf("query", "tx", "--type=hash", txHash))
     }

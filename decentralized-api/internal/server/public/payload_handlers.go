@@ -27,8 +27,31 @@ type PayloadResponse struct {
 
 // getInferencePayloads serves payloads to validators for validation
 func (s *Server) getInferencePayloads(ctx echo.Context) error {
-	inferenceId := ctx.QueryParam("inference_id")
 	validatorAddress := ctx.Request().Header.Get(utils.XValidatorAddressHeader)
+	if validatorAddress == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "X-Validator-Address header required")
+	}
+
+	return s.getInferencePayloadsImpl(ctx, validatorAddress, s.payloadStorage, "payloadStorage")
+}
+
+// getInferencePrompt serves prompts to executors, pinging nodes, and validators for validation
+func (s *Server) getInferencePrompt(ctx echo.Context) error {
+	requesterAddress := ctx.Request().Header.Get(utils.XRequesterAddressHeader)
+	if requesterAddress == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "X-Requester-Address header required")
+	}
+
+	return s.getInferencePayloadsImpl(ctx, requesterAddress, s.promptStorage, "promptStorage")
+}
+
+func (s *Server) getInferencePayloadsImpl(
+	ctx echo.Context,
+	requesterAddress string,
+	storage payloadstorage.PayloadStorage,
+	storageName string,
+) error {
+	inferenceId := ctx.QueryParam("inference_id")
 	timestampStr := ctx.Request().Header.Get(utils.XTimestampHeader)
 	epochIdStr := ctx.Request().Header.Get(utils.XEpochIdHeader)
 	signature := ctx.Request().Header.Get(utils.AuthorizationHeader)
@@ -37,9 +60,6 @@ func (s *Server) getInferencePayloads(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "inference_id required")
 	}
 
-	if validatorAddress == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, "X-Validator-Address header required")
-	}
 	if timestampStr == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "X-Timestamp header required")
 	}
@@ -62,7 +82,7 @@ func (s *Server) getInferencePayloads(ctx echo.Context) error {
 
 	if err := s.validatePayloadRequestTimestamp(timestamp); err != nil {
 		logging.Warn("Payload request timestamp validation failed", types.Validation,
-			"inferenceId", inferenceId, "validatorAddress", validatorAddress, "error", err)
+			"inferenceId", inferenceId, "requesterAddress", requesterAddress, "error", err)
 		return err
 	}
 
@@ -88,37 +108,42 @@ func (s *Server) getInferencePayloads(ctx echo.Context) error {
 		epochId = inferenceEpochId
 	}
 
-	// Verify validator is active participant at the INFERENCE's epoch (not header epoch)
-	if err := s.verifyActiveParticipant(ctx, validatorAddress, epochId); err != nil {
-		logging.Warn("Validator not active at inference epoch", types.Validation,
-			"validatorAddress", validatorAddress, "epochId", epochId, "error", err)
+	// Verify requester is active participant at the INFERENCE's epoch (not header epoch)
+	if err := s.verifyActiveParticipant(ctx, requesterAddress, epochId); err != nil {
+		logging.Warn("Requester not active at inference epoch", types.Validation,
+			"requesterAddress", requesterAddress, "epochId", epochId, "error", err)
 		return err
 	}
 
-	// Get validator's pubkeys (including grantees/warm keys) for signature verification
-	validatorPubkeys, err := s.getAllowedPubKeys(ctx, validatorAddress)
+	// Get requester's pubkeys (including grantees/warm keys) for signature verification
+	requesterPubkeys, err := s.getAllowedPubKeys(ctx, requesterAddress)
 	if err != nil {
-		logging.Error("Failed to get validator pubkeys", types.Validation,
-			"validatorAddress", validatorAddress, "error", err)
-		return echo.NewHTTPError(http.StatusUnauthorized, "validator not found")
+		logging.Error("Failed to get requester pubkeys", types.Validation,
+			"requesterAddress", requesterAddress, "error", err)
+		return echo.NewHTTPError(http.StatusUnauthorized, "requester not found")
 	}
 
-	// Verify signature (validator signs: inferenceId + timestamp + validatorAddress + epochId)
-	if err := validatePayloadRequestSignature(inferenceId, timestamp, validatorAddress, epochId, validatorPubkeys, signature); err != nil {
+	// Verify signature (requester signs: inferenceId + timestamp + requesterAddress + epochId)
+	if err := validatePayloadRequestSignature(inferenceId, timestamp, requesterAddress, epochId, requesterPubkeys, signature); err != nil {
 		logging.Warn("Invalid payload request signature", types.Validation,
-			"inferenceId", inferenceId, "validatorAddress", validatorAddress, "error", err)
+			"inferenceId", inferenceId, "requesterAddress", requesterAddress, "error", err)
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid signature")
 	}
 
-	promptPayload, responsePayload, actualEpochId, err := s.retrievePayloadsWithAdjacentEpochs(ctx.Request().Context(), inferenceId, epochId)
+	promptPayload, responsePayload, actualEpochId, err := s.retrievePayloadsWithAdjacentEpochs(
+		ctx.Request().Context(),
+		inferenceId,
+		epochId,
+		storage,
+	)
 	if err != nil {
 		if errors.Is(err, payloadstorage.ErrNotFound) {
 			logging.Info("Payload not found in storage (checked adjacent epochs)", types.Validation,
-				"inferenceId", inferenceId, "epochId", epochId)
+				"inferenceId", inferenceId, "epochId", epochId, "storageName", storageName)
 			return echo.NewHTTPError(http.StatusNotFound, "payload not found")
 		}
 		logging.Error("Failed to retrieve payloads from storage", types.Validation,
-			"inferenceId", inferenceId, "error", err)
+			"inferenceId", inferenceId, "storageName", storageName, "error", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to retrieve payloads")
 	}
 	if actualEpochId != epochId {
@@ -134,8 +159,8 @@ func (s *Server) getInferencePayloads(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to sign response")
 	}
 
-	logging.Info("Serving payloads to validator", types.Validation,
-		"inferenceId", inferenceId, "validatorAddress", validatorAddress, "epochId", epochId)
+	logging.Info("Serving payloads to requester", types.Validation,
+		"inferenceId", inferenceId, "requesterAddress", requesterAddress, "epochId", epochId)
 
 	return ctx.JSON(http.StatusOK, PayloadResponse{
 		InferenceId:       inferenceId,
@@ -181,15 +206,15 @@ func (s *Server) verifyActiveParticipant(ctx echo.Context, address string, epoch
 	return nil
 }
 
-// validatePayloadRequestSignature verifies validator's signature on the request.
-// Validator signs: inferenceId + timestamp + validatorAddress + epochId
+// validatePayloadRequestSignature verifies requester's signature on the request.
+// Requester signs: inferenceId + epochId + timestamp + requesterAddress
 // EpochId binding prevents replay attacks within epoch windows
-func validatePayloadRequestSignature(inferenceId string, timestamp int64, validatorAddress string, epochId uint64, pubkeys []string, signature string) error {
+func validatePayloadRequestSignature(inferenceId string, timestamp int64, requesterAddress string, epochId uint64, pubkeys []string, signature string) error {
 	components := calculations.SignatureComponents{
 		Payload:         inferenceId,
 		EpochId:         epochId,
 		Timestamp:       timestamp,
-		TransferAddress: validatorAddress,
+		TransferAddress: requesterAddress,
 		ExecutorAddress: "",
 	}
 	return calculations.ValidateSignatureWithGrantees(components, calculations.Developer, pubkeys, signature)
@@ -200,9 +225,14 @@ func validatePayloadRequestSignature(inferenceId string, timestamp int64, valida
 // This handles the rare epoch boundary race condition where storage uses
 // phaseTracker's epoch but retrieval uses inference's EpochId from chain.
 // Returns the payloads and the actual epochId where they were found.
-func (s *Server) retrievePayloadsWithAdjacentEpochs(ctx context.Context, inferenceId string, epochId uint64) ([]byte, []byte, uint64, error) {
+func (s *Server) retrievePayloadsWithAdjacentEpochs(
+	ctx context.Context,
+	inferenceId string,
+	epochId uint64,
+	storage payloadstorage.PayloadStorage,
+) ([]byte, []byte, uint64, error) {
 	// Try primary epochId first
-	prompt, response, err := s.payloadStorage.Retrieve(ctx, inferenceId, epochId)
+	prompt, response, err := storage.Retrieve(ctx, inferenceId, epochId)
 	if err == nil {
 		return prompt, response, epochId, nil
 	}
@@ -218,7 +248,7 @@ func (s *Server) retrievePayloadsWithAdjacentEpochs(ctx context.Context, inferen
 	adjacentEpochs = append(adjacentEpochs, epochId+1)
 
 	for _, adjEpoch := range adjacentEpochs {
-		prompt, response, err := s.payloadStorage.Retrieve(ctx, inferenceId, adjEpoch)
+		prompt, response, err := storage.Retrieve(ctx, inferenceId, adjEpoch)
 		if err == nil {
 			return prompt, response, adjEpoch, nil
 		}
@@ -232,7 +262,7 @@ func (s *Server) retrievePayloadsWithAdjacentEpochs(ctx context.Context, inferen
 
 // signPayloadResponse signs the payload response with executor's key
 // Uses timestamp=0 since the signature is for non-repudiation, not replay protection
-// (replay protection is handled at request level with validator's timestamp)
+// (replay protection is handled at request level with requester's timestamp)
 func (s *Server) signPayloadResponse(inferenceId string, promptPayload, responsePayload []byte) (string, error) {
 	// Sign inferenceId + prompt hash + response hash
 	promptHash := utils.GenerateSHA256HashBytes(promptPayload)
