@@ -25,7 +25,7 @@ type BundleStorage interface {
 	AllBundlesForHeight(ctx context.Context, pocHeight int64) ([]BundleHeader, error)
 
 	StoreProofs(ctx context.Context, bundleID [32]byte, proofs []ProofItem) error
-	GetProofs(ctx context.Context, bundleID [32]byte) ([]ProofItem, error)
+	GetProofs(ctx context.Context, bundleID [32]byte) ([][]ProofItem, error)
 
 	StoreFirstArrival(ctx context.Context, participant string, pocHeight int64, arrivalTime int64, count uint32) error
 	GetFirstArrival(ctx context.Context, participant string, pocHeight int64) (ArrivalInfo, error)

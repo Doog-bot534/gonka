@@ -125,7 +125,7 @@ func (h *HybridBundleStorage) StoreProofs(ctx context.Context, bundleID [32]byte
 	return h.file.StoreProofs(ctx, bundleID, proofs)
 }
 
-func (h *HybridBundleStorage) GetProofs(ctx context.Context, bundleID [32]byte) ([]ProofItem, error) {
+func (h *HybridBundleStorage) GetProofs(ctx context.Context, bundleID [32]byte) ([][]ProofItem, error) {
 	if pg := h.currentPg(); pg != nil {
 		proofs, err := pg.GetProofs(ctx, bundleID)
 		if err == nil {

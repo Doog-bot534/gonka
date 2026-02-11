@@ -17,7 +17,7 @@ type PostgresBundleStorage struct {
 	instance     string
 	mu           sync.RWMutex
 	bundles      map[[32]byte]BundleHeader
-	proofs       map[[32]byte][]ProofItem
+	proofs       map[[32]byte][][]ProofItem // Multiple proof sets per bundleID
 	arrivals map[participantPocKey]ArrivalInfo
 }
 
@@ -33,7 +33,7 @@ func NewPostgresBundleStorage(ctx context.Context, pool *pgxpool.Pool, instance 
 		pool:         pool,
 		instance:     instance,
 		bundles:      make(map[[32]byte]BundleHeader),
-		proofs:       make(map[[32]byte][]ProofItem),
+		proofs:       make(map[[32]byte][][]ProofItem),
 		arrivals:     make(map[participantPocKey]ArrivalInfo),
 	}
 
@@ -67,8 +67,10 @@ func (s *PostgresBundleStorage) ensureSchema(ctx context.Context) error {
 		CREATE TABLE IF NOT EXISTS poc_bundle_proofs (
 			instance TEXT NOT NULL,
 			bundle_id BYTEA NOT NULL,
+			proof_index INTEGER NOT NULL DEFAULT 0,
 			proofs JSONB NOT NULL,
-			PRIMARY KEY (instance, bundle_id)
+			received_at BIGINT NOT NULL DEFAULT 0,
+			PRIMARY KEY (instance, bundle_id, proof_index)
 		);
 
 		CREATE TABLE IF NOT EXISTS poc_first_arrivals (
@@ -116,6 +118,7 @@ func (s *PostgresBundleStorage) loadBundles(ctx context.Context) error {
 		SELECT bundle_id, proofs
 		FROM poc_bundle_proofs
 		WHERE instance = $1
+		ORDER BY bundle_id, proof_index
 	`, s.instance)
 	if err != nil {
 		return err
@@ -139,7 +142,7 @@ func (s *PostgresBundleStorage) loadBundles(ctx context.Context) error {
 			logging.Warn("Failed to unmarshal proofs from PostgreSQL", types.PoC, "error", err)
 			continue
 		}
-		s.proofs[bundleID] = proofs
+		s.proofs[bundleID] = append(s.proofs[bundleID], proofs)
 	}
 
 	if err := proofsRows.Err(); err != nil {
@@ -254,29 +257,33 @@ func (s *PostgresBundleStorage) StoreProofs(ctx context.Context, bundleID [32]by
 		return fmt.Errorf("marshal proofs: %w", err)
 	}
 
+	// Get the next proof_index for this bundleID
+	proofIndex := len(s.proofs[bundleID])
+
 	_, err = s.pool.Exec(ctx, `
-		INSERT INTO poc_bundle_proofs (instance, bundle_id, proofs)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (instance, bundle_id) DO UPDATE SET
-			proofs = EXCLUDED.proofs
-	`, s.instance, bundleID[:], proofsJSON)
+		INSERT INTO poc_bundle_proofs (instance, bundle_id, proof_index, proofs, received_at)
+		VALUES ($1, $2, $3, $4, EXTRACT(EPOCH FROM NOW())::BIGINT)
+		ON CONFLICT (instance, bundle_id, proof_index) DO UPDATE SET
+			proofs = EXCLUDED.proofs,
+			received_at = EXCLUDED.received_at
+	`, s.instance, bundleID[:], proofIndex, proofsJSON)
 	if err != nil {
 		return fmt.Errorf("store proofs: %w", err)
 	}
 
-	s.proofs[bundleID] = proofs
+	s.proofs[bundleID] = append(s.proofs[bundleID], proofs)
 	return nil
 }
 
-func (s *PostgresBundleStorage) GetProofs(ctx context.Context, bundleID [32]byte) ([]ProofItem, error) {
+func (s *PostgresBundleStorage) GetProofs(ctx context.Context, bundleID [32]byte) ([][]ProofItem, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	proofs, exists := s.proofs[bundleID]
-	if !exists {
+	proofSets, exists := s.proofs[bundleID]
+	if !exists || len(proofSets) == 0 {
 		return nil, ErrProofsNotFound
 	}
-	return proofs, nil
+	return proofSets, nil
 }
 
 func (s *PostgresBundleStorage) StoreFirstArrival(ctx context.Context, participant string, pocHeight int64, arrivalTime int64, count uint32) error {
