@@ -49,7 +49,7 @@ func DefaultNodePingerConfig() NodePingerConfig {
 // NewNodePinger creates a new NodePinger instance.
 func NewNodePinger(cosmosClient cosmosclient.CosmosMessageClient, config NodePingerConfig) *NodePinger {
 	if config.Timeout == 0 {
-		config.Timeout = 10 * time.Second
+		config.Timeout = DefaultNodePingerConfig().Timeout
 	}
 
 	return &NodePinger{
@@ -570,4 +570,3 @@ func (np *NodePinger) sign(components calculations.SignatureComponents) (string,
 
 	return calculations.Sign(accountSigner, components, calculations.Developer)
 }
-
