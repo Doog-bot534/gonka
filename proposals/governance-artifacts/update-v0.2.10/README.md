@@ -20,7 +20,9 @@ Creating the release from this branch (instead of `main`) minimizes the time tha
 
 ## Testing
 
-This branch includes upgrade-path changes and supporting testnet tooling. Reviewers are encouraged to request access to testnet environments to validate both node behavior and the on-chain upgrade process, or to replay the upgrade on private testnets.
+The on-chain upgrade from version `v0.2.9` to `v0.2.10` has been successfully deployed and verified on the testnet. PoC time-based weight normalization has been validated in the testnet environment. No regression in core functionality or performance has been observed during testing.
+
+Reviewers are encouraged to request access to testnet environments to validate both node behavior and the on-chain upgrade process, or to replay the upgrade on private testnets.
 
 ## Migration
 
