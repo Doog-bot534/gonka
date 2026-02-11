@@ -158,7 +158,7 @@ func (np *NodePinger) PingRespondentForPayload(
 	}
 
 	// Set authentication headers
-	req.Header.Set(apiutils.XValidatorAddressHeader, voterAddress)
+	req.Header.Set(apiutils.XRequesterAddressHeader, voterAddress)
 	req.Header.Set(apiutils.XTimestampHeader, strconv.FormatInt(timestamp, 10))
 	req.Header.Set(apiutils.XEpochIdHeader, strconv.FormatUint(epochId, 10))
 	req.Header.Set(apiutils.AuthorizationHeader, signature)
