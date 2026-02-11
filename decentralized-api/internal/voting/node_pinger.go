@@ -69,8 +69,6 @@ func NewNodePinger(cosmosClient cosmosclient.CosmosMessageClient, config NodePin
 type PayloadPingResponse struct {
 	InferenceId   string `json:"inference_id"`
 	PromptPayload []byte `json:"prompt_payload"`
-	// ResponsePayload is included for completeness but not used in "challenger requests payload from respondent" case
-	ResponsePayload []byte `json:"response_payload,omitempty"`
 	// RespondentSignature: when respondent is executor, this is the executor's signature on the response (wire format: executor_signature).
 	RespondentSignature string `json:"executor_signature,omitempty"`
 }

@@ -254,13 +254,6 @@ type VoteResponse struct {
 	// Vote is the signed vote from the node.
 	Vote SignedVote `json:"vote"`
 
-	// PromptPayload contains the prompt payload retrieved from respondent (if found).
-	// Returned synchronously to allow challenger to receive data in same transaction.
-	PromptPayload []byte `json:"prompt_payload,omitempty"`
-
-	// ResponsePayload contains the response payload retrieved from respondent (if found).
-	ResponsePayload []byte `json:"response_payload,omitempty"`
-
 	// Error is any error that occurred during verification.
 	// If set, the vote may not be valid.
 	Error string `json:"error,omitempty"`
