@@ -42,7 +42,7 @@ Key points:
 - Only assigned validators validate each participant when sampling is enabled.
 - Sampling is deterministic on both chain and API sides (based on validation snapshot + `app_hash`).
 - Decision threshold is strict supermajority of assigned slots (>66.7%).
-- The feature is shipped in this release but **disabled by default** (`ValidationSlots=0`) and can be enabled via governance once rollout conditions are met.
+- The feature is shipped in this release but **disabled by default** (`ValidationSlots=0`) and can be enabled via a governance proposal that changes the `ValidationSlots` parameter to a non-zero value once rollout conditions are met.
 
 ## PoC Weight Normalization by Real PoC Time
 
