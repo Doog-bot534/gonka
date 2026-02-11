@@ -13,20 +13,22 @@ Existing hosts are **not** required to upgrade their `api` and `node` containers
 ## Proposed Process
 
 1. Active hosts review this proposal on GitHub.
-2. Once the PR is approved by a majority, a `v0.2.10` release will be created from this branch, and an on-chain upgrade proposal for this version will be submitted.
+2. Once the PR is reviewed by the community, a `v0.2.10` release will be created from this branch, and an on-chain upgrade proposal for this version will be submitted.
 3. If the on-chain proposal is approved, this PR will be merged immediately after the upgrade is executed on-chain.
 
 Creating the release from this branch (instead of `main`) minimizes the time that the `/deploy/join/` directory on the `main` branch contains container versions that do not match the on-chain binary versions, ensuring a smoother onboarding experience for new hosts.
 
 ## Testing
 
-This branch includes upgrade-path changes and supporting testnet tooling. Reviewers are encouraged to request access to testnet environments to validate both node behavior and the on-chain upgrade process, or to replay the upgrade on private testnets.
+The on-chain upgrade from version `v0.2.9` to `v0.2.10` has been successfully deployed and verified on the testnet. PoC time-based weight normalization has been validated in the testnet environment. No regression in core functionality or performance has been observed during testing.
+
+Reviewers are encouraged to request access to testnet environments to validate both node behavior and the on-chain upgrade process, or to replay the upgrade on private testnets.
 
 ## Migration
 
 The on-chain migration logic is defined in [`upgrades.go`](https://github.com/gonka-ai/gonka/blob/upgrade-v0.2.10/inference-chain/app/upgrades/v0_2_10/upgrades.go).
 
-Migration tasks:
+Migrations:
 - **Validation slots default**: explicitly sets `PocParams.ValidationSlots=0` during migration. This keeps existing O(N^2) validation behavior after upgrade until sampling is enabled by governance parameter update.
 - **PoC normalization default**: explicitly sets `PocParams.PocNormalizationEnabled=true` during migration to enable time-based weight normalization.
 
@@ -40,7 +42,7 @@ Key points:
 - Only assigned validators validate each participant when sampling is enabled.
 - Sampling is deterministic on both chain and API sides (based on validation snapshot + `app_hash`).
 - Decision threshold is strict supermajority of assigned slots (>66.7%).
-- The feature is shipped in this release but **disabled by default** (`ValidationSlots=0`) and can be enabled via governance once rollout conditions are met.
+- The feature is shipped in this release but **disabled by default** (`ValidationSlots=0`) and can be enabled via a governance proposal that changes the `ValidationSlots` parameter to a non-zero value once rollout conditions are met.
 
 ## PoC Weight Normalization by Real PoC Time
 
