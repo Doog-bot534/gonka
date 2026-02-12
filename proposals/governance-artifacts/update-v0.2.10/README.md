@@ -128,3 +128,10 @@ Key points:
 | PR #634 | 100 | Valid minor bug fix. |
 | Report | 5,000 | Independent report on the issue addressed by PR #710. |
 | PR #643 | 500 | Report and fix of low risk vulnerability. |
+| PR #641 | 1,500 | Valid implementation of a planned task. |
+| PR #622	| 700 |	Valid minor vulnerability report and fix.	|
+| PR #688 | 1,500 | Valid implementation of a planned task with adjusting scope, important for the network. |
+
+* Review of previous upgrades with meaningful feedback - 2,500 GNK each :
+  * v.0.2.9: [blizko](https://github.com/blizko) & [x0152](https://github.com/x0152)
+  * v.0.2.8: [blizko](https://github.com/blizko), [x0152](https://github.com/x0152), [ouicate](https://github.com/ouicate), [jacky6block](https://github.com/jacky6block) & [akup](https://github.com/akup)
