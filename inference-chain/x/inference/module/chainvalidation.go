@@ -397,9 +397,9 @@ func (wc *WeightCalculator) calculateParticipantWeight(participantAddress string
 
 	distribution, hasDistribution := wc.NodeWeightDistributions[participantAddress]
 	if !hasDistribution || len(distribution.Weights) == 0 {
-		wc.Logger.LogWarn("Calculate: No weight distribution for participant, using single node", types.PoC,
+		wc.Logger.LogWarn("Calculate: No weight distribution for participant, skipping PoC weight", types.PoC,
 			"participant", participantAddress, "totalWeight", totalWeight)
-		return []nodeWeight{{nodeId: "unknown", weight: totalWeight}}, totalWeight
+		return nil, 0
 	}
 
 	nodeWeightsSlice := make([]nodeWeight, 0, len(distribution.Weights))
@@ -1055,8 +1055,9 @@ func (am AppModule) filterStoreCommitsFromInferenceNodes(
 		distribution, hasDistribution := allDistributions[participantAddress]
 
 		if !hasDistribution || len(distribution.Weights) == 0 {
-			// No distribution - keep the commit as-is
-			filteredCommits[participantAddress] = commit
+			am.LogWarn("filterStoreCommitsFromInferenceNodes: No distribution, cannot filter inference nodes, skipping", types.PoC,
+				"participantAddress", participantAddress,
+				"commitCount", commit.Count)
 			continue
 		}
 
