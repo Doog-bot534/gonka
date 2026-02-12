@@ -221,7 +221,7 @@ func main() {
 
 	startTime := time.Now()
 
-	hypercubeCounts := []int{1, 2}
+	hypercubeCounts := []int{1}
 	attackerFractions := []float64{0.33, 0.45}
 
 	allDists := []string{"uniform", "highweight", "slots", "wald"}
