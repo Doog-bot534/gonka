@@ -114,7 +114,11 @@ func (k msgServer) TransferWithVesting(goCtx context.Context, req *types.MsgTran
 	}
 
 	// Store the updated schedule
-	k.SetVestingSchedule(ctx, schedule)
+	err = k.SetVestingSchedule(ctx, schedule)
+	if err != nil {
+		k.logger.Error("Failed to set vesting schedule for recipient", "recipient", req.Recipient, "error", err)
+		return nil, errorsmod.Wrapf(err, "failed to set vesting schedule for recipient")
+	}
 
 	// Emit event
 	ctx.EventManager().EmitEvent(
