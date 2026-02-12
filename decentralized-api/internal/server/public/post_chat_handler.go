@@ -6,6 +6,7 @@ import (
 	"decentralized-api/apiconfig"
 	"decentralized-api/broker"
 	"decentralized-api/completionapi"
+	internalutils "decentralized-api/internal/utils"
 	"decentralized-api/logging"
 	"decentralized-api/payloadstorage"
 	"decentralized-api/utils"
@@ -20,10 +21,8 @@ import (
 	"time"
 
 	coretypes "github.com/cometbft/cometbft/rpc/core/types"
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/labstack/echo/v4"
 	"github.com/productscience/inference/api/inference/inference"
-	"github.com/productscience/inference/cmd/inferenced/cmd"
 	"github.com/productscience/inference/x/inference/calculations"
 	"github.com/productscience/inference/x/inference/types"
 )
@@ -38,6 +37,13 @@ const (
 	ExecutorContext AuthKeyContext = 2
 	// BothContexts indicates the AuthKey was used for both transfer and executor requests
 	BothContexts = TransferContext | ExecutorContext
+)
+
+type TestScenarioSeed int32
+
+const (
+	DelaySeed          TestScenarioSeed = 8675309
+	MissingPayloadSeed TestScenarioSeed = 2856185
 )
 
 // Package-level variables for AuthKey reuse prevention
@@ -352,6 +358,7 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 	}
 
 	// The executor, pinger nodes, or validators might request the prompt again from the TA, so we need to store it
+	originalSeed := request.Seed
 	request.InferenceId = inferenceUUID
 	request.Seed = strconv.Itoa(int(seed))
 	request.TransferAddress = s.recorder.GetAccountAddress()
@@ -366,7 +373,7 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 
 	go func() {
 		logging.Debug("Starting inference", types.Inferences, "id", inferenceRequest.InferenceId)
-		if s.configManager.GetApiConfig().TestMode && request.OpenAiRequest.Seed == 8675309 {
+		if s.configManager.GetApiConfig().TestMode && request.OpenAiRequest.Seed == int32(DelaySeed) {
 			time.Sleep(10 * time.Second)
 		}
 		err := s.recorder.StartInference(inferenceRequest)
@@ -376,6 +383,31 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 			logging.Debug("Submitted MsgStartInference", types.Inferences, "id", inferenceRequest.InferenceId)
 		}
 	}()
+
+	// In this test scenario, we don't send the request to the executor
+	if s.configManager.GetApiConfig().TestMode && originalSeed == strconv.Itoa(int(MissingPayloadSeed)) {
+		logging.Debug("Skipping sending request to executor due to test scenario configuration", types.Inferences)
+
+		mockOpenAiResponse := completionapi.Response{
+			ID: inferenceUUID,
+			Choices: []completionapi.Choice{},
+		}
+		responseBody, err := json.Marshal(mockOpenAiResponse)
+		if err != nil {
+			logging.Error("Failed to marshal mock OpenAI response", types.Inferences, "error", err)
+			return err
+		}
+
+		w := ctx.Response().Writer
+		w.Header().Set(utils.ContentTypeHeader, utils.ContentTypeApplicationJson)
+		w.WriteHeader(200)
+		_, err = w.Write(responseBody)
+		if err != nil {
+			logging.Error("Failed to write response body", types.Inferences, "error", err)
+		}
+
+		return nil
+	}
 
 	// It's important here to send the ORIGINAL body, not the finalRequest body. The executor will AGAIN go through
 	// the same process to create the same final request body
@@ -727,30 +759,22 @@ func (s *Server) getExecutorForRequest(ctx context.Context, model string) (*Exec
 
 // calculateSignature calculates a signature for the given components and agent type
 func (s *Server) calculateSignature(payload string, timestamp int64, transferAddress string, executorAddress string, agentType calculations.SignatureType) (string, error) {
-	components := calculations.SignatureComponents{
-		Payload:         payload,
-		Timestamp:       timestamp,
-		TransferAddress: transferAddress,
-		ExecutorAddress: executorAddress,
-	}
-
-	signerAddressStr := s.recorder.GetSignerAddress()
-	signerAddress, err := sdk.AccAddressFromBech32(signerAddressStr)
+	signerAddress := s.recorder.GetSignerAddress()
+	keyring := s.recorder.GetKeyring()
+	signature, err := internalutils.CalculateSignature(
+		payload,
+		timestamp,
+		0,
+		transferAddress,
+		executorAddress,
+		agentType,
+		signerAddress,
+		keyring,
+	)
 	if err != nil {
-		logging.Error("Failed to parse address", types.Inferences, "address", signerAddressStr, "error", err)
+		logging.Error("Failed to sign signature", types.Inferences, "address", signerAddress, "agentType", agentType, "error", err)
 		return "", err
 	}
-	accountSigner := &cmd.AccountSigner{
-		Addr:    signerAddress,
-		Keyring: s.recorder.GetKeyring(),
-	}
-
-	signature, err := calculations.Sign(accountSigner, components, agentType)
-	if err != nil {
-		logging.Error("Failed to sign signature", types.Inferences, "error", err, "agentType", agentType)
-		return "", err
-	}
-
 	return signature, nil
 }
 

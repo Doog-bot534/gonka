@@ -619,7 +619,41 @@ class InferenceTests : TestermintTest() {
         assertThat(promptRetrievalResponse.executorSignature).isNotEmpty()
     }
 
+    @Test
+    fun `pings TA after no payload`() {
+        cluster.allPairs.forEach { it.waitForMlNodesToLoad() }
+        genesis.waitForNextInferenceWindow()
+
+        val inferenceTimestamp = Instant.now().toEpochNanos()
+        val genesisAddress = genesis.node.getColdAddress()
+        val inferenceSignature = genesis.node.signRequest(
+            inferenceRequest,
+            accountAddress = null,
+            timestamp = inferenceTimestamp,
+            endpointAccount = genesisAddress,
+        )
+        val inferenceResponse = genesis.api.makeInferenceRequest(
+            inferenceRequest,
+            genesisAddress,
+            inferenceSignature,
+            inferenceTimestamp,
+            seed = MISSING_PAYLOAD_SEED,
+        )
+
+        // Despite that the TA did not deliver the payload to the executor,
+        // it still detects the message start and proceeds to execute the request
+        genesis.node.waitForNextBlock(2)
+        val inference = genesis.node.getInference(inferenceResponse.id)?.inference
+        assertNotNull(inference)
+
+        assertThat(inference.inferenceId).isEqualTo(inferenceSignature)
+        assertThat(inference.requestTimestamp).isEqualTo(inferenceTimestamp)
+        assertThat(inference.transferredBy).isEqualTo(genesisAddress)
+    }
+
     companion object {
+        const val MISSING_PAYLOAD_SEED = 2856185
+
         @JvmStatic
         @BeforeAll
         fun getCluster(): Unit {

@@ -13,3 +13,7 @@ const (
 	XValidatorAddressHeader = "X-Validator-Address"
 	XEpochIdHeader          = "X-Epoch-Id"
 )
+
+const (
+	ContentTypeApplicationJson = "application/json"
+)

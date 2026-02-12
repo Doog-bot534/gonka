@@ -34,6 +34,7 @@ func ProcessStartInference(
 	currentInference *types.Inference,
 	startMessage *types.MsgStartInference,
 	blockContext BlockContext,
+	epochId uint64,
 	logger types.InferenceLogger,
 ) (*types.Inference, *Payments, error) {
 	// nil should not happen, but we should always check to avoid panics
@@ -59,6 +60,8 @@ func ProcessStartInference(
 			startMessage.Model,
 			"assignedTo",
 			startMessage.AssignedTo,
+			"epochId",
+			epochId,
 		)
 		// Preserve the PerTokenPrice that was set by RecordInferencePrice
 		existingPerTokenPrice := currentInference.PerTokenPrice
@@ -67,6 +70,7 @@ func ProcessStartInference(
 			InferenceId:   startMessage.InferenceId,
 			Status:        types.InferenceStatus_STARTED,
 			PerTokenPrice: existingPerTokenPrice,
+			EpochId:       epochId,
 		}
 	}
 	// Works if FinishInference came before

@@ -296,6 +296,7 @@ func TestProcessStartInference(t *testing.T) {
 		currentInference *types.Inference
 		startMessage     *types.MsgStartInference
 		blockContext     BlockContext
+		epochId          uint64
 		expectError      bool
 		expectedStatus   types.InferenceStatus
 	}{
@@ -341,6 +342,7 @@ func TestProcessStartInference(t *testing.T) {
 			currentInference: &types.Inference{
 				InferenceId: "test-id",
 				ExecutedBy:  "executor",
+				EpochId:     3,
 			},
 			startMessage: &types.MsgStartInference{
 				InferenceId:      "test-id",
@@ -367,6 +369,7 @@ func TestProcessStartInference(t *testing.T) {
 				tt.currentInference,
 				tt.startMessage,
 				tt.blockContext,
+				tt.epochId,
 				mockLogger,
 			)
 
