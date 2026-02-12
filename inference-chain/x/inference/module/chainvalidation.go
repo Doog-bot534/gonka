@@ -958,8 +958,15 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 		)
 	}
 
+	weightsForCalculator := currentValidatorWeights
+	if snapshotFound && validationSlots > 0 && len(snapshot.ValidatorWeights) > 0 {
+		weightsForCalculator = validatorWeightsSliceToMap(snapshot.ValidatorWeights)
+		am.LogInfo("ComputeNewWeights: Using snapshot weights for calculator", types.PoC,
+			"numValidators", len(weightsForCalculator))
+	}
+
 	calculator := NewWeightCalculator(
-		currentValidatorWeights,
+		weightsForCalculator,
 		allowedCommits,
 		allowedDistributions,
 		validations,
@@ -1101,4 +1108,12 @@ func (am AppModule) filterStoreCommitsFromInferenceNodes(
 		"filteredParticipants", len(filteredCommits))
 
 	return filteredCommits, filteredDistributions
+}
+
+func validatorWeightsSliceToMap(weights []*types.ValidatorWeight) map[string]int64 {
+	result := make(map[string]int64, len(weights))
+	for _, w := range weights {
+		result[w.Address] = w.Weight
+	}
+	return result
 }
