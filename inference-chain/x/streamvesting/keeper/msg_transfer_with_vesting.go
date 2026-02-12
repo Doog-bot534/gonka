@@ -95,6 +95,7 @@ func (k msgServer) TransferWithVesting(goCtx context.Context, req *types.MsgTran
 	// Implement aggregation logic for each coin denomination
 	for _, coin := range req.Amount {
 		// Divide amount by epochs
+		// if amount < vestingEpochs then the whole sum will be transferred during the first epoch
 		epochsInt := math.NewInt(int64(vestingEpochs))
 		amountPerEpoch := coin.Amount.Quo(epochsInt)
 		remainder := coin.Amount.Mod(epochsInt)
