@@ -2,6 +2,7 @@ package utils
 
 const (
 	AuthorizationHeader     = "Authorization"
+	ContentTypeHeader       = "Content-Type"
 	XSeedHeader             = "X-Seed"
 	XInferenceIdHeader      = "X-Inference-Id"
 	XRequesterAddressHeader = "X-Requester-Address"

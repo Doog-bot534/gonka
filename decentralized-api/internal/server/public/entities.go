@@ -1,8 +1,6 @@
 package public
 
 import (
-	"net/http"
-
 	cryptotypes "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	comettypes "github.com/cometbft/cometbft/types"
 	"github.com/productscience/inference/x/inference/types"
@@ -10,7 +8,7 @@ import (
 
 type ChatRequest struct {
 	Body              []byte        `json:"body"`
-	Request           *http.Request `json:"-"`
+	ContentType       string        `json:"content_type"`
 	OpenAiRequest     OpenAiRequest `json:"open_ai_request"`
 	AuthKey           string        `json:"auth_key"` // signature signing inference request
 	Seed              string        `json:"seed"`

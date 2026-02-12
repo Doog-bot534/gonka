@@ -559,6 +559,7 @@ data class InferenceRequestPayload(
 
 data class ChatRequest(
     val body: String,
+    val contentType: String,
     val openAiRequest: OpenAiRequest,
     val authKey: String, // signature signing inference request
     val seed: String,

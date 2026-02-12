@@ -362,7 +362,7 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 		logging.Error("Failed to marshal chat request", types.Inferences, "error", err)
 		return err
 	}
-	s.storePromptToStorage(request.Request.Context(), inferenceUUID, requestBytes)
+	s.storePromptToStorage(ctx.Request().Context(), inferenceUUID, requestBytes)
 
 	go func() {
 		logging.Debug("Starting inference", types.Inferences, "id", inferenceRequest.InferenceId)
@@ -402,7 +402,7 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 	req.Header.Set(utils.XRequesterAddressHeader, request.RequesterAddress)
 	req.Header.Set(utils.XTASignatureHeader, inferenceRequest.TransferSignature)
 	req.Header.Set(utils.XPromptHashHeader, inferenceRequest.PromptHash)
-	req.Header.Set("Content-Type", request.Request.Header.Get("Content-Type"))
+	req.Header.Set(utils.ContentTypeHeader, request.ContentType)
 
 	resp, err := NewNoRedirectClient().Do(req)
 	if err != nil {
@@ -560,7 +560,7 @@ func (s *Server) handleExecutorRequest(ctx echo.Context, request *ChatRequest, w
 		}
 		resp, postErr := http.Post(
 			completionsUrl,
-			request.Request.Header.Get("Content-Type"),
+			request.ContentType,
 			bytes.NewReader(modifiedRequestBody.NewBody),
 		)
 		if postErr != nil {
@@ -592,7 +592,7 @@ func (s *Server) handleExecutorRequest(ctx echo.Context, request *ChatRequest, w
 				logging.Error("Failed to create synthetic response payload", types.Inferences, "inferenceId", inferenceId)
 				return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create synthetic response payload")
 			}
-			if txErr := s.sendInferenceTransaction(request.InferenceId, synthetic, request.Body, s.recorder.GetAccountAddress(), request, promptPayload); txErr != nil {
+			if txErr := s.sendInferenceTransaction(ctx.Request().Context(), request.InferenceId, synthetic, request.Body, s.recorder.GetAccountAddress(), request, promptPayload); txErr != nil {
 				logging.Error("Failed to record FinishInference after inference node payload error", types.Inferences,
 					"inferenceId", inferenceId, "error", txErr)
 			}
@@ -613,7 +613,7 @@ func (s *Server) handleExecutorRequest(ctx echo.Context, request *ChatRequest, w
 		return err
 	}
 
-	err = s.sendInferenceTransaction(request.InferenceId, completionResponse, request.Body, s.recorder.GetAccountAddress(), request, promptPayload)
+	err = s.sendInferenceTransaction(ctx.Request().Context(), request.InferenceId, completionResponse, request.Body, s.recorder.GetAccountAddress(), request, promptPayload)
 	if err != nil {
 		// Not http.Error, because we assume we already returned everything to the client during proxyResponse execution
 		logging.Error("Failed to send inference transaction", types.Inferences, "error", err)
@@ -754,7 +754,15 @@ func (s *Server) calculateSignature(payload string, timestamp int64, transferAdd
 	return signature, nil
 }
 
-func (s *Server) sendInferenceTransaction(inferenceId string, response completionapi.CompletionResponse, requestBody []byte, executorAddress string, request *ChatRequest, promptPayload []byte) error {
+func (s *Server) sendInferenceTransaction(
+	ctx context.Context,
+	inferenceId string,
+	response completionapi.CompletionResponse,
+	requestBody []byte,
+	executorAddress string,
+	request *ChatRequest,
+	promptPayload []byte,
+) error {
 	responseHash, err := response.GetHash()
 	if err != nil || responseHash == "" {
 		logging.Error("Failed to get responseHash from response", types.Inferences, "error", err)
@@ -829,7 +837,7 @@ func (s *Server) sendInferenceTransaction(inferenceId string, response completio
 
 		// Store payloads before broadcasting transaction
 		// If storage fails, we still proceed with broadcast (but log error)
-		s.storePayloadsToStorage(request.Request.Context(), inferenceId, promptPayload, bodyBytes)
+		s.storePayloadsToStorage(ctx, inferenceId, promptPayload, bodyBytes)
 
 		logging.Info("Submitting MsgFinishInference", types.Inferences, "inferenceId", inferenceId)
 		err = s.recorder.FinishInference(message)
@@ -967,7 +975,7 @@ func readRequest(request *http.Request, transferAddress string) (*ChatRequest, e
 
 	return &ChatRequest{
 		Body:              body,
-		Request:           request,
+		ContentType:       request.Header.Get(utils.ContentTypeHeader),
 		OpenAiRequest:     openAiRequest,
 		AuthKey:           request.Header.Get(utils.AuthorizationHeader),
 		Seed:              request.Header.Get(utils.XSeedHeader),
