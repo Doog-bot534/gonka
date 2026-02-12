@@ -32,19 +32,23 @@ type Tree struct {
 }
 
 type Result struct {
-	ShufflePct       float64
-	Fanout           int
-	Trees            int
-	AttackerFraction float64
-	AttackerDist     string
-	AvgUnreached     float64
-	HonestNodes      int
+	ShufflePct         float64
+	Fanout             int
+	Trees              int
+	AttackerFraction   float64
+	AttackerDist       string
+	AvgUnreached       float64
+	HonestNodes        int
+	AvgMessagesPerNode float64
+	TotalMessages      int
 }
 
-func propagate(tree *Tree, attackers map[string]bool) map[string]bool {
+func propagateWithStats(tree *Tree, attackers map[string]bool) (map[string]bool, int) {
 	reached := make(map[string]bool)
+	messagesSent := 0
+
 	if tree.Root == nil {
-		return reached
+		return reached, messagesSent
 	}
 
 	reached[tree.Root.Address] = true
@@ -58,6 +62,8 @@ func propagate(tree *Tree, attackers map[string]bool) map[string]bool {
 			continue
 		}
 
+		messagesSent += len(node.Children)
+
 		for _, child := range node.Children {
 			if !reached[child.Address] {
 				reached[child.Address] = true
@@ -65,7 +71,7 @@ func propagate(tree *Tree, attackers map[string]bool) map[string]bool {
 			}
 		}
 	}
-	return reached
+	return reached, messagesSent
 }
 
 func main() {
@@ -134,6 +140,8 @@ func main() {
 
 				unreachedTotal := 0
 				honestTotal := 0
+				totalMessagesSum := 0
+				messagesPerNodeSum := 0.0
 
 				for sim := 0; sim < *numSimulations; sim++ {
 					participants := make([]WeightedParticipant, *numParticipants)
@@ -170,12 +178,17 @@ func main() {
 					}
 
 					globalReached := make(map[string]bool)
+					totalMessages := 0
 					for _, tree := range trees {
-						treeReached := propagate(tree, attackers)
+						treeReached, messages := propagateWithStats(tree, attackers)
+						totalMessages += messages
 						for addr := range treeReached {
 							globalReached[addr] = true
 						}
 					}
+
+					totalMessagesSum += totalMessages
+					messagesPerNodeSum += float64(totalMessages) / float64(*numParticipants)
 
 					unreachedHonest := 0
 					for i := 0; i < *numParticipants; i++ {
@@ -191,15 +204,19 @@ func main() {
 
 				honestNodes := honestTotal / *numSimulations
 				avgUnreached := float64(unreachedTotal) / float64(*numSimulations)
+				avgMessagesPerNode := messagesPerNodeSum / float64(*numSimulations)
+				avgTotalMessages := totalMessagesSum / *numSimulations
 
 				resultsChan <- Result{
-					ShufflePct:       j.shufflePct,
-					Fanout:           j.fanout,
-					Trees:            j.numTrees,
-					AttackerFraction: j.attackerFraction,
-					AttackerDist:     j.attackerDist,
-					AvgUnreached:     avgUnreached,
-					HonestNodes:      honestNodes,
+					ShufflePct:         j.shufflePct,
+					Fanout:             j.fanout,
+					Trees:              j.numTrees,
+					AttackerFraction:   j.attackerFraction,
+					AttackerDist:       j.attackerDist,
+					AvgUnreached:       avgUnreached,
+					HonestNodes:        honestNodes,
+					AvgMessagesPerNode: avgMessagesPerNode,
+					TotalMessages:      avgTotalMessages,
 				}
 			}
 		}()
@@ -250,8 +267,56 @@ func main() {
 
 	printTables(results, attackerFractions, fanouts, treeCounts, shufflePcts, attackerDists)
 
+	fmt.Println("\n\n==========================================")
+	fmt.Println("=== PROPAGATION STATISTICS ===")
+	fmt.Println("Note: Messages shown are for ONE participant publishing through tree roots")
+	fmt.Printf("For ALL %d participants publishing: multiply 'Total Messages' by %d\n", *numParticipants, *numParticipants)
+
+	for _, dist := range attackerDists {
+		distName := "Uniform"
+		if dist == "highweight" {
+			distName = "High-Weight"
+		} else if dist == "slots" {
+			distName = "Slots"
+		} else if dist == "wald" {
+			distName = "Wald"
+		}
+
+		for _, sp := range shufflePcts {
+			for _, af := range attackerFractions {
+				fmt.Printf("\n--- %s Distribution, %.0f%% Attackers, Shuffle %.0f%% ---\n", distName, af*100, sp*100)
+				fmt.Printf("| Trees | Fanout | Msgs (1 pub) | Msgs/Participant | Total if ALL publish |\n")
+				fmt.Printf("|-------|--------|--------------|------------------|-----------------------|\n")
+
+				for _, trees := range treeCounts {
+					for _, fanout := range fanouts {
+						for _, r := range results {
+							if r.AttackerDist == dist && r.ShufflePct == sp && r.Fanout == fanout && r.Trees == trees && r.AttackerFraction == af {
+								totalIfAll := int64(r.TotalMessages) * int64(*numParticipants)
+								fmt.Printf("| %-5d | %-6d | %-12d | %-16.2f | %-21s |\n",
+									trees, fanout, r.TotalMessages, r.AvgMessagesPerNode, formatLargeNumber(totalIfAll))
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	elapsed := time.Since(startTime)
 	fmt.Printf("\nExecution completed in: %s\n", elapsed.Round(time.Millisecond))
+}
+
+func formatLargeNumber(n int64) string {
+	if n >= 1_000_000_000 {
+		return fmt.Sprintf("%.2fB", float64(n)/1_000_000_000)
+	} else if n >= 1_000_000 {
+		return fmt.Sprintf("%.2fM", float64(n)/1_000_000)
+	} else if n >= 1_000 {
+		return fmt.Sprintf("%.2fK", float64(n)/1_000)
+	}
+	return fmt.Sprintf("%d", n)
 }
 
 func printTables(results []Result, attackerFractions []float64, fanouts, treeCounts []int, shufflePcts []float64, attackerDists []string) {
@@ -493,7 +558,7 @@ func selectAttackersByWald(participants []WeightedParticipant, numAttackers int,
 			maxWeight = float64(p.Weight)
 		}
 	}
-	
+
 	scores := make([]scored, len(participants))
 	for i, p := range participants {
 		mu := maxWeight / float64(p.Weight)
