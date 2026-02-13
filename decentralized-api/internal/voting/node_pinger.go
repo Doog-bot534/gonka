@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"decentralized-api/cosmosclient"
+	"decentralized-api/internal/server/public"
 	"decentralized-api/logging"
 	"decentralized-api/payloadstorage"
 	apiutils "decentralized-api/utils"
@@ -53,9 +54,7 @@ func NewNodePinger(cosmosClient cosmosclient.CosmosMessageClient, config NodePin
 	}
 
 	return &NodePinger{
-		httpClient: &http.Client{
-			Timeout: config.Timeout,
-		},
+		httpClient:   apiutils.NewHttpClient(config.Timeout),
 		cosmosClient: cosmosClient,
 		timeout:      config.Timeout,
 	}
@@ -63,20 +62,10 @@ func NewNodePinger(cosmosClient cosmosclient.CosmosMessageClient, config NodePin
 
 // Types for Payload Retrieval (used by voters to ping respondent)
 
-// PayloadPingResponse represents the response from a node's payload endpoint.
-// Mirrors the public/admin/payload_handlers.go PayloadResponse struct.
-// TODO! Consider moving to a shared payload DTO package for reuse across public/admin/voting.
-type PayloadPingResponse struct {
-	InferenceId   string `json:"inference_id"`
-	PromptPayload []byte `json:"prompt_payload"`
-	// RespondentSignature: when respondent is executor, this is the executor's signature on the response (wire format: executor_signature).
-	RespondentSignature string `json:"executor_signature,omitempty"`
-}
-
 // PingResult contains the result of pinging a node for payload.
 type PingResult struct {
 	// Payload contains the retrieved payload data (if successful).
-	Payload *PayloadPingResponse
+	Payload *public.PayloadResponse
 	// PromptHash is the computed hash of the prompt payload.
 	PromptHash string
 	// Error contains any error that occurred.
@@ -105,7 +94,7 @@ type VerificationResponse struct {
 	DataFound bool `json:"data_found"`
 	// Payload contains the actual payload data retrieved from respondent (if found).
 	// Returned synchronously to challenger in the same response.
-	Payload *PayloadPingResponse `json:"payload,omitempty"`
+	Payload *public.PayloadResponse `json:"payload,omitempty"`
 	// PromptHash is the hash of payload found (if any)
 	PromptHash string `json:"prompt_hash,omitempty"`
 	// Error message if verification failed
@@ -123,14 +112,16 @@ func (np *NodePinger) PingRespondentForPayload(
 	epochId uint64,
 ) (*PingResult, error) {
 	// Build URL with inference_id as query parameter
-	baseUrl, err := url.JoinPath(respondentURL, "v1/inference/prompt")
-	if err != nil {
-		return &PingResult{Error: fmt.Errorf("failed to build URL: %w", err)}, err
+	baseUrl, readBodyErr := url.JoinPath(respondentURL, "v1/inference/prompt")
+	if readBodyErr != nil {
+		logging.Error("Failed to build retrieval URL", types.Voting, "error", readBodyErr)
+		return &PingResult{Error: fmt.Errorf("failed to build URL: %w", readBodyErr)}, readBodyErr
 	}
 
-	parsedUrl, err := url.Parse(baseUrl)
-	if err != nil {
-		return &PingResult{Error: fmt.Errorf("failed to parse URL: %w", err)}, err
+	parsedUrl, readBodyErr := url.Parse(baseUrl)
+	if readBodyErr != nil {
+		logging.Error("Failed to parse URL", types.Voting, "error", readBodyErr)
+		return &PingResult{Error: fmt.Errorf("failed to parse URL: %w", readBodyErr)}, readBodyErr
 	}
 
 	query := parsedUrl.Query()
@@ -142,15 +133,17 @@ func (np *NodePinger) PingRespondentForPayload(
 	timestamp := time.Now().UnixNano()
 	voterAddress := np.cosmosClient.GetAccountAddress()
 
-	signature, err := np.signPayloadRequest(inferenceId, timestamp, voterAddress, epochId)
-	if err != nil {
-		return &PingResult{Error: fmt.Errorf("failed to sign request: %w", err)}, err
+	signature, readBodyErr := np.signPayloadRequest(inferenceId, timestamp, voterAddress, epochId)
+	if readBodyErr != nil {
+		logging.Error("Failed to sign request", types.Voting, "error", readBodyErr)
+		return &PingResult{Error: fmt.Errorf("failed to sign request: %w", readBodyErr)}, readBodyErr
 	}
 
 	// Create request
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestUrl, nil)
-	if err != nil {
-		return &PingResult{Error: fmt.Errorf("failed to create request: %w", err)}, err
+	req, readBodyErr := http.NewRequestWithContext(ctx, http.MethodGet, requestUrl, nil)
+	if readBodyErr != nil {
+		logging.Error("Failed to create retrieval request", types.Voting, "error", readBodyErr)
+		return &PingResult{Error: fmt.Errorf("failed to create request: %w", readBodyErr)}, readBodyErr
 	}
 
 	// Set authentication headers
@@ -160,46 +153,54 @@ func (np *NodePinger) PingRespondentForPayload(
 	req.Header.Set(apiutils.AuthorizationHeader, signature)
 
 	// Execute request
-	resp, err := np.httpClient.Do(req)
-	if err != nil {
-		logging.Debug("Payload ping to respondent failed", types.Validation,
-			"respondentURL", respondentURL, "inferenceId", inferenceId, "error", err)
-		return &PingResult{Error: fmt.Errorf("request failed: %w", err)}, err
+	resp, readBodyErr := np.httpClient.Do(req)
+	if readBodyErr != nil {
+		logging.Debug("Payload ping to respondent failed", types.Voting,
+			"respondentURL", respondentURL, "inferenceId", inferenceId, "error", readBodyErr)
+		return &PingResult{Error: fmt.Errorf("request failed: %w", readBodyErr)}, readBodyErr
 	}
 	defer resp.Body.Close()
 
 	// Handle response codes
+	body, readBodyErr := io.ReadAll(resp.Body)
+	if readBodyErr != nil {
+		logging.Error("Failed to read response body", types.Voting, "error", readBodyErr)
+	}
+
 	if resp.StatusCode == http.StatusNotFound {
-		logging.Debug("Payload not found on respondent", types.Validation,
-			"respondentURL", respondentURL, "inferenceId", inferenceId)
+		logging.Debug("Payload not found on respondent", types.Voting,
+			"respondentURL", respondentURL, "inferenceId", inferenceId,
+			"body", string(body))
 		return &PingResult{Error: nil}, nil // Not found is not an error, just no data
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
 		err := fmt.Errorf("respondent returned status %d: %s", resp.StatusCode, string(body))
 		return &PingResult{Error: err}, err
 	}
 
+	if readBodyErr != nil {
+		return &PingResult{Error: readBodyErr}, readBodyErr
+	}
+
 	// Parse response
-	var payloadResp PayloadPingResponse
-	if err := json.NewDecoder(resp.Body).Decode(&payloadResp); err != nil {
+	var payloadResp public.PayloadResponse
+	if err := json.Unmarshal(body, &payloadResp); err != nil {
 		return &PingResult{Error: fmt.Errorf("failed to decode response: %w", err)}, err
 	}
 
 	// Compute prompt hash
-	promptHash, err := payloadstorage.ComputePromptHash(payloadResp.PromptPayload)
-	if err != nil {
-		logging.Warn("Failed to compute prompt hash", types.Validation,
-			"inferenceId", inferenceId, "error", err)
+	promptHash, readBodyErr := payloadstorage.ComputePromptHash(payloadResp.PromptPayload)
+	if readBodyErr != nil {
+		logging.Warn("Failed to compute prompt hash", types.Voting,
+			"inferenceId", inferenceId, "error", readBodyErr)
 		promptHash = ""
 	}
 
-	logging.Debug("Successfully pinged respondent for payload", types.Validation,
+	logging.Debug("Successfully pinged respondent for payload", types.Voting,
 		"respondentURL", respondentURL, "inferenceId", inferenceId, "promptHash", promptHash)
 
 	return &PingResult{
-
 		Payload:    &payloadResp,
 		PromptHash: promptHash,
 	}, nil
@@ -238,7 +239,7 @@ func (np *NodePinger) VerifyRespondent(
 		// Respondent doesn't have payload - negative vote
 		response.Vote = VoteNegative
 		response.DataFound = false
-		logging.Info("Voter verification: respondent does not have payload", types.Validation,
+		logging.Info("Voter verification: respondent does not have payload", types.Voting,
 			"inferenceId", inferenceId, "voterAddress", voterAddress)
 		return response
 	}
@@ -252,17 +253,152 @@ func (np *NodePinger) VerifyRespondent(
 	if expectedPromptHash != "" && pingResult.PromptHash != expectedPromptHash {
 		// Hash mismatch - respondent has wrong payload
 		response.Vote = VoteNegative
-		logging.Warn("Voter verification: respondent has wrong payload (hash mismatch)", types.Validation,
+		logging.Warn("Voter verification: respondent has wrong payload (hash mismatch)", types.Voting,
 			"inferenceId", inferenceId, "expected", expectedPromptHash, "actual", pingResult.PromptHash)
 		return response
 	}
 
 	// Respondent has correct payload - positive vote
 	response.Vote = VotePositive
-	logging.Info("Voter verification: respondent has correct payload", types.Validation,
+	logging.Info("Voter verification: respondent has correct payload", types.Voting,
 		"inferenceId", inferenceId, "voterAddress", voterAddress)
 
 	return response
+}
+
+// Pinging from executor to TA
+
+func (np *NodePinger) RetrievePayloadToRequester(ctx context.Context, inferenceId string) error {
+	queryClient := np.cosmosClient.NewInferenceQueryClient()
+	inferenceResp, err := queryClient.Inference(ctx, &types.QueryGetInferenceRequest{Index: inferenceId})
+	if err != nil {
+		logging.Error("Failed to query inference", types.Voting, "inferenceId", inferenceId, "error", err)
+		return err
+	}
+
+	executorAddress := inferenceResp.Inference.AssignedTo
+	currentAddress := np.cosmosClient.GetAccountAddress()
+	if executorAddress != currentAddress {
+		// This inference ID was not meant for us; do nothing
+		return nil
+	}
+
+	// TODO: Consider adding a mechanism to check whether the request started so the TA is not pinged
+	// For now, this should act like a basic barrier
+	if inferenceResp.Inference.Status != types.InferenceStatus_STARTED {
+		logging.Debug("Inference status is not started; skipping", types.Voting, "inferenceId", inferenceId, "status", inferenceResp.Inference.Status)
+		return nil
+	}
+
+	transferAddress := inferenceResp.Inference.TransferredBy
+	logging.Info(
+		"Matched inference start event", types.Voting,
+		"executorAddress", executorAddress,
+		"inferenceId", inferenceId,
+		"transferAddress", transferAddress,
+	)
+
+	transferURL, err := np.GetAddressUrl(ctx, transferAddress)
+	if err != nil {
+		logging.Error("Failed to get transfer URL", types.Voting, "error", err)
+		return err
+	}
+
+	epochId := inferenceResp.Inference.EpochId
+	payload, err := np.PingRespondentForPayload(ctx, transferURL, inferenceId, epochId)
+	if err != nil {
+		logging.Error("Failed to request payload from transfer agent", types.Voting, "epochId", epochId, "inferenceId", inferenceId, "transferURL", transferURL, "error", err)
+		return err
+	}
+
+	logging.Debug("Got payload", types.Voting, "payload", payload)
+
+	executorURL, err := np.GetAddressUrl(ctx, executorAddress)
+	if err != nil {
+		logging.Error("Failed to get executor URL", types.Voting, "error", err)
+		return err
+	}
+
+	err = np.PostChat(executorURL, executorAddress, payload.Payload.PromptPayload)
+	if err != nil {
+		logging.Error("Failed to post chat request to executor", types.Voting, "inferenceId", inferenceId, "executorURL", executorURL, "executorAddress", executorAddress, "error", err)
+		return err
+	}
+
+	return nil
+}
+
+func (np *NodePinger) PostChat(
+	executorURL string,
+	executorAddress string,
+	payloadBytes []byte,
+) error {
+	var chatRequest public.ChatRequest
+	err := json.Unmarshal(payloadBytes, &chatRequest)
+	if err != nil {
+		logging.Error("Failed to unmarshal chat request", types.Voting, "error", err)
+		return err
+	}
+
+	// TODO: It's a bit silly to make a request to ourselves.
+	chatURL, err := url.JoinPath(executorURL, "v1/chat/completions")
+	if err != nil {
+		logging.Error("Failed to build completions URL", types.Voting, "error", err)
+		return err
+	}
+
+	req, err := http.NewRequest("POST", chatURL, bytes.NewBuffer(chatRequest.Body))
+	if err != nil {
+		logging.Error("Failed create POST request to completions URL", types.Voting, "chatURL", chatURL, "error", err)
+		return err
+	}
+
+	req.Header.Set(apiutils.XInferenceIdHeader, chatRequest.InferenceId)
+	req.Header.Set(apiutils.XSeedHeader, chatRequest.Seed)
+	req.Header.Set(apiutils.AuthorizationHeader, chatRequest.AuthKey)
+	req.Header.Set(apiutils.XTimestampHeader, strconv.FormatInt(chatRequest.Timestamp, 10))
+	req.Header.Set(apiutils.XTransferAddressHeader, chatRequest.TransferAddress)
+	req.Header.Set(apiutils.XRequesterAddressHeader, chatRequest.RequesterAddress)
+	req.Header.Set(apiutils.XTASignatureHeader, chatRequest.TransferSignature)
+	req.Header.Set(apiutils.XPromptHashHeader, chatRequest.PromptHash)
+	req.Header.Set(apiutils.ContentTypeHeader, chatRequest.ContentType)
+
+	resp, err := np.httpClient.Do(req)
+	if err != nil {
+		logging.Error("Failed to POST to completions URL", types.Voting, "chatURL", chatURL, "error", err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		if err != nil {
+			logging.Error("Chat request returned non-200 status code, failed to read response body", types.Voting, "statusCode", resp.StatusCode, "error", err)
+			return fmt.Errorf("Chat request returned status code %d, failed to read response body: %w", resp.StatusCode, err)
+		}
+
+		logging.Error("Chat request returned non-200 status code", types.Voting, "statusCode", resp.StatusCode, "body", body)
+		return fmt.Errorf("Chat request returned status code %d: %s", resp.StatusCode, string(body))
+	}
+	if err != nil {
+		logging.Error("Failed to read response body", types.Voting, "error", err)
+		return err
+	}
+
+	// TODO: proxy response?
+	return nil
+}
+
+func (np *NodePinger) GetAddressUrl(ctx context.Context, address string) (string, error) {
+	queryClient := np.cosmosClient.NewInferenceQueryClient()
+	participantResp, err := queryClient.Participant(ctx, &types.QueryGetParticipantRequest{
+		Index: address,
+	})
+	if err != nil {
+		logging.Error("Failed to query address", types.Voting, "error", err)
+		return "", err
+	}
+	return participantResp.Participant.InferenceUrl, nil
 }
 
 // Challenger Functions: Request Verification from Voters
@@ -305,7 +441,7 @@ func (np *NodePinger) RequestVerificationFromVoters(
 	}
 
 	if len(voterURLs) == 0 {
-		logging.Warn("No voters provided for verification", types.Validation,
+		logging.Warn("No voters provided for verification", types.Voting,
 			"inferenceId", request.InferenceId)
 		return result, nil
 	}
@@ -351,7 +487,7 @@ func (np *NodePinger) RequestVerificationFromVoters(
 				default:
 				}
 
-				logging.Debug("Requesting verification from voter", types.Validation,
+				logging.Debug("Requesting verification from voter", types.Voting,
 					"inferenceId", request.InferenceId, "voterURL", voterURL,
 					"attempt", attempt+1, "maxAttempts", cfg.MaxRetries)
 
@@ -405,7 +541,7 @@ func (np *NodePinger) RequestVerificationFromVoters(
 				result.FirstPositive = &resultCopy
 				result.StoppedEarly = true
 
-				logging.Info("Found positive vote, stopping verification", types.Validation,
+				logging.Info("Found positive vote, stopping verification", types.Voting,
 					"inferenceId", request.InferenceId, "voterURL", jobRes.voterURL,
 					"contacted", len(result.VoterResults))
 
@@ -429,12 +565,12 @@ func (np *NodePinger) RequestVerificationFromVoters(
 	// If context was cancelled externally and we didn't stop because of a positive vote,
 	// surface the cancellation error.
 	if err := ctx.Err(); err != nil && err != context.Canceled {
-		logging.Warn("Verification request cancelled or timed out", types.Validation,
+		logging.Warn("Verification request cancelled or timed out", types.Voting,
 			"inferenceId", request.InferenceId, "contacted", len(result.VoterResults), "error", err)
 		return result, err
 	}
 
-	logging.Info("All voters completed without positive vote", types.Validation,
+	logging.Info("All voters completed without positive vote", types.Voting,
 		"inferenceId", request.InferenceId, "totalVoters", len(result.VoterResults))
 
 	return result, nil

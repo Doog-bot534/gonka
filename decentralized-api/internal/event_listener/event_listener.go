@@ -432,12 +432,12 @@ func (e *InferenceStartedEventHandler) CanHandle(event *chainevents.JSONRPCRespo
 func (e *InferenceStartedEventHandler) Handle(event *chainevents.JSONRPCResponse, el *EventListener) error {
 	if el.isNodeSynced() {
 		inferenceIdKey := getMsgStartAttributeKey(inferencekeeper.EventAttributeInferenceId)
-		tapConfig := voting.DefaultTransferAgentPingerConfig()
-		tap := voting.NewTransferAgentPinger(&el.transactionRecorder, el.phaseTracker, tapConfig)
+		npConfig := voting.DefaultNodePingerConfig()
+		np := voting.NewNodePinger(&el.transactionRecorder, npConfig)
 
 		ctx := context.Background()
 		for _, inferenceId := range event.Result.Events[inferenceIdKey] {
-			if err := tap.RetrievePayloadToRequester(ctx, inferenceId); err != nil {
+			if err := np.RetrievePayloadToRequester(ctx, inferenceId); err != nil {
 				// TODO: Initiate votes with node pinger
 				continue
 			}
