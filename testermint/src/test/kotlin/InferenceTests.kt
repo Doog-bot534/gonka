@@ -649,6 +649,8 @@ class InferenceTests : TestermintTest() {
         assertThat(inference.inferenceId).isEqualTo(inferenceSignature)
         assertThat(inference.requestTimestamp).isEqualTo(inferenceTimestamp)
         assertThat(inference.transferredBy).isEqualTo(genesisAddress)
+        assertThat(inference.status).isEqualTo(1)
+        assertThat(inference.executedBy).isEqualTo(inference.assignedTo)
     }
 
     companion object {
