@@ -119,17 +119,21 @@ data class ApplicationAPI(
         address: String,
         signature: String,
         timestamp: Long,
+        seed: Int? = null,
     ): OpenAIResponse =
         wrapLog("MakeInferenceRequest", true) {
             val url = urlFor(SERVER_TYPE_PUBLIC)
-            val response = Fuel.post((url + "/v1/chat/completions"))
+            var request = Fuel.post("$url/v1/chat/completions")
                 .jsonBody(request)
+                .timeout(1000 * 60)
+                .timeoutRead(1000 * 60)
                 .header("X-Requester-Address", address)
                 .header("Authorization", signature)
                 .header("X-Timestamp", timestamp)
-                .timeout(1000 * 60)
-                .timeoutRead(1000 * 60)
-                .responseObject<OpenAIResponse>(gsonDeserializer(cosmosJson))
+            if (seed != null) {
+                request = request.header("X-Seed", seed)
+            }
+            val response = request.responseObject<OpenAIResponse>(gsonDeserializer(cosmosJson))
             logResponse(response)
             response.third.get()
         }

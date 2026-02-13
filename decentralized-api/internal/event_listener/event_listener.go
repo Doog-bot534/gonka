@@ -10,6 +10,7 @@ import (
 	"decentralized-api/internal/event_listener/chainevents"
 	"decentralized-api/internal/startup"
 	"decentralized-api/internal/validation"
+	"decentralized-api/internal/voting"
 	"decentralized-api/logging"
 	"decentralized-api/poc"
 	"decentralized-api/training"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/productscience/inference/x/inference/types"
+	inferencekeeper "github.com/productscience/inference/x/inference/keeper"
 )
 
 const (
@@ -82,6 +84,7 @@ func NewEventListener(
 
 	eventHandlers := []EventHandler{
 		&BlsTransactionEventHandler{},
+		&InferenceStartedEventHandler{},
 		&InferenceFinishedEventHandler{},
 		&InferenceValidationEventHandler{},
 		&SubmitProposalEventHandler{},
@@ -415,6 +418,38 @@ func (e *BlsTransactionEventHandler) Handle(event *chainevents.JSONRPCResponse, 
 	return nil
 }
 
+type InferenceStartedEventHandler struct {
+}
+
+func (e *InferenceStartedEventHandler) GetName() string {
+	return inferencekeeper.EventNameStartInference
+}
+
+func (e *InferenceStartedEventHandler) CanHandle(event *chainevents.JSONRPCResponse) bool {
+	return len(event.Result.Events[getMsgStartAttributeKey(inferencekeeper.EventAttributeInferenceId)]) > 0
+}
+
+func (e *InferenceStartedEventHandler) Handle(event *chainevents.JSONRPCResponse, el *EventListener) error {
+	if el.isNodeSynced() {
+		inferenceIdKey := getMsgStartAttributeKey(inferencekeeper.EventAttributeInferenceId)
+		npConfig := voting.DefaultNodePingerConfig()
+		np := voting.NewNodePinger(&el.transactionRecorder, npConfig)
+
+		ctx := context.Background()
+		for _, inferenceId := range event.Result.Events[inferenceIdKey] {
+			if err := np.RetrievePayloadToRequester(ctx, inferenceId); err != nil {
+				// TODO: Initiate votes with node pinger
+				continue
+			}
+		}
+	}
+	return nil
+}
+
+func getMsgStartAttributeKey(attribute string) string {
+	return getAttributeKey(inferencekeeper.EventNameStartInference, attribute)
+}
+
 type InferenceFinishedEventHandler struct {
 }
 
@@ -493,6 +528,10 @@ func (e *TrainingTaskAssignedEventHandler) Handle(event *chainevents.JSONRPCResp
 		}
 	}
 	return nil
+}
+
+func getAttributeKey(eventName, attribute string) string {
+	return fmt.Sprintf("%s.%s", eventName, attribute)
 }
 
 func waitForEventHeight(event *chainevents.JSONRPCResponse, currentConfig *apiconfig.ConfigManager, name string) bool {

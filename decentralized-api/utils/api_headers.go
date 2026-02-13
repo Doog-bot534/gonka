@@ -2,6 +2,7 @@ package utils
 
 const (
 	AuthorizationHeader     = "Authorization"
+	ContentTypeHeader       = "Content-Type"
 	XSeedHeader             = "X-Seed"
 	XInferenceIdHeader      = "X-Inference-Id"
 	XRequesterAddressHeader = "X-Requester-Address"
@@ -11,4 +12,8 @@ const (
 	XPromptHashHeader       = "X-Prompt-Hash"
 	XValidatorAddressHeader = "X-Validator-Address"
 	XEpochIdHeader          = "X-Epoch-Id"
+)
+
+const (
+	ContentTypeApplicationJson = "application/json"
 )

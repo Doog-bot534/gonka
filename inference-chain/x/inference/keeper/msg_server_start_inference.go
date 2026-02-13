@@ -12,6 +12,14 @@ import (
 	"github.com/productscience/inference/x/inference/types"
 )
 
+const (
+	EventNameStartInference = "start_inference"
+	EventAttributeInferenceId = "inference_id"
+	EventAttributeResult = "result"
+	EventAttributeResultFailed = "failed"
+	EventAttributeResultSuccess = "success"
+)
+
 func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInference) (*types.MsgStartInferenceResponse, error) {
 	var ctx sdk.Context = sdk.UnwrapSDKContext(goCtx)
 	k.LogInfo("StartInference", types.Inferences, "inferenceId", msg.InferenceId, "creator", msg.Creator, "requestedBy", msg.RequestedBy, "model", msg.Model)
@@ -74,7 +82,14 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 		BlockTimestamp: ctx.BlockTime().UnixMilli(),
 	}
 
-	inference, payments, err := calculations.ProcessStartInference(&existingInference, msg, blockContext, k)
+	effectiveEpoch, found := k.GetEffectiveEpoch(ctx)
+	if !found {
+		k.LogError("Effective Epoch Index not found", types.EpochGroup)
+		return failedStart(ctx, sdkerrors.Wrap(types.ErrEffectiveEpochNotFound, "handleInferenceCompleted: Effective Epoch Index not found"), msg), nil
+	}
+
+	epochId := effectiveEpoch.Index
+	inference, payments, err := calculations.ProcessStartInference(&existingInference, msg, blockContext, epochId, k)
 	if err != nil {
 		return failedStart(ctx, err, msg), nil
 	}
@@ -96,15 +111,28 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 		}
 	}
 
+	emitEvent(ctx, EventAttributeResultSuccess, msg.InferenceId)
 	return &types.MsgStartInferenceResponse{
 		InferenceIndex: msg.InferenceId,
 	}, nil
 }
 
-func failedStart(ctx sdk.Context, error error, message *types.MsgStartInference) *types.MsgStartInferenceResponse {
+func emitEvent(ctx sdk.Context, result, inferenceId string) {
 	ctx.EventManager().EmitEvent(
-		sdk.NewEvent("start_inference",
-			sdk.NewAttribute("result", "failed")))
+		sdk.NewEvent(
+			EventNameStartInference,
+			sdk.NewAttribute(EventAttributeResult, result),
+			sdk.NewAttribute(EventAttributeInferenceId, inferenceId),
+		),
+	)
+}
+
+func failedStart(
+	ctx sdk.Context,
+	error error,
+	message *types.MsgStartInference,
+) *types.MsgStartInferenceResponse {
+	emitEvent(ctx, EventAttributeResultFailed, message.InferenceId)
 	return &types.MsgStartInferenceResponse{
 		InferenceIndex: message.InferenceId,
 		ErrorMessage:   error.Error(),

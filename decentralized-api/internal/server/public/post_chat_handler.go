@@ -6,6 +6,7 @@ import (
 	"decentralized-api/apiconfig"
 	"decentralized-api/broker"
 	"decentralized-api/completionapi"
+	internalutils "decentralized-api/internal/utils"
 	"decentralized-api/logging"
 	"decentralized-api/payloadstorage"
 	"decentralized-api/utils"
@@ -20,10 +21,8 @@ import (
 	"time"
 
 	coretypes "github.com/cometbft/cometbft/rpc/core/types"
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/labstack/echo/v4"
 	"github.com/productscience/inference/api/inference/inference"
-	"github.com/productscience/inference/cmd/inferenced/cmd"
 	"github.com/productscience/inference/x/inference/calculations"
 	"github.com/productscience/inference/x/inference/types"
 )
@@ -38,6 +37,13 @@ const (
 	ExecutorContext AuthKeyContext = 2
 	// BothContexts indicates the AuthKey was used for both transfer and executor requests
 	BothContexts = TransferContext | ExecutorContext
+)
+
+type TestScenarioSeed int32
+
+const (
+	DelaySeed          TestScenarioSeed = 8675309
+	MissingPayloadSeed TestScenarioSeed = 2856185
 )
 
 // Package-level variables for AuthKey reuse prevention
@@ -352,11 +358,22 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 	}
 
 	// The executor, pinger nodes, or validators might request the prompt again from the TA, so we need to store it
-	s.storePromptToStorage(request.Request.Context(), inferenceUUID, request.Body)
+	originalSeed := request.Seed
+	request.InferenceId = inferenceUUID
+	request.Seed = strconv.Itoa(int(seed))
+	request.TransferAddress = s.recorder.GetAccountAddress()
+	request.TransferSignature = inferenceRequest.TransferSignature
+	request.PromptHash = inferenceRequest.PromptHash
+	requestBytes, err := json.Marshal(request)
+	if err != nil {
+		logging.Error("Failed to marshal chat request", types.Inferences, "error", err)
+		return err
+	}
+	s.storePromptToStorage(ctx.Request().Context(), inferenceUUID, requestBytes)
 
 	go func() {
 		logging.Debug("Starting inference", types.Inferences, "id", inferenceRequest.InferenceId)
-		if s.configManager.GetApiConfig().TestMode && request.OpenAiRequest.Seed == 8675309 {
+		if s.configManager.GetApiConfig().TestMode && request.OpenAiRequest.Seed == int32(DelaySeed) {
 			time.Sleep(10 * time.Second)
 		}
 		err := s.recorder.StartInference(inferenceRequest)
@@ -367,19 +384,37 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 		}
 	}()
 
+	// In this test scenario, we don't send the request to the executor
+	if s.configManager.GetApiConfig().TestMode && originalSeed == strconv.Itoa(int(MissingPayloadSeed)) {
+		logging.Debug("Skipping sending request to executor due to test scenario configuration", types.Inferences)
+
+		mockOpenAiResponse := completionapi.Response{
+			ID: inferenceUUID,
+			Choices: []completionapi.Choice{},
+		}
+		responseBody, err := json.Marshal(mockOpenAiResponse)
+		if err != nil {
+			logging.Error("Failed to marshal mock OpenAI response", types.Inferences, "error", err)
+			return err
+		}
+
+		w := ctx.Response().Writer
+		w.Header().Set(utils.ContentTypeHeader, utils.ContentTypeApplicationJson)
+		w.WriteHeader(200)
+		_, err = w.Write(responseBody)
+		if err != nil {
+			logging.Error("Failed to write response body", types.Inferences, "error", err)
+		}
+
+		return nil
+	}
+
 	// It's important here to send the ORIGINAL body, not the finalRequest body. The executor will AGAIN go through
 	// the same process to create the same final request body
 	logging.Debug("Sending request to executor", types.Inferences, "url", executor.Url, "seed", seed, "inferenceId", inferenceUUID)
 
 	if s.configManager.GetApiConfig().PublicUrl == executor.Url {
 		// node found itself as executor
-
-		request.InferenceId = inferenceUUID
-		request.Seed = strconv.Itoa(int(seed))
-		request.TransferAddress = s.recorder.GetAccountAddress()
-		request.TransferSignature = inferenceRequest.TransferSignature
-		request.PromptHash = inferenceRequest.PromptHash
-
 		logging.Info("Execute request on same node, fill request with extra data", types.Inferences, "inferenceId", request.InferenceId, "seed", request.Seed)
 		return s.handleExecutorRequest(ctx, request, ctx.Response().Writer)
 	}
@@ -399,7 +434,7 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 	req.Header.Set(utils.XRequesterAddressHeader, request.RequesterAddress)
 	req.Header.Set(utils.XTASignatureHeader, inferenceRequest.TransferSignature)
 	req.Header.Set(utils.XPromptHashHeader, inferenceRequest.PromptHash)
-	req.Header.Set("Content-Type", request.Request.Header.Get("Content-Type"))
+	req.Header.Set(utils.ContentTypeHeader, request.ContentType)
 
 	resp, err := NewNoRedirectClient().Do(req)
 	if err != nil {
@@ -557,7 +592,7 @@ func (s *Server) handleExecutorRequest(ctx echo.Context, request *ChatRequest, w
 		}
 		resp, postErr := http.Post(
 			completionsUrl,
-			request.Request.Header.Get("Content-Type"),
+			request.ContentType,
 			bytes.NewReader(modifiedRequestBody.NewBody),
 		)
 		if postErr != nil {
@@ -589,7 +624,7 @@ func (s *Server) handleExecutorRequest(ctx echo.Context, request *ChatRequest, w
 				logging.Error("Failed to create synthetic response payload", types.Inferences, "inferenceId", inferenceId)
 				return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create synthetic response payload")
 			}
-			if txErr := s.sendInferenceTransaction(request.InferenceId, synthetic, request.Body, s.recorder.GetAccountAddress(), request, promptPayload); txErr != nil {
+			if txErr := s.sendInferenceTransaction(ctx.Request().Context(), request.InferenceId, synthetic, request.Body, s.recorder.GetAccountAddress(), request, promptPayload); txErr != nil {
 				logging.Error("Failed to record FinishInference after inference node payload error", types.Inferences,
 					"inferenceId", inferenceId, "error", txErr)
 			}
@@ -610,7 +645,7 @@ func (s *Server) handleExecutorRequest(ctx echo.Context, request *ChatRequest, w
 		return err
 	}
 
-	err = s.sendInferenceTransaction(request.InferenceId, completionResponse, request.Body, s.recorder.GetAccountAddress(), request, promptPayload)
+	err = s.sendInferenceTransaction(ctx.Request().Context(), request.InferenceId, completionResponse, request.Body, s.recorder.GetAccountAddress(), request, promptPayload)
 	if err != nil {
 		// Not http.Error, because we assume we already returned everything to the client during proxyResponse execution
 		logging.Error("Failed to send inference transaction", types.Inferences, "error", err)
@@ -724,34 +759,34 @@ func (s *Server) getExecutorForRequest(ctx context.Context, model string) (*Exec
 
 // calculateSignature calculates a signature for the given components and agent type
 func (s *Server) calculateSignature(payload string, timestamp int64, transferAddress string, executorAddress string, agentType calculations.SignatureType) (string, error) {
-	components := calculations.SignatureComponents{
-		Payload:         payload,
-		Timestamp:       timestamp,
-		TransferAddress: transferAddress,
-		ExecutorAddress: executorAddress,
-	}
-
-	signerAddressStr := s.recorder.GetSignerAddress()
-	signerAddress, err := sdk.AccAddressFromBech32(signerAddressStr)
+	signerAddress := s.recorder.GetSignerAddress()
+	keyring := s.recorder.GetKeyring()
+	signature, err := internalutils.CalculateSignature(
+		payload,
+		timestamp,
+		0,
+		transferAddress,
+		executorAddress,
+		agentType,
+		signerAddress,
+		keyring,
+	)
 	if err != nil {
-		logging.Error("Failed to parse address", types.Inferences, "address", signerAddressStr, "error", err)
+		logging.Error("Failed to sign signature", types.Inferences, "address", signerAddress, "agentType", agentType, "error", err)
 		return "", err
 	}
-	accountSigner := &cmd.AccountSigner{
-		Addr:    signerAddress,
-		Keyring: s.recorder.GetKeyring(),
-	}
-
-	signature, err := calculations.Sign(accountSigner, components, agentType)
-	if err != nil {
-		logging.Error("Failed to sign signature", types.Inferences, "error", err, "agentType", agentType)
-		return "", err
-	}
-
 	return signature, nil
 }
 
-func (s *Server) sendInferenceTransaction(inferenceId string, response completionapi.CompletionResponse, requestBody []byte, executorAddress string, request *ChatRequest, promptPayload []byte) error {
+func (s *Server) sendInferenceTransaction(
+	ctx context.Context,
+	inferenceId string,
+	response completionapi.CompletionResponse,
+	requestBody []byte,
+	executorAddress string,
+	request *ChatRequest,
+	promptPayload []byte,
+) error {
 	responseHash, err := response.GetHash()
 	if err != nil || responseHash == "" {
 		logging.Error("Failed to get responseHash from response", types.Inferences, "error", err)
@@ -826,7 +861,7 @@ func (s *Server) sendInferenceTransaction(inferenceId string, response completio
 
 		// Store payloads before broadcasting transaction
 		// If storage fails, we still proceed with broadcast (but log error)
-		s.storePayloadsToStorage(request.Request.Context(), inferenceId, promptPayload, bodyBytes)
+		s.storePayloadsToStorage(ctx, inferenceId, promptPayload, bodyBytes)
 
 		logging.Info("Submitting MsgFinishInference", types.Inferences, "inferenceId", inferenceId)
 		err = s.recorder.FinishInference(message)
@@ -964,7 +999,7 @@ func readRequest(request *http.Request, transferAddress string) (*ChatRequest, e
 
 	return &ChatRequest{
 		Body:              body,
-		Request:           request,
+		ContentType:       request.Header.Get(utils.ContentTypeHeader),
 		OpenAiRequest:     openAiRequest,
 		AuthKey:           request.Header.Get(utils.AuthorizationHeader),
 		Seed:              request.Header.Get(utils.XSeedHeader),
