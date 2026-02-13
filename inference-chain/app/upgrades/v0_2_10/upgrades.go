@@ -87,7 +87,10 @@ var bountyRewards = []BountyReward{
 	{Address: "gonka1f0elpwnx7ezytdlck35003nz6qk8kzvurvnj4a", Amount: Gonka(2500)},
 
 	// PR review of upgrade v.0.2.8.
-	{Address: "gonka1ejkupq3cy6p8xd64ew2wlzveml86ckpzn9dl56", Amount: Gonka(2500)},
+	{Address: "gonka1ejkupq3cy6p8xd64ew2wlzveml86ckpzn9dl56", Amount: Gonka(2500)}, 
+
+	// PR review of upgrade v.0.2.8.
+	{Address: "gonka1zqss46r6jf6dhhyaa777kc2ppvjhn0ufkx4y57", Amount: Gonka(2500)}, 
 
 	// PR review of upgrade v.0.2.9.
 	{Address: "gonka12jaf7m4eysyqt32mrgarum6z96vt55tckvcleq", Amount: Gonka(2500)},
