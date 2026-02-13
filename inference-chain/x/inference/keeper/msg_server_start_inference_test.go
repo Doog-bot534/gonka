@@ -12,7 +12,9 @@ import (
 )
 
 func TestMsgServer_StartInferenceWithUnregesteredParticipant(t *testing.T) {
-	_, ms, ctx := setupMsgServer(t)
+	k, ms, ctx := setupMsgServer(t)
+	err := k.SetEffectiveEpochIndex(ctx, 1)
+	require.NoError(t, err)
 	response, err := ms.StartInference(ctx, &types.MsgStartInference{
 		InferenceId:   "inferenceId",
 		PromptHash:    "promptHash",

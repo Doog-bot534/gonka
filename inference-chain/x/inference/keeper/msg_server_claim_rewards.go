@@ -228,7 +228,10 @@ func (k msgServer) hasSignificantMissedValidations(ctx sdk.Context, msg *types.M
 			missed++
 		}
 	}
-	params := k.GetParams(ctx)
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		return false, err
+	}
 	p0 := decimal.NewFromFloat(0.10)
 	if params.ValidationParams != nil && params.ValidationParams.BinomTestP0 != nil {
 		p0 = params.ValidationParams.BinomTestP0.ToDecimal()

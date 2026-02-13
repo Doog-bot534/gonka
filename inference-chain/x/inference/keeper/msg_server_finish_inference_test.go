@@ -143,7 +143,10 @@ func MustAddParticipant(t *testing.T, ms types.MsgServer, ctx context.Context, m
 
 func TestMsgServer_FinishInference_InferenceNotFound(t *testing.T) {
 	k, ms, ctx := setupMsgServer(t)
+	k.SetEffectiveEpochIndex(ctx, 1) // Set to non-zero epoch to avoid epoch not found error
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{})
 	response, err := ms.FinishInference(ctx, &types.MsgFinishInference{
+		Creator:              testutil.Executor,
 		InferenceId:          "inferenceId",
 		ResponseHash:         "responseHash",
 		ResponsePayload:      "responsePayload",
@@ -337,7 +340,6 @@ func (h *MockInferenceHelper) FinishInference() (*types.Inference, error) {
 	h.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), h.MockTransferAgent.GetBechAddress()).Return(h.MockTransferAgent).AnyTimes()
 	h.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), h.MockExecutor.GetBechAddress()).Return(h.MockExecutor).AnyTimes()
 	h.EnsureActiveParticipants()
-
 
 	// Phase 3: Compute hashes for signatures
 	// Phase 6: Use stored promptPayload (not from inference struct, which is now empty)

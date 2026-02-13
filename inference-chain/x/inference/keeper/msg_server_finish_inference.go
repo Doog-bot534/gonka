@@ -11,11 +11,11 @@ import (
 )
 
 func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishInference) (*types.MsgFinishInferenceResponse, error) {
-	if err := k.CheckPermission(goCtx, msg, ActiveParticipantPermission); err != nil {
-		return nil, err
-	}
-
 	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	if err := k.CheckPermission(goCtx, msg, ActiveParticipantPermission); err != nil {
+		return failedFinish(ctx, err, msg), nil
+	}
 
 	k.LogInfo("FinishInference", types.Inferences, "inference_id", msg.InferenceId, "executed_by", msg.ExecutedBy, "created_by", msg.Creator)
 
