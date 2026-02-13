@@ -95,6 +95,7 @@ func (k msgServer) TransferWithVesting(goCtx context.Context, req *types.MsgTran
 	// Implement aggregation logic for each coin denomination
 	for _, coin := range req.Amount {
 		// Divide amount by epochs
+		// if amount < vestingEpochs then the whole sum will be transferred during the first epoch
 		epochsInt := math.NewInt(int64(vestingEpochs))
 		amountPerEpoch := coin.Amount.Quo(epochsInt)
 		remainder := coin.Amount.Mod(epochsInt)
@@ -114,7 +115,11 @@ func (k msgServer) TransferWithVesting(goCtx context.Context, req *types.MsgTran
 	}
 
 	// Store the updated schedule
-	k.SetVestingSchedule(ctx, schedule)
+	err = k.SetVestingSchedule(ctx, schedule)
+	if err != nil {
+		k.Logger().Error("Failed to set vesting schedule for recipient", "recipient", req.Recipient, "error", err)
+		return nil, errorsmod.Wrapf(err, "failed to set vesting schedule for recipient")
+	}
 
 	// Emit event
 	ctx.EventManager().EmitEvent(

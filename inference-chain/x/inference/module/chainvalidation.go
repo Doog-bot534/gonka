@@ -397,9 +397,9 @@ func (wc *WeightCalculator) calculateParticipantWeight(participantAddress string
 
 	distribution, hasDistribution := wc.NodeWeightDistributions[participantAddress]
 	if !hasDistribution || len(distribution.Weights) == 0 {
-		wc.Logger.LogWarn("Calculate: No weight distribution for participant, using single node", types.PoC,
+		wc.Logger.LogWarn("Calculate: No weight distribution for participant, skipping PoC weight", types.PoC,
 			"participant", participantAddress, "totalWeight", totalWeight)
-		return []nodeWeight{{nodeId: "unknown", weight: totalWeight}}, totalWeight
+		return nil, 0
 	}
 
 	nodeWeightsSlice := make([]nodeWeight, 0, len(distribution.Weights))
@@ -958,8 +958,15 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 		)
 	}
 
+	weightsForCalculator := currentValidatorWeights
+	if snapshotFound && validationSlots > 0 && len(snapshot.ValidatorWeights) > 0 {
+		weightsForCalculator = validatorWeightsSliceToMap(snapshot.ValidatorWeights)
+		am.LogInfo("ComputeNewWeights: Using snapshot weights for calculator", types.PoC,
+			"numValidators", len(weightsForCalculator))
+	}
+
 	calculator := NewWeightCalculator(
-		currentValidatorWeights,
+		weightsForCalculator,
 		allowedCommits,
 		allowedDistributions,
 		validations,
@@ -1055,8 +1062,9 @@ func (am AppModule) filterStoreCommitsFromInferenceNodes(
 		distribution, hasDistribution := allDistributions[participantAddress]
 
 		if !hasDistribution || len(distribution.Weights) == 0 {
-			// No distribution - keep the commit as-is
-			filteredCommits[participantAddress] = commit
+			am.LogWarn("filterStoreCommitsFromInferenceNodes: No distribution, cannot filter inference nodes, skipping", types.PoC,
+				"participantAddress", participantAddress,
+				"commitCount", commit.Count)
 			continue
 		}
 
@@ -1100,4 +1108,12 @@ func (am AppModule) filterStoreCommitsFromInferenceNodes(
 		"filteredParticipants", len(filteredCommits))
 
 	return filteredCommits, filteredDistributions
+}
+
+func validatorWeightsSliceToMap(weights []*types.ValidatorWeight) map[string]int64 {
+	result := make(map[string]int64, len(weights))
+	for _, w := range weights {
+		result[w.Address] = w.Weight
+	}
+	return result
 }

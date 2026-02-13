@@ -565,8 +565,15 @@ func (am AppModule) updateConfirmationWeightsV2(
 		)
 	}
 
+	weightsForCalculator := currentValidatorWeights
+	if snapshotFound && validationSlots > 0 && len(snapshot.ValidatorWeights) > 0 {
+		weightsForCalculator = validatorWeightsSliceToMap(snapshot.ValidatorWeights)
+		am.LogInfo("updateConfirmationWeightsV2: Using snapshot weights for calculator", types.PoC,
+			"numValidators", len(weightsForCalculator))
+	}
+
 	calculator := NewWeightCalculator(
-		currentValidatorWeights,
+		weightsForCalculator,
 		storeCommits,
 		weightDistributions,
 		validationsV2,
