@@ -90,19 +90,21 @@ func TestPermission_ActiveParticipant_CurrentAndPrevious(t *testing.T) {
 	k, ms, ctx, _ := setupPermissionsHarness(t)
 
 	signer := testutil.Validator
+	type testActiveMsg struct{ testMsgSingleSigner }
+	keeper.MessagePermissions[reflect.TypeOf((*testActiveMsg)(nil))] = []keeper.Permission{keeper.ActiveParticipantPermission}
+	msgActive := &testActiveMsg{testMsgSingleSigner{signer: signer}}
 
 	// set current epoch
 	require.NoError(t, k.EffectiveEpochIndex.Set(ctx, 10))
 
 	// failure: no active set for current epoch
-	msgStart := &types.MsgStartInference{Creator: signer}
-	err := keeper.CheckPermission(ms, ctx, msgStart, keeper.ActiveParticipantPermission)
+	err := keeper.CheckPermission(ms, ctx, msgActive, keeper.ActiveParticipantPermission)
 	require.Error(t, err)
 
 	// success: add active participants for current epoch
 	ap := types.ActiveParticipants{EpochId: 10, Participants: []*types.ActiveParticipant{{Index: signer}}}
 	require.NoError(t, k.SetActiveParticipants(ctx, ap))
-	err = keeper.CheckPermission(ms, ctx, msgStart, keeper.ActiveParticipantPermission)
+	err = keeper.CheckPermission(ms, ctx, msgActive, keeper.ActiveParticipantPermission)
 	require.NoError(t, err)
 
 	// previous active permission: map uses MsgValidation with OR [Active, PreviousActive]

@@ -13,17 +13,28 @@ import (
 type Permission string
 
 const (
-	GovernancePermission                Permission = "governance"
-	TrainingExecPermission              Permission = "training_execution"
-	TrainingStartPermission             Permission = "training_start"
-	ParticipantPermission               Permission = "participant"
-	ActiveParticipantPermission         Permission = "active_participant"
-	AccountPermission                   Permission = "account"
-	CurrentActiveParticipantPermission  Permission = "current_active_participant"
-	ContractPermission                  Permission = "contract"
-	NoPermission                        Permission = "none"
+	// GovernancePermission allows only the module authority signer.
+	GovernancePermission Permission = "governance"
+	// TrainingExecPermission allows users in the training-exec allow list.
+	TrainingExecPermission Permission = "training_execution"
+	// TrainingStartPermission allows users in the training-start allow list.
+	TrainingStartPermission Permission = "training_start"
+	// ParticipantPermission allows registered participants.
+	ParticipantPermission Permission = "participant"
+	// ActiveParticipantPermission allows participants active in the current epoch.
+	ActiveParticipantPermission Permission = "active_participant"
+	// AccountPermission allows any existing account.
+	AccountPermission Permission = "account"
+	// CurrentActiveParticipantPermission allows non-excluded active participants.
+	CurrentActiveParticipantPermission Permission = "current_active_participant"
+	// ContractPermission allows only wasm contract addresses.
+	ContractPermission Permission = "contract"
+	// NoPermission unconditionally authorizes the message signer.
+	NoPermission Permission = "none"
+	// PreviousActiveParticipantPermission allows participants active in the previous epoch.
 	PreviousActiveParticipantPermission Permission = "previous_active_participant"
-	OpenRegistrationPermission          Permission = "open_registration"
+	// OpenRegistrationPermission allows only when new participant registration is open.
+	OpenRegistrationPermission Permission = "open_registration"
 )
 
 var MessagePermissions = map[reflect.Type][]Permission{
@@ -74,8 +85,8 @@ var MessagePermissions = map[reflect.Type][]Permission{
 	reflect.TypeOf((*types.MsgCreateDummyTrainingTask)(nil)):        {TrainingStartPermission},
 	reflect.TypeOf((*types.MsgCreateTrainingTask)(nil)):             {TrainingStartPermission},
 
-	reflect.TypeOf((*types.MsgFinishInference)(nil)): {ActiveParticipantPermission},
-	reflect.TypeOf((*types.MsgStartInference)(nil)):  {ActiveParticipantPermission},
+	reflect.TypeOf((*types.MsgFinishInference)(nil)): {ParticipantPermission},
+	reflect.TypeOf((*types.MsgStartInference)(nil)):  {ParticipantPermission},
 
 	// Allow participants who are no longer active to perform catch up validations
 	reflect.TypeOf((*types.MsgValidation)(nil)): {ActiveParticipantPermission, PreviousActiveParticipantPermission},
@@ -85,7 +96,9 @@ type HasSigners interface {
 	GetSigners() []string
 }
 
-// One or more permissions (compile time error if none)
+// CheckPermission verifies that at least one signer on msg has one of the
+// declared permissions for the message type and that local/global declarations match.
+// At least one permission argument is required by signature.
 func (k msgServer) CheckPermission(ctx context.Context, msg HasSigners, permission Permission, permissions ...Permission) error {
 	signers := msg.GetSigners()
 	var err error
@@ -217,6 +230,9 @@ func (k msgServer) checkActiveParticipantPermission(ctx context.Context, signer 
 	if err != nil {
 		return err
 	}
+	if currentEpoch < epochOffset {
+		return types.ErrActiveParticipantNotFound
+	}
 	p, found := k.GetActiveParticipants(ctx, currentEpoch-epochOffset)
 	if !found {
 		return types.ErrActiveParticipantNotFound
@@ -278,6 +294,9 @@ func (k msgServer) checkGovernancePermission(ctx context.Context, signer sdk.Acc
 }
 
 func (k msgServer) checkContractPermission(ctx context.Context, signer sdk.AccAddress) error {
+	if k.wasmKeeper == nil {
+		return types.ErrNotSupported
+	}
 	contractInfo := k.wasmKeeper.GetContractInfo(ctx, signer)
 	if contractInfo == nil {
 		return types.ErrNotAContractAddress

@@ -13,7 +13,7 @@ import (
 )
 
 func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInference) (*types.MsgStartInferenceResponse, error) {
-	if err := k.CheckPermission(goCtx, msg, ActiveParticipantPermission); err != nil {
+	if err := k.CheckPermission(goCtx, msg, ParticipantPermission); err != nil {
 		var ctx = sdk.UnwrapSDKContext(goCtx)
 		return failedStart(ctx, err, msg), nil
 	}

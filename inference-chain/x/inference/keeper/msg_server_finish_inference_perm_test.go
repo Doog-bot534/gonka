@@ -3,6 +3,7 @@ package keeper_test
 import (
 	"testing"
 
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/productscience/inference/testutil"
 	"github.com/productscience/inference/x/inference/keeper"
 	"github.com/productscience/inference/x/inference/types"
@@ -14,16 +15,15 @@ func TestMsgServer_FinishInference_Permissions(t *testing.T) {
 	signer := testutil.Creator
 	msg := &types.MsgFinishInference{Creator: signer}
 
-	// Not active -> fail
-	err := keeper.CheckPermission(ms, ctx, msg, keeper.ActiveParticipantPermission)
+	// Not a participant -> fail
+	err := keeper.CheckPermission(ms, ctx, msg, keeper.ParticipantPermission)
 	require.Error(t, err)
 
-	// Make active
-	require.NoError(t, k.EffectiveEpochIndex.Set(ctx, 10))
-	ap := types.ActiveParticipants{EpochId: 10, Participants: []*types.ActiveParticipant{{Index: signer}}}
-	require.NoError(t, k.SetActiveParticipants(ctx, ap))
+	// Register participant
+	p := types.Participant{Index: signer, Address: signer}
+	require.NoError(t, k.Participants.Set(ctx, sdk.MustAccAddressFromBech32(signer), p))
 
 	// Success
-	err = keeper.CheckPermission(ms, ctx, msg, keeper.ActiveParticipantPermission)
+	err = keeper.CheckPermission(ms, ctx, msg, keeper.ParticipantPermission)
 	require.NoError(t, err)
 }

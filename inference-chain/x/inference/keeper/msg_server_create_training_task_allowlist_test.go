@@ -43,11 +43,11 @@ func TestCreateTrainingTask_AllowListEnforced(t *testing.T) {
 	require.NoError(t, k.TrainingStartAllowListSet.Set(wctx, acc))
 
 	// now allowed -> should succeed
-	_, err = ms.CreateTrainingTask(wctx, &types.MsgCreateTrainingTask{
+	resp, err := ms.CreateTrainingTask(wctx, &types.MsgCreateTrainingTask{
 		Creator:           creator,
 		HardwareResources: []*types.TrainingHardwareResources{},
 		Config:            config,
 	})
-	// validation fails due to production code issue (Assigner not set), but this confirms AllowList check passed
 	require.NoError(t, err)
+	require.NotNil(t, resp)
 }
