@@ -11,8 +11,12 @@ import (
 )
 
 func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishInference) (*types.MsgFinishInferenceResponse, error) {
-	ctx := sdk.UnwrapSDKContext(goCtx)
+	if err := k.CheckPermission(goCtx, msg, ActiveParticipantPermission); err != nil {
+		ctx := sdk.UnwrapSDKContext(goCtx)
+		return failedFinish(ctx, err, msg), nil
+	}
 
+	ctx := sdk.UnwrapSDKContext(goCtx)
 	k.LogInfo("FinishInference", types.Inferences, "inference_id", msg.InferenceId, "executed_by", msg.ExecutedBy, "created_by", msg.Creator)
 
 	if msg.PromptTokenCount > types.MaxAllowedTokens {

@@ -164,6 +164,11 @@ func TestMsgServer_ClaimRewards(t *testing.T) {
 		gomock.Any(),
 	).Return(nil).AnyTimes()
 
+	k.SetParticipant(ctx, types.Participant{
+		Index:   testutil.Creator,
+		Address: testutil.Creator,
+		Status:  types.ParticipantStatus_ACTIVE,
+	})
 	// Call ClaimRewards
 	resp, err := ms.ClaimRewards(ctx.WithBlockHeight(claimDebounceBlocks+1), &types.MsgClaimRewards{
 		Creator:    testutil.Creator,
@@ -210,6 +215,11 @@ func TestMsgServer_ClaimRewards_NoRewards(t *testing.T) {
 	}
 	k.SetEpochGroupData(ctx, currentEpochData)
 
+	k.SetParticipant(ctx, types.Participant{
+		Index:   testutil.Creator,
+		Address: testutil.Creator,
+		Status:  types.ParticipantStatus_ACTIVE,
+	})
 	// Call ClaimRewards without setting up any rewards
 	resp, err := ms.ClaimRewards(ctx.WithBlockHeight(claimDebounceBlocks+1), &types.MsgClaimRewards{
 		Creator:    testutil.Creator,
@@ -246,6 +256,11 @@ func TestMsgServer_ClaimRewards_WrongHeight(t *testing.T) {
 		},
 	}
 	k.SetEpochGroupData(sdk.UnwrapSDKContext(ctx), currentEpochData)
+	k.SetParticipant(ctx, types.Participant{
+		Index:   testutil.Creator,
+		Address: testutil.Creator,
+		Status:  types.ParticipantStatus_ACTIVE,
+	})
 
 	// Setup a settle amount for the participant but with a different height
 	settleAmount := types.SettleAmount{
@@ -304,6 +319,11 @@ func TestMsgServer_ClaimRewards_ZeroRewards(t *testing.T) {
 	}
 	_ = k.SetSettleAmount(sdk.UnwrapSDKContext(ctx), settleAmount)
 
+	_ = k.SetParticipant(ctx, types.Participant{
+		Index:   testutil.Creator,
+		Address: testutil.Creator,
+		Status:  types.ParticipantStatus_ACTIVE,
+	})
 	// Call ClaimRewards
 	resp, err := ms.ClaimRewards(ctx.WithBlockHeight(claimDebounceBlocks+1), &types.MsgClaimRewards{
 		Creator:    testutil.Creator,
@@ -470,6 +490,11 @@ func TestMsgServer_ClaimRewards_ValidationLogic(t *testing.T) {
 	// Mock the AuthzKeeper to return empty grants (no grantees)
 	mocks.AuthzKeeper.EXPECT().GranterGrants(gomock.Any(), gomock.Any()).Return(&authztypes.QueryGranterGrantsResponse{Grants: []*authztypes.GrantAuthorization{}}, nil).AnyTimes()
 
+	k.SetParticipant(ctx, types.Participant{
+		Index:   testutil.Creator,
+		Address: testutil.Creator,
+		Status:  types.ParticipantStatus_ACTIVE,
+	})
 	// Call ClaimRewards - this should fail because we haven't validated any inferences yet
 	// Missing all required validations should exceed the threshold.
 	resp, err := ms.ClaimRewards(ctx.WithBlockHeight(claimDebounceBlocks+1), &types.MsgClaimRewards{
@@ -687,6 +712,11 @@ func TestMsgServer_ClaimRewards_PartialValidation(t *testing.T) {
 	// Mock the AuthzKeeper to return empty grants (no grantees)
 	mocks.AuthzKeeper.EXPECT().GranterGrants(gomock.Any(), gomock.Any()).Return(&authztypes.QueryGranterGrantsResponse{Grants: []*authztypes.GrantAuthorization{}}, nil).AnyTimes()
 
+	k.SetParticipant(ctx, types.Participant{
+		Index:   testutil.Creator,
+		Address: testutil.Creator,
+		Status:  types.ParticipantStatus_ACTIVE,
+	})
 	// Call ClaimRewards - this should fail because we haven't validated any inferences yet
 	// Missing all required validations should exceed the threshold.
 	resp, err := ms.ClaimRewards(ctx.WithBlockHeight(claimDebounceBlocks+1), &types.MsgClaimRewards{

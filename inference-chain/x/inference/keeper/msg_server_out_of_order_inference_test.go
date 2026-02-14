@@ -23,6 +23,8 @@ func TestMsgServer_OutOfOrderInference(t *testing.T) {
 	MustAddParticipant(t, ms, ctx, *mockTransferAgent)
 	MustAddParticipant(t, ms, ctx, *mockExecutor)
 
+	k.SetActiveParticipants(ctx, ParticipantsToActive(0, types.Participant{Index: testutil.Executor},
+		types.Participant{Index: testutil.Creator}, types.Participant{Index: testutil.Requester}))
 	mocks.StubForInitGenesis(ctx)
 
 	// For escrow calls
@@ -74,6 +76,7 @@ func TestMsgServer_OutOfOrderInference(t *testing.T) {
 	// First, try to finish an inference that hasn't been started yet
 	// With our fix, this should now succeed
 	_, err = ms.FinishInference(ctx, &types.MsgFinishInference{
+		Creator:              mockTransferAgent.address,
 		InferenceId:          inferenceId,
 		ResponseHash:         "responseHash",
 		ResponsePayload:      "responsePayload",

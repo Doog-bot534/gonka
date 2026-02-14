@@ -101,3 +101,23 @@ func TestSetActiveParticipants(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, 3, len(retrieved.Participants))
 }
+
+func ParticipantToActive(p *types.Participant) *types.ActiveParticipant {
+	return &types.ActiveParticipant{
+		Index:        p.Index,
+		Weight:       int64(p.Weight),
+		InferenceUrl: p.InferenceUrl,
+		ValidatorKey: p.ValidatorKey,
+	}
+}
+
+func ParticipantsToActive(epochId int64, participants ...types.Participant) types.ActiveParticipants {
+	activeParticipants := make([]*types.ActiveParticipant, len(participants))
+	for i, p := range participants {
+		activeParticipants[i] = ParticipantToActive(&p)
+	}
+	return types.ActiveParticipants{
+		Participants: activeParticipants,
+		EpochId:      uint64(epochId),
+	}
+}

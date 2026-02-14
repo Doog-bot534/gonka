@@ -8,6 +8,9 @@ import (
 )
 
 func (k msgServer) RegisterTokenMetadata(goCtx context.Context, msg *types.MsgRegisterTokenMetadata) (*types.MsgRegisterTokenMetadataResponse, error) {
+	if err := k.CheckPermission(goCtx, msg, GovernancePermission); err != nil {
+		return nil, err
+	}
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
 	// Validate authority - only governance can set token metadata

@@ -9,6 +9,9 @@ import (
 )
 
 func (k msgServer) SubmitUnitOfComputePriceProposal(goCtx context.Context, msg *types.MsgSubmitUnitOfComputePriceProposal) (*types.MsgSubmitUnitOfComputePriceProposalResponse, error) {
+	if err := k.CheckPermission(goCtx, msg, ParticipantPermission); err != nil {
+		return nil, err
+	}
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
 	blockHeight := ctx.BlockHeight()
