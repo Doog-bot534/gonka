@@ -1066,7 +1066,7 @@ func TestValidateInferenceNode_HostPortUniqueness(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "both ports duplicate on same host",
+			name: "both ports duplicate on the same host",
 			node: apiconfig.InferenceNodeConfig{
 				Id:               "node6",
 				Host:             "localhost",
