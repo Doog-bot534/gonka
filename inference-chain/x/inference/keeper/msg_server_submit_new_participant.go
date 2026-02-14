@@ -8,7 +8,7 @@ import (
 )
 
 func (k msgServer) SubmitNewParticipant(goCtx context.Context, msg *types.MsgSubmitNewParticipant) (*types.MsgSubmitNewParticipantResponse, error) {
-	if err := k.CheckPermission(goCtx, msg, NoPermission, OpenRegistrationPermission); err != nil {
+	if err := k.CheckPermission(goCtx, msg, OpenRegistrationPermission); err != nil {
 		return nil, err
 	}
 	ctx := sdk.UnwrapSDKContext(goCtx)

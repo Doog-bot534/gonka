@@ -186,7 +186,7 @@ func TestPermission_TrainingAllowLists(t *testing.T) {
 
 func TestPermission_NoPermissionAlwaysPasses(t *testing.T) {
 	_, ms, ctx, _ := setupPermissionsHarness(t)
-	msg := &types.MsgSubmitNewParticipant{Creator: testutil.Requester}
+	msg := &types.MsgInvalidateInference{Creator: testutil.Requester, InferenceId: "id"}
 	err := keeper.CheckPermission(ms, ctx, msg, keeper.NoPermission)
 	require.NoError(t, err)
 }

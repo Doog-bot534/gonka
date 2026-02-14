@@ -16,6 +16,8 @@ func (msg *MsgAddUserToTrainingAllowList) GetSigners() []string      { return []
 func (msg *MsgCreatePartialUpgrade) GetSigners() []string            { return []string{msg.Authority} }
 func (msg *MsgRemoveUserFromTrainingAllowList) GetSigners() []string { return []string{msg.Authority} }
 func (msg *MsgSetTrainingAllowList) GetSigners() []string            { return []string{msg.Authority} }
+func (msg *MsgAddParticipantsToAllowList) GetSigners() []string      { return []string{msg.Authority} }
+func (msg *MsgRemoveParticipantsFromAllowList) GetSigners() []string { return []string{msg.Authority} }
 
 // Creator signed messages
 func (msg *MsgCreateTrainingTask) GetSigners() []string               { return []string{msg.Creator} }
@@ -34,6 +36,9 @@ func (msg *MsgSubmitNewParticipant) GetSigners() []string             { return [
 func (msg *MsgSubmitNewUnfundedParticipant) GetSigners() []string     { return []string{msg.Creator} }
 func (msg *MsgSubmitPocBatch) GetSigners() []string                   { return []string{msg.Creator} }
 func (msg *MsgSubmitPocValidation) GetSigners() []string              { return []string{msg.Creator} }
+func (msg *MsgSubmitPocValidationsV2) GetSigners() []string           { return []string{msg.Creator} }
+func (msg *MsgPoCV2StoreCommit) GetSigners() []string                 { return []string{msg.Creator} }
+func (msg *MsgMLNodeWeightDistribution) GetSigners() []string         { return []string{msg.Creator} }
 func (msg *MsgSubmitSeed) GetSigners() []string                       { return []string{msg.Creator} }
 func (msg *MsgSubmitTrainingKvRecord) GetSigners() []string           { return []string{msg.Creator} }
 func (msg *MsgSubmitUnitOfComputePriceProposal) GetSigners() []string { return []string{msg.Creator} }

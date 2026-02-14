@@ -11,7 +11,7 @@ import (
 )
 
 func (k msgServer) SubmitNewUnfundedParticipant(goCtx context.Context, msg *types.MsgSubmitNewUnfundedParticipant) (*types.MsgSubmitNewUnfundedParticipantResponse, error) {
-	if err := k.CheckPermission(goCtx, msg, ParticipantPermission, OpenRegistrationPermission); err != nil {
+	if err := k.CheckPermission(goCtx, msg, OpenRegistrationPermission); err != nil {
 		return nil, err
 	}
 	ctx := sdk.UnwrapSDKContext(goCtx)

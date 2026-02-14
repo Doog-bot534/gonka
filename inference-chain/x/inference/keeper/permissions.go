@@ -31,6 +31,8 @@ var MessagePermissions = map[reflect.Type][]Permission{
 	reflect.TypeOf((*types.MsgSetTrainingAllowList)(nil)):            {GovernancePermission},
 	reflect.TypeOf((*types.MsgAddUserToTrainingAllowList)(nil)):      {GovernancePermission},
 	reflect.TypeOf((*types.MsgRemoveUserFromTrainingAllowList)(nil)): {GovernancePermission},
+	reflect.TypeOf((*types.MsgAddParticipantsToAllowList)(nil)):      {GovernancePermission},
+	reflect.TypeOf((*types.MsgRemoveParticipantsFromAllowList)(nil)): {GovernancePermission},
 	reflect.TypeOf((*types.MsgApproveBridgeTokenForTrading)(nil)):    {GovernancePermission},
 	reflect.TypeOf((*types.MsgCreatePartialUpgrade)(nil)):            {GovernancePermission},
 	reflect.TypeOf((*types.MsgMigrateAllWrappedTokens)(nil)):         {GovernancePermission},
@@ -45,8 +47,8 @@ var MessagePermissions = map[reflect.Type][]Permission{
 
 	reflect.TypeOf((*types.MsgRequestBridgeWithdrawal)(nil)): {ContractPermission},
 
-	reflect.TypeOf((*types.MsgSubmitNewParticipant)(nil)):         {NoPermission},
-	reflect.TypeOf((*types.MsgSubmitNewUnfundedParticipant)(nil)): {NoPermission},
+	reflect.TypeOf((*types.MsgSubmitNewParticipant)(nil)):         {OpenRegistrationPermission},
+	reflect.TypeOf((*types.MsgSubmitNewUnfundedParticipant)(nil)): {OpenRegistrationPermission},
 
 	// These are special cases authorized by GroupPolicy
 	reflect.TypeOf((*types.MsgInvalidateInference)(nil)): {NoPermission},
@@ -56,6 +58,9 @@ var MessagePermissions = map[reflect.Type][]Permission{
 	reflect.TypeOf((*types.MsgSubmitHardwareDiff)(nil)):               {ParticipantPermission},
 	reflect.TypeOf((*types.MsgSubmitPocBatch)(nil)):                   {ParticipantPermission},
 	reflect.TypeOf((*types.MsgSubmitPocValidation)(nil)):              {ParticipantPermission},
+	reflect.TypeOf((*types.MsgSubmitPocValidationsV2)(nil)):           {NoPermission},
+	reflect.TypeOf((*types.MsgPoCV2StoreCommit)(nil)):                 {NoPermission},
+	reflect.TypeOf((*types.MsgMLNodeWeightDistribution)(nil)):         {NoPermission},
 	reflect.TypeOf((*types.MsgSubmitSeed)(nil)):                       {ParticipantPermission},
 	reflect.TypeOf((*types.MsgSubmitUnitOfComputePriceProposal)(nil)): {ParticipantPermission},
 
@@ -177,7 +182,7 @@ func (k msgServer) checkPermissions(ctx context.Context, msg HasSigners, signer 
 			}
 		case OpenRegistrationPermission:
 			sdkCtx := sdk.UnwrapSDKContext(ctx)
-			if !k.IsNewParticipantRegistrationClosed(ctx, sdkCtx.BlockHeight()) {
+			if k.IsNewParticipantRegistrationClosed(ctx, sdkCtx.BlockHeight()) {
 				return types.ErrNewParticipantRegistrationClosed
 			}
 			return nil
