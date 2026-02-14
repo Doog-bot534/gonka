@@ -998,9 +998,6 @@ func TestValidateInferenceNode_HostPortUniqueness(t *testing.T) {
 	require.Nil(t, response.Error)
 	require.NotNil(t, response.Node)
 
-	// Give broker time to process the registration
-	time.Sleep(50 * time.Millisecond)
-
 	tests := []struct {
 		name    string
 		node    apiconfig.InferenceNodeConfig
@@ -1120,9 +1117,6 @@ func TestValidateInferenceNode_UpdateExcludesSelf(t *testing.T) {
 	require.Nil(t, response1.Error)
 	require.NotNil(t, response1.Node)
 
-	// Give broker time to process the registration
-	time.Sleep(50 * time.Millisecond)
-
 	// Register second node with different ports
 	node2 := apiconfig.InferenceNodeConfig{
 		Id:               "node2",
@@ -1142,9 +1136,6 @@ func TestValidateInferenceNode_UpdateExcludesSelf(t *testing.T) {
 	require.NotNil(t, response2)
 	require.Nil(t, response2.Error)
 	require.NotNil(t, response2.Node)
-
-	// Give broker time to process the second registration
-	time.Sleep(50 * time.Millisecond)
 
 	// Update node1 to use node2's ports - should fail (duplicate)
 	updatedNode1 := apiconfig.InferenceNodeConfig{
@@ -1221,9 +1212,6 @@ func registerTwoNodesOnSameHost(t *testing.T, broker *Broker, node1 *apiconfig.I
 	require.NotNil(t, response1.Node)
 	require.Equal(t, node1Config.Id, response1.Node.Id)
 
-	// Give broker time to process the registration
-	time.Sleep(50 * time.Millisecond)
-
 	// Register node2
 	cmd2 := NewRegisterNodeCommand(node2Config)
 	err = broker.QueueMessage(cmd2)
@@ -1233,9 +1221,6 @@ func registerTwoNodesOnSameHost(t *testing.T, broker *Broker, node1 *apiconfig.I
 	require.Nil(t, response2.Error, "node2 registration should succeed")
 	require.NotNil(t, response2.Node)
 	require.Equal(t, node2Config.Id, response2.Node.Id)
-
-	// Give broker time to process the second registration
-	time.Sleep(50 * time.Millisecond)
 
 	// Verify both nodes are registered
 	nodes, err := broker.GetNodes()
@@ -1342,9 +1327,6 @@ func TestUpdateNodeNoCollision(t *testing.T) {
 	require.NotNil(t, response.Node)
 	require.Equal(t, node2.Id, response.Node.Id)
 
-	// Give broker time to process the update
-	time.Sleep(50 * time.Millisecond)
-
 	// Verify node2's ports have been updated
 	nodes, err := broker.GetNodes()
 	require.NoError(t, err)
@@ -1396,9 +1378,6 @@ func TestUpdateNodeSwapPorts(t *testing.T) {
 	require.Nil(t, response.Error, "Update should succeed when swapping ports")
 	require.NotNil(t, response.Node)
 	require.Equal(t, node2.Id, response.Node.Id)
-
-	// Give broker time to process the update
-	time.Sleep(50 * time.Millisecond)
 
 	// Verify node2's ports have been swapped
 	nodes, err := broker.GetNodes()
@@ -1492,7 +1471,6 @@ func TestUpdateNodeHostCollisionWithPortChange(t *testing.T) {
 	require.Nil(t, response1.Node, "Node should be nil on error")
 
 	// Verify node2 hasn't changed
-	time.Sleep(50 * time.Millisecond)
 	nodes, err = broker.GetNodes()
 	require.NoError(t, err)
 	for i := range nodes {
@@ -1524,9 +1502,6 @@ func TestUpdateNodeHostCollisionWithPortChange(t *testing.T) {
 	require.Nil(t, response2.Error, "Update should succeed when changing ports to avoid collision")
 	require.NotNil(t, response2.Node)
 	require.Equal(t, registeredNode2.Id, response2.Node.Id)
-
-	// Give broker time to process the update
-	time.Sleep(50 * time.Millisecond)
 
 	// Verify node2 has been updated successfully
 	nodes, err = broker.GetNodes()
