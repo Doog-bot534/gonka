@@ -95,13 +95,10 @@ class ConfirmationPoCMultiNodeTests : TestermintTest() {
         Logger.info("  POC_SLOT=false nodes: $numPocSlotFalse × $confirmedWeightPerNode = ${numPocSlotFalse * confirmedWeightPerNode}")
         Logger.info("  Expected final weight: $expectedFinalWeight")
         
-        logSection("Waiting for confirmation PoC trigger during inference phase")
-        val confirmationEvent = waitForConfirmationPoCTrigger(genesis)
-        assertThat(confirmationEvent).isNotNull
-        Logger.info("Confirmation PoC triggered at height ${confirmationEvent!!.triggerHeight}")
-        
-        logSection("Setting PoC mocks for confirmation")
-        // During confirmation PoC, each POC_SLOT=false node will return weight=8 (reduced from 10)
+        logSection("Waiting for next epoch's regular PoC generation to finish")
+        genesis.waitForStage(EpochStage.END_OF_POC)
+
+        logSection("Setting PoC mocks for confirmation before trigger")
         Logger.info("  Genesis: each node returns weight=$confirmedWeightPerNode (reduced from 10)")
         Logger.info("    - Only $numPocSlotFalse POC_SLOT=false nodes will participate in confirmation")
         Logger.info("    - Total confirmed weight: ${numPocSlotFalse * confirmedWeightPerNode}")
@@ -110,6 +107,11 @@ class ConfirmationPoCMultiNodeTests : TestermintTest() {
         genesis.setPocWeight(confirmedWeightPerNode)
         join1.setPocWeight(50)
         join2.setPocWeight(50)
+
+        logSection("Waiting for confirmation PoC trigger during inference phase")
+        val confirmationEvent = waitForConfirmationPoCTrigger(genesis)
+        assertThat(confirmationEvent).isNotNull
+        Logger.info("Confirmation PoC triggered at height ${confirmationEvent!!.triggerHeight}")
 
         logSection("Waiting for confirmation PoC generation phase")
         waitForConfirmationPoCPhase(genesis, ConfirmationPoCPhase.CONFIRMATION_POC_GENERATION)
@@ -261,18 +263,21 @@ class ConfirmationPoCMultiNodeTests : TestermintTest() {
         Logger.info("  POC_SLOT=false nodes: $numPocSlotFalse × $confirmedWeightPerNode = ${numPocSlotFalse * confirmedWeightPerNode}")
         Logger.info("  Expected final weight: $expectedFinalWeight")
 
-        logSection("Waiting for confirmation PoC trigger during inference phase")
-        val confirmationEvent = waitForConfirmationPoCTrigger(genesis)
-        assertThat(confirmationEvent).isNotNull
-        Logger.info("Confirmation PoC triggered at height ${confirmationEvent!!.triggerHeight}")
+        logSection("Waiting for next epoch's regular PoC generation to finish")
+        genesis.waitForStage(EpochStage.END_OF_POC)
 
-        logSection("Setting PoC mocks for confirmation")
+        logSection("Setting PoC mocks for confirmation before trigger")
         Logger.info("  Genesis: each node returns weight=$confirmedWeightPerNode (reduced from 30)")
         Logger.info("    - Only $numPocSlotFalse POC_SLOT=false nodes will participate in confirmation")
         Logger.info("    - Total confirmed weight: ${numPocSlotFalse * confirmedWeightPerNode}")
         Logger.info("  Join1: weight=200 per node (full confirmation)")
         Logger.info("  Join2: weight=250 per node (full confirmation)")
         genesis.setPocWeight(confirmedWeightPerNode)
+
+        logSection("Waiting for confirmation PoC trigger during inference phase")
+        val confirmationEvent = waitForConfirmationPoCTrigger(genesis)
+        assertThat(confirmationEvent).isNotNull
+        Logger.info("Confirmation PoC triggered at height ${confirmationEvent!!.triggerHeight}")
 
         logSection("Waiting for confirmation PoC generation phase")
         waitForConfirmationPoCPhase(genesis, ConfirmationPoCPhase.CONFIRMATION_POC_GENERATION)

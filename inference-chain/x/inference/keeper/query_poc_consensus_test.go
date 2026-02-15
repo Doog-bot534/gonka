@@ -231,6 +231,62 @@ func TestPoCConsensusQuery_MultipleParticipants(t *testing.T) {
 	require.Equal(t, uint32(7), entryMap[participantB].AgreedCount)
 }
 
+func TestPoCConsensusQuery_SelfOnlyObservations(t *testing.T) {
+	k, ctx := keepertest.InferenceKeeper(t)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	addr1 := sdk.MustAccAddressFromBech32("gonka1hgt9lxxxwpsnc3yn2nheqqy9a8vlcjwvgzpve2")
+	addr2 := sdk.MustAccAddressFromBech32("gonka1pda35dczayfhy2udffky7wzset9tpkpatzaksd")
+	addr3 := sdk.MustAccAddressFromBech32("gonka13779rkgy6ke7cdj8f097pdvx34uvrlcqq8nq2w")
+
+	obs1 := types.PoCObservation{
+		ValidatorAddress:         addr1.String(),
+		PocStageStartBlockHeight: 100,
+		Arrivals: []*types.PoCObservationArrival{
+			{Participant: addr1.String(), Count: 50},
+		},
+	}
+	obs2 := types.PoCObservation{
+		ValidatorAddress:         addr2.String(),
+		PocStageStartBlockHeight: 100,
+		Arrivals: []*types.PoCObservationArrival{
+			{Participant: addr2.String(), Count: 80},
+		},
+	}
+	obs3 := types.PoCObservation{
+		ValidatorAddress:         addr3.String(),
+		PocStageStartBlockHeight: 100,
+		Arrivals: []*types.PoCObservationArrival{
+			{Participant: addr3.String(), Count: 120},
+		},
+	}
+
+	require.NoError(t, k.PoCObservationsMap.Set(sdkCtx, collections.Join(int64(100), addr1), obs1))
+	require.NoError(t, k.PoCObservationsMap.Set(sdkCtx, collections.Join(int64(100), addr2), obs2))
+	require.NoError(t, k.PoCObservationsMap.Set(sdkCtx, collections.Join(int64(100), addr3), obs3))
+
+	resp, err := k.PoCConsensus(sdkCtx, &types.QueryPoCConsensusRequest{
+		PocStageStartBlockHeight: 100,
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Entries, 3)
+
+	entryMap := make(map[string]*types.PoCConsensusEntry)
+	for _, e := range resp.Entries {
+		entryMap[e.Participant] = e
+	}
+
+	require.Equal(t, uint32(50), entryMap[addr1.String()].AgreedCount)
+	require.Equal(t, int32(1), entryMap[addr1.String()].TotalValidators)
+	require.Equal(t, int32(1), entryMap[addr1.String()].AgreeingCount)
+
+	require.Equal(t, uint32(80), entryMap[addr2.String()].AgreedCount)
+	require.Equal(t, int32(1), entryMap[addr2.String()].TotalValidators)
+
+	require.Equal(t, uint32(120), entryMap[addr3.String()].AgreedCount)
+	require.Equal(t, int32(1), entryMap[addr3.String()].TotalValidators)
+}
+
 func TestPoCConsensusQuery_NilRequest(t *testing.T) {
 	k, ctx := keepertest.InferenceKeeper(t)
 	sdkCtx := sdk.UnwrapSDKContext(ctx)

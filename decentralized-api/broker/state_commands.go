@@ -37,13 +37,9 @@ func (c StartPocCommand) Execute(b *Broker) {
 	shouldRunPoC := epochState.CurrentPhase == types.PoCGeneratePhase
 
 	// Confirmation PoC during inference phase
-	if epochState.CurrentPhase == types.InferencePhase && epochState.ActiveConfirmationPoCEvent != nil {
-		event := epochState.ActiveConfirmationPoCEvent
-		epochParams := &epochState.LatestEpoch.EpochParams
-		currentHeight := epochState.CurrentBlock.Height
-		if currentHeight >= event.GenerationStartHeight && currentHeight <= event.GetGenerationEnd(epochParams) {
-			shouldRunPoC = true
-		}
+	if epochState.CurrentPhase == types.InferencePhase && epochState.ActiveConfirmationPoCEvent != nil &&
+		epochState.ActiveConfirmationPoCEvent.Phase == types.ConfirmationPoCPhase_CONFIRMATION_POC_GENERATION {
+		shouldRunPoC = true
 	}
 
 	if !shouldRunPoC {

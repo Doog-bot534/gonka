@@ -136,7 +136,10 @@ func (w *CommitWorker) tick() {
 
 	if pocHeight > 0 {
 		isPoCPhase := epochState.CurrentPhase == types.PoCGeneratePhase ||
-			epochState.CurrentPhase == types.PoCGenerateWindDownPhase
+			epochState.CurrentPhase == types.PoCGenerateWindDownPhase ||
+			(epochState.CurrentPhase == types.InferencePhase &&
+				epochState.ActiveConfirmationPoCEvent != nil &&
+				epochState.ActiveConfirmationPoCEvent.Phase == types.ConfirmationPoCPhase_CONFIRMATION_POC_GENERATION)
 		canCommit := ShouldAcceptStoreCommit(epochState, pocHeight)
 		logging.Debug("CommitWorker: tick", types.PoC,
 			"phase", epochState.CurrentPhase,
@@ -223,6 +226,10 @@ func (w *CommitWorker) maybeSubmitObservation(pocHeight int64) {
 
 	arrivals, err := w.propagationCache.GetAllFirstArrivals(pocHeight)
 	if err != nil || len(arrivals) == 0 {
+		return
+	}
+
+	if _, hasSelf := arrivals[w.participantAddress]; !hasSelf {
 		return
 	}
 

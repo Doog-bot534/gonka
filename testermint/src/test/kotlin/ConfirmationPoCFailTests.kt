@@ -42,18 +42,21 @@ class ConfirmationPoCFailTests : TestermintTest() {
             Logger.info("  ${it.participantId}: weight=${it.weight}")
         }
 
-        logSection("Waiting for confirmation PoC trigger during inference phase")
-        val confirmationEvent = waitForConfirmationPoCTrigger(genesis)
-        assertThat(confirmationEvent).isNotNull
-        Logger.info("Confirmation PoC triggered at height ${confirmationEvent!!.triggerHeight}")
+        logSection("Waiting for next epoch's regular PoC generation to finish")
+        genesis.waitForStage(EpochStage.END_OF_POC)
 
-        logSection("Setting PoC mocks for confirmation")
+        logSection("Setting PoC mocks for confirmation before trigger")
         Logger.info("  Genesis: weight=10 (passes)")
         Logger.info("  Join1: weight=8 (fails but above alpha=7, no slashing)")
         Logger.info("  Join2: weight=10 (passes)")
         genesis.setPocWeight(10)
         join1.setPocWeight(8)
         join2.setPocWeight(10)
+
+        logSection("Waiting for confirmation PoC trigger during inference phase")
+        val confirmationEvent = waitForConfirmationPoCTrigger(genesis)
+        assertThat(confirmationEvent).isNotNull
+        Logger.info("Confirmation PoC triggered at height ${confirmationEvent!!.triggerHeight}")
 
         logSection("Waiting for confirmation PoC generation phase")
         waitForConfirmationPoCPhase(genesis, ConfirmationPoCPhase.CONFIRMATION_POC_GENERATION)
@@ -198,18 +201,21 @@ class ConfirmationPoCFailTests : TestermintTest() {
             Logger.info("  ${it.participantId}: weight=${it.weight}")
         }
 
-        logSection("Waiting for confirmation PoC trigger during inference phase")
-        val confirmationEvent = waitForConfirmationPoCTrigger(genesis)
-        assertThat(confirmationEvent).isNotNull
-        Logger.info("Confirmation PoC triggered at height ${confirmationEvent!!.triggerHeight}")
+        logSection("Waiting for next epoch's regular PoC generation to finish")
+        genesis.waitForStage(EpochStage.END_OF_POC)
 
-        logSection("Setting PoC mocks for confirmation")
+        logSection("Setting PoC mocks for confirmation before trigger")
         Logger.info("  Genesis: weight=10 (passes)")
         Logger.info("  Join1: weight=3 (fails, ratio=0.3 < alpha=0.5)")
         Logger.info("  Join2: weight=10 (passes)")
         genesis.setPocWeight(10)
         join1.setPocWeight(3)
         join2.setPocWeight(10)
+
+        logSection("Waiting for confirmation PoC trigger during inference phase")
+        val confirmationEvent = waitForConfirmationPoCTrigger(genesis)
+        assertThat(confirmationEvent).isNotNull
+        Logger.info("Confirmation PoC triggered at height ${confirmationEvent!!.triggerHeight}")
 
         logSection("Waiting for confirmation PoC generation phase")
         waitForConfirmationPoCPhase(genesis, ConfirmationPoCPhase.CONFIRMATION_POC_GENERATION)
