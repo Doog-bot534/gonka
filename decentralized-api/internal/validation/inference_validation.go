@@ -883,6 +883,16 @@ func (s *InferenceValidator) validateWithPayloads(inference types.Inference, inf
 	requestMap["stream"] = false
 	requestMap["skip_special_tokens"] = false
 	delete(requestMap, "stream_options")
+	// Remove guided decoding / structured output — incompatible with enforced tokens.
+	// When replaying enforced tokens the grammar matcher would reject tokens that
+	// don't conform to the JSON schema at each step, crashing vLLM.
+	delete(requestMap, "response_format")
+	delete(requestMap, "guided_json")
+	delete(requestMap, "guided_regex")
+	delete(requestMap, "guided_choice")
+	delete(requestMap, "guided_grammar")
+	delete(requestMap, "guided_decoding_backend")
+	delete(requestMap, "guided_whitespace_pattern")
 
 	requestBody, err := json.Marshal(requestMap)
 	if err != nil {
