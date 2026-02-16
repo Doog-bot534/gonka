@@ -28,48 +28,6 @@ type Result struct {
 	TotalMessages      int
 }
 
-func propagateHypercube(hypercubes []*propagation.Hypercube, publisher string, attackers map[string]bool) map[string]bool {
-	reached := make(map[string]bool)
-	reached[publisher] = true
-
-	visited := make(map[string]bool)
-	visited[publisher] = true
-
-	queue := []string{publisher}
-
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-
-		if attackers[current] {
-			continue
-		}
-
-		allNeighbors := make(map[string]bool)
-		for _, hc := range hypercubes {
-			node := hc.GetNode(current)
-			if node == nil {
-				continue
-			}
-			for _, neighborAddr := range node.Neighbors {
-				if !visited[neighborAddr] {
-					allNeighbors[neighborAddr] = true
-				}
-			}
-		}
-
-		for neighborAddr := range allNeighbors {
-			if !visited[neighborAddr] {
-				visited[neighborAddr] = true
-				reached[neighborAddr] = true
-				queue = append(queue, neighborAddr)
-			}
-		}
-	}
-
-	return reached
-}
-
 func propagateHypercubeWithStats(hypercubes []*propagation.Hypercube, publisher string, attackers map[string]bool) (map[string]bool, int) {
 	reached := make(map[string]bool)
 	reached[publisher] = true

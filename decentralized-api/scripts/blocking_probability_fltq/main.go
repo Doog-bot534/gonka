@@ -1,0 +1,632 @@
+package main
+
+import (
+	"crypto/sha256"
+	"encoding/binary"
+	"flag"
+	"fmt"
+	"math"
+	"math/rand"
+	"runtime"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+)
+
+type WeightedParticipant struct {
+	Address string
+	Weight  uint64
+}
+
+type FLTQNode struct {
+	Address    string
+	Position   uint16
+	Neighbors  []string
+	Dimensions int
+}
+
+type FLTQCube struct {
+	Index      int
+	Dimensions int
+	Size       int
+	Nodes      map[string]*FLTQNode
+	Positions  []*FLTQNode
+}
+
+type Result struct {
+	AttackerFraction   float64
+	AttackerDist       string
+	AvgUnreached       float64
+	HonestNodes        int
+	AvgHopCount        float64
+	MaxHops            int
+	Diameter           int
+	AvgMessagesPerNode float64
+	TotalMessages      int
+}
+
+func propagateFLTQWithStats(cube *FLTQCube, startAddr string, attackers map[string]bool) (map[string]bool, int, int, int) {
+	reached := make(map[string]bool)
+	hopCounts := make(map[string]int)
+	totalHops := 0
+	maxHops := 0
+	messagesSent := 0
+
+	reached[startAddr] = true
+	hopCounts[startAddr] = 0
+
+	queue := []string{startAddr}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		if attackers[current] {
+			continue
+		}
+
+		currentHops := hopCounts[current]
+
+		node := cube.GetNode(current)
+		if node == nil {
+			continue
+		}
+
+		messagesSent += len(node.Neighbors)
+
+		for _, neighborAddr := range node.Neighbors {
+			if !reached[neighborAddr] {
+				reached[neighborAddr] = true
+				hopCounts[neighborAddr] = currentHops + 1
+				totalHops += currentHops + 1
+				if currentHops+1 > maxHops {
+					maxHops = currentHops + 1
+				}
+				queue = append(queue, neighborAddr)
+			}
+		}
+	}
+
+	return reached, totalHops, maxHops, messagesSent
+}
+
+func main() {
+	distFlag := flag.String("dist", "all", "Attacker distribution: uniform, highweight, slots, wald, or all")
+	numSimulations := flag.Int("sims", 1000, "Number of simulations per scenario")
+	numParticipants := flag.Int("participants", 10000, "Number of participants")
+	flag.Parse()
+
+	startTime := time.Now()
+
+	attackerFractions := []float64{0.33, 0.45}
+
+	allDists := []string{"uniform", "highweight", "slots", "wald"}
+	var attackerDists []string
+	if *distFlag == "all" {
+		attackerDists = allDists
+	} else {
+		for _, d := range strings.Split(*distFlag, ",") {
+			d = strings.TrimSpace(d)
+			valid := false
+			for _, ad := range allDists {
+				if d == ad {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				fmt.Printf("Unknown distribution: %s (valid: uniform, highweight, slots, wald, all)\n", d)
+				return
+			}
+			attackerDists = append(attackerDists, d)
+		}
+	}
+
+	fmt.Println("FLTQ Message Propagation Blocking Analysis")
+	fmt.Printf("Started at: %s\n", startTime.Format("2006-01-02 15:04:05"))
+	fmt.Printf("Participants: %d, Simulations: %d, Workers: %d\n", *numParticipants, *numSimulations, runtime.NumCPU())
+	fmt.Printf("Attacker distributions: %s\n", strings.Join(attackerDists, ", "))
+	fmt.Println("Model: flood-forward through FLTQ neighbors; attackers block relay")
+	fmt.Println("==========================================")
+
+	type job struct {
+		attackerFraction float64
+		attackerDist     string
+	}
+
+	totalJobs := len(attackerFractions) * len(attackerDists)
+	jobs := make(chan job, totalJobs)
+	resultsChan := make(chan Result, totalJobs)
+
+	var wg sync.WaitGroup
+	numWorkers := runtime.NumCPU()
+
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range jobs {
+				numAttackers := int(float64(*numParticipants) * j.attackerFraction)
+
+				unreachedTotal := 0
+				honestTotal := 0
+				totalHopCountSum := 0.0
+				maxHopsSum := 0
+				diameterSum := 0
+				totalMessagesSum := 0
+				messagesPerNodeSum := 0.0
+
+				for sim := 0; sim < *numSimulations; sim++ {
+					participants := make([]WeightedParticipant, *numParticipants)
+					for i := 0; i < *numParticipants; i++ {
+						participants[i] = WeightedParticipant{
+							Address: formatAddress(i),
+							Weight:  uint64(1000 + i),
+						}
+					}
+
+					blockHash := []byte{byte(sim), byte(sim >> 8), byte(sim >> 16), byte(sim >> 24), 0, 0, 0, 0}
+					cube := buildFLTQWithWeights(participants, blockHash)
+
+					var attackers map[string]bool
+					if j.attackerDist == "slots" {
+						simSeed := fmt.Sprintf("%s_%d_%f_%x", j.attackerDist, sim, j.attackerFraction, blockHash)
+						attackers = selectAttackersBySlots(participants, numAttackers, simSeed)
+					} else if j.attackerDist == "wald" {
+						attackers = selectAttackersByWald(participants, numAttackers, sim)
+					} else {
+						attackers = make(map[string]bool)
+						step := *numParticipants / numAttackers
+						if j.attackerDist == "uniform" {
+							for i := 0; i < numAttackers; i++ {
+								idx := (i * step) % *numParticipants
+								attackers[formatAddress(idx)] = true
+							}
+						} else if j.attackerDist == "highweight" {
+							for i := 0; i < numAttackers; i++ {
+								idx := (*numParticipants - 1) - (i * step)
+								attackers[formatAddress(idx)] = true
+							}
+						}
+					}
+
+					startAddr := ""
+					for i := 0; i < *numParticipants; i++ {
+						addr := formatAddress(i)
+						if !attackers[addr] {
+							startAddr = addr
+							break
+						}
+					}
+					if startAddr == "" {
+						continue
+					}
+
+					globalReached, totalHops, maxHops, messages := propagateFLTQWithStats(cube, startAddr, attackers)
+					if len(globalReached) > 0 {
+						totalHopCountSum += float64(totalHops) / float64(len(globalReached))
+					}
+					maxHopsSum += maxHops
+					diameterSum += cube.Dimensions
+					totalMessagesSum += messages
+					messagesPerNodeSum += float64(messages) / float64(*numParticipants)
+
+					unreachedHonest := 0
+					for i := 0; i < *numParticipants; i++ {
+						addr := formatAddress(i)
+						if !attackers[addr] && !globalReached[addr] {
+							unreachedHonest++
+						}
+					}
+
+					honestTotal += *numParticipants - len(attackers)
+					unreachedTotal += unreachedHonest
+				}
+
+				honestNodes := honestTotal / *numSimulations
+				avgUnreached := float64(unreachedTotal) / float64(*numSimulations)
+				avgHopCount := totalHopCountSum / float64(*numSimulations)
+				avgMaxHops := maxHopsSum / *numSimulations
+				avgDiameter := diameterSum / *numSimulations
+				avgMessagesPerNode := messagesPerNodeSum / float64(*numSimulations)
+				avgTotalMessages := totalMessagesSum / *numSimulations
+
+				resultsChan <- Result{
+					AttackerFraction:   j.attackerFraction,
+					AttackerDist:       j.attackerDist,
+					AvgUnreached:       avgUnreached,
+					HonestNodes:        honestNodes,
+					AvgHopCount:        avgHopCount,
+					MaxHops:            avgMaxHops,
+					Diameter:           avgDiameter,
+					AvgMessagesPerNode: avgMessagesPerNode,
+					TotalMessages:      avgTotalMessages,
+				}
+			}
+		}()
+	}
+
+	for _, attackerFraction := range attackerFractions {
+		for _, attackerDist := range attackerDists {
+			jobs <- job{attackerFraction, attackerDist}
+		}
+	}
+	close(jobs)
+
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+	}()
+
+	var results []Result
+	completed := 0
+	fmt.Printf("\nProgress: [")
+	barWidth := 50
+	for r := range resultsChan {
+		results = append(results, r)
+		completed++
+
+		filled := int(float64(completed) / float64(totalJobs) * float64(barWidth))
+		bar := ""
+		for i := 0; i < barWidth; i++ {
+			if i < filled {
+				bar += "="
+			} else if i == filled {
+				bar += ">"
+			} else {
+				bar += " "
+			}
+		}
+
+		percentage := float64(completed) / float64(totalJobs) * 100
+		fmt.Printf("\rProgress: [%s] %.1f%% (%d/%d)", bar, percentage, completed, totalJobs)
+	}
+	fmt.Println()
+
+	printTables(results, attackerFractions, attackerDists, *numParticipants)
+
+	elapsed := time.Since(startTime)
+	fmt.Printf("\nExecution completed in: %s\n", elapsed.Round(time.Millisecond))
+}
+
+func printTables(results []Result, attackerFractions []float64, attackerDists []string, numParticipants int) {
+	for _, dist := range attackerDists {
+		distName := "Uniform Distribution"
+		if dist == "highweight" {
+			distName = "High-Weight Attackers"
+		} else if dist == "slots" {
+			distName = "Slot-Based Distribution (Weighted Random Sampling)"
+		} else if dist == "wald" {
+			distName = "Wald (Inverse Gaussian) Distribution"
+		}
+		fmt.Printf("\n\n========== ATTACKER DISTRIBUTION: %s ==========\n", distName)
+
+		fmt.Printf("\n=== Blocking Probability ===\n")
+		fmt.Printf("| Attacker%% | Honest Nodes | Unreached | P(blocked) |\n")
+		fmt.Printf("|-----------|--------------|-----------|------------|\n")
+		for _, af := range attackerFractions {
+			for _, r := range results {
+				if r.AttackerDist == dist && r.AttackerFraction == af {
+					fmt.Printf("| %-9.0f%% | %-12d | %-9.2f | %-10.6f |\n",
+						af*100, r.HonestNodes, r.AvgUnreached, r.AvgUnreached/float64(r.HonestNodes))
+					break
+				}
+			}
+		}
+
+		fmt.Printf("\n=== Network Statistics ===\n")
+		fmt.Printf("| Attacker%% | Neighbors | Avg Hops | Max Hops | Diameter |\n")
+		fmt.Printf("|-----------|-----------|----------|----------|----------|\n")
+		for _, af := range attackerFractions {
+			for _, r := range results {
+				if r.AttackerDist == dist && r.AttackerFraction == af {
+					neighbors := r.Diameter + 1
+					fmt.Printf("| %-9.0f%% | %-9d | %-8.2f | %-8d | %-8d |\n",
+						af*100, neighbors, r.AvgHopCount, r.MaxHops, r.Diameter)
+					break
+				}
+			}
+		}
+	}
+
+	fmt.Println("\n\n==========================================")
+	fmt.Println("=== PROPAGATION STATISTICS ===")
+	fmt.Println("Note: Messages shown are for ONE participant publishing")
+	fmt.Printf("For ALL %d participants publishing: multiply 'Total Messages' by %d\n", numParticipants, numParticipants)
+
+	for _, dist := range attackerDists {
+		distName := "Uniform"
+		if dist == "highweight" {
+			distName = "High-Weight"
+		} else if dist == "slots" {
+			distName = "Slots"
+		} else if dist == "wald" {
+			distName = "Wald"
+		}
+
+		for _, af := range attackerFractions {
+			fmt.Printf("\n--- %s Distribution, %.0f%% Attackers ---\n", distName, af*100)
+			fmt.Printf("| Neighbors | Msgs (1 pub) | Msgs/Participant | Total if ALL publish |\n")
+			fmt.Printf("|-----------|--------------|------------------|-----------------------|\n")
+
+			for _, r := range results {
+				if r.AttackerDist == dist && r.AttackerFraction == af {
+					totalIfAll := int64(r.TotalMessages) * int64(numParticipants)
+					neighbors := r.Diameter + 1
+
+					fmt.Printf("| %-9d | %-12d | %-16.2f | %-21s |\n",
+						neighbors, r.TotalMessages, r.AvgMessagesPerNode, formatLargeNumber(totalIfAll))
+					break
+				}
+			}
+		}
+	}
+}
+
+func formatAddress(i int) string {
+	return fmt.Sprintf("addr%05d", i)
+}
+
+func formatLargeNumber(n int64) string {
+	if n >= 1_000_000_000 {
+		return fmt.Sprintf("%.2fB", float64(n)/1_000_000_000)
+	} else if n >= 1_000_000 {
+		return fmt.Sprintf("%.2fM", float64(n)/1_000_000)
+	} else if n >= 1_000 {
+		return fmt.Sprintf("%.2fK", float64(n)/1_000)
+	}
+	return fmt.Sprintf("%d", n)
+}
+
+func buildFLTQWithWeights(participants []WeightedParticipant, blockHash []byte) *FLTQCube {
+	if len(participants) == 0 {
+		return &FLTQCube{
+			Index:     0,
+			Nodes:     make(map[string]*FLTQNode),
+			Positions: []*FLTQNode{},
+		}
+	}
+
+	realSize := len(participants)
+	n := ceilLog2(realSize)
+	cubeSize := 1 << n
+
+	cube := &FLTQCube{
+		Index:      0,
+		Dimensions: n,
+		Size:       cubeSize,
+		Nodes:      make(map[string]*FLTQNode),
+		Positions:  make([]*FLTQNode, cubeSize),
+	}
+
+	positionToParticipant := make([]string, cubeSize)
+	shuffled := weightedDeterministicShuffle(participants, blockHash)
+	for i := 0; i < realSize && i < cubeSize; i++ {
+		positionToParticipant[i] = shuffled[i]
+	}
+
+	for pos := 0; pos < realSize && pos < cubeSize; pos++ {
+		addr := positionToParticipant[pos]
+		if addr == "" {
+			continue
+		}
+
+		node := &FLTQNode{
+			Address:    addr,
+			Position:   uint16(pos),
+			Neighbors:  make([]string, 0, n+1),
+			Dimensions: n,
+		}
+		cube.Nodes[addr] = node
+		cube.Positions[pos] = node
+	}
+
+	for pos := 0; pos < cubeSize; pos++ {
+		node := cube.Positions[pos]
+		if node == nil {
+			continue
+		}
+
+		neighborsMap := make(map[string]bool)
+
+		for dim := 0; dim < n; dim++ {
+			neighborPos := ltqNeighbor(pos, dim, n)
+			if neighborPos >= 0 && neighborPos < cubeSize && cube.Positions[neighborPos] != nil {
+				neighborAddr := cube.Positions[neighborPos].Address
+				if !neighborsMap[neighborAddr] && neighborAddr != node.Address {
+					neighborsMap[neighborAddr] = true
+				}
+			}
+		}
+
+		complementPos := complementPosition(pos, n)
+		if complementPos >= 0 && complementPos < cubeSize && cube.Positions[complementPos] != nil {
+			neighborAddr := cube.Positions[complementPos].Address
+			if !neighborsMap[neighborAddr] && neighborAddr != node.Address {
+				neighborsMap[neighborAddr] = true
+			}
+		}
+
+		for neighborAddr := range neighborsMap {
+			node.Neighbors = append(node.Neighbors, neighborAddr)
+		}
+	}
+
+	return cube
+}
+
+func ltqNeighbor(pos int, dim int, n int) int {
+	if n <= 0 {
+		return -1
+	}
+
+	if n == 1 {
+		return pos ^ 1
+	}
+
+	if dim < n-1 {
+		return pos ^ (1 << dim)
+	}
+
+	flipped := pos ^ (1 << (n - 1))
+	lsb := pos & 1
+	if lsb == 1 {
+		flipped ^= (1 << (n - 2))
+	}
+	return flipped
+}
+
+func complementPosition(pos int, n int) int {
+	if n <= 0 {
+		return -1
+	}
+	mask := (1 << n) - 1
+	return pos ^ mask
+}
+
+func (c *FLTQCube) GetNode(addr string) *FLTQNode {
+	return c.Nodes[addr]
+}
+
+func ceilLog2(n int) int {
+	if n <= 1 {
+		return 0
+	}
+	return int(math.Ceil(math.Log2(float64(n))))
+}
+
+func weightedDeterministicShuffle(participants []WeightedParticipant, seed []byte) []string {
+	n := len(participants)
+	if n == 0 {
+		return []string{}
+	}
+
+	type indexed struct {
+		participant WeightedParticipant
+		randomScore float64
+	}
+
+	items := make([]indexed, n)
+	rng := rand.New(rand.NewSource(int64(binary.BigEndian.Uint64(seed[:8]))))
+
+	for i, p := range participants {
+		baseScore := float64(p.Weight)
+		randomComponent := rng.Float64() * float64(p.Weight) * 0.3
+		items[i] = indexed{
+			participant: p,
+			randomScore: baseScore + randomComponent,
+		}
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].randomScore > items[j].randomScore
+	})
+
+	result := make([]string, n)
+	for i, item := range items {
+		result[i] = item.participant.Address
+	}
+
+	return result
+}
+
+func slotRandomVal(appHash, participantAddress string, slotIdx int, totalWeight int64) int64 {
+	seedData := fmt.Sprintf("%s%s%d", appHash, participantAddress, slotIdx)
+	hash := sha256.Sum256([]byte(seedData))
+	return int64(binary.BigEndian.Uint64(hash[:8]) % uint64(totalWeight))
+}
+
+func selectAttackersBySlots(participants []WeightedParticipant, numAttackers int, simSeed string) map[string]bool {
+	hash := sha256.Sum256([]byte(simSeed))
+	appHash := fmt.Sprintf("%x", hash[:16])
+
+	type weightEntry struct {
+		address string
+		weight  int64
+	}
+	entries := make([]weightEntry, 0, len(participants))
+	var totalWeight int64
+	for _, p := range participants {
+		if p.Weight <= 0 {
+			continue
+		}
+		entries = append(entries, weightEntry{address: p.Address, weight: int64(p.Weight)})
+		totalWeight += int64(p.Weight)
+	}
+	if totalWeight == 0 || len(entries) == 0 {
+		return nil
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].address < entries[j].address
+	})
+
+	attackers := make(map[string]bool)
+	slotIdx := 0
+	for len(attackers) < numAttackers && len(attackers) < len(entries) {
+		rv := slotRandomVal(appHash, "attacker_selection", slotIdx, totalWeight)
+		cumulative := int64(0)
+		for _, entry := range entries {
+			cumulative += entry.weight
+			if rv < cumulative {
+				if !attackers[entry.address] {
+					attackers[entry.address] = true
+				}
+				break
+			}
+		}
+		slotIdx++
+	}
+	return attackers
+}
+
+func sampleWald(mu, lambda float64, rng *rand.Rand) float64 {
+	nu := rng.NormFloat64()
+	y := nu * nu
+	x := mu + (mu*mu*y)/(2*lambda) - (mu/(2*lambda))*math.Sqrt(4*mu*lambda*y+mu*mu*y*y)
+
+	u := rng.Float64()
+	if u <= mu/(mu+x) {
+		return x
+	}
+	return mu * mu / x
+}
+
+func selectAttackersByWald(participants []WeightedParticipant, numAttackers int, simSeed int) map[string]bool {
+	rng := rand.New(rand.NewSource(int64(simSeed)))
+
+	const lambda = 1.0
+
+	type scored struct {
+		address string
+		score   float64
+	}
+
+	maxWeight := float64(0)
+	for _, p := range participants {
+		if float64(p.Weight) > maxWeight {
+			maxWeight = float64(p.Weight)
+		}
+	}
+
+	scores := make([]scored, len(participants))
+	for i, p := range participants {
+		mu := maxWeight / float64(p.Weight)
+		waldVal := sampleWald(mu, lambda, rng)
+		scores[i] = scored{
+			address: p.Address,
+			score:   waldVal,
+		}
+	}
+
+	sort.Slice(scores, func(i, j int) bool {
+		return scores[i].score < scores[j].score
+	})
+
+	attackers := make(map[string]bool)
+	for i := 0; i < numAttackers && i < len(scores); i++ {
+		attackers[scores[i].address] = true
+	}
+
+	return attackers
+}
