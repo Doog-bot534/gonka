@@ -64,6 +64,41 @@ var bountyRewards = []BountyReward{
 	// Report and fix of low risk vulnerability.
 	// PR: https://github.com/gonka-ai/gonka/pull/643
 	{Address: "gonka18enyz7h6hh5zjveee5wnhkhrcexamfz0zdxxqe", Amount: Gonka(500)},
+
+	// Valid implementation of a planned task.
+	// PR: https://github.com/gonka-ai/gonka/pull/641
+	{Address: "gonka1jkydytz99gkh0t42gjj4lz0mmdeumqp7mtzke3", Amount: Gonka(1500)},
+
+	// Valid minor vulnerability report and fix.
+	// PR: https://github.com/gonka-ai/gonka/pull/622
+	{Address: "gonka1s8szs7n43jxgz4a4xaxmzm5emh7fmjxhach7w8", Amount: Gonka(700)},
+
+	// Valid implementation of a planned task with adjusting scope, important for the network.
+	// PR: https://github.com/gonka-ai/gonka/pull/688
+	{Address: "gonka1s8szs7n43jxgz4a4xaxmzm5emh7fmjxhach7w8", Amount: Gonka(1500)},
+
+	// PR review of upgrade v.0.2.8.
+	{Address: "gonka12jaf7m4eysyqt32mrgarum6z96vt55tckvcleq", Amount: Gonka(2500)},
+
+	// PR review of upgrade v.0.2.8.
+	{Address: "gonka18enyz7h6hh5zjveee5wnhkhrcexamfz0zdxxqe", Amount: Gonka(2500)},
+
+	// PR review of upgrade v.0.2.8.
+	{Address: "gonka1f0elpwnx7ezytdlck35003nz6qk8kzvurvnj4a", Amount: Gonka(2500)},
+
+	// PR review of upgrade v.0.2.8.
+	{Address: "gonka1ejkupq3cy6p8xd64ew2wlzveml86ckpzn9dl56", Amount: Gonka(2500)}, 
+
+	// PR review of upgrade v.0.2.8.
+	{Address: "gonka1zqss46r6jf6dhhyaa777kc2ppvjhn0ufkx4y57", Amount: Gonka(2500)}, 
+
+	// PR review of upgrade v.0.2.9.
+	{Address: "gonka12jaf7m4eysyqt32mrgarum6z96vt55tckvcleq", Amount: Gonka(2500)},
+
+	// PR review of upgrade v.0.2.9.
+	{Address: "gonka18enyz7h6hh5zjveee5wnhkhrcexamfz0zdxxqe", Amount: Gonka(2500)},
+
+	
 }
 
 func CreateUpgradeHandler(
