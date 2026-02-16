@@ -203,9 +203,9 @@ func setPocTimingParams(ctx context.Context, k keeper.Keeper) {
 	}
 
 	// Update PoC timing: reduce from 60 to 35 blocks
-	params.EpochParams.PocStageDuration = 35
+	params.EpochParams.PocStageDuration = 10
 	// Update validation duration: reduce from 480 to 240 blocks
-	params.EpochParams.PocValidationDuration = 240
+	params.EpochParams.PocValidationDuration = 10
 	// Deprecated: set to 0, nonce acceptance now ends at poc_generation_end
 	params.EpochParams.PocExchangeDuration = 0
 	// Scale weight factor proportionally: 0.262 * (60/35) ≈ 0.449
