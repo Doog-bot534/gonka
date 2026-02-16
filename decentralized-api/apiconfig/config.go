@@ -23,6 +23,7 @@ type Config struct {
 	LastUsedVersion     string                `koanf:"last_used_version" json:"last_used_version"`
 	ValidationParams    ValidationParamsCache `koanf:"validation_params" json:"validation_params"`
 	BandwidthParams     BandwidthParamsCache  `koanf:"bandwidth_params" json:"bandwidth_params"`
+	TransferAgentAccessCache TransferAgentAccessCache `koanf:"-" json:"-"` // not persisted, synced from chain
 	PocPropagation      PocPropagationConfig  `koanf:"poc_propagation" json:"poc_propagation"`
 }
 
@@ -180,4 +181,10 @@ type PocPropagationConfig struct {
 	Trees      int    `koanf:"trees" json:"trees"`
 	Fanout     int    `koanf:"fanout" json:"fanout"`
 	StorageDir string `koanf:"storage_dir" json:"storage_dir"`
+}
+
+// TransferAgentAccessCache caches the allowed TA addresses for O(1) lookups.
+type TransferAgentAccessCache struct {
+	AllowedAddresses map[string]struct{} // O(1) lookup
+	IsEnabled        bool                // true if whitelist is non-empty
 }

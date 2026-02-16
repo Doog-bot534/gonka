@@ -6,6 +6,7 @@ import (
 	"decentralized-api/mlnodeclient"
 	"decentralized-api/participant"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -16,6 +17,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/slog"
 )
+
+func TestMain(m *testing.M) {
+	// Disable model enforcement for all tests
+	os.Setenv("ENFORCED_MODEL_ID", "disabled")
+	os.Exit(m.Run())
+}
 
 type MockBrokerChainBridge struct {
 	mock.Mock
@@ -74,6 +81,7 @@ func NewTestBroker() *Broker {
 		PubKey:  "dummyPubKey",
 	}
 	phaseTracker := chainphase.NewChainPhaseTracker()
+	phaseTracker.UpdatePocV2Enabled(true)
 	phaseTracker.Update(
 		chainphase.BlockInfo{Height: 1, Hash: "hash-1"},
 		&types.Epoch{Index: 100, PocStartBlockHeight: 100},
@@ -218,11 +226,11 @@ func registerNodeAndSetInferenceStatus(t *testing.T, broker *Broker, node apicon
 
 	// Wait for reconciliation to actually bring the node to INFERENCE status in the broker
 	// AND for reconciliation to complete (ReconcileInfo == nil)
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		nodes, _ := broker.GetNodes()
 		for _, n := range nodes {
-			if n.Node.Id == node.Id && 
+			if n.Node.Id == node.Id &&
 				n.State.CurrentStatus == types.HardwareNodeStatus_INFERENCE &&
 				n.State.ReconcileInfo == nil {
 				return
@@ -231,7 +239,7 @@ func registerNodeAndSetInferenceStatus(t *testing.T, broker *Broker, node apicon
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	t.Fatalf("Node did not reach INFERENCE status and complete reconciliation in time")
+	t.Fatalf("Node did not reach INFERENCE status  and complete reconciliation in time")
 }
 
 func TestNodeRemoval(t *testing.T) {
