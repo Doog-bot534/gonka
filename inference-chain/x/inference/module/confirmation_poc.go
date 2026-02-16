@@ -474,6 +474,9 @@ func (am AppModule) updateConfirmationWeightsV2(
 		// Continue without distributions
 	}
 
+	inferenceServingNodeIds := am.getInferenceServingNodeIds(ctx, types.Epoch{Index: event.EpochIndex})
+	storeCommits, weightDistributions = am.filterStoreCommitsFromInferenceNodes(storeCommits, weightDistributions, inferenceServingNodeIds)
+
 	validationsV2, err := am.keeper.GetPoCValidationsV2ByStage(ctx, event.TriggerHeight)
 	if err != nil {
 		am.LogError("updateConfirmationWeightsV2: failed to get PoC v2 validations for confirmation", types.PoC, "error", err)
