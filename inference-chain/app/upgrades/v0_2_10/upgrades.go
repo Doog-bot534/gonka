@@ -118,6 +118,8 @@ func CreateUpgradeHandler(
 		setPocNormalizationEnabled(ctx, k)
 		setPocTimingParams(ctx, k)
 		updateQwenModel(ctx, k)
+		updateCurrentEpochModelSnapshot(ctx, k)
+		addPunishmentGraceEpoch(ctx, k)
 
 		if err := distributeBountyRewards(ctx, k, distrKeeper); err != nil {
 			return nil, err
@@ -248,6 +250,69 @@ func updateQwenModel(ctx context.Context, k keeper.Keeper) {
 		"model_id", modelID,
 		"model_args", model.ModelArgs,
 		"validation_threshold", 0.958)
+}
+
+// updateCurrentEpochModelSnapshot updates the ModelSnapshot in the current epoch's EpochGroupData.
+// This ensures API nodes get the new model args immediately without waiting for the next epoch.
+// The governance model update (updateQwenModel) handles future epochs, while this function
+// updates the already-frozen snapshot for the current epoch.
+func updateCurrentEpochModelSnapshot(ctx context.Context, k keeper.Keeper) {
+	modelID := "Qwen/Qwen3-235B-A22B-Instruct-2507-FP8"
+
+	// Get current epoch index
+	currentEpochIndex, found := k.GetEffectiveEpochIndex(ctx)
+	if !found {
+		k.LogError("no current epoch found during snapshot update", types.Upgrades)
+		return
+	}
+
+	// Get the model subgroup's EpochGroupData
+	epochGroupData, found := k.GetEpochGroupData(ctx, currentEpochIndex, modelID)
+	if !found {
+		k.LogError("no epoch group data found for model", types.Upgrades,
+			"epoch_index", currentEpochIndex,
+			"model_id", modelID)
+		return
+	}
+
+	// Update the ModelSnapshot with new args
+	if epochGroupData.ModelSnapshot == nil {
+		k.LogError("model snapshot is nil in epoch group data", types.Upgrades,
+			"epoch_index", currentEpochIndex,
+			"model_id", modelID)
+		return
+	}
+
+	epochGroupData.ModelSnapshot.ModelArgs = []string{
+		"--max-model-len", "240000",
+		"--enable-auto-tool-choice",
+		"--tool-call-parser", "hermes",
+	}
+	epochGroupData.ModelSnapshot.ValidationThreshold = &types.Decimal{Value: 958, Exponent: -3}
+
+	// Save updated epoch group data
+	k.SetEpochGroupData(ctx, epochGroupData)
+
+	k.LogInfo("updated model snapshot in current epoch", types.Upgrades,
+		"epoch_index", currentEpochIndex,
+		"model_id", modelID,
+		"model_args", epochGroupData.ModelSnapshot.ModelArgs,
+		"validation_threshold", 0.958)
+}
+
+func addPunishmentGraceEpoch(ctx context.Context, k keeper.Keeper) {
+	epochIndex, found := k.GetEffectiveEpochIndex(ctx)
+	if !found {
+		k.LogError("no current epoch found", types.Upgrades)
+		return
+	}
+
+	binomTestP0 := &types.Decimal{Value: 5, Exponent: -1} // 0.5
+	if err := k.AddPunishmentGraceEpoch(ctx, epochIndex, binomTestP0, 3000); err != nil {
+		k.LogError("failed to add grace epoch", types.Upgrades, "error", err)
+		return
+	}
+	k.LogInfo("added grace epoch", types.Upgrades, "epoch", epochIndex)
 }
 
 func distributeBountyRewards(ctx context.Context, k keeper.Keeper, distrKeeper distrkeeper.Keeper) error {
