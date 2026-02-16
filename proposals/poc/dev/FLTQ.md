@@ -92,10 +92,10 @@ This is clean, deterministic, and produces the desired weight-based clustering.
 
 Build the Locally Twisted Cube recursively. The LTQ_n is constructed from two disjoint copies of LTQ_{n-1}:
 
-- **Copy 0**: Nodes with addresses `0 u_2 u_3 ... u_n` (MSB = 0).
-- **Copy 1**: Nodes with addresses `1 u_2 u_3 ... u_n` (MSB = 1).
+- **Copy 0**: Nodes with addresses `0 x_{n-1} x_{n-2} ... x_2 x_1` (MSB = 0).
+- **Copy 1**: Nodes with addresses `1 x_{n-1} x_{n-2} ... x_2 x_1` (MSB = 1).
 
-**Cross-half connection rule**: A node `v = 0 u_2 u_3 ... u_n` in Copy 0 connects to node `w = 1 (u_2 XOR u_n) u_3 ... u_n` in Copy 1.
+**Cross-half connection rule**: A node with address `0 x_{n-1} x_{n-2} ... x_2 x_1` in Copy 0 connects to node `1 (x_{n-1} XOR x_1) x_{n-2} ... x_2 x_1` in Copy 1, where `x_1` is the least significant bit (LSB).
 
 Implementation approach:
 
@@ -129,10 +129,31 @@ func buildLTQEdges(n int) -> edges for all 2^n nodes:
     Recursive:
       - All edges from LTQ_{n-1} in Copy 0 (prefix 0)
       - All edges from LTQ_{n-1} in Copy 1 (prefix 1)
-      - Cross edges: for every node 0|u in Copy 0,
-        connect to 1|(u XOR (u_n << (n-2))) in Copy 1
-        where u_n is the least significant bit of u
+      - Cross edges: for every node 0 x_{n-1} ... x_2 x_1 in Copy 0,
+        connect to 1 (x_{n-1} XOR x_1) x_{n-2} ... x_2 x_1 in Copy 1
+        where x_1 is the least significant bit
 ```
+
+**Example for n=3:**
+
+All 8 nodes and their LTQ neighbors:
+
+| Node (binary) | Dim 0 (flip bit 0) | Dim 1 (flip bit 1) | Dim 2 (twisted) |
+|---------------|-------------------|-------------------|-----------------|
+| 000 | 001 | 010 | 100 |
+| 001 | 000 | 011 | 101 |
+| 010 | 011 | 000 | 110 |
+| 011 | 010 | 001 | 111 |
+| 100 | 101 | 110 | 000 |
+| 101 | 100 | 111 | 011 |
+| 110 | 111 | 100 | 010 |
+| 111 | 110 | 101 | 001 |
+
+**Dim 2 (cross-half twisted edges) explained:**
+- Node `000`: connects to `1(0 XOR 0)0 = 100` (flip MSB)
+- Node `001`: connects to `1(0 XOR 1)1 = 101` (flip MSB and bit 1)
+- Node `010`: connects to `1(1 XOR 0)0 = 110` (flip MSB)
+- Node `011`: connects to `1(1 XOR 1)1 = 111` (flip MSB and bit 1)
 
 Each node gets exactly `n` edges from LTQ_n wiring (one per dimension).
 
