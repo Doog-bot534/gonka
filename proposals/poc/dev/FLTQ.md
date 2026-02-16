@@ -36,7 +36,9 @@ Follows the same patterns as the existing `Hypercube` / `HypercubeNode` structs 
 
 ## Visualization
 
-![Five-dimensional folded locally twisted cube](../report_assets/fltq_5.jpg)
+![Four-dimensional folded locally twisted cube](../report_assets/fltq_5.jpg)
+
+![Two-dimensional folded locally twisted cube](../report_assets/fltq_3.jpg)
 
 ## Implementation Steps
 
