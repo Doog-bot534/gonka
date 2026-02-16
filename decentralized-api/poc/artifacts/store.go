@@ -34,8 +34,9 @@ type ArtifactStore struct {
 	dir    string
 	closed bool
 
-	dataFile  *os.File // artifacts.data: [LE32 len][LE32 nonce][vector]...
-	nodesFile *os.File // nodes.data: JSON map of node_id -> count
+	dataFile    *os.File // artifacts.data: [LE32 len][LE32 nonce][vector]...
+	nodesFile   *os.File // nodes.data: JSON map of node_id -> count
+	nodeIDsFile *os.File // nodeids.data: [LE16 len][utf8 nodeId]... per leaf in order
 
 	buffer           []bufferedArtifact
 	offsets          []uint64
@@ -49,6 +50,7 @@ type ArtifactStore struct {
 	// Node distribution tracking
 	nodeCounts        map[string]uint32 // node_id -> artifact count (in-memory, includes unflushed)
 	flushedNodeCounts map[string]uint32 // persisted node counts
+	leafNodeIDs       []string          // per-leaf nodeId in append order, matches leaf indices
 }
 
 type bufferedArtifact struct {
@@ -64,6 +66,7 @@ func Open(dir string) (*ArtifactStore, error) {
 
 	dataPath := filepath.Join(dir, "artifacts.data")
 	nodesPath := filepath.Join(dir, "nodes.json")
+	nodeIDsPath := filepath.Join(dir, "nodeids.data")
 
 	dataFile, err := os.OpenFile(dataPath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
@@ -76,21 +79,31 @@ func Open(dir string) (*ArtifactStore, error) {
 		return nil, fmt.Errorf("open nodes file: %w", err)
 	}
 
+	nodeIDsFile, err := os.OpenFile(nodeIDsPath, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		dataFile.Close()
+		nodesFile.Close()
+		return nil, fmt.Errorf("open nodeids file: %w", err)
+	}
+
 	s := &ArtifactStore{
 		dir:               dir,
 		dataFile:          dataFile,
 		nodesFile:         nodesFile,
+		nodeIDsFile:       nodeIDsFile,
 		buffer:            make([]bufferedArtifact, 0, 1024),
 		offsets:           make([]uint64, 0, 1024),
 		nonceToLeafIndex:  make(map[int32]uint32),
 		mmrNodes:          make([][]byte, 0, 1024),
 		nodeCounts:        make(map[string]uint32),
 		flushedNodeCounts: make(map[string]uint32),
+		leafNodeIDs:       make([]string, 0, 1024),
 	}
 
 	if err := s.recover(); err != nil {
 		s.dataFile.Close()
 		s.nodesFile.Close()
+		s.nodeIDsFile.Close()
 		return nil, fmt.Errorf("recover: %w", err)
 	}
 
@@ -151,6 +164,10 @@ func (s *ArtifactStore) recover() error {
 		return fmt.Errorf("recover node counts: %w", err)
 	}
 
+	if err := s.recoverNodeIDs(); err != nil {
+		return fmt.Errorf("recover node ids: %w", err)
+	}
+
 	return nil
 }
 
@@ -176,6 +193,72 @@ func (s *ArtifactStore) recoverNodeCounts() error {
 	// Copy flushed counts to current counts
 	for k, v := range s.flushedNodeCounts {
 		s.nodeCounts[k] = v
+	}
+
+	return nil
+}
+
+func (s *ArtifactStore) recoverNodeIDs() error {
+	info, err := s.nodeIDsFile.Stat()
+	if err != nil {
+		return fmt.Errorf("stat nodeids file: %w", err)
+	}
+
+	if info.Size() == 0 {
+		return nil
+	}
+
+	if _, err := s.nodeIDsFile.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("seek nodeids file: %w", err)
+	}
+
+	r := bufio.NewReader(s.nodeIDsFile)
+	var validOffset int64
+	for {
+		var lenBuf [2]byte
+		_, err := io.ReadFull(r, lenBuf[:])
+		if err == io.EOF {
+			break
+		}
+		if errors.Is(err, io.ErrUnexpectedEOF) {
+			if truncErr := s.nodeIDsFile.Truncate(validOffset); truncErr != nil {
+				return fmt.Errorf("truncate nodeids after partial len: %w", truncErr)
+			}
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("read nodeids len at offset %d: %w", validOffset, err)
+		}
+
+		strLen := binary.LittleEndian.Uint16(lenBuf[:])
+		if strLen > 0 {
+			buf := make([]byte, strLen)
+			_, err = io.ReadFull(r, buf)
+			if errors.Is(err, io.ErrUnexpectedEOF) || err == io.EOF {
+				if truncErr := s.nodeIDsFile.Truncate(validOffset); truncErr != nil {
+					return fmt.Errorf("truncate nodeids after partial data: %w", truncErr)
+				}
+				break
+			}
+			if err != nil {
+				return fmt.Errorf("read nodeids data at offset %d: %w", validOffset, err)
+			}
+			s.leafNodeIDs = append(s.leafNodeIDs, string(buf))
+		} else {
+			s.leafNodeIDs = append(s.leafNodeIDs, "")
+		}
+		validOffset += 2 + int64(strLen)
+	}
+
+	if uint32(len(s.leafNodeIDs)) > s.flushedLeafCount {
+		s.leafNodeIDs = s.leafNodeIDs[:s.flushedLeafCount]
+		truncOffset := int64(0)
+		for _, id := range s.leafNodeIDs {
+			truncOffset += 2 + int64(len(id))
+		}
+		if truncErr := s.nodeIDsFile.Truncate(truncOffset); truncErr != nil {
+			return fmt.Errorf("truncate nodeids to match leaf count: %w", truncErr)
+		}
 	}
 
 	return nil
@@ -265,6 +348,10 @@ func (s *ArtifactStore) flushLocked() error {
 		return fmt.Errorf("sync data file: %w", err)
 	}
 
+	if err := s.flushNodeIDsLocked(); err != nil {
+		return fmt.Errorf("flush node ids: %w", err)
+	}
+
 	// Persist node counts
 	if err := s.flushNodeCountsLocked(); err != nil {
 		return fmt.Errorf("flush node counts: %w", err)
@@ -274,6 +361,35 @@ func (s *ArtifactStore) flushLocked() error {
 	s.flushedDataOffset = offset
 	s.buffer = s.buffer[:0]
 
+	return nil
+}
+
+func (s *ArtifactStore) flushNodeIDsLocked() error {
+	if _, err := s.nodeIDsFile.Seek(0, io.SeekEnd); err != nil {
+		return fmt.Errorf("seek nodeids file: %w", err)
+	}
+
+	w := bufio.NewWriter(s.nodeIDsFile)
+	for _, art := range s.buffer {
+		var lenBuf [2]byte
+		binary.LittleEndian.PutUint16(lenBuf[:], uint16(len(art.nodeId)))
+		if _, err := w.Write(lenBuf[:]); err != nil {
+			return fmt.Errorf("write nodeids len: %w", err)
+		}
+		if len(art.nodeId) > 0 {
+			if _, err := w.WriteString(art.nodeId); err != nil {
+				return fmt.Errorf("write nodeids data: %w", err)
+			}
+		}
+		s.leafNodeIDs = append(s.leafNodeIDs, art.nodeId)
+	}
+
+	if err := w.Flush(); err != nil {
+		return fmt.Errorf("flush nodeids buffer: %w", err)
+	}
+	if err := s.nodeIDsFile.Sync(); err != nil {
+		return fmt.Errorf("sync nodeids file: %w", err)
+	}
 	return nil
 }
 
@@ -382,6 +498,32 @@ func (s *ArtifactStore) GetNodeCounts() map[string]uint32 {
 	return result
 }
 
+func (s *ArtifactStore) GetNodeDistributionAtCount(n uint32) (map[string]uint32, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.closed {
+		return nil, ErrStoreClosed
+	}
+
+	if n == 0 {
+		return nil, fmt.Errorf("count must be > 0")
+	}
+
+	if n > uint32(len(s.leafNodeIDs)) {
+		return nil, fmt.Errorf("count %d exceeds flushed leaf node IDs (%d available)", n, len(s.leafNodeIDs))
+	}
+
+	result := make(map[string]uint32)
+	for i := uint32(0); i < n; i++ {
+		id := s.leafNodeIDs[i]
+		if id != "" {
+			result[id]++
+		}
+	}
+	return result, nil
+}
+
 func (s *ArtifactStore) GetArtifact(leafIndex uint32) (nonce int32, vector []byte, err error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -450,6 +592,10 @@ func (s *ArtifactStore) Close() error {
 
 	if err := s.nodesFile.Close(); err != nil {
 		return fmt.Errorf("close nodes file: %w", err)
+	}
+
+	if err := s.nodeIDsFile.Close(); err != nil {
+		return fmt.Errorf("close nodeids file: %w", err)
 	}
 
 	return nil

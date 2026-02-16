@@ -285,6 +285,11 @@ func (w *CommitWorker) maybeSubmitConsensusCommit(pocHeight int64) {
 			return
 		}
 
+		last := w.lastCommitted[pocHeight]
+		if last.count == count && bytes.Equal(last.rootHash, rootHash) {
+			return
+		}
+
 		msg := &inference.MsgPoCV2StoreCommit{
 			PocStageStartBlockHeight: pocHeight,
 			Count:                    count,
@@ -297,8 +302,8 @@ func (w *CommitWorker) maybeSubmitConsensusCommit(pocHeight int64) {
 			return
 		}
 
-		w.consensusSubmitted[pocHeight] = true
-		logging.Info("CommitWorker: local count committed (propagation disabled)", types.PoC,
+		w.lastCommitted[pocHeight] = commitState{count, rootHash}
+		logging.Debug("CommitWorker: committed (propagation disabled)", types.PoC,
 			"pocHeight", pocHeight, "count", count)
 		return
 	}
@@ -413,7 +418,12 @@ func (w *CommitWorker) submitWeightDistribution(pocHeight int64) {
 		logging.Warn("CommitWorker: flush failed", types.PoC, "pocHeight", pocHeight, "error", err)
 	}
 
-	distribution := store.GetNodeDistribution()
+	distribution, err := store.GetNodeDistributionAtCount(resp.Count)
+	if err != nil {
+		logging.Warn("CommitWorker: exact distribution unavailable, falling back to proportional", types.PoC,
+			"pocHeight", pocHeight, "count", resp.Count, "error", err)
+		distribution = store.GetNodeDistribution()
+	}
 	if len(distribution) == 0 {
 		logging.Debug("CommitWorker: empty distribution", types.PoC, "pocHeight", pocHeight)
 		return

@@ -487,6 +487,171 @@ func TestConcurrentGetArtifact(t *testing.T) {
 	}
 }
 
+func TestNodeDistributionTracking(t *testing.T) {
+	dir := t.TempDir()
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer store.Close()
+
+	store.AddWithNode(1, []byte{1}, "node-a")
+	store.AddWithNode(2, []byte{2}, "node-b")
+	store.AddWithNode(3, []byte{3}, "node-a")
+	store.AddWithNode(4, []byte{4}, "node-a")
+	store.AddWithNode(5, []byte{5}, "node-b")
+	store.Flush()
+
+	dist, err := store.GetNodeDistributionAtCount(5)
+	if err != nil {
+		t.Fatalf("GetNodeDistributionAtCount failed: %v", err)
+	}
+	if dist["node-a"] != 3 {
+		t.Errorf("expected node-a=3, got %d", dist["node-a"])
+	}
+	if dist["node-b"] != 2 {
+		t.Errorf("expected node-b=2, got %d", dist["node-b"])
+	}
+}
+
+func TestGetNodeDistributionAtCount(t *testing.T) {
+	dir := t.TempDir()
+	store, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer store.Close()
+
+	store.AddWithNode(1, []byte{1}, "node-a")
+	store.AddWithNode(2, []byte{2}, "node-a")
+	store.AddWithNode(3, []byte{3}, "node-b")
+	store.AddWithNode(4, []byte{4}, "node-b")
+	store.AddWithNode(5, []byte{5}, "node-b")
+	store.AddWithNode(6, []byte{6}, "node-a")
+	store.Flush()
+
+	tests := []struct {
+		count    uint32
+		expected map[string]uint32
+	}{
+		{1, map[string]uint32{"node-a": 1}},
+		{2, map[string]uint32{"node-a": 2}},
+		{3, map[string]uint32{"node-a": 2, "node-b": 1}},
+		{4, map[string]uint32{"node-a": 2, "node-b": 2}},
+		{5, map[string]uint32{"node-a": 2, "node-b": 3}},
+		{6, map[string]uint32{"node-a": 3, "node-b": 3}},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("count_%d", tt.count), func(t *testing.T) {
+			dist, err := store.GetNodeDistributionAtCount(tt.count)
+			if err != nil {
+				t.Fatalf("GetNodeDistributionAtCount(%d) failed: %v", tt.count, err)
+			}
+			for nodeId, expectedCount := range tt.expected {
+				if dist[nodeId] != expectedCount {
+					t.Errorf("at count %d: expected %s=%d, got %d", tt.count, nodeId, expectedCount, dist[nodeId])
+				}
+			}
+			if len(dist) != len(tt.expected) {
+				t.Errorf("at count %d: expected %d nodes, got %d", tt.count, len(tt.expected), len(dist))
+			}
+		})
+	}
+
+	_, err = store.GetNodeDistributionAtCount(7)
+	if err == nil {
+		t.Errorf("expected error for count exceeding flushed, got nil")
+	}
+
+	_, err = store.GetNodeDistributionAtCount(0)
+	if err == nil {
+		t.Errorf("expected error for count 0, got nil")
+	}
+}
+
+func TestNodeDistributionRecovery(t *testing.T) {
+	dir := t.TempDir()
+
+	store1, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+
+	store1.AddWithNode(1, []byte{1}, "node-x")
+	store1.AddWithNode(2, []byte{2}, "node-y")
+	store1.AddWithNode(3, []byte{3}, "node-x")
+	store1.Flush()
+
+	dist1, err := store1.GetNodeDistributionAtCount(3)
+	if err != nil {
+		t.Fatalf("GetNodeDistributionAtCount failed: %v", err)
+	}
+	store1.Close()
+
+	store2, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Reopen failed: %v", err)
+	}
+	defer store2.Close()
+
+	dist2, err := store2.GetNodeDistributionAtCount(3)
+	if err != nil {
+		t.Fatalf("GetNodeDistributionAtCount after recovery failed: %v", err)
+	}
+
+	for k, v := range dist1 {
+		if dist2[k] != v {
+			t.Errorf("after recovery: expected %s=%d, got %d", k, v, dist2[k])
+		}
+	}
+
+	dist2at2, err := store2.GetNodeDistributionAtCount(2)
+	if err != nil {
+		t.Fatalf("GetNodeDistributionAtCount(2) after recovery failed: %v", err)
+	}
+	if dist2at2["node-x"] != 1 || dist2at2["node-y"] != 1 {
+		t.Errorf("prefix distribution wrong after recovery: got %v", dist2at2)
+	}
+}
+
+func TestNodeDistributionAtCountWithTruncatedFile(t *testing.T) {
+	dir := t.TempDir()
+
+	store1, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+
+	store1.AddWithNode(1, []byte{1}, "node-a")
+	store1.AddWithNode(2, []byte{2}, "node-b")
+	store1.AddWithNode(3, []byte{3}, "node-a")
+	store1.Flush()
+	store1.Close()
+
+	nodeIDsPath := filepath.Join(dir, "nodeids.data")
+	f, err := os.OpenFile(nodeIDsPath, os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		t.Fatalf("open nodeids file: %v", err)
+	}
+	f.Write([]byte{0x05, 0x00})
+	f.Close()
+
+	store2, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Reopen with truncated nodeids failed: %v", err)
+	}
+	defer store2.Close()
+
+	dist, err := store2.GetNodeDistributionAtCount(3)
+	if err != nil {
+		t.Fatalf("GetNodeDistributionAtCount failed after truncation recovery: %v", err)
+	}
+	if dist["node-a"] != 2 || dist["node-b"] != 1 {
+		t.Errorf("wrong distribution after truncation recovery: %v", dist)
+	}
+}
+
 func BenchmarkAdd(b *testing.B) {
 	dir := b.TempDir()
 	store, _ := Open(dir)

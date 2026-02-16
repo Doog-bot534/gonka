@@ -731,6 +731,155 @@ func TestCommitWorker_HeightChangeResetsState(t *testing.T) {
 	assert.Empty(t, worker.lastCommitted)
 }
 
+func TestCommitWorker_PropagationDisabled_ContinuousCommits(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "commit_worker_test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	store := artifacts.NewManagedArtifactStore(tmpDir, 5)
+	defer store.Close()
+
+	mockRecorder := &cosmosclient.MockCosmosMessageClient{}
+
+	worker := &CommitWorker{
+		store:                store,
+		recorder:             mockRecorder,
+		participantAddress:   "test_addr",
+		lastCommitted:        make(map[int64]commitState),
+		observationSubmitted: make(map[int64]bool),
+		consensusSubmitted:   make(map[int64]bool),
+		propagationEnabled:   false,
+	}
+
+	pocHeight := int64(100)
+
+	artifactStore, err := store.GetOrCreateStore(pocHeight)
+	assert.NoError(t, err)
+
+	err = artifactStore.AddWithNode(1, []byte("vector-1"), "node-1")
+	assert.NoError(t, err)
+	err = artifactStore.Flush()
+	assert.NoError(t, err)
+
+	count1, rootHash1 := artifactStore.GetFlushedRoot()
+
+	mockRecorder.On("SubmitPoCV2StoreCommit", mock.MatchedBy(func(msg *inference.MsgPoCV2StoreCommit) bool {
+		return msg.Count == count1 && bytes.Equal(msg.RootHash, rootHash1)
+	})).Return(nil).Once()
+
+	worker.maybeSubmitConsensusCommit(pocHeight)
+	mockRecorder.AssertExpectations(t)
+
+	err = artifactStore.AddWithNode(2, []byte("vector-2"), "node-1")
+	assert.NoError(t, err)
+	err = artifactStore.AddWithNode(3, []byte("vector-3"), "node-2")
+	assert.NoError(t, err)
+	err = artifactStore.Flush()
+	assert.NoError(t, err)
+
+	count2, rootHash2 := artifactStore.GetFlushedRoot()
+	assert.Equal(t, uint32(3), count2)
+
+	mockRecorder.On("SubmitPoCV2StoreCommit", mock.MatchedBy(func(msg *inference.MsgPoCV2StoreCommit) bool {
+		return msg.Count == count2 && bytes.Equal(msg.RootHash, rootHash2)
+	})).Return(nil).Once()
+
+	worker.maybeSubmitConsensusCommit(pocHeight)
+	mockRecorder.AssertExpectations(t)
+}
+
+type mockWeightDistQueryClient struct {
+	types.QueryClient
+	mock.Mock
+}
+
+func (m *mockWeightDistQueryClient) PoCV2StoreCommit(ctx context.Context, in *types.QueryPoCV2StoreCommitRequest, opts ...grpc.CallOption) (*types.QueryPoCV2StoreCommitResponse, error) {
+	args := m.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.QueryPoCV2StoreCommitResponse), args.Error(1)
+}
+
+func (m *mockWeightDistQueryClient) MLNodeWeightDistribution(ctx context.Context, in *types.QueryMLNodeWeightDistributionRequest, opts ...grpc.CallOption) (*types.QueryMLNodeWeightDistributionResponse, error) {
+	args := m.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.QueryMLNodeWeightDistributionResponse), args.Error(1)
+}
+
+func TestSubmitWeightDistribution_UsesExactDistributionAtCount(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "commit_worker_test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	store := artifacts.NewManagedArtifactStore(tmpDir, 5)
+	defer store.Close()
+
+	mockRecorder := &cosmosclient.MockCosmosMessageClient{}
+
+	worker := &CommitWorker{
+		store:                store,
+		recorder:             mockRecorder,
+		participantAddress:   "test_addr",
+		lastCommitted:        make(map[int64]commitState),
+		observationSubmitted: make(map[int64]bool),
+		consensusSubmitted:   make(map[int64]bool),
+		propagationEnabled:   true,
+	}
+
+	pocHeight := int64(100)
+	artifactStore, err := store.GetOrCreateStore(pocHeight)
+	assert.NoError(t, err)
+
+	artifactStore.AddWithNode(1, []byte("v1"), "node-a")
+	artifactStore.AddWithNode(2, []byte("v2"), "node-a")
+	artifactStore.AddWithNode(3, []byte("v3"), "node-a")
+	artifactStore.AddWithNode(4, []byte("v4"), "node-b")
+	artifactStore.AddWithNode(5, []byte("v5"), "node-b")
+	artifactStore.AddWithNode(6, []byte("v6"), "node-b")
+	artifactStore.AddWithNode(7, []byte("v7"), "node-b")
+	artifactStore.AddWithNode(8, []byte("v8"), "node-b")
+	artifactStore.Flush()
+
+	consensusCount := uint32(5)
+
+	mockQueryClient := &mockWeightDistQueryClient{}
+	mockQueryClient.On("PoCV2StoreCommit", mock.Anything, mock.AnythingOfType("*types.QueryPoCV2StoreCommitRequest")).Return(
+		&types.QueryPoCV2StoreCommitResponse{
+			Found: true,
+			Count: consensusCount,
+		}, nil,
+	)
+	mockQueryClient.On("MLNodeWeightDistribution", mock.Anything, mock.AnythingOfType("*types.QueryMLNodeWeightDistributionRequest")).Return(
+		&types.QueryMLNodeWeightDistributionResponse{Found: false}, nil,
+	)
+	mockRecorder.On("NewInferenceQueryClient").Return(mockQueryClient)
+
+	var capturedWeights []*inference.MLNodeWeight
+	mockRecorder.On("SubmitMLNodeWeightDistribution", mock.AnythingOfType("*inference.MsgMLNodeWeightDistribution")).
+		Run(func(args mock.Arguments) {
+			msg := args.Get(0).(*inference.MsgMLNodeWeightDistribution)
+			capturedWeights = msg.Weights
+		}).
+		Return(nil).Once()
+
+	worker.submitWeightDistribution(pocHeight)
+	mockRecorder.AssertExpectations(t)
+
+	weightMap := make(map[string]uint32)
+	var totalWeight uint32
+	for _, w := range capturedWeights {
+		weightMap[w.NodeId] = w.Weight
+		totalWeight += w.Weight
+	}
+
+	assert.Equal(t, uint32(3), weightMap["node-a"])
+	assert.Equal(t, uint32(2), weightMap["node-b"])
+	assert.Equal(t, consensusCount, totalWeight)
+}
+
 func TestCommitWorker_RetryLogic(t *testing.T) {
 	tests := []struct {
 		name                    string
