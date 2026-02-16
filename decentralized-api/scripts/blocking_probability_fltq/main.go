@@ -35,6 +35,7 @@ type FLTQCube struct {
 }
 
 type Result struct {
+	ShufflePct         float64
 	AttackerFraction   float64
 	AttackerDist       string
 	AvgUnreached       float64
@@ -93,12 +94,13 @@ func propagateFLTQWithStats(cube *FLTQCube, startAddr string, attackers map[stri
 
 func main() {
 	distFlag := flag.String("dist", "all", "Attacker distribution: uniform, highweight, slots, wald, or all")
-	numSimulations := flag.Int("sims", 1000, "Number of simulations per scenario")
+	numSimulations := flag.Int("sims", 1, "Number of simulations per scenario")
 	numParticipants := flag.Int("participants", 10000, "Number of participants")
 	flag.Parse()
 
 	startTime := time.Now()
 
+	shufflePcts := []float64{0.05, 0.10, 0.15, 0.20, 0.25, 0.30}
 	attackerFractions := []float64{0.33, 0.45}
 
 	allDists := []string{"uniform", "highweight", "slots", "wald"}
@@ -131,11 +133,12 @@ func main() {
 	fmt.Println("==========================================")
 
 	type job struct {
+		shufflePct       float64
 		attackerFraction float64
 		attackerDist     string
 	}
 
-	totalJobs := len(attackerFractions) * len(attackerDists)
+	totalJobs := len(shufflePcts) * len(attackerFractions) * len(attackerDists)
 	jobs := make(chan job, totalJobs)
 	resultsChan := make(chan Result, totalJobs)
 
@@ -167,7 +170,7 @@ func main() {
 					}
 
 					blockHash := []byte{byte(sim), byte(sim >> 8), byte(sim >> 16), byte(sim >> 24), 0, 0, 0, 0}
-					cube := buildFLTQWithWeights(participants, blockHash)
+					cube := buildFLTQWithWeights(participants, blockHash, j.shufflePct)
 
 					var attackers map[string]bool
 					if j.attackerDist == "slots" {
@@ -233,6 +236,7 @@ func main() {
 				avgTotalMessages := totalMessagesSum / *numSimulations
 
 				resultsChan <- Result{
+					ShufflePct:         j.shufflePct,
 					AttackerFraction:   j.attackerFraction,
 					AttackerDist:       j.attackerDist,
 					AvgUnreached:       avgUnreached,
@@ -247,9 +251,11 @@ func main() {
 		}()
 	}
 
-	for _, attackerFraction := range attackerFractions {
-		for _, attackerDist := range attackerDists {
-			jobs <- job{attackerFraction, attackerDist}
+	for _, shufflePct := range shufflePcts {
+		for _, attackerFraction := range attackerFractions {
+			for _, attackerDist := range attackerDists {
+				jobs <- job{shufflePct, attackerFraction, attackerDist}
+			}
 		}
 	}
 	close(jobs)
@@ -284,13 +290,13 @@ func main() {
 	}
 	fmt.Println()
 
-	printTables(results, attackerFractions, attackerDists, *numParticipants)
+	printTables(results, attackerFractions, shufflePcts, attackerDists, *numParticipants)
 
 	elapsed := time.Since(startTime)
 	fmt.Printf("\nExecution completed in: %s\n", elapsed.Round(time.Millisecond))
 }
 
-func printTables(results []Result, attackerFractions []float64, attackerDists []string, numParticipants int) {
+func printTables(results []Result, attackerFractions []float64, shufflePcts []float64, attackerDists []string, numParticipants int) {
 	for _, dist := range attackerDists {
 		distName := "Uniform Distribution"
 		if dist == "highweight" {
@@ -302,29 +308,33 @@ func printTables(results []Result, attackerFractions []float64, attackerDists []
 		}
 		fmt.Printf("\n\n========== ATTACKER DISTRIBUTION: %s ==========\n", distName)
 
-		fmt.Printf("\n=== Blocking Probability ===\n")
-		fmt.Printf("| Attacker%% | Honest Nodes | Unreached | P(blocked) |\n")
-		fmt.Printf("|-----------|--------------|-----------|------------|\n")
-		for _, af := range attackerFractions {
-			for _, r := range results {
-				if r.AttackerDist == dist && r.AttackerFraction == af {
-					fmt.Printf("| %-9.0f%% | %-12d | %-9.2f | %-10.6f |\n",
-						af*100, r.HonestNodes, r.AvgUnreached, r.AvgUnreached/float64(r.HonestNodes))
-					break
+		for _, sp := range shufflePcts {
+			fmt.Printf("\n\n########## SHUFFLE PERCENTAGE: %.0f%% ##########\n", sp*100)
+
+			fmt.Printf("\n=== Blocking Probability ===\n")
+			fmt.Printf("| Attacker%% | Honest Nodes | Unreached | P(blocked) |\n")
+			fmt.Printf("|-----------|--------------|-----------|------------|\n")
+			for _, af := range attackerFractions {
+				for _, r := range results {
+					if r.AttackerDist == dist && r.ShufflePct == sp && r.AttackerFraction == af {
+						fmt.Printf("| %-9.0f%% | %-12d | %-9.2f | %-10.6f |\n",
+							af*100, r.HonestNodes, r.AvgUnreached, r.AvgUnreached/float64(r.HonestNodes))
+						break
+					}
 				}
 			}
-		}
 
-		fmt.Printf("\n=== Network Statistics ===\n")
-		fmt.Printf("| Attacker%% | Neighbors | Avg Hops | Max Hops | Diameter |\n")
-		fmt.Printf("|-----------|-----------|----------|----------|----------|\n")
-		for _, af := range attackerFractions {
-			for _, r := range results {
-				if r.AttackerDist == dist && r.AttackerFraction == af {
-					neighbors := r.Diameter + 1
-					fmt.Printf("| %-9.0f%% | %-9d | %-8.2f | %-8d | %-8d |\n",
-						af*100, neighbors, r.AvgHopCount, r.MaxHops, r.Diameter)
-					break
+			fmt.Printf("\n=== Network Statistics ===\n")
+			fmt.Printf("| Attacker%% | Neighbors | Avg Hops | Max Hops | Diameter |\n")
+			fmt.Printf("|-----------|-----------|----------|----------|----------|\n")
+			for _, af := range attackerFractions {
+				for _, r := range results {
+					if r.AttackerDist == dist && r.ShufflePct == sp && r.AttackerFraction == af {
+						neighbors := r.Diameter + 1
+						fmt.Printf("| %-9.0f%% | %-9d | %-8.2f | %-8d | %-8d |\n",
+							af*100, neighbors, r.AvgHopCount, r.MaxHops, r.Diameter)
+						break
+					}
 				}
 			}
 		}
@@ -345,19 +355,21 @@ func printTables(results []Result, attackerFractions []float64, attackerDists []
 			distName = "Wald"
 		}
 
-		for _, af := range attackerFractions {
-			fmt.Printf("\n--- %s Distribution, %.0f%% Attackers ---\n", distName, af*100)
-			fmt.Printf("| Neighbors | Msgs (1 pub) | Msgs/Participant | Total if ALL publish |\n")
-			fmt.Printf("|-----------|--------------|------------------|-----------------------|\n")
+		for _, sp := range shufflePcts {
+			for _, af := range attackerFractions {
+				fmt.Printf("\n--- %s Distribution, %.0f%% Attackers, Shuffle %.0f%% ---\n", distName, af*100, sp*100)
+				fmt.Printf("| Neighbors | Msgs (1 pub) | Msgs/Participant | Total if ALL publish |\n")
+				fmt.Printf("|-----------|--------------|------------------|-----------------------|\n")
 
-			for _, r := range results {
-				if r.AttackerDist == dist && r.AttackerFraction == af {
-					totalIfAll := int64(r.TotalMessages) * int64(numParticipants)
-					neighbors := r.Diameter + 1
+				for _, r := range results {
+					if r.AttackerDist == dist && r.ShufflePct == sp && r.AttackerFraction == af {
+						totalIfAll := int64(r.TotalMessages) * int64(numParticipants)
+						neighbors := r.Diameter + 1
 
-					fmt.Printf("| %-9d | %-12d | %-16.2f | %-21s |\n",
-						neighbors, r.TotalMessages, r.AvgMessagesPerNode, formatLargeNumber(totalIfAll))
-					break
+						fmt.Printf("| %-9d | %-12d | %-16.2f | %-21s |\n",
+							neighbors, r.TotalMessages, r.AvgMessagesPerNode, formatLargeNumber(totalIfAll))
+						break
+					}
 				}
 			}
 		}
@@ -379,7 +391,7 @@ func formatLargeNumber(n int64) string {
 	return fmt.Sprintf("%d", n)
 }
 
-func buildFLTQWithWeights(participants []WeightedParticipant, blockHash []byte) *FLTQCube {
+func buildFLTQWithWeights(participants []WeightedParticipant, blockHash []byte, shufflePct float64) *FLTQCube {
 	if len(participants) == 0 {
 		return &FLTQCube{
 			Index:     0,
@@ -401,7 +413,7 @@ func buildFLTQWithWeights(participants []WeightedParticipant, blockHash []byte) 
 	}
 
 	positionToParticipant := make([]string, cubeSize)
-	shuffled := weightedDeterministicShuffle(participants, blockHash)
+	shuffled := weightedDeterministicShuffle(participants, blockHash, shufflePct)
 	for i := 0; i < realSize && i < cubeSize; i++ {
 		positionToParticipant[i] = shuffled[i]
 	}
@@ -496,7 +508,7 @@ func ceilLog2(n int) int {
 	return int(math.Ceil(math.Log2(float64(n))))
 }
 
-func weightedDeterministicShuffle(participants []WeightedParticipant, seed []byte) []string {
+func weightedDeterministicShuffle(participants []WeightedParticipant, seed []byte, shufflePct float64) []string {
 	n := len(participants)
 	if n == 0 {
 		return []string{}
@@ -512,7 +524,7 @@ func weightedDeterministicShuffle(participants []WeightedParticipant, seed []byt
 
 	for i, p := range participants {
 		baseScore := float64(p.Weight)
-		randomComponent := rng.Float64() * float64(p.Weight) * 0.3
+		randomComponent := rng.Float64() * float64(p.Weight) * shufflePct
 		items[i] = indexed{
 			participant: p,
 			randomScore: baseScore + randomComponent,
