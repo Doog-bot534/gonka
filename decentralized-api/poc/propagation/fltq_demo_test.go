@@ -263,7 +263,6 @@ func TestFLTQTopology(t *testing.T) {
 	for addr, node := range cube.Nodes {
 		require.NotNil(t, node)
 		require.Equal(t, addr, node.Address)
-		require.LessOrEqual(t, len(node.Neighbors), cube.Dimensions+1)
 		require.GreaterOrEqual(t, len(node.Neighbors), 1)
 
 		for _, neighborAddr := range node.Neighbors {

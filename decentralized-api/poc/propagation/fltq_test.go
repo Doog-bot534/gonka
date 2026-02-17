@@ -2,7 +2,9 @@ package propagation
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
+	"math/rand"
 	"sort"
 	"testing"
 
@@ -28,7 +30,7 @@ func TestFLTQBuild(t *testing.T) {
 	for addr, node := range cube.Nodes {
 		require.NotNil(t, node)
 		require.Equal(t, addr, node.Address)
-		require.LessOrEqual(t, len(node.Neighbors), cube.Dimensions+1)
+		require.GreaterOrEqual(t, len(node.Neighbors), 1)
 	}
 }
 
@@ -142,16 +144,20 @@ func TestFLTQDegreeVerification(t *testing.T) {
 			blockHash := sha256.Sum256([]byte("test-degree"))
 			cube := BuildFLTQWithWeights(participants, blockHash[:])
 
-			expectedDegree := cube.Dimensions + 1
-
-			for addr, node := range cube.Nodes {
+			baseDegree := cube.Dimensions + 1
+			maxDegree := 0
+			for _, node := range cube.Nodes {
 				actualDegree := len(node.Neighbors)
-				require.LessOrEqual(t, actualDegree, expectedDegree,
-					"node %s has degree %d, expected <= %d (dimensions=%d)",
-					addr, actualDegree, expectedDegree, cube.Dimensions)
+				if actualDegree > maxDegree {
+					maxDegree = actualDegree
+				}
 			}
 
-			t.Logf("Dimensions: %d, Expected degree: %d", cube.Dimensions, expectedDegree)
+			require.GreaterOrEqual(t, maxDegree, baseDegree,
+				"max degree should be >= base degree %d (dimensions=%d)",
+				baseDegree, cube.Dimensions)
+
+			t.Logf("Dimensions: %d, Base degree: %d, Max degree: %d", cube.Dimensions, baseDegree, maxDegree)
 		})
 	}
 }
@@ -249,9 +255,9 @@ func TestFLTQComplementPosition(t *testing.T) {
 
 func TestFLTQSmallNetworks(t *testing.T) {
 	tests := []struct {
-		name             string
-		count            int
-		expectedDim      int
+		name              string
+		count             int
+		expectedDim       int
 		expectedMaxDegree int
 	}{
 		{"2-nodes", 2, 1, 2},
@@ -522,4 +528,267 @@ func TestMakeFLTQSeed(t *testing.T) {
 
 	seed0_again := makeFLTQSeed(blockHash[:], 0)
 	require.Equal(t, seed0, seed0_again)
+}
+
+func TestHammingDistance(t *testing.T) {
+	tests := []struct {
+		name string
+		a    int
+		b    int
+		want int
+	}{
+		{"same", 0b0000, 0b0000, 0},
+		{"all different", 0b0000, 0b1111, 4},
+		{"one bit", 0b0001, 0b0000, 1},
+		{"two bits", 0b0011, 0b0000, 2},
+		{"three bits", 0b0111, 0b0000, 3},
+		{"mixed", 0b1010, 0b0101, 4},
+		{"positions", 5, 10, 4},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := hammingDistance(tt.a, tt.b)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestRandomBitmask(t *testing.T) {
+	blockHash := sha256.Sum256([]byte("test"))
+	h := sha256.New()
+	h.Write(blockHash[:])
+	var buf [8]byte
+	binary.BigEndian.PutUint32(buf[:4], uint32(0))
+	binary.BigEndian.PutUint32(buf[4:], uint32(5))
+	h.Write(buf[:])
+	rngSeed := binary.BigEndian.Uint64(h.Sum(nil)[:8])
+	rng := rand.New(rand.NewSource(int64(rngSeed)))
+
+	n := 14
+	k := 5
+	mask := randomBitmaskWithKBits(rng, k, n)
+
+	bitCount := 0
+	for i := 0; i < n; i++ {
+		if mask&(1<<i) != 0 {
+			bitCount++
+		}
+	}
+
+	require.Equal(t, k, bitCount)
+
+	rng2 := rand.New(rand.NewSource(int64(rngSeed)))
+	mask2 := randomBitmaskWithKBits(rng2, k, n)
+	require.Equal(t, mask, mask2)
+}
+
+func TestShortcutDegree(t *testing.T) {
+	participants := make([]WeightedParticipant, 1000)
+	for i := 0; i < 1000; i++ {
+		participants[i] = WeightedParticipant{
+			Address: fmt.Sprintf("participant%d", i),
+			Weight:  uint64(100 + i),
+		}
+	}
+
+	blockHash := sha256.Sum256([]byte("test-shortcuts-degree"))
+	cube := BuildFLTQWithWeights(participants, blockHash[:])
+
+	minDegree := cube.Dimensions + 1
+	maxDegree := 0
+	totalDegree := 0
+
+	for _, node := range cube.Nodes {
+		degree := len(node.Neighbors)
+		totalDegree += degree
+		if degree < minDegree {
+			minDegree = degree
+		}
+		if degree > maxDegree {
+			maxDegree = degree
+		}
+	}
+
+	avgDegree := float64(totalDegree) / float64(len(cube.Nodes))
+
+	t.Logf("Dimensions: %d", cube.Dimensions)
+	t.Logf("Min degree: %d", minDegree)
+	t.Logf("Max degree: %d", maxDegree)
+	t.Logf("Avg degree: %.2f", avgDegree)
+
+	require.LessOrEqual(t, maxDegree, 50, "max degree should be <= 50 with shortcuts")
+	require.GreaterOrEqual(t, avgDegree, float64(cube.Dimensions+1), "avg degree should be >= n+1")
+}
+
+func TestShortcutBidirectional(t *testing.T) {
+	participants := make([]WeightedParticipant, 500)
+	for i := 0; i < 500; i++ {
+		participants[i] = WeightedParticipant{
+			Address: fmt.Sprintf("participant%d", i),
+			Weight:  uint64(100 + i),
+		}
+	}
+
+	blockHash := sha256.Sum256([]byte("test-shortcuts-bidir"))
+	cube := BuildFLTQWithWeights(participants, blockHash[:])
+
+	for addr, node := range cube.Nodes {
+		for _, neighborAddr := range node.Neighbors {
+			neighbor := cube.Nodes[neighborAddr]
+			require.NotNil(t, neighbor, "neighbor %s should exist", neighborAddr)
+
+			found := false
+			for _, backNeighbor := range neighbor.Neighbors {
+				if backNeighbor == addr {
+					found = true
+					break
+				}
+			}
+			require.True(t, found, "neighbor relationship should be bidirectional: %s <-> %s", addr, neighborAddr)
+		}
+	}
+}
+
+func TestShortcutDiameter(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping diameter test in -short mode")
+	}
+
+	participants := make([]WeightedParticipant, 1000)
+	for i := 0; i < 1000; i++ {
+		participants[i] = WeightedParticipant{
+			Address: fmt.Sprintf("participant%d", i),
+			Weight:  uint64(100 + i),
+		}
+	}
+
+	blockHash := sha256.Sum256([]byte("test-shortcuts-diameter"))
+	cube := BuildFLTQWithWeights(participants, blockHash[:])
+
+	maxDiameter := 0
+	sampleSize := 20
+	if len(cube.Nodes) < sampleSize {
+		sampleSize = len(cube.Nodes)
+	}
+
+	addrs := make([]string, 0, len(cube.Nodes))
+	for addr := range cube.Nodes {
+		addrs = append(addrs, addr)
+		if len(addrs) >= sampleSize {
+			break
+		}
+	}
+
+	for _, startAddr := range addrs {
+		distances := bfsFLTQ(cube, startAddr)
+		for _, dist := range distances {
+			if dist > maxDiameter {
+				maxDiameter = dist
+			}
+		}
+	}
+
+	t.Logf("Dimensions: %d, Measured diameter (sample): %d", cube.Dimensions, maxDiameter)
+	require.LessOrEqual(t, maxDiameter, 5, "diameter with shortcuts should be <= 5")
+}
+
+func TestShortcutDeterministic(t *testing.T) {
+	participants := make([]WeightedParticipant, 100)
+	for i := 0; i < 100; i++ {
+		participants[i] = WeightedParticipant{
+			Address: fmt.Sprintf("participant%d", i),
+			Weight:  uint64(100 + i),
+		}
+	}
+
+	blockHash := sha256.Sum256([]byte("test-shortcuts-deterministic"))
+
+	cube1 := BuildFLTQWithWeights(participants, blockHash[:])
+	cube2 := BuildFLTQWithWeights(participants, blockHash[:])
+
+	require.Equal(t, len(cube1.Nodes), len(cube2.Nodes))
+
+	for addr, node1 := range cube1.Nodes {
+		node2 := cube2.Nodes[addr]
+		require.NotNil(t, node2)
+		require.Equal(t, node1.Position, node2.Position)
+		require.Equal(t, len(node1.Neighbors), len(node2.Neighbors))
+
+		sort.Strings(node1.Neighbors)
+		sort.Strings(node2.Neighbors)
+		for i, neighbor1 := range node1.Neighbors {
+			require.Equal(t, neighbor1, node2.Neighbors[i])
+		}
+	}
+}
+
+func TestBinomialCoefficient(t *testing.T) {
+	tests := []struct {
+		n    int
+		k    int
+		want int
+	}{
+		{5, 0, 1},
+		{5, 5, 1},
+		{5, 1, 5},
+		{5, 2, 10},
+		{5, 3, 10},
+		{10, 5, 252},
+		{14, 7, 3432},
+		{14, 2, 91},
+		{14, 12, 91},
+		{0, 0, 1},
+		{5, 6, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("C(%d,%d)", tt.n, tt.k), func(t *testing.T) {
+			got := binomialCoefficient(tt.n, tt.k)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestEnumeratePositionsAtDistance(t *testing.T) {
+	occupied := make([]bool, 16)
+	for i := 0; i < 16; i++ {
+		occupied[i] = true
+	}
+
+	candidates := enumeratePositionsAtDistance(0, 2, 4, occupied, 100)
+
+	require.Greater(t, len(candidates), 0)
+
+	for _, candidate := range candidates {
+		d := 0
+		xor := 0 ^ candidate
+		for xor > 0 {
+			if xor&1 == 1 {
+				d++
+			}
+			xor >>= 1
+		}
+		require.Equal(t, 2, d, "candidate %d should be at distance 2 from 0", candidate)
+	}
+}
+
+func TestAdaptiveSampling(t *testing.T) {
+	participants := make([]WeightedParticipant, 100)
+	for i := 0; i < 100; i++ {
+		participants[i] = WeightedParticipant{
+			Address: fmt.Sprintf("participant%d", i),
+			Weight:  uint64(100 + i),
+		}
+	}
+
+	blockHash := sha256.Sum256([]byte("test-adaptive"))
+	cube := BuildFLTQWithWeights(participants, blockHash[:])
+
+	require.Equal(t, 7, cube.Dimensions)
+	require.Equal(t, 100, len(cube.Nodes))
+
+	for _, node := range cube.Nodes {
+		require.GreaterOrEqual(t, len(node.Neighbors), 1)
+	}
 }
