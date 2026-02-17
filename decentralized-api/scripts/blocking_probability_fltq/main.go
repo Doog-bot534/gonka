@@ -671,6 +671,27 @@ func randomBitmaskWithKBits(rng *rand.Rand, k, n int) int {
 		return 0
 	}
 
+	if k <= n/3 {
+		mask := 0
+		count := 0
+		seen := make(map[int]bool, k)
+
+		for count < k {
+			bit := rng.Intn(n)
+			if !seen[bit] {
+				seen[bit] = true
+				mask |= 1 << bit
+				count++
+			}
+		}
+		return mask
+	}
+
+	if k > 2*n/3 {
+		invMask := randomBitmaskWithKBits(rng, n-k, n)
+		return ((1 << n) - 1) ^ invMask
+	}
+
 	bitPositions := make([]int, n)
 	for i := 0; i < n; i++ {
 		bitPositions[i] = i
@@ -745,6 +766,50 @@ func enumeratePositionsAtDistance(pos, d, n int, occupied []bool, maxCandidates 
 	return candidates
 }
 
+func hammingDistance(a, b, n int) int {
+	xor := a ^ b
+	count := 0
+	for xor != 0 {
+		count += xor & 1
+		xor >>= 1
+	}
+	return count
+}
+
+func scanOccupiedByDistance(pos, d, n int, occupied []bool, seed []byte, maxCandidates int) []int {
+	occupiedList := make([]int, 0, len(occupied)/2)
+	for i, occ := range occupied {
+		if occ && i != pos {
+			occupiedList = append(occupiedList, i)
+		}
+	}
+
+	h := sha256.New()
+	h.Write(seed)
+	var buf [8]byte
+	binary.BigEndian.PutUint32(buf[:4], uint32(pos))
+	binary.BigEndian.PutUint32(buf[4:], uint32(d))
+	h.Write(buf[:])
+	rngSeed := binary.BigEndian.Uint64(h.Sum(nil)[:8])
+	rng := rand.New(rand.NewSource(int64(rngSeed)))
+
+	rng.Shuffle(len(occupiedList), func(i, j int) {
+		occupiedList[i], occupiedList[j] = occupiedList[j], occupiedList[i]
+	})
+
+	candidates := make([]int, 0, maxCandidates)
+	for _, target := range occupiedList {
+		if hammingDistance(pos, target, n) == d {
+			candidates = append(candidates, target)
+			if len(candidates) >= maxCandidates {
+				break
+			}
+		}
+	}
+
+	return candidates
+}
+
 func findCandidatesAtDistance(pos, d, n int, occupied []bool, seed []byte, maxCandidates int) []int {
 	if d > n || d < 0 {
 		return []int{}
@@ -754,6 +819,17 @@ func findCandidatesAtDistance(pos, d, n int, occupied []bool, seed []byte, maxCa
 
 	if totalCombinations <= 500 || d <= 2 || d >= n-2 {
 		return enumeratePositionsAtDistance(pos, d, n, occupied, maxCandidates)
+	}
+
+	occupiedCount := 0
+	for _, occ := range occupied {
+		if occ {
+			occupiedCount++
+		}
+	}
+
+	if occupiedCount < totalCombinations/10 {
+		return scanOccupiedByDistance(pos, d, n, occupied, seed, maxCandidates)
 	}
 
 	h := sha256.New()
@@ -767,7 +843,7 @@ func findCandidatesAtDistance(pos, d, n int, occupied []bool, seed []byte, maxCa
 
 	candidates := []int{}
 	seen := make(map[int]bool)
-	maxAttempts := 100
+	maxAttempts := maxCandidates * 10
 
 	for attempt := 0; attempt < maxAttempts && len(candidates) < maxCandidates; attempt++ {
 		mask := randomBitmaskWithKBits(rng, d, n)
