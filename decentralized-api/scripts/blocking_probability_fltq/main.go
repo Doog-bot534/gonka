@@ -102,8 +102,8 @@ func main() {
 
 	startTime := time.Now()
 
-	shufflePcts := []float64{0.05}
-	attackerFractions := []float64{0.33}
+	shufflePcts := []float64{0.05, 0.10, 0.15, 0.20, 0.25, 0.30}
+	attackerFractions := []float64{0.33, 0.45}
 
 	allDists := []string{"uniform", "highweight", "slots", "wald"}
 	var attackerDists []string
