@@ -69,4 +69,7 @@ var (
 	ErrNotSupported                          = sdkerrors.Register(ModuleName, 1163, "operation not supported in current mode")
 	ErrInvalidAddress                        = sdkerrors.Register(ModuleName, 1164, "invalid address")
 	ErrTransferAgentNotAllowlisted           = sdkerrors.Register(ModuleName, 1165, "transfer agent not in allowlist")
+	ErrDevComponentMismatch                  = sdkerrors.Register(ModuleName, 1166, "developer signature components mismatch")
+	ErrTAComponentMismatch                   = sdkerrors.Register(ModuleName, 1167, "transfer agent signature components mismatch")
+	ErrInferenceRoleMismatch                 = sdkerrors.Register(ModuleName, 1168, "inference role/address invariant mismatch")
 )

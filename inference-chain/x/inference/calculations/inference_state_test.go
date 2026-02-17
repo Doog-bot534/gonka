@@ -35,6 +35,7 @@ func TestStartProcessed(t *testing.T) {
 			name: "Inference with PromptHash",
 			inference: &types.Inference{
 				PromptHash: "hash",
+				MaxTokens:  20,
 			},
 			expected: true,
 		},

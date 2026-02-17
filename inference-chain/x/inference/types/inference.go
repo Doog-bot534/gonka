@@ -6,7 +6,10 @@ func (i *Inference) IsCompleted() bool {
 }
 
 func (i *Inference) StartProcessed() bool {
-	return i.PromptHash != ""
+	// StartInference always sets MaxTokens (explicit value or default).
+	// Finish-first flow can already populate PromptHash before StartInference arrives,
+	// so PromptHash is not a reliable start-processed marker.
+	return i.MaxTokens != 0
 }
 
 func (i *Inference) FinishedProcessed() bool {

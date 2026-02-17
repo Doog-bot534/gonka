@@ -29,6 +29,42 @@ func sha256Hash(input string) string {
 	return hex.EncodeToString(hash[:])
 }
 
+func buildInferenceSignatures(
+	t *testing.T,
+	requester *MockAccount,
+	transferAgent *MockAccount,
+	executor *MockAccount,
+	promptPayload string,
+	requestTimestamp int64,
+) (string, string, string, string, string) {
+	t.Helper()
+
+	originalPromptHash := sha256Hash(promptPayload)
+	promptHash := sha256Hash(promptPayload)
+
+	devComponents := calculations.SignatureComponents{
+		Payload:         originalPromptHash,
+		Timestamp:       requestTimestamp,
+		TransferAddress: transferAgent.address,
+		ExecutorAddress: "",
+	}
+	inferenceId, err := calculations.Sign(requester, devComponents, calculations.Developer)
+	require.NoError(t, err)
+
+	taComponents := calculations.SignatureComponents{
+		Payload:         promptHash,
+		Timestamp:       requestTimestamp,
+		TransferAddress: transferAgent.address,
+		ExecutorAddress: executor.address,
+	}
+	taSignature, err := calculations.Sign(transferAgent, taComponents, calculations.TransferAgent)
+	require.NoError(t, err)
+	executorSignature, err := calculations.Sign(executor, taComponents, calculations.ExecutorAgent)
+	require.NoError(t, err)
+
+	return originalPromptHash, promptHash, inferenceId, taSignature, executorSignature
+}
+
 func advanceEpoch(ctx sdk.Context, k *keeper.Keeper, mocks *keeper2.InferenceMocks, blockHeight int64, epochGroupId uint64) (sdk.Context, error) {
 	ctx = ctx.WithBlockHeight(blockHeight)
 	ctx = ctx.WithBlockTime(ctx.BlockTime().Add(10 * 60 * 1000 * 1000)) // 10 minutes later
@@ -183,6 +219,201 @@ func TestMsgServer_FinishInference_InferenceNotFound(t *testing.T) {
 	require.False(t, found)
 }
 
+func TestMsgServer_FinishInferenceCreatorMustMatchExecutor(t *testing.T) {
+	_, ms, ctx := setupMsgServer(t)
+	resp, err := ms.FinishInference(ctx, &types.MsgFinishInference{
+		Creator:    testutil.Creator,
+		ExecutedBy: testutil.Executor,
+	})
+	require.NoError(t, err)
+	require.Contains(t, resp.ErrorMessage, types.ErrInferenceRoleMismatch.Error())
+}
+
+func TestMsgServer_StartFirst_IgnoreTransferAndExecutorSignatures(t *testing.T) {
+	inferenceHelper, k, ctx := NewMockInferenceHelper(t)
+	requestTimestamp := inferenceHelper.context.BlockTime().UnixNano()
+
+	model := types.Model{Id: "model1"}
+	k.SetModel(ctx, &model)
+	StubModelSubgroup(t, ctx, k, inferenceHelper.Mocks, &model)
+
+	originalPromptHash, promptHash, inferenceId, _, _ := buildInferenceSignatures(
+		t,
+		inferenceHelper.MockRequester,
+		inferenceHelper.MockTransferAgent,
+		inferenceHelper.MockExecutor,
+		"promptPayload",
+		requestTimestamp,
+	)
+
+	inferenceHelper.Mocks.BankKeeper.EXPECT().SendCoinsFromAccountToModule(gomock.Any(), gomock.Any(), types.ModuleName, gomock.Any(), gomock.Any()).Return(nil)
+	inferenceHelper.Mocks.BankKeeper.EXPECT().SendCoinsFromModuleToAccount(gomock.Any(), types.ModuleName, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	inferenceHelper.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), inferenceHelper.MockRequester.GetBechAddress()).Return(inferenceHelper.MockRequester)
+
+	bogusSig := base64.StdEncoding.EncodeToString(make([]byte, 64))
+	startResp, err := inferenceHelper.MessageServer.StartInference(inferenceHelper.context, &types.MsgStartInference{
+		InferenceId:        inferenceId,
+		PromptHash:         promptHash,
+		PromptPayload:      "promptPayload",
+		RequestedBy:        inferenceHelper.MockRequester.address,
+		Creator:            inferenceHelper.MockTransferAgent.address,
+		Model:              "model1",
+		OriginalPrompt:     "promptPayload",
+		OriginalPromptHash: originalPromptHash,
+		RequestTimestamp:   requestTimestamp,
+		TransferSignature:  bogusSig, // ignored in start-first policy
+		AssignedTo:         inferenceHelper.MockExecutor.address,
+		MaxTokens:          20,
+	})
+	require.NoError(t, err)
+	require.Empty(t, startResp.ErrorMessage)
+
+	finishResp, err := inferenceHelper.MessageServer.FinishInference(inferenceHelper.context, &types.MsgFinishInference{
+		Creator:              inferenceHelper.MockExecutor.address,
+		InferenceId:          inferenceId,
+		ResponseHash:         "responseHash",
+		ResponsePayload:      "responsePayload",
+		PromptTokenCount:     10,
+		CompletionTokenCount: 20,
+		ExecutedBy:           inferenceHelper.MockExecutor.address,
+		TransferredBy:        inferenceHelper.MockTransferAgent.address,
+		RequestTimestamp:     requestTimestamp,
+		TransferSignature:    bogusSig, // ignored when start already processed
+		ExecutorSignature:    bogusSig, // executor verification disabled
+		RequestedBy:          inferenceHelper.MockRequester.address,
+		OriginalPrompt:       "promptPayload",
+		Model:                "model1",
+		PromptHash:           promptHash,
+		OriginalPromptHash:   originalPromptHash,
+	})
+	require.NoError(t, err)
+	require.Empty(t, finishResp.ErrorMessage)
+}
+
+func TestMsgServer_FinishFirst_BadTASignatureRejected(t *testing.T) {
+	inferenceHelper, _, _ := NewMockInferenceHelper(t)
+	requestTimestamp := inferenceHelper.context.BlockTime().UnixNano()
+	originalPromptHash, promptHash, inferenceId, _, _ := buildInferenceSignatures(
+		t,
+		inferenceHelper.MockRequester,
+		inferenceHelper.MockTransferAgent,
+		inferenceHelper.MockExecutor,
+		"promptPayload",
+		requestTimestamp,
+	)
+
+	inferenceHelper.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), inferenceHelper.MockRequester.GetBechAddress()).Return(inferenceHelper.MockRequester).AnyTimes()
+	inferenceHelper.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), inferenceHelper.MockTransferAgent.GetBechAddress()).Return(inferenceHelper.MockTransferAgent).AnyTimes()
+	inferenceHelper.Mocks.AuthzKeeper.EXPECT().GranterGrants(gomock.Any(), gomock.Any()).Return(&authztypes.QueryGranterGrantsResponse{Grants: []*authztypes.GrantAuthorization{}}, nil).AnyTimes()
+
+	bogusSig := base64.StdEncoding.EncodeToString(make([]byte, 64))
+	resp, err := inferenceHelper.MessageServer.FinishInference(inferenceHelper.context, &types.MsgFinishInference{
+		Creator:              inferenceHelper.MockExecutor.address,
+		InferenceId:          inferenceId,
+		ResponseHash:         "responseHash",
+		ResponsePayload:      "responsePayload",
+		PromptTokenCount:     10,
+		CompletionTokenCount: 20,
+		ExecutedBy:           inferenceHelper.MockExecutor.address,
+		TransferredBy:        inferenceHelper.MockTransferAgent.address,
+		RequestTimestamp:     requestTimestamp,
+		TransferSignature:    bogusSig, // finish-first path must verify TA signature
+		ExecutorSignature:    bogusSig,
+		RequestedBy:          inferenceHelper.MockRequester.address,
+		OriginalPrompt:       "promptPayload",
+		Model:                "model1",
+		PromptHash:           promptHash,
+		OriginalPromptHash:   originalPromptHash,
+	})
+	require.NoError(t, err)
+	require.Contains(t, resp.ErrorMessage, types.ErrInvalidSignature.Error())
+}
+
+func TestMsgServer_StartSecond_DevMismatchRejected(t *testing.T) {
+	inferenceHelper, _, _ := NewMockInferenceHelper(t)
+	requestTimestamp := inferenceHelper.context.BlockTime().UnixNano()
+	originalPromptHash, promptHash, inferenceId, taSignature, executorSignature := buildInferenceSignatures(
+		t,
+		inferenceHelper.MockRequester,
+		inferenceHelper.MockTransferAgent,
+		inferenceHelper.MockExecutor,
+		"promptPayload",
+		requestTimestamp,
+	)
+
+	inferenceHelper.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), inferenceHelper.MockRequester.GetBechAddress()).Return(inferenceHelper.MockRequester).AnyTimes()
+	inferenceHelper.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), inferenceHelper.MockTransferAgent.GetBechAddress()).Return(inferenceHelper.MockTransferAgent).AnyTimes()
+	inferenceHelper.Mocks.AuthzKeeper.EXPECT().GranterGrants(gomock.Any(), gomock.Any()).Return(&authztypes.QueryGranterGrantsResponse{Grants: []*authztypes.GrantAuthorization{}}, nil).AnyTimes()
+
+	resp, err := inferenceHelper.MessageServer.FinishInference(inferenceHelper.context, &types.MsgFinishInference{
+		Creator:              inferenceHelper.MockExecutor.address,
+		InferenceId:          inferenceId,
+		ResponseHash:         "responseHash",
+		ResponsePayload:      "responsePayload",
+		PromptTokenCount:     10,
+		CompletionTokenCount: 20,
+		ExecutedBy:           inferenceHelper.MockExecutor.address,
+		TransferredBy:        inferenceHelper.MockTransferAgent.address,
+		RequestTimestamp:     requestTimestamp,
+		TransferSignature:    taSignature,
+		ExecutorSignature:    executorSignature,
+		RequestedBy:          inferenceHelper.MockRequester.address,
+		OriginalPrompt:       "promptPayload",
+		Model:                "model1",
+		PromptHash:           promptHash,
+		OriginalPromptHash:   originalPromptHash,
+	})
+	require.NoError(t, err)
+	require.Empty(t, resp.ErrorMessage)
+
+	mismatchOriginalPromptHash := sha256Hash("different_prompt")
+	startResp, err := inferenceHelper.MessageServer.StartInference(inferenceHelper.context, &types.MsgStartInference{
+		InferenceId:        inferenceId,
+		PromptHash:         promptHash,
+		PromptPayload:      "promptPayload",
+		RequestedBy:        inferenceHelper.MockRequester.address,
+		Creator:            inferenceHelper.MockTransferAgent.address,
+		Model:              "model1",
+		OriginalPrompt:     "promptPayload",
+		OriginalPromptHash: mismatchOriginalPromptHash,
+		RequestTimestamp:   requestTimestamp,
+		TransferSignature:  taSignature,
+		AssignedTo:         inferenceHelper.MockExecutor.address,
+	})
+	require.NoError(t, err)
+	require.Contains(t, startResp.ErrorMessage, types.ErrDevComponentMismatch.Error())
+}
+
+func TestMsgServer_FinishSecond_TAMismatchRejected(t *testing.T) {
+	inferenceHelper, _, _ := NewMockInferenceHelper(t)
+	requestTimestamp := inferenceHelper.context.BlockTime().UnixNano()
+	_, err := inferenceHelper.StartInference("promptPayload", "model1", requestTimestamp, calculations.DefaultMaxTokens)
+	require.NoError(t, err)
+
+	mismatchPromptHash := sha256Hash("different_prompt")
+	bogusSig := base64.StdEncoding.EncodeToString(make([]byte, 64))
+	resp, err := inferenceHelper.MessageServer.FinishInference(inferenceHelper.context, &types.MsgFinishInference{
+		Creator:              inferenceHelper.MockExecutor.address,
+		InferenceId:          inferenceHelper.previousInference.InferenceId,
+		ResponseHash:         "responseHash",
+		ResponsePayload:      "responsePayload",
+		PromptTokenCount:     10,
+		CompletionTokenCount: 20,
+		ExecutedBy:           inferenceHelper.MockExecutor.address,
+		TransferredBy:        inferenceHelper.MockTransferAgent.address,
+		RequestTimestamp:     requestTimestamp,
+		TransferSignature:    bogusSig,
+		ExecutorSignature:    bogusSig,
+		RequestedBy:          inferenceHelper.MockRequester.address,
+		OriginalPrompt:       "promptPayload",
+		Model:                "model1",
+		PromptHash:           mismatchPromptHash,
+		OriginalPromptHash:   sha256Hash("promptPayload"),
+	})
+	require.NoError(t, err)
+	require.Contains(t, resp.ErrorMessage, types.ErrTAComponentMismatch.Error())
+}
+
 type MockAccount struct {
 	address string
 	key     *secp256k1.PrivKey
@@ -311,6 +542,7 @@ func (h *MockInferenceHelper) StartInference(
 		Index:               inferenceId,
 		InferenceId:         inferenceId,
 		PromptHash:          promptHash,
+		OriginalPromptHash:  originalPromptHash,
 		PromptPayload:       "", // Phase 6: Stored offchain
 		RequestedBy:         h.MockRequester.address,
 		Status:              types.InferenceStatus_STARTED,
@@ -373,6 +605,7 @@ func (h *MockInferenceHelper) FinishInference() (*types.Inference, error) {
 	}
 
 	_, err = h.MessageServer.FinishInference(h.context, &types.MsgFinishInference{
+		Creator:              h.MockExecutor.address,
 		InferenceId:          inferenceId,
 		ResponseHash:         "responseHash",
 		ResponsePayload:      "responsePayload",
@@ -396,6 +629,7 @@ func (h *MockInferenceHelper) FinishInference() (*types.Inference, error) {
 		Index:                    inferenceId,
 		InferenceId:              inferenceId,
 		PromptHash:               h.previousInference.PromptHash,
+		OriginalPromptHash:       originalPromptHash,
 		PromptPayload:            "", // Phase 6: Stored offchain
 		RequestedBy:              h.MockRequester.address,
 		Status:                   types.InferenceStatus_FINISHED,
