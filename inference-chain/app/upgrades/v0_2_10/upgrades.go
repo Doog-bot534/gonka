@@ -182,9 +182,9 @@ func setPocNormalizationEnabled(ctx context.Context, k keeper.Keeper) {
 }
 
 // setPocTimingParams updates PoC timing parameters:
-// - Reduces poc_stage_duration from 60 to 35 blocks
+// - Reduces poc_stage_duration from 60 (with 48 effective blocks) to 35 blocks
 // - Reduces poc_validation_duration from 480 to 240 blocks
-// - Scales weight_scale_factor proportionally from 0.262 to 0.449 to maintain same total weight
+// - Scales weight_scale_factor proportionally from 0.262 to 0.3593 to maintain same total weight
 // - Sets poc_exchange_duration to 0 (deprecated, acceptance now ends at poc_generation_end)
 func setPocTimingParams(ctx context.Context, k keeper.Keeper) {
 	params, err := k.GetParams(ctx)
