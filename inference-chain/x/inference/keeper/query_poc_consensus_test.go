@@ -276,15 +276,15 @@ func TestPoCConsensusQuery_SelfOnlyObservations(t *testing.T) {
 		entryMap[e.Participant] = e
 	}
 
-	require.Equal(t, uint32(50), entryMap[addr1.String()].AgreedCount)
-	require.Equal(t, int32(1), entryMap[addr1.String()].TotalValidators)
-	require.Equal(t, int32(1), entryMap[addr1.String()].AgreeingCount)
+	require.Equal(t, uint32(0), entryMap[addr1.String()].AgreedCount)
+	require.Equal(t, int32(3), entryMap[addr1.String()].TotalValidators)
+	require.Equal(t, int32(0), entryMap[addr1.String()].AgreeingCount)
 
-	require.Equal(t, uint32(80), entryMap[addr2.String()].AgreedCount)
-	require.Equal(t, int32(1), entryMap[addr2.String()].TotalValidators)
+	require.Equal(t, uint32(0), entryMap[addr2.String()].AgreedCount)
+	require.Equal(t, int32(3), entryMap[addr2.String()].TotalValidators)
 
-	require.Equal(t, uint32(120), entryMap[addr3.String()].AgreedCount)
-	require.Equal(t, int32(1), entryMap[addr3.String()].TotalValidators)
+	require.Equal(t, uint32(0), entryMap[addr3.String()].AgreedCount)
+	require.Equal(t, int32(3), entryMap[addr3.String()].TotalValidators)
 }
 
 func TestPoCConsensusQuery_NilRequest(t *testing.T) {

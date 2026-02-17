@@ -99,6 +99,9 @@ func (k Keeper) PoCConsensus(goCtx context.Context, req *types.QueryPoCConsensus
 		allParticipants[p] = true
 	}
 
+	totalValidators := len(observations)
+	requiredAgreement := totalValidators/2 + 1
+
 	var entries []*types.PoCConsensusEntry
 
 	for participant := range allParticipants {
@@ -106,17 +109,6 @@ func (k Keeper) PoCConsensus(goCtx context.Context, req *types.QueryPoCConsensus
 		if len(counts) == 0 {
 			continue
 		}
-
-		observingValidators := 0
-		for _, obs := range observations {
-			for _, arrival := range obs.Arrivals {
-				if arrival.Participant == participant {
-					observingValidators++
-					break
-				}
-			}
-		}
-		requiredAgreement := observingValidators/2 + 1
 
 		uniqueCounts := make(map[uint32]bool)
 		for _, c := range counts {
@@ -152,7 +144,7 @@ func (k Keeper) PoCConsensus(goCtx context.Context, req *types.QueryPoCConsensus
 		entries = append(entries, &types.PoCConsensusEntry{
 			Participant:     participant,
 			AgreedCount:     agreedCount,
-			TotalValidators: int32(observingValidators),
+			TotalValidators: int32(totalValidators),
 			AgreeingCount:   agreeingCount,
 		})
 	}

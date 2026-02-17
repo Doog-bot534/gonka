@@ -132,8 +132,16 @@ func (k msgServer) MLNodeWeightDistribution(goCtx context.Context, msg *types.Ms
 	}
 
 	// Validate window: accept from exchange window through end of validation
-	if isActive && activeEvent != nil && startBlockHeight == activeEvent.TriggerHeight {
-		epochParams := params.EpochParams
+	if isActive && activeEvent != nil {
+		if startBlockHeight != activeEvent.TriggerHeight {
+			return nil, sdkerrors.Wrap(types.ErrPocWrongStartBlockHeight,
+				fmt.Sprintf("confirmation PoC: start block height %d doesn't match event trigger %d", startBlockHeight, activeEvent.TriggerHeight))
+		}
+		confirmParams, err := k.GetParams(ctx)
+		if err != nil {
+			return nil, err
+		}
+		epochParams := confirmParams.EpochParams
 		validationEnd := activeEvent.GetValidationEnd(epochParams)
 		if currentBlockHeight > validationEnd {
 			return nil, sdkerrors.Wrap(types.ErrPocTooLate, "confirmation PoC validation window closed")
