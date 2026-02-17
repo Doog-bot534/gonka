@@ -87,18 +87,16 @@ var bountyRewards = []BountyReward{
 	{Address: "gonka1f0elpwnx7ezytdlck35003nz6qk8kzvurvnj4a", Amount: Gonka(2500)},
 
 	// PR review of upgrade v.0.2.8.
-	{Address: "gonka1ejkupq3cy6p8xd64ew2wlzveml86ckpzn9dl56", Amount: Gonka(2500)}, 
+	{Address: "gonka1ejkupq3cy6p8xd64ew2wlzveml86ckpzn9dl56", Amount: Gonka(2500)},
 
 	// PR review of upgrade v.0.2.8.
-	{Address: "gonka1zqss46r6jf6dhhyaa777kc2ppvjhn0ufkx4y57", Amount: Gonka(2500)}, 
+	{Address: "gonka1zqss46r6jf6dhhyaa777kc2ppvjhn0ufkx4y57", Amount: Gonka(2500)},
 
 	// PR review of upgrade v.0.2.9.
 	{Address: "gonka12jaf7m4eysyqt32mrgarum6z96vt55tckvcleq", Amount: Gonka(2500)},
 
 	// PR review of upgrade v.0.2.9.
 	{Address: "gonka18enyz7h6hh5zjveee5wnhkhrcexamfz0zdxxqe", Amount: Gonka(2500)},
-
-	
 }
 
 func CreateUpgradeHandler(
@@ -184,9 +182,9 @@ func setPocNormalizationEnabled(ctx context.Context, k keeper.Keeper) {
 }
 
 // setPocTimingParams updates PoC timing parameters:
-// - Reduces poc_stage_duration from 60 to 35 blocks
+// - Reduces poc_stage_duration from 60 (with 48 effective blocks) to 35 blocks
 // - Reduces poc_validation_duration from 480 to 240 blocks
-// - Scales weight_scale_factor proportionally from 0.262 to 0.449 to maintain same total weight
+// - Scales weight_scale_factor proportionally from 0.262 to 0.3593 to maintain same total weight
 // - Sets poc_exchange_duration to 0 (deprecated, acceptance now ends at poc_generation_end)
 func setPocTimingParams(ctx context.Context, k keeper.Keeper) {
 	params, err := k.GetParams(ctx)
@@ -204,15 +202,15 @@ func setPocTimingParams(ctx context.Context, k keeper.Keeper) {
 		return
 	}
 
-	// Update PoC timing: reduce from 60 to 35 blocks
+	// Update PoC timing: reduce from 60 (with 48 effective blocks) to 35 blocks
 	params.EpochParams.PocStageDuration = 35
 	// Update validation duration: reduce from 480 to 240 blocks
 	params.EpochParams.PocValidationDuration = 240
 	// Deprecated: set to 0, nonce acceptance now ends at poc_generation_end
 	params.EpochParams.PocExchangeDuration = 0
-	// Scale weight factor proportionally: 0.262 * (60/35) ≈ 0.449
-	// Keeps total weight accumulation the same: 0.449 * 35 ≈ 0.262 * 60
-	params.PocParams.WeightScaleFactor = &types.Decimal{Value: 449, Exponent: -3}
+	// Scale weight factor proportionally: 0.262 * (48/35) ≈ 0.3593
+	// Keeps total weight accumulation the same: 0.3593 * 35 ≈ 0.262 * 48
+	params.PocParams.WeightScaleFactor = &types.Decimal{Value: 3593, Exponent: -4}
 
 	if err := k.SetParams(ctx, params); err != nil {
 		k.LogError("failed to set poc timing params", types.Upgrades, "error", err)
