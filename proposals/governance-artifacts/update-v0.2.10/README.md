@@ -16,6 +16,8 @@ To apply the new vLLM model parameters, mlnode must be restarted after the on-ch
 docker restart join-mlnode-1
 ```
 
+The upgrade of MLNode to more reliable versions `ghcr.io/product-science/mlnode:3.0.12-post4` / `ghcr.io/product-science/mlnode:3.0.12-post4-blackwell` is recommended.
+
 ## Proposed Process
 
 1. Active hosts review this proposal on GitHub.
