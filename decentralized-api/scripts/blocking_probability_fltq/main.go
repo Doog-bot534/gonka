@@ -38,6 +38,8 @@ type Result struct {
 	ShufflePct         float64
 	AttackerFraction   float64
 	AttackerDist       string
+	EntriesPerLevel    int
+	Hops               int
 	AvgUnreached       float64
 	HonestNodes        int
 	AvgHopCount        float64
@@ -103,7 +105,9 @@ func main() {
 	startTime := time.Now()
 
 	shufflePcts := []float64{0.05, 0.10, 0.15, 0.20, 0.25, 0.30}
-	attackerFractions := []float64{0.33, 0.45}
+	attackerFractions := []float64{0.00, 0.33, 0.45}
+	entriesPerLevelValues := []int{4, 6, 8, 10, 12}
+	hopsValues := []int{2, 3, 4, 5}
 
 	allDists := []string{"uniform", "highweight", "slots", "wald"}
 	var attackerDists []string
@@ -138,9 +142,11 @@ func main() {
 		shufflePct       float64
 		attackerFraction float64
 		attackerDist     string
+		entriesPerLevel  int
+		hops             int
 	}
 
-	totalJobs := len(shufflePcts) * len(attackerFractions) * len(attackerDists)
+	totalJobs := len(shufflePcts) * len(attackerFractions) * len(attackerDists) * len(entriesPerLevelValues) * len(hopsValues)
 	jobs := make(chan job, totalJobs)
 	resultsChan := make(chan Result, totalJobs)
 
@@ -174,7 +180,7 @@ func main() {
 					}
 
 					blockHash := []byte{byte(sim), byte(sim >> 8), byte(sim >> 16), byte(sim >> 24), 0, 0, 0, 0}
-					cube := buildFLTQWithWeights(participants, blockHash, j.shufflePct)
+					cube := buildFLTQWithWeights(participants, blockHash, j.shufflePct, j.entriesPerLevel, j.hops)
 
 					totalNeighbors := 0
 					maxNeighbors := 0
@@ -190,7 +196,9 @@ func main() {
 					maxNeighborsSum += maxNeighbors
 
 					var attackers map[string]bool
-					if j.attackerDist == "slots" {
+					if numAttackers == 0 {
+						attackers = make(map[string]bool)
+					} else if j.attackerDist == "slots" {
 						simSeed := fmt.Sprintf("%s_%d_%f_%x", j.attackerDist, sim, j.attackerFraction, blockHash)
 						attackers = selectAttackersBySlots(participants, numAttackers, simSeed)
 					} else if j.attackerDist == "wald" {
@@ -258,6 +266,8 @@ func main() {
 					ShufflePct:         j.shufflePct,
 					AttackerFraction:   j.attackerFraction,
 					AttackerDist:       j.attackerDist,
+					EntriesPerLevel:    j.entriesPerLevel,
+					Hops:               j.hops,
 					AvgUnreached:       avgUnreached,
 					HonestNodes:        honestNodes,
 					AvgHopCount:        avgHopCount,
@@ -275,7 +285,11 @@ func main() {
 	for _, shufflePct := range shufflePcts {
 		for _, attackerFraction := range attackerFractions {
 			for _, attackerDist := range attackerDists {
-				jobs <- job{shufflePct, attackerFraction, attackerDist}
+				for _, entriesPerLevel := range entriesPerLevelValues {
+					for _, hops := range hopsValues {
+						jobs <- job{shufflePct, attackerFraction, attackerDist, entriesPerLevel, hops}
+					}
+				}
 			}
 		}
 	}
@@ -311,13 +325,13 @@ func main() {
 	}
 	fmt.Println()
 
-	printTables(results, attackerFractions, shufflePcts, attackerDists, *numParticipants)
+	printTables(results, attackerFractions, shufflePcts, attackerDists, entriesPerLevelValues, hopsValues, *numParticipants)
 
 	elapsed := time.Since(startTime)
 	fmt.Printf("\nExecution completed in: %s\n", elapsed.Round(time.Millisecond))
 }
 
-func printTables(results []Result, attackerFractions []float64, shufflePcts []float64, attackerDists []string, numParticipants int) {
+func printTables(results []Result, attackerFractions []float64, shufflePcts []float64, attackerDists []string, entriesPerLevelValues []int, hopsValues []int, numParticipants int) {
 	for _, dist := range attackerDists {
 		distName := "Uniform Distribution"
 		if dist == "highweight" {
@@ -329,31 +343,37 @@ func printTables(results []Result, attackerFractions []float64, shufflePcts []fl
 		}
 		fmt.Printf("\n\n========== ATTACKER DISTRIBUTION: %s ==========\n", distName)
 
-		for _, sp := range shufflePcts {
-			fmt.Printf("\n\n########## SHUFFLE PERCENTAGE: %.0f%% ##########\n", sp*100)
+		for _, entriesPerLevel := range entriesPerLevelValues {
+			for _, hops := range hopsValues {
+				fmt.Printf("\n\n########## ENTRIES PER LEVEL: %d, HOPS: %d ##########\n", entriesPerLevel, hops)
 
-			fmt.Printf("\n=== Blocking Probability ===\n")
-			fmt.Printf("| Attacker%% | Honest Nodes | Unreached | P(blocked) |\n")
-			fmt.Printf("|-----------|--------------|-----------|------------|\n")
-			for _, af := range attackerFractions {
-				for _, r := range results {
-					if r.AttackerDist == dist && r.ShufflePct == sp && r.AttackerFraction == af {
-						fmt.Printf("| %-9.0f%% | %-12d | %-9.2f | %-10.6f |\n",
-							af*100, r.HonestNodes, r.AvgUnreached, r.AvgUnreached/float64(r.HonestNodes))
-						break
+				for _, sp := range shufflePcts {
+					fmt.Printf("\n\n>>> SHUFFLE PERCENTAGE: %.0f%% <<<\n", sp*100)
+
+					fmt.Printf("\n=== Blocking Probability ===\n")
+					fmt.Printf("| Attacker%% | Honest Nodes | Unreached | P(blocked) |\n")
+					fmt.Printf("|-----------|--------------|-----------|------------|\n")
+					for _, af := range attackerFractions {
+						for _, r := range results {
+							if r.AttackerDist == dist && r.ShufflePct == sp && r.AttackerFraction == af && r.EntriesPerLevel == entriesPerLevel && r.Hops == hops {
+								fmt.Printf("| %-9.0f%% | %-12d | %-9.2f | %-10.6f |\n",
+									af*100, r.HonestNodes, r.AvgUnreached, r.AvgUnreached/float64(r.HonestNodes))
+								break
+							}
+						}
 					}
-				}
-			}
 
-			fmt.Printf("\n=== Network Statistics ===\n")
-			fmt.Printf("| Attacker%% | Avg Neighbors | Max Neighbors | Avg Hops | Max Hops | Diameter |\n")
-			fmt.Printf("|-----------|---------------|---------------|----------|----------|----------|\n")
-			for _, af := range attackerFractions {
-				for _, r := range results {
-					if r.AttackerDist == dist && r.ShufflePct == sp && r.AttackerFraction == af {
-						fmt.Printf("| %-9.0f%% | %-13.2f | %-13d | %-8.2f | %-8d | %-8d |\n",
-							af*100, r.AvgNeighbors, r.MaxNeighbors, r.AvgHopCount, r.MaxHops, r.Diameter)
-						break
+					fmt.Printf("\n=== Network Statistics ===\n")
+					fmt.Printf("| Attacker%% | Avg Neighbors | Max Neighbors | Avg Hops | Max Hops | Diameter |\n")
+					fmt.Printf("|-----------|---------------|---------------|----------|----------|----------|\n")
+					for _, af := range attackerFractions {
+						for _, r := range results {
+							if r.AttackerDist == dist && r.ShufflePct == sp && r.AttackerFraction == af && r.EntriesPerLevel == entriesPerLevel && r.Hops == hops {
+								fmt.Printf("| %-9.0f%% | %-13.2f | %-13d | %-8.2f | %-8d | %-8d |\n",
+									af*100, r.AvgNeighbors, r.MaxNeighbors, r.AvgHopCount, r.MaxHops, r.Diameter)
+								break
+							}
+						}
 					}
 				}
 			}
@@ -375,19 +395,23 @@ func printTables(results []Result, attackerFractions []float64, shufflePcts []fl
 			distName = "Wald"
 		}
 
-		for _, sp := range shufflePcts {
-			for _, af := range attackerFractions {
-				fmt.Printf("\n--- %s Distribution, %.0f%% Attackers, Shuffle %.0f%% ---\n", distName, af*100, sp*100)
-				fmt.Printf("| Avg Neighbors | Max Neighbors | Msgs (1 pub) | Msgs/Participant | Total if ALL publish |\n")
-				fmt.Printf("|---------------|---------------|--------------|------------------|-----------------------|\n")
+		for _, entriesPerLevel := range entriesPerLevelValues {
+			for _, hops := range hopsValues {
+				for _, sp := range shufflePcts {
+					for _, af := range attackerFractions {
+						fmt.Printf("\n--- %s Distribution, %.0f%% Attackers, Shuffle %.0f%%, Entries/Level: %d, Hops: %d ---\n", distName, af*100, sp*100, entriesPerLevel, hops)
+						fmt.Printf("| Avg Neighbors | Max Neighbors | Msgs (1 pub) | Msgs/Participant | Total if ALL publish |\n")
+						fmt.Printf("|---------------|---------------|--------------|------------------|-----------------------|\n")
 
-				for _, r := range results {
-					if r.AttackerDist == dist && r.ShufflePct == sp && r.AttackerFraction == af {
-						totalIfAll := int64(r.TotalMessages) * int64(numParticipants)
+						for _, r := range results {
+							if r.AttackerDist == dist && r.ShufflePct == sp && r.AttackerFraction == af && r.EntriesPerLevel == entriesPerLevel && r.Hops == hops {
+								totalIfAll := int64(r.TotalMessages) * int64(numParticipants)
 
-						fmt.Printf("| %-13.2f | %-13d | %-12d | %-16.2f | %-21s |\n",
-							r.AvgNeighbors, r.MaxNeighbors, r.TotalMessages, r.AvgMessagesPerNode, formatLargeNumber(totalIfAll))
-						break
+								fmt.Printf("| %-13.2f | %-13d | %-12d | %-16.2f | %-21s |\n",
+									r.AvgNeighbors, r.MaxNeighbors, r.TotalMessages, r.AvgMessagesPerNode, formatLargeNumber(totalIfAll))
+								break
+							}
+						}
 					}
 				}
 			}
@@ -410,7 +434,7 @@ func formatLargeNumber(n int64) string {
 	return fmt.Sprintf("%d", n)
 }
 
-func buildFLTQWithWeights(participants []WeightedParticipant, blockHash []byte, shufflePct float64) *FLTQCube {
+func buildFLTQWithWeights(participants []WeightedParticipant, blockHash []byte, shufflePct float64, entriesPerLevel int, hops int) *FLTQCube {
 	if len(participants) == 0 {
 		return &FLTQCube{
 			Index:     0,
@@ -484,7 +508,7 @@ func buildFLTQWithWeights(participants []WeightedParticipant, blockHash []byte, 
 		}
 	}
 
-	buildPastryEdges(cube, blockHash, 10)
+	buildPastryEdges(cube, blockHash, entriesPerLevel, hops)
 
 	return cube
 }
@@ -647,8 +671,8 @@ func shuffleInts(values []int, seed []byte, pos int, level int) {
 	}
 }
 
-func buildPastryEdges(cube *FLTQCube, seed []byte, maxEntriesPerLevel int) {
-	digitSizes := splitBits(cube.Dimensions, 3)
+func buildPastryEdges(cube *FLTQCube, seed []byte, maxEntriesPerLevel int, hops int) {
+	digitSizes := splitBits(cube.Dimensions, hops)
 	prefixIndex := buildPrefixIndex(cube, digitSizes)
 
 	allNeighborsMap := make(map[string]map[string]bool)
