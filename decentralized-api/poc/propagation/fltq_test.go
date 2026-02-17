@@ -28,7 +28,7 @@ func TestFLTQBuild(t *testing.T) {
 	for addr, node := range cube.Nodes {
 		require.NotNil(t, node)
 		require.Equal(t, addr, node.Address)
-		require.LessOrEqual(t, len(node.Neighbors), cube.Dimensions+1)
+		require.Greater(t, len(node.Neighbors), 0)
 	}
 }
 
@@ -142,16 +142,26 @@ func TestFLTQDegreeVerification(t *testing.T) {
 			blockHash := sha256.Sum256([]byte("test-degree"))
 			cube := BuildFLTQWithWeights(participants, blockHash[:])
 
-			expectedDegree := cube.Dimensions + 1
+			minDegree := 1000
+			maxDegree := 0
+			totalDegree := 0
 
-			for addr, node := range cube.Nodes {
+			for _, node := range cube.Nodes {
 				actualDegree := len(node.Neighbors)
-				require.LessOrEqual(t, actualDegree, expectedDegree,
-					"node %s has degree %d, expected <= %d (dimensions=%d)",
-					addr, actualDegree, expectedDegree, cube.Dimensions)
+				if actualDegree < minDegree {
+					minDegree = actualDegree
+				}
+				if actualDegree > maxDegree {
+					maxDegree = actualDegree
+				}
+				totalDegree += actualDegree
 			}
 
-			t.Logf("Dimensions: %d, Expected degree: %d", cube.Dimensions, expectedDegree)
+			avgDegree := float64(totalDegree) / float64(len(cube.Nodes))
+			t.Logf("Dimensions: %d, Min degree: %d, Max degree: %d, Avg degree: %.2f",
+				cube.Dimensions, minDegree, maxDegree, avgDegree)
+
+			require.Greater(t, minDegree, cube.Dimensions, "min degree should be > dimensions (includes Pastry edges)")
 		})
 	}
 }
@@ -249,9 +259,9 @@ func TestFLTQComplementPosition(t *testing.T) {
 
 func TestFLTQSmallNetworks(t *testing.T) {
 	tests := []struct {
-		name             string
-		count            int
-		expectedDim      int
+		name              string
+		count             int
+		expectedDim       int
 		expectedMaxDegree int
 	}{
 		{"2-nodes", 2, 1, 2},
@@ -522,4 +532,223 @@ func TestMakeFLTQSeed(t *testing.T) {
 
 	seed0_again := makeFLTQSeed(blockHash[:], 0)
 	require.Equal(t, seed0, seed0_again)
+}
+
+func TestSplitBits(t *testing.T) {
+	tests := []struct {
+		n    int
+		hops int
+		want []int
+	}{
+		{14, 3, []int{5, 5, 4}},
+		{10, 3, []int{4, 3, 3}},
+		{7, 3, []int{3, 2, 2}},
+		{9, 3, []int{3, 3, 3}},
+		{12, 4, []int{3, 3, 3, 3}},
+		{13, 4, []int{4, 3, 3, 3}},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("n=%d,hops=%d", tt.n, tt.hops), func(t *testing.T) {
+			got := splitBits(tt.n, tt.hops)
+			require.Equal(t, tt.want, got)
+
+			sum := 0
+			for _, size := range got {
+				sum += size
+			}
+			require.Equal(t, tt.n, sum, "sum of digit sizes should equal n")
+		})
+	}
+}
+
+func TestPastryDigitExtraction(t *testing.T) {
+	digitSizes := []int{5, 5, 4}
+
+	tests := []struct {
+		pos        int
+		expectedD0 int
+		expectedD1 int
+		expectedD2 int
+	}{
+		{0, 0, 0, 0},
+		{1, 0, 0, 1},
+		{15, 0, 0, 15},
+		{16, 0, 1, 0},
+		{511, 0, 31, 15},
+		{512, 1, 0, 0},
+		{1024, 2, 0, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("pos=%d", tt.pos), func(t *testing.T) {
+			d0 := digitAt(tt.pos, 0, digitSizes)
+			d1 := digitAt(tt.pos, 1, digitSizes)
+			d2 := digitAt(tt.pos, 2, digitSizes)
+
+			require.Equal(t, tt.expectedD0, d0)
+			require.Equal(t, tt.expectedD1, d1)
+			require.Equal(t, tt.expectedD2, d2)
+		})
+	}
+}
+
+func TestPastryPrefixOperations(t *testing.T) {
+	digitSizes := []int{5, 5, 4}
+
+	pos := 1234
+	d0 := digitAt(pos, 0, digitSizes)
+	d1 := digitAt(pos, 1, digitSizes)
+
+	prefix0 := prefixUpTo(pos, 0, digitSizes)
+	require.Equal(t, d0, prefix0)
+
+	prefix1 := prefixUpTo(pos, 1, digitSizes)
+	expected1 := (d0 << digitSizes[1]) | d1
+	require.Equal(t, expected1, prefix1)
+
+	myPrefix := prefixUpTo(pos, 1, digitSizes)
+	newPrefix := replaceDigit(myPrefix, 1, 7, digitSizes)
+	expectedNewPrefix := (d0 << digitSizes[1]) | 7
+	require.Equal(t, expectedNewPrefix, newPrefix, "replaceDigit should replace digit 1 with value 7")
+}
+
+func TestPastryDegree(t *testing.T) {
+	participants := make([]WeightedParticipant, 10000)
+	for i := 0; i < 10000; i++ {
+		participants[i] = WeightedParticipant{
+			Address: fmt.Sprintf("participant%d", i),
+			Weight:  uint64(100 + i),
+		}
+	}
+
+	blockHash := sha256.Sum256([]byte("test-pastry-degree"))
+	cube := BuildFLTQWithWeights(participants, blockHash[:])
+
+	minDegree := cube.Dimensions + 1
+	maxDegree := 0
+	totalDegree := 0
+
+	for _, node := range cube.Nodes {
+		degree := len(node.Neighbors)
+		if degree < minDegree {
+			minDegree = degree
+		}
+		if degree > maxDegree {
+			maxDegree = degree
+		}
+		totalDegree += degree
+	}
+
+	avgDegree := float64(totalDegree) / float64(len(cube.Nodes))
+
+	t.Logf("Pastry+FLTQ Degree Stats (n=%d):", len(participants))
+	t.Logf("  Dimensions: %d", cube.Dimensions)
+	t.Logf("  Min degree: %d", minDegree)
+	t.Logf("  Max degree: %d", maxDegree)
+	t.Logf("  Avg degree: %.2f", avgDegree)
+
+	require.LessOrEqual(t, maxDegree, 75, "max degree should be <= 75")
+	require.GreaterOrEqual(t, avgDegree, 40.0, "avg degree should be >= 40")
+	require.LessOrEqual(t, avgDegree, 60.0, "avg degree should be <= 60")
+}
+
+func TestPastryDiameter(t *testing.T) {
+	participants := make([]WeightedParticipant, 10000)
+	for i := 0; i < 10000; i++ {
+		participants[i] = WeightedParticipant{
+			Address: fmt.Sprintf("participant%d", i),
+			Weight:  uint64(100 + i),
+		}
+	}
+
+	blockHash := sha256.Sum256([]byte("test-pastry-diameter"))
+	cube := BuildFLTQWithWeights(participants, blockHash[:])
+
+	sampleSize := 20
+	maxDiameter := 0
+
+	addrs := make([]string, 0, sampleSize)
+	for addr := range cube.Nodes {
+		addrs = append(addrs, addr)
+		if len(addrs) >= sampleSize {
+			break
+		}
+	}
+
+	for _, startAddr := range addrs {
+		distances := bfsFLTQ(cube, startAddr)
+		for _, dist := range distances {
+			if dist > maxDiameter {
+				maxDiameter = dist
+			}
+		}
+	}
+
+	t.Logf("Pastry+FLTQ Diameter (n=%d, sample=%d): %d", len(participants), sampleSize, maxDiameter)
+
+	require.LessOrEqual(t, maxDiameter, 5, "diameter should be <= 5 with Pastry routing")
+}
+
+func TestPastryBidirectional(t *testing.T) {
+	participants := make([]WeightedParticipant, 1000)
+	for i := 0; i < 1000; i++ {
+		participants[i] = WeightedParticipant{
+			Address: fmt.Sprintf("participant%d", i),
+			Weight:  uint64(100 + i),
+		}
+	}
+
+	blockHash := sha256.Sum256([]byte("test-pastry-bidirectional"))
+	cube := BuildFLTQWithWeights(participants, blockHash[:])
+
+	for addr, node := range cube.Nodes {
+		for _, neighborAddr := range node.Neighbors {
+			neighbor := cube.Nodes[neighborAddr]
+			require.NotNil(t, neighbor, "neighbor %s should exist", neighborAddr)
+
+			found := false
+			for _, backNeighbor := range neighbor.Neighbors {
+				if backNeighbor == addr {
+					found = true
+					break
+				}
+			}
+			require.True(t, found, "Pastry edge should be bidirectional: %s <-> %s", addr, neighborAddr)
+		}
+	}
+}
+
+func TestPastryBroadcastReach(t *testing.T) {
+	participants := make([]WeightedParticipant, 10000)
+	for i := 0; i < 10000; i++ {
+		participants[i] = WeightedParticipant{
+			Address: fmt.Sprintf("participant%d", i),
+			Weight:  uint64(100 + i),
+		}
+	}
+
+	blockHash := sha256.Sum256([]byte("test-pastry-broadcast"))
+	cube := BuildFLTQWithWeights(participants, blockHash[:])
+
+	sampleSize := 10
+	addrs := make([]string, 0, sampleSize)
+	for addr := range cube.Nodes {
+		addrs = append(addrs, addr)
+		if len(addrs) >= sampleSize {
+			break
+		}
+	}
+
+	for _, startAddr := range addrs {
+		distances := bfsFLTQ(cube, startAddr)
+
+		require.Equal(t, len(cube.Nodes), len(distances), "all nodes should be reachable from %s", startAddr)
+
+		for _, dist := range distances {
+			require.LessOrEqual(t, dist, 5, "all nodes should be reachable within 5 hops")
+		}
+	}
+
+	t.Logf("Pastry+FLTQ: All nodes reachable within 5 hops from %d sampled starting points", sampleSize)
 }

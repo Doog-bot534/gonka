@@ -45,6 +45,8 @@ type Result struct {
 	Diameter           int
 	AvgMessagesPerNode float64
 	TotalMessages      int
+	AvgNeighbors       float64
+	MaxNeighbors       int
 }
 
 func propagateFLTQWithStats(cube *FLTQCube, startAddr string, attackers map[string]bool) (map[string]bool, int, int, int) {
@@ -159,6 +161,8 @@ func main() {
 				diameterSum := 0
 				totalMessagesSum := 0
 				messagesPerNodeSum := 0.0
+				avgNeighborsSum := 0.0
+				maxNeighborsSum := 0
 
 				for sim := 0; sim < *numSimulations; sim++ {
 					participants := make([]WeightedParticipant, *numParticipants)
@@ -171,6 +175,19 @@ func main() {
 
 					blockHash := []byte{byte(sim), byte(sim >> 8), byte(sim >> 16), byte(sim >> 24), 0, 0, 0, 0}
 					cube := buildFLTQWithWeights(participants, blockHash, j.shufflePct)
+
+					totalNeighbors := 0
+					maxNeighbors := 0
+					for _, node := range cube.Nodes {
+						neighborCount := len(node.Neighbors)
+						totalNeighbors += neighborCount
+						if neighborCount > maxNeighbors {
+							maxNeighbors = neighborCount
+						}
+					}
+					avgNeighbors := float64(totalNeighbors) / float64(len(cube.Nodes))
+					avgNeighborsSum += avgNeighbors
+					maxNeighborsSum += maxNeighbors
 
 					var attackers map[string]bool
 					if j.attackerDist == "slots" {
@@ -234,6 +251,8 @@ func main() {
 				avgDiameter := diameterSum / *numSimulations
 				avgMessagesPerNode := messagesPerNodeSum / float64(*numSimulations)
 				avgTotalMessages := totalMessagesSum / *numSimulations
+				avgNeighbors := avgNeighborsSum / float64(*numSimulations)
+				avgMaxNeighbors := maxNeighborsSum / *numSimulations
 
 				resultsChan <- Result{
 					ShufflePct:         j.shufflePct,
@@ -246,6 +265,8 @@ func main() {
 					Diameter:           avgDiameter,
 					AvgMessagesPerNode: avgMessagesPerNode,
 					TotalMessages:      avgTotalMessages,
+					AvgNeighbors:       avgNeighbors,
+					MaxNeighbors:       avgMaxNeighbors,
 				}
 			}
 		}()
@@ -325,14 +346,13 @@ func printTables(results []Result, attackerFractions []float64, shufflePcts []fl
 			}
 
 			fmt.Printf("\n=== Network Statistics ===\n")
-			fmt.Printf("| Attacker%% | Neighbors | Avg Hops | Max Hops | Diameter |\n")
-			fmt.Printf("|-----------|-----------|----------|----------|----------|\n")
+			fmt.Printf("| Attacker%% | Avg Neighbors | Max Neighbors | Avg Hops | Max Hops | Diameter |\n")
+			fmt.Printf("|-----------|---------------|---------------|----------|----------|----------|\n")
 			for _, af := range attackerFractions {
 				for _, r := range results {
 					if r.AttackerDist == dist && r.ShufflePct == sp && r.AttackerFraction == af {
-						neighbors := r.Diameter + 1
-						fmt.Printf("| %-9.0f%% | %-9d | %-8.2f | %-8d | %-8d |\n",
-							af*100, neighbors, r.AvgHopCount, r.MaxHops, r.Diameter)
+						fmt.Printf("| %-9.0f%% | %-13.2f | %-13d | %-8.2f | %-8d | %-8d |\n",
+							af*100, r.AvgNeighbors, r.MaxNeighbors, r.AvgHopCount, r.MaxHops, r.Diameter)
 						break
 					}
 				}
@@ -358,16 +378,15 @@ func printTables(results []Result, attackerFractions []float64, shufflePcts []fl
 		for _, sp := range shufflePcts {
 			for _, af := range attackerFractions {
 				fmt.Printf("\n--- %s Distribution, %.0f%% Attackers, Shuffle %.0f%% ---\n", distName, af*100, sp*100)
-				fmt.Printf("| Neighbors | Msgs (1 pub) | Msgs/Participant | Total if ALL publish |\n")
-				fmt.Printf("|-----------|--------------|------------------|-----------------------|\n")
+				fmt.Printf("| Avg Neighbors | Max Neighbors | Msgs (1 pub) | Msgs/Participant | Total if ALL publish |\n")
+				fmt.Printf("|---------------|---------------|--------------|------------------|-----------------------|\n")
 
 				for _, r := range results {
 					if r.AttackerDist == dist && r.ShufflePct == sp && r.AttackerFraction == af {
 						totalIfAll := int64(r.TotalMessages) * int64(numParticipants)
-						neighbors := r.Diameter + 1
 
-						fmt.Printf("| %-9d | %-12d | %-16.2f | %-21s |\n",
-							neighbors, r.TotalMessages, r.AvgMessagesPerNode, formatLargeNumber(totalIfAll))
+						fmt.Printf("| %-13.2f | %-13d | %-12d | %-16.2f | %-21s |\n",
+							r.AvgNeighbors, r.MaxNeighbors, r.TotalMessages, r.AvgMessagesPerNode, formatLargeNumber(totalIfAll))
 						break
 					}
 				}
@@ -465,6 +484,8 @@ func buildFLTQWithWeights(participants []WeightedParticipant, blockHash []byte, 
 		}
 	}
 
+	buildPastryEdges(cube, blockHash, 10)
+
 	return cube
 }
 
@@ -495,6 +516,221 @@ func complementPosition(pos int, n int) int {
 	}
 	mask := (1 << n) - 1
 	return pos ^ mask
+}
+
+func splitBits(n int, hops int) []int {
+	if n <= 0 || hops <= 0 {
+		return []int{}
+	}
+
+	sizes := make([]int, hops)
+	base := n / hops
+	remainder := n % hops
+
+	for i := 0; i < hops; i++ {
+		sizes[i] = base
+		if i < remainder {
+			sizes[i]++
+		}
+	}
+
+	return sizes
+}
+
+func digitAt(pos int, level int, digitSizes []int) int {
+	if level < 0 || level >= len(digitSizes) {
+		return 0
+	}
+
+	shift := 0
+	for i := len(digitSizes) - 1; i > level; i-- {
+		shift += digitSizes[i]
+	}
+
+	mask := (1 << digitSizes[level]) - 1
+	return (pos >> shift) & mask
+}
+
+func prefixUpTo(pos int, level int, digitSizes []int) int {
+	if level < 0 {
+		return 0
+	}
+
+	totalBits := 0
+	for i := 0; i <= level && i < len(digitSizes); i++ {
+		totalBits += digitSizes[i]
+	}
+
+	shift := 0
+	for i := len(digitSizes) - 1; i > level; i-- {
+		shift += digitSizes[i]
+	}
+
+	mask := ((1 << totalBits) - 1) << shift
+	return (pos & mask) >> shift
+}
+
+func replaceDigit(prefix int, level int, newValue int, digitSizes []int) int {
+	if level < 0 || level >= len(digitSizes) {
+		return prefix
+	}
+
+	mask := (1 << digitSizes[level]) - 1
+	cleared := prefix &^ mask
+	return cleared | (newValue & mask)
+}
+
+func buildPrefixIndex(cube *FLTQCube, digitSizes []int) map[int]map[int][]int {
+	index := make(map[int]map[int][]int)
+
+	for level := 0; level < len(digitSizes); level++ {
+		index[level] = make(map[int][]int)
+	}
+
+	for pos := 0; pos < cube.Size; pos++ {
+		if cube.Positions[pos] == nil {
+			continue
+		}
+
+		for level := 0; level < len(digitSizes); level++ {
+			prefix := prefixUpTo(pos, level, digitSizes)
+			index[level][prefix] = append(index[level][prefix], pos)
+		}
+	}
+
+	return index
+}
+
+func deterministicSelect(candidates []int, seed []byte, pos int, level int, v int) int {
+	if len(candidates) == 0 {
+		return -1
+	}
+	if len(candidates) == 1 {
+		return candidates[0]
+	}
+
+	h := sha256.New()
+	h.Write(seed)
+	var buf [12]byte
+	binary.BigEndian.PutUint32(buf[0:4], uint32(pos))
+	binary.BigEndian.PutUint32(buf[4:8], uint32(level))
+	binary.BigEndian.PutUint32(buf[8:12], uint32(v))
+	h.Write(buf[:])
+	hashResult := h.Sum(nil)
+
+	idx := binary.BigEndian.Uint64(hashResult[:8]) % uint64(len(candidates))
+	return candidates[idx]
+}
+
+func shuffleInts(values []int, seed []byte, pos int, level int) {
+	if len(values) <= 1 {
+		return
+	}
+
+	h := sha256.New()
+	h.Write(seed)
+	var buf [8]byte
+	binary.BigEndian.PutUint32(buf[0:4], uint32(pos))
+	binary.BigEndian.PutUint32(buf[4:8], uint32(level))
+	h.Write(buf[:])
+	hashResult := h.Sum(nil)
+
+	seedValue := int64(binary.BigEndian.Uint64(hashResult[:8]))
+
+	for i := len(values) - 1; i > 0; i-- {
+		seedValue = seedValue*1103515245 + 12345
+		j := int((seedValue >> 16) % int64(i+1))
+		if j < 0 {
+			j = -j
+		}
+		values[i], values[j] = values[j], values[i]
+	}
+}
+
+func buildPastryEdges(cube *FLTQCube, seed []byte, maxEntriesPerLevel int) {
+	digitSizes := splitBits(cube.Dimensions, 3)
+	prefixIndex := buildPrefixIndex(cube, digitSizes)
+
+	allNeighborsMap := make(map[string]map[string]bool)
+
+	for pos := 0; pos < cube.Size; pos++ {
+		node := cube.Positions[pos]
+		if node == nil {
+			continue
+		}
+
+		if allNeighborsMap[node.Address] == nil {
+			allNeighborsMap[node.Address] = make(map[string]bool)
+		}
+
+		for _, neighbor := range node.Neighbors {
+			allNeighborsMap[node.Address][neighbor] = true
+		}
+	}
+
+	for pos := 0; pos < cube.Size; pos++ {
+		node := cube.Positions[pos]
+		if node == nil {
+			continue
+		}
+
+		for level := 0; level < len(digitSizes); level++ {
+			myDigit := digitAt(pos, level, digitSizes)
+			myPrefix := prefixUpTo(pos, level, digitSizes)
+			base := 1 << digitSizes[level]
+
+			possibleValues := make([]int, 0, base-1)
+			for v := 0; v < base; v++ {
+				if v != myDigit {
+					possibleValues = append(possibleValues, v)
+				}
+			}
+
+			shuffleInts(possibleValues, seed, pos, level)
+
+			limit := maxEntriesPerLevel
+			if limit > len(possibleValues) {
+				limit = len(possibleValues)
+			}
+			if limit <= 0 {
+				limit = len(possibleValues)
+			}
+
+			for i := 0; i < limit; i++ {
+				v := possibleValues[i]
+
+				targetPrefix := replaceDigit(myPrefix, level, v, digitSizes)
+				candidates := prefixIndex[level][targetPrefix]
+				if len(candidates) == 0 {
+					continue
+				}
+
+				pick := deterministicSelect(candidates, seed, pos, level, v)
+				if pick < 0 || pick >= cube.Size || cube.Positions[pick] == nil {
+					continue
+				}
+
+				neighborAddr := cube.Positions[pick].Address
+				if neighborAddr != node.Address {
+					allNeighborsMap[node.Address][neighborAddr] = true
+					if allNeighborsMap[neighborAddr] == nil {
+						allNeighborsMap[neighborAddr] = make(map[string]bool)
+					}
+					allNeighborsMap[neighborAddr][node.Address] = true
+				}
+			}
+		}
+	}
+
+	for addr, neighborsMap := range allNeighborsMap {
+		node := cube.Nodes[addr]
+		if node != nil {
+			node.Neighbors = make([]string, 0, len(neighborsMap))
+			for neighborAddr := range neighborsMap {
+				node.Neighbors = append(node.Neighbors, neighborAddr)
+			}
+		}
+	}
 }
 
 func (c *FLTQCube) GetNode(addr string) *FLTQNode {
