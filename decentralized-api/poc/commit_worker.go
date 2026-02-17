@@ -280,7 +280,7 @@ func (w *CommitWorker) maybeSubmitConsensusCommit(pocHeight int64) {
 		return
 	}
 
-	if !w.propagationEnabled {
+	if !w.propagationEnabled || (w.bundler != nil && !w.bundler.HasPeers()) {
 		if count == 0 {
 			return
 		}
@@ -303,7 +303,7 @@ func (w *CommitWorker) maybeSubmitConsensusCommit(pocHeight int64) {
 		}
 
 		w.lastCommitted[pocHeight] = commitState{count, rootHash}
-		logging.Debug("CommitWorker: committed (propagation disabled)", types.PoC,
+		logging.Debug("CommitWorker: committed (no peers)", types.PoC,
 			"pocHeight", pocHeight, "count", count)
 		return
 	}

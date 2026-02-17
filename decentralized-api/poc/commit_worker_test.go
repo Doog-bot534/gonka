@@ -267,7 +267,12 @@ func TestCommitWorker_MaybeSubmitConsensusCommit_RepublishesProofsAtConsensusCou
 	assert.NoError(t, err)
 	cache := propagation.NewCache(fileStorage)
 	mockTransport := propagation.NewMockTransport()
-	bundler := propagation.NewBundler(nil, cache, nil, mockTransport.NewSenderFor("test_addr"), "test_addr")
+	peerTree := &propagation.Tree{
+		Index: 0,
+		Root:  &propagation.Node{Address: "peer_addr"},
+		Nodes: map[string]*propagation.Node{"peer_addr": {Address: "peer_addr"}},
+	}
+	bundler := propagation.NewBundler(nil, cache, []*propagation.Tree{peerTree}, mockTransport.NewSenderFor("test_addr"), "test_addr")
 
 	worker := &CommitWorker{
 		store:                store,
@@ -324,7 +329,8 @@ func TestCommitWorker_MaybeSubmitConsensusCommit_RepublishesProofsAtConsensusCou
 	consensusBundleID := propagation.MakeBundleID("test_addr", pocHeight, expectedRootHash, consensusCount)
 	cachedProofs, err := cache.GetProofs(consensusBundleID)
 	assert.NoError(t, err)
-	assert.Equal(t, int(consensusCount), len(cachedProofs))
+	assert.Equal(t, 1, len(cachedProofs))
+	assert.Equal(t, int(consensusCount), len(cachedProofs[0]))
 }
 
 func TestCommitWorker_MaybeSubmitConsensusCommit_ConsensusCountHigherThanLocal(t *testing.T) {
