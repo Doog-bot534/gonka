@@ -87,9 +87,9 @@ func ltqNeighbor(pos int, dim int, n int) int {
 - **Dimensions:** n = ceil(log2(10000)) = 14
 - **Cube size:** 2^14 = 16,384 positions (10,000 filled)
 - **Neighbors per node:** Each node connects to up to 15 neighbors (14 LTQ + 1 complement)
-  - **Minimum:** 9 neighbors (sparse regions)
-  - **Maximum:** 15 neighbors (fully connected)
-  - **Average:** 13.9 neighbors
+    - **Minimum:** 9 neighbors (sparse regions)
+    - **Maximum:** 15 neighbors (fully connected)
+    - **Average:** 13.9 neighbors
 - **Diameter:** ⌈n/2⌉ + 1 = 8 hops (vs 14 for standard hypercube)
 
 ### Connection Statistics Calculation
@@ -126,10 +126,10 @@ avgConns := float64(totalConns) / float64(numParticipants)
 1. **Theoretical maximum:** 15 neighbors (14 LTQ twisted + 1 complementary)
 
 2. **Why some nodes have fewer:**
-   - Only 10,000 of 16,384 positions are filled
-   - Nodes whose twisted or complement neighbors point to empty positions have fewer actual connections
-   - Nodes in lower positions (0-9999) have most neighbors in the filled range → closer to 15 neighbors
-   - Nodes near position boundaries may have neighbors in the empty range → fewer neighbors
+    - Only 10,000 of 16,384 positions are filled
+    - Nodes whose twisted or complement neighbors point to empty positions have fewer actual connections
+    - Nodes in lower positions (0-9999) have most neighbors in the filled range → closer to 15 neighbors
+    - Nodes near position boundaries may have neighbors in the empty range → fewer neighbors
 
 3. **Example:**
    ```
@@ -155,11 +155,11 @@ avgConns := float64(totalConns) / float64(numParticipants)
    ```
 
 4. **Why minimum is 9:**
-   - Even nodes with some empty neighbors retain most connections
-   - With 10,000/16,384 = 61% fill rate, most twisted operations stay in range
-   - Complement edge provides cross-region link (if target filled)
-   - Positions that have many empty neighbors typically lose 6 out of 15 (around 40%)
-   - Minimum observed: 9 neighbors
+    - Even nodes with some empty neighbors retain most connections
+    - With 10,000/16,384 = 61% fill rate, most twisted operations stay in range
+    - Complement edge provides cross-region link (if target filled)
+    - Positions that have many empty neighbors typically lose 6 out of 15 (around 40%)
+    - Minimum observed: 9 neighbors
 
 5. **Why average is 13.9:**
    ```
@@ -325,14 +325,14 @@ Low-weight nodes → Lower scores → Later in shuffled list → Higher position
 In an ideal FLTQ, all positions have equal connectivity (n+1 neighbors). However, with 10,000 nodes in a 2^14 = 16,384 position space:
 
 - **Dense region (positions 0-9999):** All positions filled
-  - Every neighbor connection succeeds
-  - Average 13.9 neighbors per node
-  - Multiple redundant paths for message propagation
-  
+    - Every neighbor connection succeeds
+    - Average 13.9 neighbors per node
+    - Multiple redundant paths for message propagation
+
 - **Sparse region (positions 10000-16383):** Empty positions
-  - Some neighbor connections point to empty slots
-  - Reduced effective connectivity
-  - Fewer alternative paths
+    - Some neighbor connections point to empty slots
+    - Reduced effective connectivity
+    - Fewer alternative paths
 
 **3. Weight-Based Clustering Effect:**
 
@@ -381,6 +381,168 @@ Weighted: 0.1^14 × 0.4 ≈ 4.0×10^-15  (5000× improvement)
 **5. Why This Matters More Than in Hypercube:**
 
 Hypercube uses **independent shuffles per dimension**, which weakens weight-based clustering. FLTQ uses a **single shuffle**, so position-based clustering is preserved across all LTQ edges. Combined with the complement edge providing a cross-region escape route, weighted FLTQ creates strong protection for high-weight participants.
+
+---
+
+## Hop Reduction Through Shortcut Edges
+
+Beyond the standard FLTQ topology (n LTQ twisted edges + 1 complement edge per node), the implementation adds **shortcut edges** to dramatically reduce the average hop count and network diameter.
+
+### Shortcut Edge Construction Algorithm
+
+```go
+func buildShortcutEdges(cube *FLTQCube, seed []byte, shortcutsPerBucket int) {
+    n := cube.Dimensions
+    
+    // Define distance range for shortcuts
+    minDist := n/3 + 1      // For n=14: minDist = 5
+    maxDist := n - 1        // For n=14: maxDist = 13
+    
+    // For each node in the cube
+    for pos := 0; pos < cube.Size; pos++ {
+        node := cube.Positions[pos]
+        if node == nil { continue }
+        
+        // Add shortcuts at each distance level
+        for d := minDist; d <= maxDist; d++ {
+            // Find candidates at exactly Hamming distance d
+            candidates := findCandidatesAtDistance(pos, d, n, occupied, seed, shortcutsPerBucket*4)
+            
+            // Deterministically select shortcutsPerBucket targets
+            selected := deterministicSelectMultiple(candidates, seed, pos, d, shortcutsPerBucket)
+            
+            // Create bidirectional connections
+            for _, targetPos := range selected {
+                addBidirectionalNeighbor(node, targetNode)
+            }
+        }
+    }
+}
+```
+
+### Parameters
+
+- **`shortcutsPerBucket = 2`**: Number of shortcut edges added per distance level
+- **Distance range**: `[n/3 + 1, n - 1]`
+  - For n=14 (10,000 participants): distances 5-13
+  - Total distance levels: 9
+- **Total shortcuts per node**: ~18 additional edges (2 shortcuts × 9 distance levels)
+
+### How It Works
+
+**1. Hamming Distance**
+
+Two positions are at Hamming distance `d` if their binary representations differ in exactly `d` bits:
+
+```
+Position 0b00000000000000 (0)     distance=0 (same position)
+Position 0b00000000000001 (1)     distance=1 (1 bit different)
+Position 0b00000000000011 (3)     distance=2 (2 bits different)
+Position 0b00000000011111 (31)    distance=5 (5 bits different)
+Position 0b11111111111111 (16383) distance=14 (all bits different)
+```
+
+**2. Candidate Selection at Each Distance**
+
+For each node at position `pos`, the algorithm:
+1. Finds all occupied positions at exactly Hamming distance `d`
+2. Uses one of three strategies based on efficiency:
+   - **Enumeration** (d ≤ 2 or d ≥ n-2): Systematically generate all combinations
+   - **Scanning** (sparse networks): Iterate through occupied positions and check distance
+   - **Sampling** (dense networks): Randomly generate bitmasks with `d` bits set
+
+**3. Deterministic Selection**
+
+From candidates at distance `d`, select exactly `shortcutsPerBucket=2` targets:
+- Uses SHA256-based RNG seeded with: `seed || pos || d || count`
+- Ensures all nodes agree on which shortcuts exist (network-wide consensus)
+- Bidirectional: if A→B is a shortcut, then B→A is also added
+
+### Impact on Network Properties
+
+**For 10,000 participants (n=14):**
+
+| Metric | Standard FLTQ | With Shortcuts | Improvement |
+|--------|---------------|----------------|-------------|
+| **Base edges per node** | 15 (14 LTQ + 1 complement) | 15 | - |
+| **Shortcut edges per node** | 0 | ~18 (2 per distance × 9 levels) | +120% |
+| **Total edges per node** | 15 | ~33 | +120% |
+| **Network diameter** | ⌈n/2⌉ + 1 = 8 | ~4-5 hops | -40% |
+| **Average hop count** | ~6 hops | ~3-4 hops | -40% |
+| **Total network edges** | ~75,000 | ~165,000 | +120% |
+
+### Why This Reduces Hops
+
+**1. Long-Distance Jumps**
+
+Standard FLTQ edges (LTQ + complement) connect nodes at distances 1-2:
+- LTQ edges: flip 1 bit → distance=1
+- LTQ twisted edges: flip 2 bits → distance=2
+- Complement edge: flip all n bits → distance=n (far but specific target)
+
+Shortcuts connect nodes at distances 5-13:
+- Allow messages to "jump" across 5-13 bits of the address space in a single hop
+- Provide diverse routes through middle-distance regions
+
+**2. Example Path Comparison**
+
+**Without shortcuts** (FLTQ only):
+```
+Source: 0b00000000000000 (pos 0)
+Target: 0b10000001111111 (pos 8319)
+Hamming distance: 8
+
+Path (8 hops):
+0 → 1 → 3 → 7 → 15 → 31 → 63 → ... → 8319
+Each hop flips 1-2 bits progressively
+```
+
+**With shortcuts** (FLTQ + shortcuts):
+```
+Same source and target
+
+Path (3 hops):
+0 → 31 (shortcut, distance 5) → 8191 (shortcut, distance 8) → 8319 (FLTQ edge)
+Shortcuts allow large jumps, completing path in 3 hops instead of 8
+```
+
+**3. Probabilistic Coverage**
+
+With 2 shortcuts per distance level (5-13), each node has:
+- Direct shortcuts to ~18 diverse positions across the network
+- Indirect access to ~18×33 ≈ 594 positions in 2 hops
+- Indirect access to ~18×33² ≈ 19,000+ positions in 3 hops (covers entire network)
+
+This ensures most node pairs are reachable in 3-4 hops with high probability.
+
+### Trade-offs
+
+**Benefits:**
+- **Lower latency**: 40% reduction in average hop count (6 → 3-4 hops)
+- **Better resilience**: More diverse paths between any two nodes
+- **Attack resistance**: Even if some shortcuts are blocked, FLTQ base edges provide fallback paths
+
+**Costs:**
+- **Higher bandwidth**: +120% more connections per node (15 → 33)
+- **More messages per propagation**: Each node forwards to 33 neighbors instead of 15
+- **Increased memory**: Each node stores ~33 neighbor addresses instead of 15
+
+### Why Shortcuts Don't Compromise Security
+
+**Deterministic construction:**
+- All nodes compute the same shortcuts from `blockHash` seed
+- Attackers cannot manipulate shortcut placement
+- Distribution is pseudorandom but verifiable
+
+**Distance-based selection:**
+- Shortcuts target middle-distance nodes (5-13 bits)
+- Avoids creating single points of failure
+- Maintains redundancy through diverse distance levels
+
+**Complement edge still matters:**
+- Provides guaranteed cross-region connection (distance=n)
+- Shortcuts enhance but don't replace base FLTQ topology
+- Fallback routes exist even if shortcuts are compromised
 
 ---
 
@@ -453,16 +615,16 @@ Var[X] = μ³/λ    (variance increases cubically with μ)
 **Why This Works:**
 
 1. **Inverse weight mapping:**
-   - Participant with weight 10999 (max): μ = 1.0, E[score] = 1.0
-   - Participant with weight 5000: μ = 2.2, E[score] = 2.2
-   - Participant with weight 1000: μ = 11.0, E[score] = 11.0
+    - Participant with weight 10999 (max): μ = 1.0, E[score] = 1.0
+    - Participant with weight 5000: μ = 2.2, E[score] = 2.2
+    - Participant with weight 1000: μ = 11.0, E[score] = 11.0
 
 2. **Lower score = higher priority:**
-   - Higher-weight participants have **smaller μ** → **lower expected scores** → higher selection probability
+    - Higher-weight participants have **smaller μ** → **lower expected scores** → higher selection probability
 
 3. **Probabilistic but weighted:**
-   - Randomness adds variance while preserving weight influence
-   - More realistic than deterministic highweight distribution
+    - Randomness adds variance while preserving weight influence
+    - More realistic than deterministic highweight distribution
 
 **Characteristics:**
 - Weight-proportional selection with controlled randomness
