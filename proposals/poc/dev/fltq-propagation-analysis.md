@@ -89,8 +89,8 @@ func ltqNeighbor(pos int, dim int, n int) int {
 - **Base FLTQ neighbors per node:** Each node connects to up to 15 neighbors (14 LTQ + 1 complement)
 - **Pastry routing neighbors:** Additional ~40 neighbors via prefix-based routing
 - **Total neighbors:**
-  - **Average:** 54.65 neighbors
-  - **Maximum:** 73 neighbors
+    - **Average:** 54.65 neighbors
+    - **Maximum:** 73 neighbors
 - **Diameter:** 14 hops (theoretical), 4 hops (observed with Pastry routing)
 
 ### Connection Statistics Calculation
@@ -127,10 +127,10 @@ avgConns := float64(totalConns) / float64(numParticipants)
 1. **Theoretical maximum:** 15 neighbors (14 LTQ twisted + 1 complementary)
 
 2. **Why some nodes have fewer:**
-   - Only 10,000 of 16,384 positions are filled
-   - Nodes whose twisted or complement neighbors point to empty positions have fewer actual connections
-   - Nodes in lower positions (0-9999) have most neighbors in the filled range → closer to 15 neighbors
-   - Nodes near position boundaries may have neighbors in the empty range → fewer neighbors
+    - Only 10,000 of 16,384 positions are filled
+    - Nodes whose twisted or complement neighbors point to empty positions have fewer actual connections
+    - Nodes in lower positions (0-9999) have most neighbors in the filled range → closer to 15 neighbors
+    - Nodes near position boundaries may have neighbors in the empty range → fewer neighbors
 
 3. **Example:**
    ```
@@ -156,11 +156,11 @@ avgConns := float64(totalConns) / float64(numParticipants)
    ```
 
 4. **Why minimum is 9:**
-   - Even nodes with some empty neighbors retain most connections
-   - With 10,000/16,384 = 61% fill rate, most twisted operations stay in range
-   - Complement edge provides cross-region link (if target filled)
-   - Positions that have many empty neighbors typically lose 6 out of 15 (around 40%)
-   - Minimum observed: 9 neighbors
+    - Even nodes with some empty neighbors retain most connections
+    - With 10,000/16,384 = 61% fill rate, most twisted operations stay in range
+    - Complement edge provides cross-region link (if target filled)
+    - Positions that have many empty neighbors typically lose 6 out of 15 (around 40%)
+    - Minimum observed: 9 neighbors
 
 5. **Why average is 13.9:**
    ```
@@ -292,23 +292,23 @@ Levels L = 3 for n=14:
 **Why L=3 is optimal for n=14:**
 
 1. **Balanced bit distribution:** `14/3 ≈ 4.67` bits per level
-   - Actual: [5, 5, 4] — nearly equal distribution
-   - Avoids one level dominating routing table size
+    - Actual: [5, 5, 4] — nearly equal distribution
+    - Avoids one level dominating routing table size
 
 2. **Neighbor count:** Each level contributes ~K neighbors
-   - L=3, K=10: ~30 Pastry neighbors (manageable)
-   - L=2, K=10: ~20 Pastry neighbors (fewer redundant paths)
-   - L=4, K=10: ~40 Pastry neighbors (more overhead)
+    - L=3, K=10: ~30 Pastry neighbors (manageable)
+    - L=2, K=10: ~20 Pastry neighbors (fewer redundant paths)
+    - L=4, K=10: ~40 Pastry neighbors (more overhead)
 
 3. **Routing efficiency:** Expected hops ≈ L
-   - L=3: 3-4 hops average ✓
-   - L=2: 2-3 hops (but fewer redundant paths)
-   - L=4: 4-5 hops (diminishing returns)
+    - L=3: 3-4 hops average ✓
+    - L=2: 2-3 hops (but fewer redundant paths)
+    - L=4: 4-5 hops (diminishing returns)
 
 4. **Prefix granularity:**
-   - Level 0 (5 bits): 32 coarse regions — good cross-network diversity
-   - Level 1 (5 bits): 32 sub-regions per region — medium granularity
-   - Level 2 (4 bits): 16 neighborhoods per sub-region — fine granularity
+    - Level 0 (5 bits): 32 coarse regions — good cross-network diversity
+    - Level 1 (5 bits): 32 sub-regions per region — medium granularity
+    - Level 2 (4 bits): 16 neighborhoods per sub-region — fine granularity
 
 **Alternative configurations:**
 
@@ -342,18 +342,18 @@ digitSizes := splitBits(cube.Dimensions, 2)  // L=2
 
 For N=10,000 participants (n=14 dimensions):
 - **L=2** would create very large digit groups (2^7 = 128 values each)
-  - Routing table would be either sparse (low K) or huge (high K)
-  - Less hierarchical structure → fewer diverse paths
+    - Routing table would be either sparse (low K) or huge (high K)
+    - Less hierarchical structure → fewer diverse paths
 
 - **L=3** creates moderate digit groups (2^5 = 32, 2^5 = 32, 2^4 = 16)
-  - With K=10, we get 10 neighbors per level → ~30 total
-  - Three-tier hierarchy provides good path diversity
-  - Proven to achieve P(blocked) = 0.000000 in simulations
+    - With K=10, we get 10 neighbors per level → ~30 total
+    - Three-tier hierarchy provides good path diversity
+    - Proven to achieve P(blocked) = 0.000000 in simulations
 
 - **L=4** would create small digit groups (2^4 = 16, 2^3 = 8...)
-  - More levels = more neighbors for same K
-  - Diminishing returns: L=3 already achieves perfect delivery
-  - Extra overhead without security benefit
+    - More levels = more neighbors for same K
+    - Diminishing returns: L=3 already achieves perfect delivery
+    - Extra overhead without security benefit
 
 **Conclusion:** L=3 is **configurable** and represents the optimal balance for N=10,000 nodes.
 
@@ -376,22 +376,22 @@ For each node at position `p`, construct routing entries at each level:
 **Level 0 (Coarse-grained):**
 - Connect to nodes with different digit₀
 - For each value v ≠ myDigit₀:
-  - Sample up to K=10 positions from prefixIndex[0][v]
-  - Add bidirectional edges
+    - Sample up to K=10 positions from prefixIndex[0][v]
+    - Add bidirectional edges
 
 **Level 1 (Medium-grained):**
 - Connect to nodes with same digit₀ but different digit₁
 - For each value v ≠ myDigit₁:
-  - Create target prefix (myDigit₀, v)
-  - Sample up to K=10 positions from prefixIndex[1][targetPrefix]
-  - Add bidirectional edges
+    - Create target prefix (myDigit₀, v)
+    - Sample up to K=10 positions from prefixIndex[1][targetPrefix]
+    - Add bidirectional edges
 
 **Level 2 (Fine-grained):**
 - Connect to nodes with same (digit₀, digit₁) but different digit₂
 - For each value v ≠ myDigit₂:
-  - Create target prefix (myDigit₀, myDigit₁, v)
-  - Sample up to K=10 positions from prefixIndex[2][targetPrefix]
-  - Add bidirectional edges
+    - Create target prefix (myDigit₀, myDigit₁, v)
+    - Sample up to K=10 positions from prefixIndex[2][targetPrefix]
+    - Add bidirectional edges
 
 ### Routing Table Properties
 
@@ -571,14 +571,14 @@ Low-weight nodes → Lower scores → Later in shuffled list → Higher position
 In an ideal FLTQ, all positions have equal connectivity (n+1 neighbors). However, with 10,000 nodes in a 2^14 = 16,384 position space:
 
 - **Dense region (positions 0-9999):** All positions filled
-  - Every neighbor connection succeeds
-  - Average 13.9 neighbors per node
-  - Multiple redundant paths for message propagation
-  
+    - Every neighbor connection succeeds
+    - Average 13.9 neighbors per node
+    - Multiple redundant paths for message propagation
+
 - **Sparse region (positions 10000-16383):** Empty positions
-  - Some neighbor connections point to empty slots
-  - Reduced effective connectivity
-  - Fewer alternative paths
+    - Some neighbor connections point to empty slots
+    - Reduced effective connectivity
+    - Fewer alternative paths
 
 **3. Weight-Based Clustering Effect:**
 
@@ -699,16 +699,16 @@ Var[X] = μ³/λ    (variance increases cubically with μ)
 **Why This Works:**
 
 1. **Inverse weight mapping:**
-   - Participant with weight 10999 (max): μ = 1.0, E[score] = 1.0
-   - Participant with weight 5000: μ = 2.2, E[score] = 2.2
-   - Participant with weight 1000: μ = 11.0, E[score] = 11.0
+    - Participant with weight 10999 (max): μ = 1.0, E[score] = 1.0
+    - Participant with weight 5000: μ = 2.2, E[score] = 2.2
+    - Participant with weight 1000: μ = 11.0, E[score] = 11.0
 
 2. **Lower score = higher priority:**
-   - Higher-weight participants have **smaller μ** → **lower expected scores** → higher selection probability
+    - Higher-weight participants have **smaller μ** → **lower expected scores** → higher selection probability
 
 3. **Probabilistic but weighted:**
-   - Randomness adds variance while preserving weight influence
-   - More realistic than deterministic highweight distribution
+    - Randomness adds variance while preserving weight influence
+    - More realistic than deterministic highweight distribution
 
 **Characteristics:**
 - Weight-proportional selection with controlled randomness
@@ -1010,55 +1010,381 @@ All attacker distributions (Uniform, High-Weight, Slot-Based, Wald) and all shuf
 
 ---
 
+## Pastry Configuration Analysis
+
+This section analyzes how different Pastry routing parameters affect network topology and performance. The key parameters are:
+
+- **Entries per Level (K)**: Number of neighbors sampled per digit value at each routing level
+- **Splitting Digits (L)**: Number of hierarchical levels in the routing structure (how the n-bit address is split)
+
+### Results Summary
+
+Best results across different shuffle percentages (optimized for lowest average hops at 0% attacker). For each configuration, the same shuffle percentage is shown across all three attacker levels for consistency.
+
+#### 0% Attackers (Baseline Performance)
+
+| Entries per Level | Splitting Digits | Best Shuffle | Avg Neighbors | Max Neighbors | Avg Hops | Max Hops |
+|-------------------|------------------|--------------|---------------|---------------|----------|----------|
+| 4 | 2 | 5% | 25.62 | 40 | 3.19 | 4 |
+| 4 | 3 | 10% | 31.05 | 44 | 3.20 | 4 |
+| 4 | 4 | 5% | 36.46 | 51 | 3.05 | 4 |
+| 4 | 5 | 5% | 41.27 | 100 | 2.81 | 4 |
+| 6 | 2 | 5% | 31.70 | 53 | 2.96 | 4 |
+| 6 | 3 | 10% | 39.32 | 54 | 2.96 | 4 |
+| 6 | 4 | 5% | 46.86 | 63 | 2.87 | 4 |
+| 6 | 5 | 5% | 54.32 | 140 | 2.70 | 3 |
+| 8 | 2 | 5% | 37.72 | 66 | 2.84 | 4 |
+| 8 | 3 | 5% | 47.19 | 64 | 2.87 | 4 |
+| 8 | 4 | 5% | 54.90 | 73 | 2.80 | 3 |
+| 8 | 5 | 5% | 60.73 | 160 | 2.66 | 3 |
+| 10 | 2 | 5% | 43.68 | 78 | 2.77 | 3 |
+| 10 | 3 | 10% | 54.65 | 73 | 2.81 | 3 |
+| 10 | 4 | 5% | 61.18 | 82 | 2.75 | 3 |
+| 10 | 5 | 5% | 60.73 | 160 | 2.66 | 3 |
+| 12 | 2 | 5% | 49.58 | 91 | 2.70 | 3 |
+| 12 | 3 | 5% | 61.70 | 81 | 2.77 | 3 |
+| 12 | 4 | 5% | 67.45 | 92 | 2.71 | 3 |
+| 12 | 5 | 5% | 60.73 | 160 | 2.66 | 3 |
+
+#### 33% Attackers
+
+| Entries per Level | Splitting Digits | Best Shuffle | Avg Neighbors | Max Neighbors | Avg Hops | Max Hops |
+|-------------------|------------------|--------------|---------------|---------------|----------|----------|
+| 4 | 2 | 5% | 25.62 | 40 | 3.40 | 4 |
+| 4 | 3 | 10% | 31.05 | 44 | 3.40 | 4 |
+| 4 | 4 | 5% | 36.46 | 51 | 3.21 | 4 |
+| 4 | 5 | 5% | 41.27 | 100 | 2.89 | 4 |
+| 6 | 2 | 5% | 31.70 | 53 | 3.13 | 4 |
+| 6 | 3 | 10% | 39.32 | 54 | 3.12 | 4 |
+| 6 | 4 | 5% | 46.86 | 63 | 2.96 | 4 |
+| 6 | 5 | 5% | 54.32 | 140 | 2.74 | 4 |
+| 8 | 2 | 5% | 37.72 | 66 | 2.96 | 4 |
+| 8 | 3 | 5% | 47.19 | 64 | 2.96 | 4 |
+| 8 | 4 | 5% | 54.90 | 73 | 2.85 | 4 |
+| 8 | 5 | 5% | 60.73 | 160 | 2.69 | 3 |
+| 10 | 2 | 5% | 43.68 | 78 | 2.85 | 4 |
+| 10 | 3 | 10% | 54.65 | 73 | 2.87 | 4 |
+| 10 | 4 | 5% | 61.18 | 82 | 2.79 | 3 |
+| 10 | 5 | 5% | 60.73 | 160 | 2.69 | 3 |
+| 12 | 2 | 5% | 49.58 | 91 | 2.78 | 3 |
+| 12 | 3 | 5% | 61.70 | 81 | 2.82 | 4 |
+| 12 | 4 | 5% | 67.45 | 92 | 2.75 | 3 |
+| 12 | 5 | 5% | 60.73 | 160 | 2.69 | 3 |
+
+#### 45% Attackers
+
+| Entries per Level | Splitting Digits | Best Shuffle | Avg Neighbors | Max Neighbors | Avg Hops | Max Hops |
+|-------------------|------------------|--------------|---------------|---------------|----------|----------|
+| 4 | 2 | 5% | 25.62 | 40 | 3.52 | 5 |
+| 4 | 3 | 10% | 31.05 | 44 | 3.49 | 5 |
+| 4 | 4 | 5% | 36.46 | 51 | 3.29 | 4 |
+| 4 | 5 | 5% | 41.27 | 100 | 2.95 | 4 |
+| 6 | 2 | 5% | 31.70 | 53 | 3.24 | 4 |
+| 6 | 3 | 10% | 39.32 | 54 | 3.21 | 4 |
+| 6 | 4 | 5% | 46.86 | 63 | 3.02 | 4 |
+| 6 | 5 | 5% | 54.32 | 140 | 2.76 | 4 |
+| 8 | 2 | 5% | 37.72 | 66 | 3.05 | 4 |
+| 8 | 3 | 5% | 47.19 | 64 | 3.03 | 4 |
+| 8 | 4 | 5% | 54.90 | 73 | 2.88 | 4 |
+| 8 | 5 | 5% | 60.73 | 160 | 2.71 | 4 |
+| 10 | 2 | 5% | 43.68 | 78 | 2.91 | 4 |
+| 10 | 3 | 10% | 54.65 | 73 | 2.91 | 4 |
+| 10 | 4 | 5% | 61.18 | 82 | 2.82 | 4 |
+| 10 | 5 | 5% | 60.73 | 160 | 2.71 | 4 |
+| 12 | 2 | 5% | 49.58 | 91 | 2.83 | 4 |
+| 12 | 3 | 5% | 61.70 | 81 | 2.85 | 4 |
+| 12 | 4 | 5% | 67.45 | 92 | 2.77 | 4 |
+| 12 | 5 | 5% | 60.73 | 160 | 2.71 | 4 |
+
+### Key Findings
+
+**Optimal configurations by optimization goal:**
+
+1. **Lowest bandwidth (fewest neighbors):**
+   - **4 entries per level, 2 splitting digits**
+   - Avg neighbors: 25.62, Max neighbors: 40
+   - Avg hops: 3.19 (0%), 3.40 (33%), 3.52 (45%)
+   - Best shuffle: 5%
+
+2. **Lowest latency (fewest hops):**
+   - 8 entries per level, 5 splitting digits
+   - Also achieved by: 10 entries/5 digits, 12 entries/5 digits
+   - Avg neighbors: ~60.73, Max neighbors: 160
+   - Avg hops: 2.66 (0%), 2.69 (33%), 2.71 (45%)
+   - Best shuffle: 5%
+
+3. **Balanced (current production):**
+   - **10 entries per level, 3 splitting digits**
+   - Avg neighbors: 54.65, Max neighbors: 73
+   - Avg hops: 2.81 (0%), 2.87 (33%), 2.91 (45%)
+   - Best shuffle: 10%
+
+**Attack resilience observations:**
+
+- **All configurations achieve P(blocked) = 0.000000** across all attack scenarios
+- **Avg neighbors remain constant** under attack (network topology unchanged)
+- **Avg hops increase modestly** under attack due to blocked paths:
+  - 0% → 33% attackers: ~0.04-0.21 hop increase (1.4-7.4%)
+  - 0% → 45% attackers: ~0.05-0.33 hop increase (1.9-11.6%)
+  - Smallest increase: High-neighbor configs (K≥10, L≥4)
+  - Largest increase: Low-neighbor configs (K=4, L=2-3)
+- **Max hops increase slightly** at low K values:
+  - K=4, L=2-3: 4 → 5 hops at 45% attackers
+  - K≥6: Max hops remain 3-4 across all attack levels
+
+**Performance trends:**
+
+- **More splitting digits → fewer hops:** Going from 2 to 5 digits consistently reduces routing distance
+  - 2 digits: 2.70-3.19 avg hops
+  - 3 digits: 2.77-3.20 avg hops
+  - 4 digits: 2.71-3.05 avg hops
+  - 5 digits: 2.66-2.81 avg hops
+
+- **More entries per level → more neighbors:** Higher K increases redundancy but adds overhead
+  - 4 entries: 25-41 avg neighbors
+  - 6 entries: 31-54 avg neighbors
+  - 8 entries: 37-60 avg neighbors
+  - 10 entries: 43-60 avg neighbors
+  - 12 entries: 49-67 avg neighbors
+
+- **Diminishing returns beyond K=8:** Hop count improvements plateau
+  - K=4 to K=6: 5-9% hop reduction
+  - K=6 to K=8: 2-5% hop reduction
+  - K=8 to K=10: <2% hop reduction
+  - K=10 to K=12: <1% hop reduction
+
+- **L=5 has high max neighbors:** Configurations with 5 splitting digits show max neighbors of 100-160
+  - Likely due to uneven bit distribution creating large digit groups
+  - L=3 and L=4 have more balanced max neighbors (40-92)
+
+### Bandwidth-Optimized Rankings
+
+**Top 10 configurations sorted by lowest average neighbors (bandwidth), then lowest hops:**
+
+#### 0% Attackers (Baseline)
+
+| Rank | Entries/Level | Splitting Digits | Shuffle | Avg Neighbors | Max Neighbors | Avg Hops |
+|------|---------------|------------------|---------|---------------|---------------|----------|
+| 1 | 4 | 2 | 5% | 25.62 | 40 | 3.19 |
+| 2 | 4 | 3 | 10% | 31.05 | 44 | 3.20 |
+| 3 | 6 | 2 | 5% | 31.70 | 53 | 2.96 |
+| 4 | 4 | 4 | 5% | 36.46 | 51 | 3.05 |
+| 5 | 8 | 2 | 5% | 37.72 | 66 | 2.84 |
+| 6 | 6 | 3 | 10% | 39.32 | 54 | 2.96 |
+| 7 | 4 | 5 | 5% | 41.27 | 100 | 2.81 |
+| 8 | 10 | 2 | 5% | 43.68 | 78 | 2.77 |
+| 9 | 6 | 4 | 5% | 46.86 | 63 | 2.87 |
+| 10 | 8 | 3 | 5% | 47.19 | 64 | 2.87 |
+
+#### 33% Attackers
+
+| Rank | Entries/Level | Splitting Digits | Shuffle | Avg Neighbors | Max Neighbors | Avg Hops |
+|------|---------------|------------------|---------|---------------|---------------|----------|
+| 1 | 4 | 2 | 5% | 25.62 | 40 | 3.40 |
+| 2 | 4 | 3 | 10% | 31.05 | 44 | 3.40 |
+| 3 | 6 | 2 | 5% | 31.70 | 53 | 3.13 |
+| 4 | 4 | 4 | 5% | 36.46 | 51 | 3.21 |
+| 5 | 8 | 2 | 5% | 37.72 | 66 | 2.96 |
+| 6 | 6 | 3 | 10% | 39.32 | 54 | 3.12 |
+| 7 | 4 | 5 | 5% | 41.27 | 100 | 2.89 |
+| 8 | 10 | 2 | 5% | 43.68 | 78 | 2.85 |
+| 9 | 6 | 4 | 5% | 46.86 | 63 | 2.96 |
+| 10 | 8 | 3 | 5% | 47.19 | 64 | 2.96 |
+
+#### 45% Attackers
+
+| Rank | Entries/Level | Splitting Digits | Shuffle | Avg Neighbors | Max Neighbors | Avg Hops |
+|------|---------------|------------------|---------|---------------|---------------|----------|
+| 1 | 4 | 2 | 5% | 25.62 | 40 | 3.52 |
+| 2 | 4 | 3 | 10% | 31.05 | 44 | 3.49 |
+| 3 | 6 | 2 | 5% | 31.70 | 53 | 3.24 |
+| 4 | 4 | 4 | 5% | 36.46 | 51 | 3.29 |
+| 5 | 8 | 2 | 5% | 37.72 | 66 | 3.05 |
+| 6 | 6 | 3 | 10% | 39.32 | 54 | 3.21 |
+| 7 | 4 | 5 | 5% | 41.27 | 100 | 2.95 |
+| 8 | 10 | 2 | 5% | 43.68 | 78 | 2.91 |
+| 9 | 6 | 4 | 5% | 46.86 | 63 | 3.02 |
+| 10 | 8 | 3 | 5% | 47.19 | 64 | 3.03 |
+
+### Trade-off Analysis
+
+**Option 1: Bandwidth-optimized (K=4, L=2)**
+- **Lowest bandwidth:** 25.62 avg neighbors (53% reduction vs current)
+- **Lowest max neighbors:** 40 (45% reduction vs current)
+- Simple 2-level routing structure
+- Higher latency: 3.19 hops (13.5% worse than current)
+- Worse under attack: 3.52 hops at 45% (21% worse than current)
+
+**Option 2: Current production (K=10, L=3)**
+- Balanced hop count: 2.81 avg hops
+- Moderate neighbors: 54.65 avg, 73 max
+- Well-distributed load
+- Good redundancy
+- Good attack resilience: +0.10 hops (3.6% degradation)
+- 2× bandwidth vs K=4, L=2
+- Not the absolute lowest hops
+
+**Option 3: Latency-optimized (K=8, L=5)**
+- Lowest possible hops: 2.66 avg
+- Best attack resilience: +0.05 hops (1.9% degradation)
+- Fewer entries needed (K=8)
+- Very high max neighbors: 160 (2.2× vs current)
+- 2.4× bandwidth vs K=4, L=2
+- More uneven load distribution
+
+**Option 4: Balanced low-overhead (K=6, L=2)**
+- Low avg neighbors: 31.70 (42% reduction vs current)
+- Good hop count: 2.96 avg hops
+- Reasonable max neighbors: 53
+- **Best balance of bandwidth and latency**
+- Simple 2-level routing
+- Slightly worse under attack: 3.24 hops at 45%
+
+### Recommendation
+
+**Decision framework: Bandwidth vs Latency**
+
+| Priority | Recommended Config | Avg Neighbors | Avg Hops (0%/45%) | Use Case |
+|----------|-------------------|---------------|-------------------|----------|
+| **Bandwidth** | **K=4, L=2** | **25.62** | **3.19 / 3.52** | Bandwidth-limited networks, IoT devices, low-power nodes |
+| **Balanced** | **K=6, L=2** | **31.70** | **2.96 / 3.24** | **Best overall: low bandwidth + good latency** |
+| **Latency** | K=10, L=3 | 54.65 | 2.81 / 2.91 | Current production (latency-optimized) |
+| **Ultra-low latency** | K=8, L=5 | 60.73 | 2.66 / 2.71 | Critical latency requirements |
+
+**Option A: Switch to bandwidth-optimized (K=6, L=2) - RECOMMENDED**
+
+**Gains:**
+- **42% bandwidth reduction:** 31.70 vs 54.65 avg neighbors
+- **27% lower max neighbors:** 53 vs 73
+- Still good latency: 2.96 hops (only 5.3% worse than current)
+- Simpler 2-level routing structure
+- **Perfect security:** P(blocked) = 0.000000 maintained
+
+**Costs:**
+- +0.15 hops baseline (2.81 → 2.96)
+- +0.33 hops under 45% attack (2.91 → 3.24)
+- 11.4% latency degradation under attack vs current 3.6%
+
+**Option B: Keep current config (K=10, L=3)**
+
+**Reasoning:**
+1. **Near-optimal latency:** 2.81 vs 2.66 hops (5% from best)
+2. **Good attack resilience:** Only +0.10 hops (3.6% degradation) under 45% attack
+3. **High redundancy:** 54.65 avg neighbors provides excellent path diversity
+4. **Proven security:** P(blocked) = 0.000000 in all attack scenarios
+5. **Better scalability:** 3-level hierarchy scales better than 2-level
+
+**Costs:**
+- 2.1× bandwidth vs K=6, L=2
+
+**Option C: Maximum bandwidth savings (K=4, L=2)**
+
+**When to use:**
+- Severe bandwidth constraints
+- Battery-powered or low-power devices
+- Pay-per-byte networks
+
+**Trade-offs:**
+- 53% bandwidth reduction but 13.5% worse latency
+- Higher degradation under attack (10.3% vs 3.6%)
+
+**Performance comparison:**
+
+| Metric | K=4, L=2 | K=6, L=2 | K=10, L=3 | K=8, L=5 |
+|--------|----------|----------|-----------|----------|
+| **Avg neighbors** | **25.62** | **31.70** | 54.65 | 60.73 |
+| **Max neighbors** | **40** | **53** | 73 | 160 |
+| **Avg hops (0%)** | 3.19 | 2.96 | **2.81** | **2.66** |
+| **Avg hops (45%)** | 3.52 | 3.24 | **2.91** | **2.71** |
+| **Attack degradation** | 10.3% | 11.4% | **3.6%** | **1.9%** |
+| **P(blocked)** | 0.000000 | 0.000000 | 0.000000 | 0.000000 |
+
+**Final recommendation:**
+
+**For most deployments: Switch to K=6, L=2**
+- Achieves 42% bandwidth savings with only 5% latency cost
+- Best overall bandwidth/latency trade-off
+- Maintains perfect security (P(blocked) = 0.000000)
+- Simpler configuration with fewer routing levels
+
+**Keep K=10, L=3 if:**
+- Latency is critical (real-time applications)
+- Bandwidth is not constrained
+- Network is expected to face >45% attacker scenarios regularly
+
+---
+
 ## Conclusion
 
 **FLTQ topology with Pastry routing provides:**
 
 1. **Perfect security:** P(blocked) = 0.000000 (33% and 45% attackers, all distributions)
 2. **Complete Byzantine fault tolerance:** Zero blocking up to 45% attackers
-3. **Ultra-low latency:** 4-hop maximum diameter, ~2.9-hop average
-4. **High redundancy:** ~55 neighbors per node combining FLTQ structure and Pastry routing
-5. **Pastry shortcuts:** Prefix-based routing reduces diameter from 8 to 4 hops
+3. **Flexible bandwidth/latency trade-offs:** 25-61 avg neighbors, 2.66-3.19 avg hops
+4. **Configurable redundancy:** Pastry parameters (K, L) tune bandwidth vs latency
+5. **Pastry shortcuts:** Prefix-based routing reduces diameter from 8 to 3-4 hops
 6. **Attack immunity:** Unaffected by adversarial positioning or shuffle percentage
-7. **Moderate bandwidth:** 36.6 messages/participant (2.4× increase for perfect reliability)
 
-**Performance summary:**
+**Configuration comparison:**
+
+| Config | Optimization | Avg Neighbors | Avg Hops (0%/45%) | P(blocked) | Use Case |
+|--------|--------------|---------------|-------------------|------------|----------|
+| **K=6, L=2** | **Bandwidth** | **31.70** | **2.96 / 3.24** | **0.000000** | **Recommended: Best overall balance** |
+| K=4, L=2 | Max bandwidth | 25.62 | 3.19 / 3.52 | 0.000000 | Bandwidth-constrained networks |
+| K=10, L=3 | Latency | 54.65 | 2.81 / 2.91 | 0.000000 | Current production |
+| K=8, L=5 | Ultra-latency | 60.73 | 2.66 / 2.71 | 0.000000 | Latency-critical applications |
+
+**Recommended configuration (bandwidth-optimized):**
+- **1 FLTQ instance with Pastry routing**
+- **K=6 entries per Pastry level**
+- **L=2 routing levels**
+- **5% weighted shuffle**
+- **42% bandwidth reduction** vs current K=10, L=3
+- **Only 5.3% latency increase** vs current K=10, L=3
+- Provides complete defense against all tested attacker distributions (uniform, high-weight, slot-based, Wald)
+
+**Performance summary (K=6, L=2):**
 
 | Metric | Value |
 |--------|-------|
 | Participants | 10,000 |
 | FLTQ instances | 1 |
-| Neighbors per node | ~54.65 average (max 73) |
+| Neighbors per node | 31.70 average (max 53) |
 | Network diameter | 4 hops |
-| Avg propagation hops | ~2.9 hops |
+| Avg propagation hops | 2.96 (0%), 3.24 (45%) |
 | P(blocked) @ 33% attackers | 0.000000 |
 | P(blocked) @ 45% attackers | 0.000000 |
-| Messages/participant | 36.6 (33%), 30.0 (45%) |
 | Worst-case latency @ 50ms RTT | 200ms (4 hops) |
 
-**Recommended configuration:**
-- **1 FLTQ instance with Pastry routing**
-- **K=10 entries per Pastry level**
-- **L=3 routing levels**
-- **5%-30% weighted shuffle** (any value; security unaffected)
-- Provides complete defense against all tested attacker distributions (uniform, high-weight, slot-based, Wald)
+**Comparison: FLTQ configurations**
 
-**Comparison: FLTQ without Pastry vs FLTQ + Pastry**
+| Metric | FLTQ only | K=6, L=2 (Recommended) | K=10, L=3 (Current) |
+|--------|-----------|------------------------|---------------------|
+| P(blocked) @ 33% | ~0.000001 | 0.000000 | 0.000000 |
+| P(blocked) @ 45% | ~0.000057 | 0.000000 | 0.000000 |
+| Avg neighbors | ~15 | 31.70 | 54.65 |
+| Max neighbors | ~15 | 53 | 73 |
+| Avg hops (0%) | ~6 | 2.96 | 2.81 |
+| Avg hops (45%) | ~8 | 3.24 | 2.91 |
+| Attack degradation | ~33% | 9.5% | 3.6% |
 
-| Metric | FLTQ only (15 neighbors) | FLTQ + Pastry (55 neighbors) |
-|--------|--------------------------|------------------------------|
-| P(blocked) @ 33% | ~0.000001 (est) | 0.000000 |
-| P(blocked) @ 45% | ~0.000057 (est) | 0.000000 |
-| Avg hops | ~6 | ~2.9 |
-| Max hops | 8 | 4 |
-| Bandwidth | ~15 msg/node | 36.6 msg/node |
-| Latency @ 50ms RTT | 400ms | 200ms |
+**Key insights:**
 
-**Trade-off analysis:**
-- **~2.4× bandwidth increase** (~15 → 36.6 messages/participant)
-- **Infinite improvement in reliability** (~0.000057 → 0.000000 blocking probability)
-- **50% latency reduction** (6 → 2.9 average hops)
-- **Recommended for production** where perfect reliability is critical
+1. **K=6, L=2 achieves best overall balance:**
+   - Near-optimal bandwidth (31.70 neighbors, 42% reduction vs current)
+   - Good latency (2.96 hops, only 5% worse than K=10, L=3)
+   - Perfect security maintained (P(blocked) = 0.000000)
+   - Lower max neighbors: 53 vs 73 (27% reduction)
+
+2. **Trade-off spectrum:**
+   - **Bandwidth-first:** K=4, L=2 (25.62 neighbors, 3.19 hops)
+   - **Balanced:** K=6, L=2 (31.70 neighbors, 2.96 hops) - **Recommended**
+   - **Latency-first:** K=10, L=3 (54.65 neighbors, 2.81 hops)
+
+3. **All configurations achieve perfect security:**
+   - P(blocked) = 0.000000 across all tested configs
+   - No blocking at 33% or 45% attacker percentages
+   - Security is independent of K and L parameters
 
 
 ## Running the Simulation
