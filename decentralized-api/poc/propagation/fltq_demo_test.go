@@ -3,10 +3,9 @@ package propagation
 import (
 	"context"
 	"crypto/sha256"
-	"decentralized-api/poc/artifacts"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -36,13 +35,102 @@ func (l *fltqLoggingSender) SendHeaderFLTQ(to string, h BundleHeader) error {
 	return l.dst.SendHeaderFLTQ(to, h)
 }
 
+type bandwidthTracker struct {
+	mu               sync.Mutex
+	sentBytes        map[string]int
+	receivedBytes    map[string]int
+	sentMessages     map[string]int
+	receivedMessages map[string]int
+}
+
+func newBandwidthTracker() *bandwidthTracker {
+	return &bandwidthTracker{
+		sentBytes:        make(map[string]int),
+		receivedBytes:    make(map[string]int),
+		sentMessages:     make(map[string]int),
+		receivedMessages: make(map[string]int),
+	}
+}
+
+func (b *bandwidthTracker) record(from, to string, size int) {
+	b.mu.Lock()
+	b.sentBytes[from] += size
+	b.receivedBytes[to] += size
+	b.sentMessages[from]++
+	b.receivedMessages[to]++
+	b.mu.Unlock()
+}
+
+func (b *bandwidthTracker) totals() (int, int) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	totalSent := 0
+	for _, v := range b.sentBytes {
+		totalSent += v
+	}
+	totalReceived := 0
+	for _, v := range b.receivedBytes {
+		totalReceived += v
+	}
+	return totalSent, totalReceived
+}
+
+func (b *bandwidthTracker) messageTotals() (int, int) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	sent := 0
+	for _, v := range b.sentMessages {
+		sent += v
+	}
+	received := 0
+	for _, v := range b.receivedMessages {
+		received += v
+	}
+	return sent, received
+}
+
+func (b *bandwidthTracker) received(addr string) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.receivedBytes[addr]
+}
+
+func (b *bandwidthTracker) receivedMsgs(addr string) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.receivedMessages[addr]
+}
+
+type bandwidthTrackingSender struct {
+	from    string
+	dst     FLTQSender
+	tracker *bandwidthTracker
+}
+
+func newBandwidthTrackingSender(from string, dst FLTQSender, tracker *bandwidthTracker) *bandwidthTrackingSender {
+	return &bandwidthTrackingSender{from: from, dst: dst, tracker: tracker}
+}
+
+func (s *bandwidthTrackingSender) SendHeaderFLTQ(to string, h BundleHeader) error {
+	size, err := json.Marshal(h)
+	if err != nil {
+		return err
+	}
+	s.tracker.record(s.from, to, len(size))
+	return s.dst.SendHeaderFLTQ(to, h)
+}
+
+func testParticipantAddr(i int) string {
+	return fmt.Sprintf("gonka1participant%04d", i)
+}
+
 func testFLTQPropagationDemo(t *testing.T, numParticipants int, storageFactory propagationStorageFactory) {
 	weightedParticipants := make([]WeightedParticipant, numParticipants)
 	privKeys := make(map[string][]byte)
 	pubKeys := make(map[string]string)
 
 	for i := 0; i < numParticipants; i++ {
-		addr := fmt.Sprintf("participant%d", i)
+		addr := testParticipantAddr(i)
 		weight := uint64(100 + i)
 		weightedParticipants[i] = WeightedParticipant{
 			Address: addr,
@@ -76,9 +164,8 @@ func testFLTQPropagationDemo(t *testing.T, numParticipants int, storageFactory p
 	caches := make(map[string]*Cache)
 	receivers := make(map[string]*FLTQReceiver)
 	bundlers := make(map[string]*FLTQBundler)
-	stores := make(map[string]*artifacts.ArtifactStore)
 
-	for i, addr := range participants {
+	for _, addr := range participants {
 		storage, err := storageFactory(t, tempDir, addr)
 		require.NoError(t, err)
 		cache := NewCache(storage)
@@ -90,28 +177,6 @@ func testFLTQPropagationDemo(t *testing.T, numParticipants int, storageFactory p
 		receivers[addr] = receiver
 		transport.RegisterReceiver(addr, receiver)
 
-		storeDir := filepath.Join(tempDir, addr, "store")
-		if err := os.MkdirAll(storeDir, 0755); err != nil {
-			t.Fatalf("failed to create store dir for %s: %v", addr, err)
-		}
-		store, err := artifacts.Open(storeDir)
-		if err != nil {
-			t.Fatalf("failed to create store for %s: %v", addr, err)
-		}
-		stores[addr] = store
-
-		for j := 0; j < 100; j++ {
-			nonce := int32(i*1000 + j)
-			vector := []byte(fmt.Sprintf("vector-%d-%d", i, j))
-			if err := store.Add(nonce, vector); err != nil {
-				t.Fatalf("failed to add artifact: %v", err)
-			}
-		}
-
-		if err := store.Flush(); err != nil {
-			t.Fatalf("failed to flush store for %s: %v", addr, err)
-		}
-
 		signer := &testED25519Signer{key: privKeys[addr]}
 		bundler := NewFLTQBundler(signer, cache, cube, sender, addr)
 		bundlers[addr] = bundler
@@ -119,15 +184,15 @@ func testFLTQPropagationDemo(t *testing.T, numParticipants int, storageFactory p
 
 	sender := participants[len(participants)-1]
 
-	senderCount := stores[sender].Count()
-	senderRoot := stores[sender].GetRoot()
-	if err := bundlers[sender].Publish(pocHeight, sender, senderCount, senderRoot); err != nil {
+	senderCount := uint32(1)
+	senderRoot := sha256.Sum256([]byte(fmt.Sprintf("root-%s", sender)))
+	if err := bundlers[sender].Publish(pocHeight, sender, senderCount, senderRoot[:]); err != nil {
 		t.Fatalf("failed to publish: %v", err)
 	}
 
 	time.Sleep(100 * time.Millisecond)
 
-	bundleID := MakeBundleID(sender, pocHeight, senderRoot, senderCount)
+	bundleID := MakeBundleID(sender, pocHeight, senderRoot[:], senderCount)
 
 	for _, receiver := range receivers {
 		receiver.Wait()
@@ -155,10 +220,6 @@ func testFLTQPropagationDemo(t *testing.T, numParticipants int, storageFactory p
 		}
 
 		receivedCount++
-	}
-
-	for _, store := range stores {
-		store.Close()
 	}
 
 	allNeighbors := make(map[string]map[string]bool)
@@ -234,11 +295,105 @@ func TestFLTQPropagationDemoSmallPostgres(t *testing.T) {
 	})
 }
 
+func TestFLTQPropagationBandwidth(t *testing.T) {
+	numParticipants := 10
+	weightedParticipants := make([]WeightedParticipant, numParticipants)
+	privKeys := make(map[string][]byte)
+	pubKeys := make(map[string]string)
+
+	for i := 0; i < numParticipants; i++ {
+		addr := testParticipantAddr(i)
+		weight := uint64(100 + i)
+		weightedParticipants[i] = WeightedParticipant{
+			Address: addr,
+			Weight:  weight,
+		}
+		privKey := ed25519.GenPrivKey()
+		privKeys[addr] = privKey.Bytes()
+		pubKeys[addr] = base64.StdEncoding.EncodeToString(privKey.PubKey().Bytes())
+	}
+
+	blockHash := sha256.Sum256([]byte("bandwidth-block"))
+	pocHeight := int64(1500)
+	cube := BuildFLTQWithWeights(weightedParticipants, blockHash[:])
+
+	participants := make([]string, numParticipants)
+	for i, wp := range weightedParticipants {
+		participants[i] = wp.Address
+	}
+
+	transport := NewFLTQMockTransport()
+	tracker := newBandwidthTracker()
+	pubKeyProvider := NewMockPubKeyProvider()
+	for addr, pubKey := range pubKeys {
+		pubKeyProvider.RegisterKey(addr, pubKey)
+	}
+
+	pool, cleanup := setupPropagationPostgres(t)
+	defer cleanup()
+
+	caches := make(map[string]*Cache)
+	receivers := make(map[string]*FLTQReceiver)
+	bundlers := make(map[string]*FLTQBundler)
+
+	for _, addr := range participants {
+		storage, err := NewPostgresBundleStorage(context.Background(), pool, addr)
+		require.NoError(t, err)
+		cache := NewCache(storage)
+		caches[addr] = cache
+
+		perParticipantSender := transport.NewSenderFor(addr)
+		sender := newBandwidthTrackingSender(addr, perParticipantSender, tracker)
+		receiver := NewFLTQReceiver(cache, cube, pubKeyProvider, addr, sender)
+		receivers[addr] = receiver
+		transport.RegisterReceiver(addr, receiver)
+
+		signer := &testED25519Signer{key: privKeys[addr]}
+		bundler := NewFLTQBundler(signer, cache, cube, sender, addr)
+		bundlers[addr] = bundler
+	}
+
+	for _, addr := range participants {
+		senderCount := uint32(1)
+		senderRoot := sha256.Sum256([]byte(fmt.Sprintf("root-%s", addr)))
+		require.NoError(t, bundlers[addr].Publish(pocHeight, addr, senderCount, senderRoot[:]))
+	}
+
+	for _, receiver := range receivers {
+		receiver.Wait()
+	}
+
+	for addr := range caches {
+		bundles := caches[addr].AllBundlesForHeight(pocHeight)
+		require.Len(t, bundles, numParticipants)
+	}
+
+	totalSent, totalReceived := tracker.totals()
+	require.Equal(t, totalSent, totalReceived)
+
+	totalSentMsgs, totalReceivedMsgs := tracker.messageTotals()
+	require.Equal(t, totalSentMsgs, totalReceivedMsgs)
+
+	for addr := range caches {
+		require.Greater(t, tracker.received(addr), 0)
+		require.Greater(t, tracker.receivedMsgs(addr), 0)
+	}
+
+	avgPerParticipant := float64(totalSent) / float64(numParticipants)
+	avgMsgsPerParticipant := float64(totalReceivedMsgs) / float64(numParticipants)
+	t.Logf("Total bytes sent: %d", totalSent)
+	t.Logf("Total bytes received: %d", totalReceived)
+	t.Logf("Average bytes per participant: %.1f", avgPerParticipant)
+	t.Logf("Total messages sent: %d", totalSentMsgs)
+	t.Logf("Total messages received: %d", totalReceivedMsgs)
+	t.Logf("Average messages per participant: %.1f", avgMsgsPerParticipant)
+}
+
 func TestFLTQTopology(t *testing.T) {
 	participants := make([]WeightedParticipant, 100)
 	for i := 0; i < 100; i++ {
 		participants[i] = WeightedParticipant{
-			Address: fmt.Sprintf("participant%d", i),
+			Address: testParticipantAddr(i),
 			Weight:  uint64(100 + i),
 		}
 	}
@@ -305,7 +460,7 @@ func TestFLTQSmallTopology(t *testing.T) {
 	participants := make([]WeightedParticipant, 10)
 	for i := 0; i < 10; i++ {
 		participants[i] = WeightedParticipant{
-			Address: fmt.Sprintf("participant%d", i),
+			Address: testParticipantAddr(i),
 			Weight:  uint64(100),
 		}
 	}

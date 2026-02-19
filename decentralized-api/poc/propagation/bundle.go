@@ -48,6 +48,7 @@ type bundleHeaderJSON struct {
 	Signature   string `json:"signature"`
 }
 
+// Encoded bundle header is ~336 bytes due to hex expansion of BundleID/RootHash/Signature plus JSON field names and the 43-byte participant string.
 func (h BundleHeader) MarshalJSON() ([]byte, error) {
 	return json.Marshal(bundleHeaderJSON{
 		BundleID:    hex.EncodeToString(h.BundleID[:]),

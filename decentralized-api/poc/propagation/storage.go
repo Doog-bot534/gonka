@@ -7,16 +7,8 @@ import (
 
 var (
 	ErrBundleNotFound  = errors.New("bundle not found")
-	ErrProofsNotFound  = errors.New("proofs not found")
 	ErrArrivalNotFound = errors.New("first arrival not found")
 )
-
-type ProofItem struct {
-	LeafIndex   uint32   `json:"leaf_index"`
-	NonceValue  int32    `json:"nonce_value"`
-	VectorBytes string   `json:"vector_bytes"`
-	Proof       []string `json:"proof"`
-}
 
 type BundleStorage interface {
 	StoreHeader(ctx context.Context, h BundleHeader) error
