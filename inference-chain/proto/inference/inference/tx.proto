@@ -38,7 +38,7 @@ service Msg {
   // PoC v2 off-chain commit messages
   rpc PoCV2StoreCommit                 (MsgPoCV2StoreCommit) returns (MsgPoCV2StoreCommitResponse);
   rpc MLNodeWeightDistribution         (MsgMLNodeWeightDistribution) returns (MsgMLNodeWeightDistributionResponse);
-  rpc SubmitPoCObservation             (MsgSubmitPoCObservation) returns (MsgSubmitPoCObservationResponse);
+  rpc TreeRootCommit                   (MsgTreeRootCommit) returns (MsgTreeRootCommitResponse);
   rpc SubmitSeed                       (MsgSubmitSeed) returns (MsgSubmitSeedResponse);
   rpc SubmitUnitOfComputePriceProposal (MsgSubmitUnitOfComputePriceProposal) returns (MsgSubmitUnitOfComputePriceProposalResponse);
   rpc RegisterModel                    (MsgRegisterModel) returns (MsgRegisterModelResponse);
@@ -263,14 +263,15 @@ message MsgMLNodeWeightDistribution {
 
 message MsgMLNodeWeightDistributionResponse {}
 
-message MsgSubmitPoCObservation {
+message MsgTreeRootCommit {
   option (cosmos.msg.v1.signer) = "creator";
   string creator = 1;
   int64 poc_stage_start_block_height = 2;
-  repeated PoCObservationArrival arrivals = 3;
+  int32 tree_index = 3;
+  repeated TreeRootCommitEntry entries = 4;
 }
 
-message MsgSubmitPoCObservationResponse {}
+message MsgTreeRootCommitResponse {}
 
 message MsgSubmitSeed {
   option (cosmos.msg.v1.signer) = "creator";

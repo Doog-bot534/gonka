@@ -10,7 +10,7 @@ import (
 	"github.com/productscience/inference/x/inference/types"
 )
 
-func (k msgServer) SubmitPoCObservation(goCtx context.Context, msg *types.MsgSubmitPoCObservation) (*types.MsgSubmitPoCObservationResponse, error) {
+func (k msgServer) TreeRootCommit(goCtx context.Context, msg *types.MsgTreeRootCommit) (*types.MsgTreeRootCommitResponse, error) {
 	params, err := k.GetParams(goCtx)
 	if err != nil {
 		return nil, err
@@ -22,7 +22,7 @@ func (k msgServer) SubmitPoCObservation(goCtx context.Context, msg *types.MsgSub
 
 	activeEvent, isActive, err := k.Keeper.GetActiveConfirmationPoCEvent(ctx)
 	if err != nil {
-		k.LogError(PocFailureTag+"[SubmitPoCObservation] Error checking confirmation PoC event", types.PoC, "error", err)
+		k.LogError(PocFailureTag+"[TreeRootCommit] Error checking confirmation PoC event", types.PoC, "error", err)
 	}
 
 	isMigrationTracking := params.PocParams.ConfirmationPocV2Enabled && isActive && activeEvent != nil && activeEvent.EventSequence == 0
@@ -30,8 +30,12 @@ func (k msgServer) SubmitPoCObservation(goCtx context.Context, msg *types.MsgSub
 		return nil, sdkerrors.Wrap(types.ErrNotSupported, "V2 disabled when poc_v2_enabled=false")
 	}
 
-	if len(msg.Arrivals) == 0 {
-		return nil, sdkerrors.Wrap(types.ErrIllegalState, "arrivals must not be empty")
+	if len(msg.Entries) == 0 {
+		return nil, sdkerrors.Wrap(types.ErrIllegalState, "entries must not be empty")
+	}
+
+	if msg.TreeIndex < 0 || msg.TreeIndex > 15 {
+		return nil, sdkerrors.Wrap(types.ErrIllegalState, fmt.Sprintf("tree_index must be 0..15, got %d", msg.TreeIndex))
 	}
 
 	if isActive && activeEvent != nil && startBlockHeight == activeEvent.TriggerHeight {
@@ -56,32 +60,30 @@ func (k msgServer) SubmitPoCObservation(goCtx context.Context, msg *types.MsgSub
 		}
 	}
 
-	addr, err := sdk.AccAddressFromBech32(msg.Creator)
-	if err != nil {
-		return nil, sdkerrors.Wrap(types.ErrInvalidAddress, fmt.Sprintf("invalid creator address: %v", err))
-	}
-	pk := collections.Join(startBlockHeight, addr)
+	pk := collections.Join(startBlockHeight, msg.TreeIndex)
 
-	_, err = k.PoCObservationsMap.Get(ctx, pk)
+	_, err = k.TreeRootCommits.Get(ctx, pk)
 	if err == nil {
-		return nil, sdkerrors.Wrap(types.ErrIllegalState, "observation already submitted for this height")
+		return nil, sdkerrors.Wrap(types.ErrIllegalState, fmt.Sprintf("tree root commit already exists for tree_index=%d at height=%d", msg.TreeIndex, startBlockHeight))
 	}
 
-	obs := types.PoCObservation{
-		ValidatorAddress:         msg.Creator,
+	commit := types.TreeRootCommit{
+		Creator:                  msg.Creator,
 		PocStageStartBlockHeight: startBlockHeight,
-		Arrivals:                 msg.Arrivals,
+		TreeIndex:                msg.TreeIndex,
+		Entries:                  msg.Entries,
 		BlockHeight:              currentBlockHeight,
 	}
 
-	if err := k.PoCObservationsMap.Set(ctx, pk, obs); err != nil {
-		return nil, sdkerrors.Wrap(types.ErrIllegalState, fmt.Sprintf("failed to store observation: %v", err))
+	if err := k.TreeRootCommits.Set(ctx, pk, commit); err != nil {
+		return nil, sdkerrors.Wrap(types.ErrIllegalState, fmt.Sprintf("failed to store tree root commit: %v", err))
 	}
 
-	k.LogInfo("[SubmitPoCObservation] Stored", types.PoC,
-		"validator", msg.Creator,
+	k.LogInfo("[TreeRootCommit] Stored", types.PoC,
+		"creator", msg.Creator,
+		"treeIndex", msg.TreeIndex,
 		"startBlockHeight", startBlockHeight,
-		"arrivals", len(msg.Arrivals))
+		"entries", len(msg.Entries))
 
-	return &types.MsgSubmitPoCObservationResponse{}, nil
+	return &types.MsgTreeRootCommitResponse{}, nil
 }

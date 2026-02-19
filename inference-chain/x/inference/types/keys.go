@@ -62,7 +62,7 @@ var (
 	PoCV2StoreCommitPrefix            = collections.NewPrefix(39)
 	MLNodeWeightDistributionPrefix    = collections.NewPrefix(40)
 	PocV2EnabledEpochPrefix           = collections.NewPrefix(41)
-	PoCObservationsPrefix             = collections.NewPrefix(42)
+	TreeRootCommitsPrefix             = collections.NewPrefix(43)
 	ParamsKey                         = []byte("p_inference")
 )
 

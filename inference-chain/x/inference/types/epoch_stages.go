@@ -19,6 +19,8 @@ type EpochStages struct {
 	PocStart                  int64               `json:"poc_start"`
 	PocGenerationWindDown     int64               `json:"poc_generation_wind_down"`
 	PocGenerationEnd          int64               `json:"poc_generation_end"`
+	PocCommitStart            int64               `json:"poc_commit_start"`
+	PocCommitEnd              int64               `json:"poc_commit_end"`
 	PocValidationStart        int64               `json:"poc_validation_start"`
 	PocValidationWindDown     int64               `json:"poc_validation_wind_down"`
 	PocValidationEnd          int64               `json:"poc_validation_end"`
@@ -42,6 +44,8 @@ func (ec *EpochContext) GetEpochStages() EpochStages {
 		PocStart:                  ec.StartOfPoC(),
 		PocGenerationWindDown:     ec.PoCGenerationWindDown(),
 		PocGenerationEnd:          ec.EndOfPoCGeneration(),
+		PocCommitStart:            ec.StartOfPoCCommit(),
+		PocCommitEnd:              ec.EndOfPoCCommit(),
 		PocValidationStart:        ec.StartOfPoCValidation(),
 		PocValidationWindDown:     ec.PoCValidationWindDown(),
 		PocValidationEnd:          ec.EndOfPoCValidation(),

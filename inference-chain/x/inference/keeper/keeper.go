@@ -43,7 +43,7 @@ type (
 		PoCValidationsV2          collections.Map[collections.Triple[int64, sdk.AccAddress, sdk.AccAddress], types.PoCValidationV2]
 		PoCV2StoreCommits         collections.Map[collections.Pair[int64, sdk.AccAddress], types.PoCV2StoreCommit]
 		MLNodeWeightDistributions collections.Map[collections.Pair[int64, sdk.AccAddress], types.MLNodeWeightDistribution]
-		PoCObservationsMap        collections.Map[collections.Pair[int64, sdk.AccAddress], types.PoCObservation]
+		TreeRootCommits           collections.Map[collections.Pair[int64, int32], types.TreeRootCommit]
 		// Dynamic pricing collections
 		ModelCurrentPriceMap collections.Map[string, uint64]
 		ModelCapacityMap     collections.Map[string, uint64]
@@ -179,12 +179,12 @@ func NewKeeper(
 			collections.PairKeyCodec(collections.Int64Key, sdk.AccAddressKey),
 			codec.CollValue[types.MLNodeWeightDistribution](cdc),
 		),
-		PoCObservationsMap: collections.NewMap(
+		TreeRootCommits: collections.NewMap(
 			sb,
-			types.PoCObservationsPrefix,
-			"poc_observations",
-			collections.PairKeyCodec(collections.Int64Key, sdk.AccAddressKey),
-			codec.CollValue[types.PoCObservation](cdc),
+			types.TreeRootCommitsPrefix,
+			"tree_root_commits",
+			collections.PairKeyCodec(collections.Int64Key, collections.Int32Key),
+			codec.CollValue[types.TreeRootCommit](cdc),
 		),
 		// dynamic pricing collections
 		ModelCurrentPriceMap: collections.NewMap(

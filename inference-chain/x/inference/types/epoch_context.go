@@ -77,6 +77,8 @@ func (ec *EpochContext) GetCurrentPhase(blockHeight int64) EpochPhase {
 
 	startOfPoC := ec.StartOfPoC()
 	pocGenerateWindDownStart := ec.PoCGenerationWindDown()
+	startOfPoCCommit := ec.StartOfPoCCommit()
+	endOfPoCCommit := ec.EndOfPoCCommit()
 	startOfPoCValidation := ec.StartOfPoCValidation()
 	pocValidateWindDownStart := ec.PoCValidationWindDown()
 	endOfPoCValidation := ec.EndOfPoCValidation()
@@ -84,8 +86,11 @@ func (ec *EpochContext) GetCurrentPhase(blockHeight int64) EpochPhase {
 	if blockHeight >= startOfPoC && blockHeight < pocGenerateWindDownStart {
 		return PoCGeneratePhase
 	}
-	if blockHeight >= pocGenerateWindDownStart && blockHeight < startOfPoCValidation {
+	if blockHeight >= pocGenerateWindDownStart && blockHeight < startOfPoCCommit {
 		return PoCGenerateWindDownPhase
+	}
+	if blockHeight >= startOfPoCCommit && blockHeight <= endOfPoCCommit {
+		return PoCCommitPhase
 	}
 	if blockHeight >= startOfPoCValidation && blockHeight < pocValidateWindDownStart {
 		return PoCValidatePhase
@@ -143,6 +148,27 @@ func (ec *EpochContext) PoCExchangeDeadline() int64 {
 		return 0
 	}
 	return ec.getPocAnchor() + ec.EpochParams.GetPoCExchangeDeadline()
+}
+
+func (ec *EpochContext) StartOfPoCCommit() int64 {
+	if ec.EpochIndex == 0 {
+		return 0
+	}
+	return ec.PoCExchangeDeadline() + 1
+}
+
+func (ec *EpochContext) EndOfPoCCommit() int64 {
+	if ec.EpochIndex == 0 {
+		return 0
+	}
+	return ec.StartOfPoCValidation() - 1
+}
+
+func (ec *EpochContext) IsPoCCommitPhase(blockHeight int64) bool {
+	if ec.EpochIndex == 0 {
+		return false
+	}
+	return blockHeight >= ec.StartOfPoCCommit() && blockHeight <= ec.EndOfPoCCommit()
 }
 
 func (ec *EpochContext) StartOfPoCValidation() int64 {

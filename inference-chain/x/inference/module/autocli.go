@@ -346,12 +346,6 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "epoch_index"}},
 				},
 				{
-					RpcMethod:      "PoCObservations",
-					Use:            "poc-observations [poc-stage-start-block-height]",
-					Short:          "Query all PoC observations for a stage",
-					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "poc_stage_start_block_height"}},
-				},
-				{
 					RpcMethod:      "PoCConsensus",
 					Use:            "poc-consensus [poc-stage-start-block-height]",
 					Short:          "Query PoC consensus for a stage",
@@ -511,12 +505,6 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 					Use:            "request-bridge-mint [amount] [destination-address] [target-chain-id]",
 					Short:          "Request minting of WGNK tokens on Ethereum by bridging native Gonka",
 					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "amount"}, {ProtoField: "destination_address"}, {ProtoField: "chain_id"}},
-				},
-				{
-					RpcMethod:      "SubmitPoCObservation",
-					Use:            "submit-poc-observation [poc-stage-start-block-height]",
-					Short:          "Submit a PoC observation",
-					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "poc_stage_start_block_height"}},
 				},
 				// this line is used by ignite scaffolding # autocli/tx
 			},

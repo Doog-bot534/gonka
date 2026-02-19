@@ -38,6 +38,7 @@ Each write also creates a corresponding epoch group.
 1. PoC message handlers. There we need the **latest/upcoming** epoch, for which we are doing PoC at the moment!
    a. `msg_server_submit_poc_batch.go`
    b. `msg_server_submit_poc_validation.go`
+   c. `msg_server_tree_root_commit.go`
 2. `module.go`, `EndBlock`: `onSetNewValidatorsStage` settling accounts: we need **current** for settling accounts
 3. `module.go`, `EndBlock`: `onSetNewValidatorsStage` computing new weights: we need both the **latest/upcoming** epoch and the **current** epoch, for computing new PoC weights
 4. `module.go`, `EndBlock`: `onSetNewValidatorsStage` move upcoming to effective by updating the effective epoch pointer: we need the **upcoming** epoch for this
@@ -47,4 +48,15 @@ Each write also creates a corresponding epoch group.
 
 ## API-node
 
-1. Phase tracking in `phase_tracker.go`. We use it to determine if a node should be operational. `latest` epoch is used. 
+1. Phase tracking in `phase_tracker.go`. We use it to determine if a node should be operational. `latest` epoch is used.
+
+# Epoch Phases
+
+Defined in `epoch_params.go`, calculated in `epoch_context.go`:
+
+1. **PoCGenerate** — `PocStartBlockHeight` to `PoCGenerationWindDown - 1`
+2. **PoCGenerateWindDown** — `PoCGenerationWindDown` to `StartOfPoCCommit - 1` (includes exchange window)
+3. **PoCCommit** — `PoCExchangeDeadline + 1` to `StartOfPoCValidation - 1` (consensus-based commits)
+4. **PoCValidate** — `StartOfPoCValidation` to `PoCValidationWindDown - 1`
+5. **PoCValidateWindDown** — `PoCValidationWindDown` to `EndOfPoCValidation - 1`
+6. **Inference** — everything else (including post-validation through next PoC start)

@@ -3235,27 +3235,27 @@ func (x *fastReflection_MLNodeWeightDistribution) ProtoMethods() *protoiface.Met
 }
 
 var (
-	md_PoCObservationArrival             protoreflect.MessageDescriptor
-	fd_PoCObservationArrival_participant protoreflect.FieldDescriptor
-	fd_PoCObservationArrival_count       protoreflect.FieldDescriptor
+	md_TreeRootCommitEntry             protoreflect.MessageDescriptor
+	fd_TreeRootCommitEntry_participant protoreflect.FieldDescriptor
+	fd_TreeRootCommitEntry_count       protoreflect.FieldDescriptor
 )
 
 func init() {
 	file_inference_inference_poc_v2_proto_init()
-	md_PoCObservationArrival = File_inference_inference_poc_v2_proto.Messages().ByName("PoCObservationArrival")
-	fd_PoCObservationArrival_participant = md_PoCObservationArrival.Fields().ByName("participant")
-	fd_PoCObservationArrival_count = md_PoCObservationArrival.Fields().ByName("count")
+	md_TreeRootCommitEntry = File_inference_inference_poc_v2_proto.Messages().ByName("TreeRootCommitEntry")
+	fd_TreeRootCommitEntry_participant = md_TreeRootCommitEntry.Fields().ByName("participant")
+	fd_TreeRootCommitEntry_count = md_TreeRootCommitEntry.Fields().ByName("count")
 }
 
-var _ protoreflect.Message = (*fastReflection_PoCObservationArrival)(nil)
+var _ protoreflect.Message = (*fastReflection_TreeRootCommitEntry)(nil)
 
-type fastReflection_PoCObservationArrival PoCObservationArrival
+type fastReflection_TreeRootCommitEntry TreeRootCommitEntry
 
-func (x *PoCObservationArrival) ProtoReflect() protoreflect.Message {
-	return (*fastReflection_PoCObservationArrival)(x)
+func (x *TreeRootCommitEntry) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_TreeRootCommitEntry)(x)
 }
 
-func (x *PoCObservationArrival) slowProtoReflect() protoreflect.Message {
+func (x *TreeRootCommitEntry) slowProtoReflect() protoreflect.Message {
 	mi := &file_inference_inference_poc_v2_proto_msgTypes[6]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -3267,43 +3267,43 @@ func (x *PoCObservationArrival) slowProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-var _fastReflection_PoCObservationArrival_messageType fastReflection_PoCObservationArrival_messageType
-var _ protoreflect.MessageType = fastReflection_PoCObservationArrival_messageType{}
+var _fastReflection_TreeRootCommitEntry_messageType fastReflection_TreeRootCommitEntry_messageType
+var _ protoreflect.MessageType = fastReflection_TreeRootCommitEntry_messageType{}
 
-type fastReflection_PoCObservationArrival_messageType struct{}
+type fastReflection_TreeRootCommitEntry_messageType struct{}
 
-func (x fastReflection_PoCObservationArrival_messageType) Zero() protoreflect.Message {
-	return (*fastReflection_PoCObservationArrival)(nil)
+func (x fastReflection_TreeRootCommitEntry_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_TreeRootCommitEntry)(nil)
 }
-func (x fastReflection_PoCObservationArrival_messageType) New() protoreflect.Message {
-	return new(fastReflection_PoCObservationArrival)
+func (x fastReflection_TreeRootCommitEntry_messageType) New() protoreflect.Message {
+	return new(fastReflection_TreeRootCommitEntry)
 }
-func (x fastReflection_PoCObservationArrival_messageType) Descriptor() protoreflect.MessageDescriptor {
-	return md_PoCObservationArrival
+func (x fastReflection_TreeRootCommitEntry_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_TreeRootCommitEntry
 }
 
 // Descriptor returns message descriptor, which contains only the protobuf
 // type information for the message.
-func (x *fastReflection_PoCObservationArrival) Descriptor() protoreflect.MessageDescriptor {
-	return md_PoCObservationArrival
+func (x *fastReflection_TreeRootCommitEntry) Descriptor() protoreflect.MessageDescriptor {
+	return md_TreeRootCommitEntry
 }
 
 // Type returns the message type, which encapsulates both Go and protobuf
 // type information. If the Go type information is not needed,
 // it is recommended that the message descriptor be used instead.
-func (x *fastReflection_PoCObservationArrival) Type() protoreflect.MessageType {
-	return _fastReflection_PoCObservationArrival_messageType
+func (x *fastReflection_TreeRootCommitEntry) Type() protoreflect.MessageType {
+	return _fastReflection_TreeRootCommitEntry_messageType
 }
 
 // New returns a newly allocated and mutable empty message.
-func (x *fastReflection_PoCObservationArrival) New() protoreflect.Message {
-	return new(fastReflection_PoCObservationArrival)
+func (x *fastReflection_TreeRootCommitEntry) New() protoreflect.Message {
+	return new(fastReflection_TreeRootCommitEntry)
 }
 
 // Interface unwraps the message reflection interface and
 // returns the underlying ProtoMessage interface.
-func (x *fastReflection_PoCObservationArrival) Interface() protoreflect.ProtoMessage {
-	return (*PoCObservationArrival)(x)
+func (x *fastReflection_TreeRootCommitEntry) Interface() protoreflect.ProtoMessage {
+	return (*TreeRootCommitEntry)(x)
 }
 
 // Range iterates over every populated field in an undefined order,
@@ -3311,16 +3311,16 @@ func (x *fastReflection_PoCObservationArrival) Interface() protoreflect.ProtoMes
 // Range returns immediately if f returns false.
 // While iterating, mutating operations may only be performed
 // on the current field descriptor.
-func (x *fastReflection_PoCObservationArrival) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+func (x *fastReflection_TreeRootCommitEntry) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
 	if x.Participant != "" {
 		value := protoreflect.ValueOfString(x.Participant)
-		if !f(fd_PoCObservationArrival_participant, value) {
+		if !f(fd_TreeRootCommitEntry_participant, value) {
 			return
 		}
 	}
 	if x.Count != uint32(0) {
 		value := protoreflect.ValueOfUint32(x.Count)
-		if !f(fd_PoCObservationArrival_count, value) {
+		if !f(fd_TreeRootCommitEntry_count, value) {
 			return
 		}
 	}
@@ -3337,17 +3337,17 @@ func (x *fastReflection_PoCObservationArrival) Range(f func(protoreflect.FieldDe
 // In other cases (aside from the nullable cases above),
 // a proto3 scalar field is populated if it contains a non-zero value, and
 // a repeated field is populated if it is non-empty.
-func (x *fastReflection_PoCObservationArrival) Has(fd protoreflect.FieldDescriptor) bool {
+func (x *fastReflection_TreeRootCommitEntry) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "inference.inference.PoCObservationArrival.participant":
+	case "inference.inference.TreeRootCommitEntry.participant":
 		return x.Participant != ""
-	case "inference.inference.PoCObservationArrival.count":
+	case "inference.inference.TreeRootCommitEntry.count":
 		return x.Count != uint32(0)
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCObservationArrival"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommitEntry"))
 		}
-		panic(fmt.Errorf("message inference.inference.PoCObservationArrival does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.TreeRootCommitEntry does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -3357,17 +3357,17 @@ func (x *fastReflection_PoCObservationArrival) Has(fd protoreflect.FieldDescript
 // associated with the given field number.
 //
 // Clear is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_PoCObservationArrival) Clear(fd protoreflect.FieldDescriptor) {
+func (x *fastReflection_TreeRootCommitEntry) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "inference.inference.PoCObservationArrival.participant":
+	case "inference.inference.TreeRootCommitEntry.participant":
 		x.Participant = ""
-	case "inference.inference.PoCObservationArrival.count":
+	case "inference.inference.TreeRootCommitEntry.count":
 		x.Count = uint32(0)
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCObservationArrival"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommitEntry"))
 		}
-		panic(fmt.Errorf("message inference.inference.PoCObservationArrival does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.TreeRootCommitEntry does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -3377,19 +3377,19 @@ func (x *fastReflection_PoCObservationArrival) Clear(fd protoreflect.FieldDescri
 // the default value of a bytes scalar is guaranteed to be a copy.
 // For unpopulated composite types, it returns an empty, read-only view
 // of the value; to obtain a mutable reference, use Mutable.
-func (x *fastReflection_PoCObservationArrival) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+func (x *fastReflection_TreeRootCommitEntry) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "inference.inference.PoCObservationArrival.participant":
+	case "inference.inference.TreeRootCommitEntry.participant":
 		value := x.Participant
 		return protoreflect.ValueOfString(value)
-	case "inference.inference.PoCObservationArrival.count":
+	case "inference.inference.TreeRootCommitEntry.count":
 		value := x.Count
 		return protoreflect.ValueOfUint32(value)
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCObservationArrival"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommitEntry"))
 		}
-		panic(fmt.Errorf("message inference.inference.PoCObservationArrival does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message inference.inference.TreeRootCommitEntry does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -3403,17 +3403,17 @@ func (x *fastReflection_PoCObservationArrival) Get(descriptor protoreflect.Field
 // empty, read-only value, then it panics.
 //
 // Set is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_PoCObservationArrival) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+func (x *fastReflection_TreeRootCommitEntry) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "inference.inference.PoCObservationArrival.participant":
+	case "inference.inference.TreeRootCommitEntry.participant":
 		x.Participant = value.Interface().(string)
-	case "inference.inference.PoCObservationArrival.count":
+	case "inference.inference.TreeRootCommitEntry.count":
 		x.Count = uint32(value.Uint())
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCObservationArrival"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommitEntry"))
 		}
-		panic(fmt.Errorf("message inference.inference.PoCObservationArrival does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.TreeRootCommitEntry does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -3427,44 +3427,44 @@ func (x *fastReflection_PoCObservationArrival) Set(fd protoreflect.FieldDescript
 // It panics if the field does not contain a composite type.
 //
 // Mutable is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_PoCObservationArrival) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+func (x *fastReflection_TreeRootCommitEntry) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "inference.inference.PoCObservationArrival.participant":
-		panic(fmt.Errorf("field participant of message inference.inference.PoCObservationArrival is not mutable"))
-	case "inference.inference.PoCObservationArrival.count":
-		panic(fmt.Errorf("field count of message inference.inference.PoCObservationArrival is not mutable"))
+	case "inference.inference.TreeRootCommitEntry.participant":
+		panic(fmt.Errorf("field participant of message inference.inference.TreeRootCommitEntry is not mutable"))
+	case "inference.inference.TreeRootCommitEntry.count":
+		panic(fmt.Errorf("field count of message inference.inference.TreeRootCommitEntry is not mutable"))
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCObservationArrival"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommitEntry"))
 		}
-		panic(fmt.Errorf("message inference.inference.PoCObservationArrival does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.TreeRootCommitEntry does not contain field %s", fd.FullName()))
 	}
 }
 
 // NewField returns a new value that is assignable to the field
 // for the given descriptor. For scalars, this returns the default value.
 // For lists, maps, and messages, this returns a new, empty, mutable value.
-func (x *fastReflection_PoCObservationArrival) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+func (x *fastReflection_TreeRootCommitEntry) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "inference.inference.PoCObservationArrival.participant":
+	case "inference.inference.TreeRootCommitEntry.participant":
 		return protoreflect.ValueOfString("")
-	case "inference.inference.PoCObservationArrival.count":
+	case "inference.inference.TreeRootCommitEntry.count":
 		return protoreflect.ValueOfUint32(uint32(0))
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCObservationArrival"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommitEntry"))
 		}
-		panic(fmt.Errorf("message inference.inference.PoCObservationArrival does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.TreeRootCommitEntry does not contain field %s", fd.FullName()))
 	}
 }
 
 // WhichOneof reports which field within the oneof is populated,
 // returning nil if none are populated.
 // It panics if the oneof descriptor does not belong to this message.
-func (x *fastReflection_PoCObservationArrival) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+func (x *fastReflection_TreeRootCommitEntry) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in inference.inference.PoCObservationArrival", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in inference.inference.TreeRootCommitEntry", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -3472,7 +3472,7 @@ func (x *fastReflection_PoCObservationArrival) WhichOneof(d protoreflect.OneofDe
 // GetUnknown retrieves the entire list of unknown fields.
 // The caller may only mutate the contents of the RawFields
 // if the mutated bytes are stored back into the message with SetUnknown.
-func (x *fastReflection_PoCObservationArrival) GetUnknown() protoreflect.RawFields {
+func (x *fastReflection_TreeRootCommitEntry) GetUnknown() protoreflect.RawFields {
 	return x.unknownFields
 }
 
@@ -3483,7 +3483,7 @@ func (x *fastReflection_PoCObservationArrival) GetUnknown() protoreflect.RawFiel
 // An empty RawFields may be passed to clear the fields.
 //
 // SetUnknown is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_PoCObservationArrival) SetUnknown(fields protoreflect.RawFields) {
+func (x *fastReflection_TreeRootCommitEntry) SetUnknown(fields protoreflect.RawFields) {
 	x.unknownFields = fields
 }
 
@@ -3495,7 +3495,7 @@ func (x *fastReflection_PoCObservationArrival) SetUnknown(fields protoreflect.Ra
 // message type, but the details are implementation dependent.
 // Validity is not part of the protobuf data model, and may not
 // be preserved in marshaling or other operations.
-func (x *fastReflection_PoCObservationArrival) IsValid() bool {
+func (x *fastReflection_TreeRootCommitEntry) IsValid() bool {
 	return x != nil
 }
 
@@ -3505,9 +3505,9 @@ func (x *fastReflection_PoCObservationArrival) IsValid() bool {
 // The returned methods type is identical to
 // "google.golang.org/protobuf/runtime/protoiface".Methods.
 // Consult the protoiface package documentation for details.
-func (x *fastReflection_PoCObservationArrival) ProtoMethods() *protoiface.Methods {
+func (x *fastReflection_TreeRootCommitEntry) ProtoMethods() *protoiface.Methods {
 	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
-		x := input.Message.Interface().(*PoCObservationArrival)
+		x := input.Message.Interface().(*TreeRootCommitEntry)
 		if x == nil {
 			return protoiface.SizeOutput{
 				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -3536,7 +3536,7 @@ func (x *fastReflection_PoCObservationArrival) ProtoMethods() *protoiface.Method
 	}
 
 	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
-		x := input.Message.Interface().(*PoCObservationArrival)
+		x := input.Message.Interface().(*TreeRootCommitEntry)
 		if x == nil {
 			return protoiface.MarshalOutput{
 				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -3578,7 +3578,7 @@ func (x *fastReflection_PoCObservationArrival) ProtoMethods() *protoiface.Method
 		}, nil
 	}
 	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
-		x := input.Message.Interface().(*PoCObservationArrival)
+		x := input.Message.Interface().(*TreeRootCommitEntry)
 		if x == nil {
 			return protoiface.UnmarshalOutput{
 				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -3610,10 +3610,10 @@ func (x *fastReflection_PoCObservationArrival) ProtoMethods() *protoiface.Method
 			fieldNum := int32(wire >> 3)
 			wireType := int(wire & 0x7)
 			if wireType == 4 {
-				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: PoCObservationArrival: wiretype end group for non-group")
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: TreeRootCommitEntry: wiretype end group for non-group")
 			}
 			if fieldNum <= 0 {
-				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: PoCObservationArrival: illegal tag %d (wire type %d)", fieldNum, wire)
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: TreeRootCommitEntry: illegal tag %d (wire type %d)", fieldNum, wire)
 			}
 			switch fieldNum {
 			case 1:
@@ -3702,83 +3702,85 @@ func (x *fastReflection_PoCObservationArrival) ProtoMethods() *protoiface.Method
 	}
 }
 
-var _ protoreflect.List = (*_PoCObservation_3_list)(nil)
+var _ protoreflect.List = (*_TreeRootCommit_4_list)(nil)
 
-type _PoCObservation_3_list struct {
-	list *[]*PoCObservationArrival
+type _TreeRootCommit_4_list struct {
+	list *[]*TreeRootCommitEntry
 }
 
-func (x *_PoCObservation_3_list) Len() int {
+func (x *_TreeRootCommit_4_list) Len() int {
 	if x.list == nil {
 		return 0
 	}
 	return len(*x.list)
 }
 
-func (x *_PoCObservation_3_list) Get(i int) protoreflect.Value {
+func (x *_TreeRootCommit_4_list) Get(i int) protoreflect.Value {
 	return protoreflect.ValueOfMessage((*x.list)[i].ProtoReflect())
 }
 
-func (x *_PoCObservation_3_list) Set(i int, value protoreflect.Value) {
+func (x *_TreeRootCommit_4_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*PoCObservationArrival)
+	concreteValue := valueUnwrapped.Interface().(*TreeRootCommitEntry)
 	(*x.list)[i] = concreteValue
 }
 
-func (x *_PoCObservation_3_list) Append(value protoreflect.Value) {
+func (x *_TreeRootCommit_4_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*PoCObservationArrival)
+	concreteValue := valueUnwrapped.Interface().(*TreeRootCommitEntry)
 	*x.list = append(*x.list, concreteValue)
 }
 
-func (x *_PoCObservation_3_list) AppendMutable() protoreflect.Value {
-	v := new(PoCObservationArrival)
+func (x *_TreeRootCommit_4_list) AppendMutable() protoreflect.Value {
+	v := new(TreeRootCommitEntry)
 	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
-func (x *_PoCObservation_3_list) Truncate(n int) {
+func (x *_TreeRootCommit_4_list) Truncate(n int) {
 	for i := n; i < len(*x.list); i++ {
 		(*x.list)[i] = nil
 	}
 	*x.list = (*x.list)[:n]
 }
 
-func (x *_PoCObservation_3_list) NewElement() protoreflect.Value {
-	v := new(PoCObservationArrival)
+func (x *_TreeRootCommit_4_list) NewElement() protoreflect.Value {
+	v := new(TreeRootCommitEntry)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
-func (x *_PoCObservation_3_list) IsValid() bool {
+func (x *_TreeRootCommit_4_list) IsValid() bool {
 	return x.list != nil
 }
 
 var (
-	md_PoCObservation                              protoreflect.MessageDescriptor
-	fd_PoCObservation_validator_address            protoreflect.FieldDescriptor
-	fd_PoCObservation_poc_stage_start_block_height protoreflect.FieldDescriptor
-	fd_PoCObservation_arrivals                     protoreflect.FieldDescriptor
-	fd_PoCObservation_block_height                 protoreflect.FieldDescriptor
+	md_TreeRootCommit                              protoreflect.MessageDescriptor
+	fd_TreeRootCommit_creator                      protoreflect.FieldDescriptor
+	fd_TreeRootCommit_poc_stage_start_block_height protoreflect.FieldDescriptor
+	fd_TreeRootCommit_tree_index                   protoreflect.FieldDescriptor
+	fd_TreeRootCommit_entries                      protoreflect.FieldDescriptor
+	fd_TreeRootCommit_block_height                 protoreflect.FieldDescriptor
 )
 
 func init() {
 	file_inference_inference_poc_v2_proto_init()
-	md_PoCObservation = File_inference_inference_poc_v2_proto.Messages().ByName("PoCObservation")
-	fd_PoCObservation_validator_address = md_PoCObservation.Fields().ByName("validator_address")
-	fd_PoCObservation_poc_stage_start_block_height = md_PoCObservation.Fields().ByName("poc_stage_start_block_height")
-	fd_PoCObservation_arrivals = md_PoCObservation.Fields().ByName("arrivals")
-	fd_PoCObservation_block_height = md_PoCObservation.Fields().ByName("block_height")
+	md_TreeRootCommit = File_inference_inference_poc_v2_proto.Messages().ByName("TreeRootCommit")
+	fd_TreeRootCommit_creator = md_TreeRootCommit.Fields().ByName("creator")
+	fd_TreeRootCommit_poc_stage_start_block_height = md_TreeRootCommit.Fields().ByName("poc_stage_start_block_height")
+	fd_TreeRootCommit_tree_index = md_TreeRootCommit.Fields().ByName("tree_index")
+	fd_TreeRootCommit_entries = md_TreeRootCommit.Fields().ByName("entries")
+	fd_TreeRootCommit_block_height = md_TreeRootCommit.Fields().ByName("block_height")
 }
 
-var _ protoreflect.Message = (*fastReflection_PoCObservation)(nil)
+var _ protoreflect.Message = (*fastReflection_TreeRootCommit)(nil)
 
-type fastReflection_PoCObservation PoCObservation
+type fastReflection_TreeRootCommit TreeRootCommit
 
-func (x *PoCObservation) ProtoReflect() protoreflect.Message {
-	return (*fastReflection_PoCObservation)(x)
+func (x *TreeRootCommit) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_TreeRootCommit)(x)
 }
 
-func (x *PoCObservation) slowProtoReflect() protoreflect.Message {
+func (x *TreeRootCommit) slowProtoReflect() protoreflect.Message {
 	mi := &file_inference_inference_poc_v2_proto_msgTypes[7]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -3790,43 +3792,43 @@ func (x *PoCObservation) slowProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-var _fastReflection_PoCObservation_messageType fastReflection_PoCObservation_messageType
-var _ protoreflect.MessageType = fastReflection_PoCObservation_messageType{}
+var _fastReflection_TreeRootCommit_messageType fastReflection_TreeRootCommit_messageType
+var _ protoreflect.MessageType = fastReflection_TreeRootCommit_messageType{}
 
-type fastReflection_PoCObservation_messageType struct{}
+type fastReflection_TreeRootCommit_messageType struct{}
 
-func (x fastReflection_PoCObservation_messageType) Zero() protoreflect.Message {
-	return (*fastReflection_PoCObservation)(nil)
+func (x fastReflection_TreeRootCommit_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_TreeRootCommit)(nil)
 }
-func (x fastReflection_PoCObservation_messageType) New() protoreflect.Message {
-	return new(fastReflection_PoCObservation)
+func (x fastReflection_TreeRootCommit_messageType) New() protoreflect.Message {
+	return new(fastReflection_TreeRootCommit)
 }
-func (x fastReflection_PoCObservation_messageType) Descriptor() protoreflect.MessageDescriptor {
-	return md_PoCObservation
+func (x fastReflection_TreeRootCommit_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_TreeRootCommit
 }
 
 // Descriptor returns message descriptor, which contains only the protobuf
 // type information for the message.
-func (x *fastReflection_PoCObservation) Descriptor() protoreflect.MessageDescriptor {
-	return md_PoCObservation
+func (x *fastReflection_TreeRootCommit) Descriptor() protoreflect.MessageDescriptor {
+	return md_TreeRootCommit
 }
 
 // Type returns the message type, which encapsulates both Go and protobuf
 // type information. If the Go type information is not needed,
 // it is recommended that the message descriptor be used instead.
-func (x *fastReflection_PoCObservation) Type() protoreflect.MessageType {
-	return _fastReflection_PoCObservation_messageType
+func (x *fastReflection_TreeRootCommit) Type() protoreflect.MessageType {
+	return _fastReflection_TreeRootCommit_messageType
 }
 
 // New returns a newly allocated and mutable empty message.
-func (x *fastReflection_PoCObservation) New() protoreflect.Message {
-	return new(fastReflection_PoCObservation)
+func (x *fastReflection_TreeRootCommit) New() protoreflect.Message {
+	return new(fastReflection_TreeRootCommit)
 }
 
 // Interface unwraps the message reflection interface and
 // returns the underlying ProtoMessage interface.
-func (x *fastReflection_PoCObservation) Interface() protoreflect.ProtoMessage {
-	return (*PoCObservation)(x)
+func (x *fastReflection_TreeRootCommit) Interface() protoreflect.ProtoMessage {
+	return (*TreeRootCommit)(x)
 }
 
 // Range iterates over every populated field in an undefined order,
@@ -3834,28 +3836,34 @@ func (x *fastReflection_PoCObservation) Interface() protoreflect.ProtoMessage {
 // Range returns immediately if f returns false.
 // While iterating, mutating operations may only be performed
 // on the current field descriptor.
-func (x *fastReflection_PoCObservation) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
-	if x.ValidatorAddress != "" {
-		value := protoreflect.ValueOfString(x.ValidatorAddress)
-		if !f(fd_PoCObservation_validator_address, value) {
+func (x *fastReflection_TreeRootCommit) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+	if x.Creator != "" {
+		value := protoreflect.ValueOfString(x.Creator)
+		if !f(fd_TreeRootCommit_creator, value) {
 			return
 		}
 	}
 	if x.PocStageStartBlockHeight != int64(0) {
 		value := protoreflect.ValueOfInt64(x.PocStageStartBlockHeight)
-		if !f(fd_PoCObservation_poc_stage_start_block_height, value) {
+		if !f(fd_TreeRootCommit_poc_stage_start_block_height, value) {
 			return
 		}
 	}
-	if len(x.Arrivals) != 0 {
-		value := protoreflect.ValueOfList(&_PoCObservation_3_list{list: &x.Arrivals})
-		if !f(fd_PoCObservation_arrivals, value) {
+	if x.TreeIndex != int32(0) {
+		value := protoreflect.ValueOfInt32(x.TreeIndex)
+		if !f(fd_TreeRootCommit_tree_index, value) {
+			return
+		}
+	}
+	if len(x.Entries) != 0 {
+		value := protoreflect.ValueOfList(&_TreeRootCommit_4_list{list: &x.Entries})
+		if !f(fd_TreeRootCommit_entries, value) {
 			return
 		}
 	}
 	if x.BlockHeight != int64(0) {
 		value := protoreflect.ValueOfInt64(x.BlockHeight)
-		if !f(fd_PoCObservation_block_height, value) {
+		if !f(fd_TreeRootCommit_block_height, value) {
 			return
 		}
 	}
@@ -3872,21 +3880,23 @@ func (x *fastReflection_PoCObservation) Range(f func(protoreflect.FieldDescripto
 // In other cases (aside from the nullable cases above),
 // a proto3 scalar field is populated if it contains a non-zero value, and
 // a repeated field is populated if it is non-empty.
-func (x *fastReflection_PoCObservation) Has(fd protoreflect.FieldDescriptor) bool {
+func (x *fastReflection_TreeRootCommit) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "inference.inference.PoCObservation.validator_address":
-		return x.ValidatorAddress != ""
-	case "inference.inference.PoCObservation.poc_stage_start_block_height":
+	case "inference.inference.TreeRootCommit.creator":
+		return x.Creator != ""
+	case "inference.inference.TreeRootCommit.poc_stage_start_block_height":
 		return x.PocStageStartBlockHeight != int64(0)
-	case "inference.inference.PoCObservation.arrivals":
-		return len(x.Arrivals) != 0
-	case "inference.inference.PoCObservation.block_height":
+	case "inference.inference.TreeRootCommit.tree_index":
+		return x.TreeIndex != int32(0)
+	case "inference.inference.TreeRootCommit.entries":
+		return len(x.Entries) != 0
+	case "inference.inference.TreeRootCommit.block_height":
 		return x.BlockHeight != int64(0)
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCObservation"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommit"))
 		}
-		panic(fmt.Errorf("message inference.inference.PoCObservation does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.TreeRootCommit does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -3896,21 +3906,23 @@ func (x *fastReflection_PoCObservation) Has(fd protoreflect.FieldDescriptor) boo
 // associated with the given field number.
 //
 // Clear is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_PoCObservation) Clear(fd protoreflect.FieldDescriptor) {
+func (x *fastReflection_TreeRootCommit) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "inference.inference.PoCObservation.validator_address":
-		x.ValidatorAddress = ""
-	case "inference.inference.PoCObservation.poc_stage_start_block_height":
+	case "inference.inference.TreeRootCommit.creator":
+		x.Creator = ""
+	case "inference.inference.TreeRootCommit.poc_stage_start_block_height":
 		x.PocStageStartBlockHeight = int64(0)
-	case "inference.inference.PoCObservation.arrivals":
-		x.Arrivals = nil
-	case "inference.inference.PoCObservation.block_height":
+	case "inference.inference.TreeRootCommit.tree_index":
+		x.TreeIndex = int32(0)
+	case "inference.inference.TreeRootCommit.entries":
+		x.Entries = nil
+	case "inference.inference.TreeRootCommit.block_height":
 		x.BlockHeight = int64(0)
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCObservation"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommit"))
 		}
-		panic(fmt.Errorf("message inference.inference.PoCObservation does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.TreeRootCommit does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -3920,28 +3932,31 @@ func (x *fastReflection_PoCObservation) Clear(fd protoreflect.FieldDescriptor) {
 // the default value of a bytes scalar is guaranteed to be a copy.
 // For unpopulated composite types, it returns an empty, read-only view
 // of the value; to obtain a mutable reference, use Mutable.
-func (x *fastReflection_PoCObservation) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+func (x *fastReflection_TreeRootCommit) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "inference.inference.PoCObservation.validator_address":
-		value := x.ValidatorAddress
+	case "inference.inference.TreeRootCommit.creator":
+		value := x.Creator
 		return protoreflect.ValueOfString(value)
-	case "inference.inference.PoCObservation.poc_stage_start_block_height":
+	case "inference.inference.TreeRootCommit.poc_stage_start_block_height":
 		value := x.PocStageStartBlockHeight
 		return protoreflect.ValueOfInt64(value)
-	case "inference.inference.PoCObservation.arrivals":
-		if len(x.Arrivals) == 0 {
-			return protoreflect.ValueOfList(&_PoCObservation_3_list{})
+	case "inference.inference.TreeRootCommit.tree_index":
+		value := x.TreeIndex
+		return protoreflect.ValueOfInt32(value)
+	case "inference.inference.TreeRootCommit.entries":
+		if len(x.Entries) == 0 {
+			return protoreflect.ValueOfList(&_TreeRootCommit_4_list{})
 		}
-		listValue := &_PoCObservation_3_list{list: &x.Arrivals}
+		listValue := &_TreeRootCommit_4_list{list: &x.Entries}
 		return protoreflect.ValueOfList(listValue)
-	case "inference.inference.PoCObservation.block_height":
+	case "inference.inference.TreeRootCommit.block_height":
 		value := x.BlockHeight
 		return protoreflect.ValueOfInt64(value)
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCObservation"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommit"))
 		}
-		panic(fmt.Errorf("message inference.inference.PoCObservation does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message inference.inference.TreeRootCommit does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -3955,23 +3970,25 @@ func (x *fastReflection_PoCObservation) Get(descriptor protoreflect.FieldDescrip
 // empty, read-only value, then it panics.
 //
 // Set is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_PoCObservation) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+func (x *fastReflection_TreeRootCommit) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "inference.inference.PoCObservation.validator_address":
-		x.ValidatorAddress = value.Interface().(string)
-	case "inference.inference.PoCObservation.poc_stage_start_block_height":
+	case "inference.inference.TreeRootCommit.creator":
+		x.Creator = value.Interface().(string)
+	case "inference.inference.TreeRootCommit.poc_stage_start_block_height":
 		x.PocStageStartBlockHeight = value.Int()
-	case "inference.inference.PoCObservation.arrivals":
+	case "inference.inference.TreeRootCommit.tree_index":
+		x.TreeIndex = int32(value.Int())
+	case "inference.inference.TreeRootCommit.entries":
 		lv := value.List()
-		clv := lv.(*_PoCObservation_3_list)
-		x.Arrivals = *clv.list
-	case "inference.inference.PoCObservation.block_height":
+		clv := lv.(*_TreeRootCommit_4_list)
+		x.Entries = *clv.list
+	case "inference.inference.TreeRootCommit.block_height":
 		x.BlockHeight = value.Int()
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCObservation"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommit"))
 		}
-		panic(fmt.Errorf("message inference.inference.PoCObservation does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.TreeRootCommit does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -3985,57 +4002,61 @@ func (x *fastReflection_PoCObservation) Set(fd protoreflect.FieldDescriptor, val
 // It panics if the field does not contain a composite type.
 //
 // Mutable is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_PoCObservation) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+func (x *fastReflection_TreeRootCommit) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "inference.inference.PoCObservation.arrivals":
-		if x.Arrivals == nil {
-			x.Arrivals = []*PoCObservationArrival{}
+	case "inference.inference.TreeRootCommit.entries":
+		if x.Entries == nil {
+			x.Entries = []*TreeRootCommitEntry{}
 		}
-		value := &_PoCObservation_3_list{list: &x.Arrivals}
+		value := &_TreeRootCommit_4_list{list: &x.Entries}
 		return protoreflect.ValueOfList(value)
-	case "inference.inference.PoCObservation.validator_address":
-		panic(fmt.Errorf("field validator_address of message inference.inference.PoCObservation is not mutable"))
-	case "inference.inference.PoCObservation.poc_stage_start_block_height":
-		panic(fmt.Errorf("field poc_stage_start_block_height of message inference.inference.PoCObservation is not mutable"))
-	case "inference.inference.PoCObservation.block_height":
-		panic(fmt.Errorf("field block_height of message inference.inference.PoCObservation is not mutable"))
+	case "inference.inference.TreeRootCommit.creator":
+		panic(fmt.Errorf("field creator of message inference.inference.TreeRootCommit is not mutable"))
+	case "inference.inference.TreeRootCommit.poc_stage_start_block_height":
+		panic(fmt.Errorf("field poc_stage_start_block_height of message inference.inference.TreeRootCommit is not mutable"))
+	case "inference.inference.TreeRootCommit.tree_index":
+		panic(fmt.Errorf("field tree_index of message inference.inference.TreeRootCommit is not mutable"))
+	case "inference.inference.TreeRootCommit.block_height":
+		panic(fmt.Errorf("field block_height of message inference.inference.TreeRootCommit is not mutable"))
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCObservation"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommit"))
 		}
-		panic(fmt.Errorf("message inference.inference.PoCObservation does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.TreeRootCommit does not contain field %s", fd.FullName()))
 	}
 }
 
 // NewField returns a new value that is assignable to the field
 // for the given descriptor. For scalars, this returns the default value.
 // For lists, maps, and messages, this returns a new, empty, mutable value.
-func (x *fastReflection_PoCObservation) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+func (x *fastReflection_TreeRootCommit) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "inference.inference.PoCObservation.validator_address":
+	case "inference.inference.TreeRootCommit.creator":
 		return protoreflect.ValueOfString("")
-	case "inference.inference.PoCObservation.poc_stage_start_block_height":
+	case "inference.inference.TreeRootCommit.poc_stage_start_block_height":
 		return protoreflect.ValueOfInt64(int64(0))
-	case "inference.inference.PoCObservation.arrivals":
-		list := []*PoCObservationArrival{}
-		return protoreflect.ValueOfList(&_PoCObservation_3_list{list: &list})
-	case "inference.inference.PoCObservation.block_height":
+	case "inference.inference.TreeRootCommit.tree_index":
+		return protoreflect.ValueOfInt32(int32(0))
+	case "inference.inference.TreeRootCommit.entries":
+		list := []*TreeRootCommitEntry{}
+		return protoreflect.ValueOfList(&_TreeRootCommit_4_list{list: &list})
+	case "inference.inference.TreeRootCommit.block_height":
 		return protoreflect.ValueOfInt64(int64(0))
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCObservation"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommit"))
 		}
-		panic(fmt.Errorf("message inference.inference.PoCObservation does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.TreeRootCommit does not contain field %s", fd.FullName()))
 	}
 }
 
 // WhichOneof reports which field within the oneof is populated,
 // returning nil if none are populated.
 // It panics if the oneof descriptor does not belong to this message.
-func (x *fastReflection_PoCObservation) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+func (x *fastReflection_TreeRootCommit) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in inference.inference.PoCObservation", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in inference.inference.TreeRootCommit", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -4043,7 +4064,7 @@ func (x *fastReflection_PoCObservation) WhichOneof(d protoreflect.OneofDescripto
 // GetUnknown retrieves the entire list of unknown fields.
 // The caller may only mutate the contents of the RawFields
 // if the mutated bytes are stored back into the message with SetUnknown.
-func (x *fastReflection_PoCObservation) GetUnknown() protoreflect.RawFields {
+func (x *fastReflection_TreeRootCommit) GetUnknown() protoreflect.RawFields {
 	return x.unknownFields
 }
 
@@ -4054,7 +4075,7 @@ func (x *fastReflection_PoCObservation) GetUnknown() protoreflect.RawFields {
 // An empty RawFields may be passed to clear the fields.
 //
 // SetUnknown is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_PoCObservation) SetUnknown(fields protoreflect.RawFields) {
+func (x *fastReflection_TreeRootCommit) SetUnknown(fields protoreflect.RawFields) {
 	x.unknownFields = fields
 }
 
@@ -4066,7 +4087,7 @@ func (x *fastReflection_PoCObservation) SetUnknown(fields protoreflect.RawFields
 // message type, but the details are implementation dependent.
 // Validity is not part of the protobuf data model, and may not
 // be preserved in marshaling or other operations.
-func (x *fastReflection_PoCObservation) IsValid() bool {
+func (x *fastReflection_TreeRootCommit) IsValid() bool {
 	return x != nil
 }
 
@@ -4076,9 +4097,9 @@ func (x *fastReflection_PoCObservation) IsValid() bool {
 // The returned methods type is identical to
 // "google.golang.org/protobuf/runtime/protoiface".Methods.
 // Consult the protoiface package documentation for details.
-func (x *fastReflection_PoCObservation) ProtoMethods() *protoiface.Methods {
+func (x *fastReflection_TreeRootCommit) ProtoMethods() *protoiface.Methods {
 	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
-		x := input.Message.Interface().(*PoCObservation)
+		x := input.Message.Interface().(*TreeRootCommit)
 		if x == nil {
 			return protoiface.SizeOutput{
 				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -4090,15 +4111,18 @@ func (x *fastReflection_PoCObservation) ProtoMethods() *protoiface.Methods {
 		var n int
 		var l int
 		_ = l
-		l = len(x.ValidatorAddress)
+		l = len(x.Creator)
 		if l > 0 {
 			n += 1 + l + runtime.Sov(uint64(l))
 		}
 		if x.PocStageStartBlockHeight != 0 {
 			n += 1 + runtime.Sov(uint64(x.PocStageStartBlockHeight))
 		}
-		if len(x.Arrivals) > 0 {
-			for _, e := range x.Arrivals {
+		if x.TreeIndex != 0 {
+			n += 1 + runtime.Sov(uint64(x.TreeIndex))
+		}
+		if len(x.Entries) > 0 {
+			for _, e := range x.Entries {
 				l = options.Size(e)
 				n += 1 + l + runtime.Sov(uint64(l))
 			}
@@ -4116,7 +4140,7 @@ func (x *fastReflection_PoCObservation) ProtoMethods() *protoiface.Methods {
 	}
 
 	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
-		x := input.Message.Interface().(*PoCObservation)
+		x := input.Message.Interface().(*TreeRootCommit)
 		if x == nil {
 			return protoiface.MarshalOutput{
 				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -4138,11 +4162,11 @@ func (x *fastReflection_PoCObservation) ProtoMethods() *protoiface.Methods {
 		if x.BlockHeight != 0 {
 			i = runtime.EncodeVarint(dAtA, i, uint64(x.BlockHeight))
 			i--
-			dAtA[i] = 0x20
+			dAtA[i] = 0x28
 		}
-		if len(x.Arrivals) > 0 {
-			for iNdEx := len(x.Arrivals) - 1; iNdEx >= 0; iNdEx-- {
-				encoded, err := options.Marshal(x.Arrivals[iNdEx])
+		if len(x.Entries) > 0 {
+			for iNdEx := len(x.Entries) - 1; iNdEx >= 0; iNdEx-- {
+				encoded, err := options.Marshal(x.Entries[iNdEx])
 				if err != nil {
 					return protoiface.MarshalOutput{
 						NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -4153,18 +4177,23 @@ func (x *fastReflection_PoCObservation) ProtoMethods() *protoiface.Methods {
 				copy(dAtA[i:], encoded)
 				i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
 				i--
-				dAtA[i] = 0x1a
+				dAtA[i] = 0x22
 			}
+		}
+		if x.TreeIndex != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.TreeIndex))
+			i--
+			dAtA[i] = 0x18
 		}
 		if x.PocStageStartBlockHeight != 0 {
 			i = runtime.EncodeVarint(dAtA, i, uint64(x.PocStageStartBlockHeight))
 			i--
 			dAtA[i] = 0x10
 		}
-		if len(x.ValidatorAddress) > 0 {
-			i -= len(x.ValidatorAddress)
-			copy(dAtA[i:], x.ValidatorAddress)
-			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.ValidatorAddress)))
+		if len(x.Creator) > 0 {
+			i -= len(x.Creator)
+			copy(dAtA[i:], x.Creator)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.Creator)))
 			i--
 			dAtA[i] = 0xa
 		}
@@ -4179,7 +4208,7 @@ func (x *fastReflection_PoCObservation) ProtoMethods() *protoiface.Methods {
 		}, nil
 	}
 	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
-		x := input.Message.Interface().(*PoCObservation)
+		x := input.Message.Interface().(*TreeRootCommit)
 		if x == nil {
 			return protoiface.UnmarshalOutput{
 				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -4211,15 +4240,15 @@ func (x *fastReflection_PoCObservation) ProtoMethods() *protoiface.Methods {
 			fieldNum := int32(wire >> 3)
 			wireType := int(wire & 0x7)
 			if wireType == 4 {
-				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: PoCObservation: wiretype end group for non-group")
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: TreeRootCommit: wiretype end group for non-group")
 			}
 			if fieldNum <= 0 {
-				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: PoCObservation: illegal tag %d (wire type %d)", fieldNum, wire)
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: TreeRootCommit: illegal tag %d (wire type %d)", fieldNum, wire)
 			}
 			switch fieldNum {
 			case 1:
 				if wireType != 2 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field ValidatorAddress", wireType)
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Creator", wireType)
 				}
 				var stringLen uint64
 				for shift := uint(0); ; shift += 7 {
@@ -4247,7 +4276,7 @@ func (x *fastReflection_PoCObservation) ProtoMethods() *protoiface.Methods {
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				x.ValidatorAddress = string(dAtA[iNdEx:postIndex])
+				x.Creator = string(dAtA[iNdEx:postIndex])
 				iNdEx = postIndex
 			case 2:
 				if wireType != 0 {
@@ -4269,8 +4298,27 @@ func (x *fastReflection_PoCObservation) ProtoMethods() *protoiface.Methods {
 					}
 				}
 			case 3:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field TreeIndex", wireType)
+				}
+				x.TreeIndex = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.TreeIndex |= int32(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+			case 4:
 				if wireType != 2 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Arrivals", wireType)
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Entries", wireType)
 				}
 				var msglen int
 				for shift := uint(0); ; shift += 7 {
@@ -4297,12 +4345,12 @@ func (x *fastReflection_PoCObservation) ProtoMethods() *protoiface.Methods {
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				x.Arrivals = append(x.Arrivals, &PoCObservationArrival{})
-				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Arrivals[len(x.Arrivals)-1]); err != nil {
+				x.Entries = append(x.Entries, &TreeRootCommitEntry{})
+				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Entries[len(x.Entries)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
 				iNdEx = postIndex
-			case 4:
+			case 5:
 				if wireType != 0 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field BlockHeight", wireType)
 				}
@@ -4684,7 +4732,7 @@ func (x *MLNodeWeightDistribution) GetWeights() []*MLNodeWeight {
 	return nil
 }
 
-type PoCObservationArrival struct {
+type TreeRootCommitEntry struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
@@ -4693,8 +4741,8 @@ type PoCObservationArrival struct {
 	Count       uint32 `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
 }
 
-func (x *PoCObservationArrival) Reset() {
-	*x = PoCObservationArrival{}
+func (x *TreeRootCommitEntry) Reset() {
+	*x = TreeRootCommitEntry{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_inference_inference_poc_v2_proto_msgTypes[6]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -4702,44 +4750,45 @@ func (x *PoCObservationArrival) Reset() {
 	}
 }
 
-func (x *PoCObservationArrival) String() string {
+func (x *TreeRootCommitEntry) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*PoCObservationArrival) ProtoMessage() {}
+func (*TreeRootCommitEntry) ProtoMessage() {}
 
-// Deprecated: Use PoCObservationArrival.ProtoReflect.Descriptor instead.
-func (*PoCObservationArrival) Descriptor() ([]byte, []int) {
+// Deprecated: Use TreeRootCommitEntry.ProtoReflect.Descriptor instead.
+func (*TreeRootCommitEntry) Descriptor() ([]byte, []int) {
 	return file_inference_inference_poc_v2_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *PoCObservationArrival) GetParticipant() string {
+func (x *TreeRootCommitEntry) GetParticipant() string {
 	if x != nil {
 		return x.Participant
 	}
 	return ""
 }
 
-func (x *PoCObservationArrival) GetCount() uint32 {
+func (x *TreeRootCommitEntry) GetCount() uint32 {
 	if x != nil {
 		return x.Count
 	}
 	return 0
 }
 
-type PoCObservation struct {
+type TreeRootCommit struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	ValidatorAddress         string                   `protobuf:"bytes,1,opt,name=validator_address,json=validatorAddress,proto3" json:"validator_address,omitempty"`
-	PocStageStartBlockHeight int64                    `protobuf:"varint,2,opt,name=poc_stage_start_block_height,json=pocStageStartBlockHeight,proto3" json:"poc_stage_start_block_height,omitempty"`
-	Arrivals                 []*PoCObservationArrival `protobuf:"bytes,3,rep,name=arrivals,proto3" json:"arrivals,omitempty"`
-	BlockHeight              int64                    `protobuf:"varint,4,opt,name=block_height,json=blockHeight,proto3" json:"block_height,omitempty"`
+	Creator                  string                 `protobuf:"bytes,1,opt,name=creator,proto3" json:"creator,omitempty"`
+	PocStageStartBlockHeight int64                  `protobuf:"varint,2,opt,name=poc_stage_start_block_height,json=pocStageStartBlockHeight,proto3" json:"poc_stage_start_block_height,omitempty"`
+	TreeIndex                int32                  `protobuf:"varint,3,opt,name=tree_index,json=treeIndex,proto3" json:"tree_index,omitempty"`
+	Entries                  []*TreeRootCommitEntry `protobuf:"bytes,4,rep,name=entries,proto3" json:"entries,omitempty"`
+	BlockHeight              int64                  `protobuf:"varint,5,opt,name=block_height,json=blockHeight,proto3" json:"block_height,omitempty"`
 }
 
-func (x *PoCObservation) Reset() {
-	*x = PoCObservation{}
+func (x *TreeRootCommit) Reset() {
+	*x = TreeRootCommit{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_inference_inference_poc_v2_proto_msgTypes[7]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -4747,39 +4796,46 @@ func (x *PoCObservation) Reset() {
 	}
 }
 
-func (x *PoCObservation) String() string {
+func (x *TreeRootCommit) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*PoCObservation) ProtoMessage() {}
+func (*TreeRootCommit) ProtoMessage() {}
 
-// Deprecated: Use PoCObservation.ProtoReflect.Descriptor instead.
-func (*PoCObservation) Descriptor() ([]byte, []int) {
+// Deprecated: Use TreeRootCommit.ProtoReflect.Descriptor instead.
+func (*TreeRootCommit) Descriptor() ([]byte, []int) {
 	return file_inference_inference_poc_v2_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *PoCObservation) GetValidatorAddress() string {
+func (x *TreeRootCommit) GetCreator() string {
 	if x != nil {
-		return x.ValidatorAddress
+		return x.Creator
 	}
 	return ""
 }
 
-func (x *PoCObservation) GetPocStageStartBlockHeight() int64 {
+func (x *TreeRootCommit) GetPocStageStartBlockHeight() int64 {
 	if x != nil {
 		return x.PocStageStartBlockHeight
 	}
 	return 0
 }
 
-func (x *PoCObservation) GetArrivals() []*PoCObservationArrival {
+func (x *TreeRootCommit) GetTreeIndex() int32 {
 	if x != nil {
-		return x.Arrivals
+		return x.TreeIndex
+	}
+	return 0
+}
+
+func (x *TreeRootCommit) GetEntries() []*TreeRootCommitEntry {
+	if x != nil {
+		return x.Entries
 	}
 	return nil
 }
 
-func (x *PoCObservation) GetBlockHeight() int64 {
+func (x *TreeRootCommit) GetBlockHeight() int64 {
 	if x != nil {
 		return x.BlockHeight
 	}
@@ -4850,39 +4906,39 @@ var file_inference_inference_poc_v2_proto_rawDesc = []byte{
 	0x68, 0x74, 0x73, 0x18, 0x03, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x21, 0x2e, 0x69, 0x6e, 0x66, 0x65,
 	0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e,
 	0x4d, 0x4c, 0x4e, 0x6f, 0x64, 0x65, 0x57, 0x65, 0x69, 0x67, 0x68, 0x74, 0x52, 0x07, 0x77, 0x65,
-	0x69, 0x67, 0x68, 0x74, 0x73, 0x22, 0x4f, 0x0a, 0x15, 0x50, 0x6f, 0x43, 0x4f, 0x62, 0x73, 0x65,
-	0x72, 0x76, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x41, 0x72, 0x72, 0x69, 0x76, 0x61, 0x6c, 0x12, 0x20,
-	0x0a, 0x0b, 0x70, 0x61, 0x72, 0x74, 0x69, 0x63, 0x69, 0x70, 0x61, 0x6e, 0x74, 0x18, 0x01, 0x20,
-	0x01, 0x28, 0x09, 0x52, 0x0b, 0x70, 0x61, 0x72, 0x74, 0x69, 0x63, 0x69, 0x70, 0x61, 0x6e, 0x74,
-	0x12, 0x14, 0x0a, 0x05, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0d, 0x52,
-	0x05, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x22, 0xe8, 0x01, 0x0a, 0x0e, 0x50, 0x6f, 0x43, 0x4f, 0x62,
-	0x73, 0x65, 0x72, 0x76, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x2b, 0x0a, 0x11, 0x76, 0x61, 0x6c,
-	0x69, 0x64, 0x61, 0x74, 0x6f, 0x72, 0x5f, 0x61, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x01,
-	0x20, 0x01, 0x28, 0x09, 0x52, 0x10, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x6f, 0x72, 0x41,
-	0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x12, 0x3e, 0x0a, 0x1c, 0x70, 0x6f, 0x63, 0x5f, 0x73, 0x74,
-	0x61, 0x67, 0x65, 0x5f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x5f, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x5f,
-	0x68, 0x65, 0x69, 0x67, 0x68, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x03, 0x52, 0x18, 0x70, 0x6f,
-	0x63, 0x53, 0x74, 0x61, 0x67, 0x65, 0x53, 0x74, 0x61, 0x72, 0x74, 0x42, 0x6c, 0x6f, 0x63, 0x6b,
-	0x48, 0x65, 0x69, 0x67, 0x68, 0x74, 0x12, 0x46, 0x0a, 0x08, 0x61, 0x72, 0x72, 0x69, 0x76, 0x61,
-	0x6c, 0x73, 0x18, 0x03, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x2a, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72,
-	0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x50,
-	0x6f, 0x43, 0x4f, 0x62, 0x73, 0x65, 0x72, 0x76, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x41, 0x72, 0x72,
-	0x69, 0x76, 0x61, 0x6c, 0x52, 0x08, 0x61, 0x72, 0x72, 0x69, 0x76, 0x61, 0x6c, 0x73, 0x12, 0x21,
-	0x0a, 0x0c, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x5f, 0x68, 0x65, 0x69, 0x67, 0x68, 0x74, 0x18, 0x04,
-	0x20, 0x01, 0x28, 0x03, 0x52, 0x0b, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x48, 0x65, 0x69, 0x67, 0x68,
-	0x74, 0x42, 0xb8, 0x01, 0x0a, 0x17, 0x63, 0x6f, 0x6d, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65,
-	0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x42, 0x0a, 0x50,
-	0x6f, 0x63, 0x56, 0x32, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x24, 0x63, 0x6f, 0x73,
-	0x6d, 0x6f, 0x73, 0x73, 0x64, 0x6b, 0x2e, 0x69, 0x6f, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x69, 0x6e,
-	0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2f, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63,
-	0x65, 0xa2, 0x02, 0x03, 0x49, 0x49, 0x58, 0xaa, 0x02, 0x13, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65,
-	0x6e, 0x63, 0x65, 0x2e, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0xca, 0x02, 0x13,
-	0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65,
-	0x6e, 0x63, 0x65, 0xe2, 0x02, 0x1f, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c,
-	0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65, 0x74,
-	0x61, 0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x14, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63,
-	0x65, 0x3a, 0x3a, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x62, 0x06, 0x70, 0x72,
-	0x6f, 0x74, 0x6f, 0x33,
+	0x69, 0x67, 0x68, 0x74, 0x73, 0x22, 0x4d, 0x0a, 0x13, 0x54, 0x72, 0x65, 0x65, 0x52, 0x6f, 0x6f,
+	0x74, 0x43, 0x6f, 0x6d, 0x6d, 0x69, 0x74, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x12, 0x20, 0x0a, 0x0b,
+	0x70, 0x61, 0x72, 0x74, 0x69, 0x63, 0x69, 0x70, 0x61, 0x6e, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x09, 0x52, 0x0b, 0x70, 0x61, 0x72, 0x74, 0x69, 0x63, 0x69, 0x70, 0x61, 0x6e, 0x74, 0x12, 0x14,
+	0x0a, 0x05, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x05, 0x63,
+	0x6f, 0x75, 0x6e, 0x74, 0x22, 0xf0, 0x01, 0x0a, 0x0e, 0x54, 0x72, 0x65, 0x65, 0x52, 0x6f, 0x6f,
+	0x74, 0x43, 0x6f, 0x6d, 0x6d, 0x69, 0x74, 0x12, 0x18, 0x0a, 0x07, 0x63, 0x72, 0x65, 0x61, 0x74,
+	0x6f, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x63, 0x72, 0x65, 0x61, 0x74, 0x6f,
+	0x72, 0x12, 0x3e, 0x0a, 0x1c, 0x70, 0x6f, 0x63, 0x5f, 0x73, 0x74, 0x61, 0x67, 0x65, 0x5f, 0x73,
+	0x74, 0x61, 0x72, 0x74, 0x5f, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x5f, 0x68, 0x65, 0x69, 0x67, 0x68,
+	0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x03, 0x52, 0x18, 0x70, 0x6f, 0x63, 0x53, 0x74, 0x61, 0x67,
+	0x65, 0x53, 0x74, 0x61, 0x72, 0x74, 0x42, 0x6c, 0x6f, 0x63, 0x6b, 0x48, 0x65, 0x69, 0x67, 0x68,
+	0x74, 0x12, 0x1d, 0x0a, 0x0a, 0x74, 0x72, 0x65, 0x65, 0x5f, 0x69, 0x6e, 0x64, 0x65, 0x78, 0x18,
+	0x03, 0x20, 0x01, 0x28, 0x05, 0x52, 0x09, 0x74, 0x72, 0x65, 0x65, 0x49, 0x6e, 0x64, 0x65, 0x78,
+	0x12, 0x42, 0x0a, 0x07, 0x65, 0x6e, 0x74, 0x72, 0x69, 0x65, 0x73, 0x18, 0x04, 0x20, 0x03, 0x28,
+	0x0b, 0x32, 0x28, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e,
+	0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x54, 0x72, 0x65, 0x65, 0x52, 0x6f, 0x6f, 0x74,
+	0x43, 0x6f, 0x6d, 0x6d, 0x69, 0x74, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x52, 0x07, 0x65, 0x6e, 0x74,
+	0x72, 0x69, 0x65, 0x73, 0x12, 0x21, 0x0a, 0x0c, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x5f, 0x68, 0x65,
+	0x69, 0x67, 0x68, 0x74, 0x18, 0x05, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0b, 0x62, 0x6c, 0x6f, 0x63,
+	0x6b, 0x48, 0x65, 0x69, 0x67, 0x68, 0x74, 0x42, 0xb8, 0x01, 0x0a, 0x17, 0x63, 0x6f, 0x6d, 0x2e,
+	0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65,
+	0x6e, 0x63, 0x65, 0x42, 0x0a, 0x50, 0x6f, 0x63, 0x56, 0x32, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50,
+	0x01, 0x5a, 0x24, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x73, 0x64, 0x6b, 0x2e, 0x69, 0x6f, 0x2f,
+	0x61, 0x70, 0x69, 0x2f, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2f, 0x69, 0x6e,
+	0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0xa2, 0x02, 0x03, 0x49, 0x49, 0x58, 0xaa, 0x02, 0x13,
+	0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65,
+	0x6e, 0x63, 0x65, 0xca, 0x02, 0x13, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c,
+	0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0xe2, 0x02, 0x1f, 0x49, 0x6e, 0x66, 0x65,
+	0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c,
+	0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x14, 0x49, 0x6e,
+	0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x3a, 0x3a, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e,
+	0x63, 0x65, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -4905,12 +4961,12 @@ var file_inference_inference_poc_v2_proto_goTypes = []interface{}{
 	(*MLNodeWeight)(nil),             // 3: inference.inference.MLNodeWeight
 	(*PoCV2StoreCommit)(nil),         // 4: inference.inference.PoCV2StoreCommit
 	(*MLNodeWeightDistribution)(nil), // 5: inference.inference.MLNodeWeightDistribution
-	(*PoCObservationArrival)(nil),    // 6: inference.inference.PoCObservationArrival
-	(*PoCObservation)(nil),           // 7: inference.inference.PoCObservation
+	(*TreeRootCommitEntry)(nil),      // 6: inference.inference.TreeRootCommitEntry
+	(*TreeRootCommit)(nil),           // 7: inference.inference.TreeRootCommit
 }
 var file_inference_inference_poc_v2_proto_depIdxs = []int32{
 	3, // 0: inference.inference.MLNodeWeightDistribution.weights:type_name -> inference.inference.MLNodeWeight
-	6, // 1: inference.inference.PoCObservation.arrivals:type_name -> inference.inference.PoCObservationArrival
+	6, // 1: inference.inference.TreeRootCommit.entries:type_name -> inference.inference.TreeRootCommitEntry
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
@@ -4997,7 +5053,7 @@ func file_inference_inference_poc_v2_proto_init() {
 			}
 		}
 		file_inference_inference_poc_v2_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*PoCObservationArrival); i {
+			switch v := v.(*TreeRootCommitEntry); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -5009,7 +5065,7 @@ func file_inference_inference_poc_v2_proto_init() {
 			}
 		}
 		file_inference_inference_poc_v2_proto_msgTypes[7].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*PoCObservation); i {
+			switch v := v.(*TreeRootCommit); i {
 			case 0:
 				return &v.state
 			case 1:

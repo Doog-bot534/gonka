@@ -2,7 +2,7 @@
 
 ## Status
 
-**Work in Progress** - Basic implementation complete, integration tests pending
+**Implemented** - Core propagation working, integration tests pass.
 
 ## Overview
 

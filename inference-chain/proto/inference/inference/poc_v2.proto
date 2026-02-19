@@ -48,14 +48,15 @@ message MLNodeWeightDistribution {
   repeated MLNodeWeight weights = 3;
 }
 
-message PoCObservationArrival {
+message TreeRootCommitEntry {
   string participant = 1;
   uint32 count = 2;
 }
 
-message PoCObservation {
-  string validator_address = 1;
+message TreeRootCommit {
+  string creator = 1;
   int64 poc_stage_start_block_height = 2;
-  repeated PoCObservationArrival arrivals = 3;
-  int64 block_height = 4;
+  int32 tree_index = 3;
+  repeated TreeRootCommitEntry entries = 4;
+  int64 block_height = 5;
 }

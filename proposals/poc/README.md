@@ -88,6 +88,27 @@ The V1/V2 switch is controlled by governance params:
 Setting `poc_v2_enabled=true` requires no software upgrade - just a governance proposal. After this switch, V2 affects weights/slashing. The tracking-only mode only exists during migration.
 
 
+## Tree Root Commit Consensus
+
+When multi-tree propagation is enabled, artifact counts are agreed upon via on-chain consensus instead of each node submitting its own local count.
+
+**Flow**:
+
+1. During PoCGenerate, each participant publishes bundle headers (containing artifact count and MMR root hash) through multiple propagation trees.
+2. Each tree root collects first-arrival data from headers propagated through its tree.
+3. During the exchange window, tree roots submit `MsgTreeRootCommit` on-chain, each containing per-participant artifact counts.
+4. During PoCCommitPhase (new epoch stage between exchange window and validation), each participant queries the chain's `PoCConsensus` endpoint.
+5. The chain computes consensus: for each participant, the highest count where a majority of tree roots reported >= that count.
+6. Each participant submits `MsgPoCV2StoreCommit` with the agreed count and matching root hash.
+
+**Fallback**: When propagation is disabled or the node has no peers, commits use the local artifact count directly (original behavior).
+
+**New epoch stage**: `PoCCommitPhase` = `PoCExchangeDeadline + 1` to `StartOfPoCValidation - 1`.
+
+See [multi-tree-propagation.md](./dev/multi-tree-propagation.md) for the propagation architecture and [multi-tree-propagation-phase2.md](./dev/multi-tree-propagation-phase2.md) for implementation details.
+
+---
+
 ## Status
 
 Implementation complete. All testermint tests pass for PoC v1, v2, and migration mode.
@@ -96,6 +117,8 @@ Implementation complete. All testermint tests pass for PoC v1, v2, and migration
 
 - PoC v2 integration with vLLM (`v0.9.1-poc-v2-blackwell`)
 - Off-chain artifact storage with MMR proofs
+- Multi-tree propagation with on-chain tree root commit consensus
+- PoCCommitPhase epoch stage for consensus-based commits
 - Migration mode: V1 enforcement + V2 tracking for confirmation PoC
 - Grace epoch: dry-run mode when switching to full V2
 - Governance-controlled V1/V2 switching via `poc_v2_enabled` and `confirmation_poc_v2_enabled`

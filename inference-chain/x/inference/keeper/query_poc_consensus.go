@@ -11,32 +11,32 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func (k Keeper) PoCObservations(goCtx context.Context, req *types.QueryPoCObservationsRequest) (*types.QueryPoCObservationsResponse, error) {
+func (k Keeper) TreeRootCommitsForStage(goCtx context.Context, req *types.QueryTreeRootCommitsForStageRequest) (*types.QueryTreeRootCommitsForStageResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid request")
 	}
 
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
-	var observations []*types.PoCObservation
+	var commits []*types.TreeRootCommit
 
-	iter, err := k.PoCObservationsMap.Iterate(ctx, collections.NewPrefixedPairRange[int64, sdk.AccAddress](req.PocStageStartBlockHeight))
+	iter, err := k.TreeRootCommits.Iterate(ctx, collections.NewPrefixedPairRange[int64, int32](req.PocStageStartBlockHeight))
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to iterate observations: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to iterate tree root commits: %v", err)
 	}
 	defer iter.Close()
 
 	for ; iter.Valid(); iter.Next() {
 		value, err := iter.Value()
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get value: %v", err)
+			return nil, status.Errorf(codes.Internal, "failed to get tree root commit: %v", err)
 		}
-		obs := value
-		observations = append(observations, &obs)
+		v := value
+		commits = append(commits, &v)
 	}
 
-	return &types.QueryPoCObservationsResponse{
-		Observations: observations,
+	return &types.QueryTreeRootCommitsForStageResponse{
+		Commits: commits,
 	}, nil
 }
 
@@ -48,68 +48,40 @@ func (k Keeper) PoCConsensus(goCtx context.Context, req *types.QueryPoCConsensus
 	ctx := sdk.UnwrapSDKContext(goCtx)
 	pocHeight := req.PocStageStartBlockHeight
 
-	var observations []types.PoCObservation
-	obsIter, err := k.PoCObservationsMap.Iterate(ctx, collections.NewPrefixedPairRange[int64, sdk.AccAddress](pocHeight))
+	var treeCommits []types.TreeRootCommit
+	treeIter, err := k.TreeRootCommits.Iterate(ctx, collections.NewPrefixedPairRange[int64, int32](pocHeight))
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to iterate observations: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to iterate tree root commits: %v", err)
 	}
-	defer obsIter.Close()
+	defer treeIter.Close()
 
-	for ; obsIter.Valid(); obsIter.Next() {
-		value, err := obsIter.Value()
+	for ; treeIter.Valid(); treeIter.Next() {
+		value, err := treeIter.Value()
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get observation: %v", err)
+			return nil, status.Errorf(codes.Internal, "failed to get tree root commit: %v", err)
 		}
-		observations = append(observations, value)
+		treeCommits = append(treeCommits, value)
 	}
 
-	if len(observations) == 0 {
+	if len(treeCommits) == 0 {
 		return &types.QueryPoCConsensusResponse{}, nil
 	}
 
-	commitsByParticipant := make(map[string]uint32)
-	commitIter, err := k.PoCV2StoreCommits.Iterate(ctx, collections.NewPrefixedPairRange[int64, sdk.AccAddress](pocHeight))
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to iterate commits: %v", err)
-	}
-	defer commitIter.Close()
+	totalTrees := int32(len(treeCommits))
+	requiredAgreement := totalTrees/2 + 1
 
-	for ; commitIter.Valid(); commitIter.Next() {
-		value, err := commitIter.Value()
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get commit: %v", err)
-		}
-		commitsByParticipant[value.ParticipantAddress] = value.Count
-	}
-
-	headersByParticipant := make(map[string][]uint32)
-	for _, obs := range observations {
-		for _, arrival := range obs.Arrivals {
-			if arrival.Count > 0 {
-				headersByParticipant[arrival.Participant] = append(headersByParticipant[arrival.Participant], arrival.Count)
+	countsByParticipant := make(map[string][]uint32)
+	for _, tc := range treeCommits {
+		for _, entry := range tc.Entries {
+			if entry.Count > 0 {
+				countsByParticipant[entry.Participant] = append(countsByParticipant[entry.Participant], entry.Count)
 			}
 		}
 	}
 
-	allParticipants := make(map[string]bool)
-	for p := range commitsByParticipant {
-		allParticipants[p] = true
-	}
-	for p := range headersByParticipant {
-		allParticipants[p] = true
-	}
-
-	totalValidators := len(observations)
-	requiredAgreement := totalValidators/2 + 1
-
 	var entries []*types.PoCConsensusEntry
 
-	for participant := range allParticipants {
-		counts := headersByParticipant[participant]
-		if len(counts) == 0 {
-			continue
-		}
-
+	for participant, counts := range countsByParticipant {
 		uniqueCounts := make(map[uint32]bool)
 		for _, c := range counts {
 			uniqueCounts[c] = true
@@ -126,25 +98,25 @@ func (k Keeper) PoCConsensus(goCtx context.Context, req *types.QueryPoCConsensus
 		var agreeingCount int32
 
 		for _, targetCount := range sortedCounts {
-			validatorsAgreeing := 0
-			for _, obs := range observations {
-				for _, arrival := range obs.Arrivals {
-					if arrival.Participant == participant && arrival.Count >= targetCount {
-						validatorsAgreeing++
+			treesAgreeing := int32(0)
+			for _, tc := range treeCommits {
+				for _, entry := range tc.Entries {
+					if entry.Participant == participant && entry.Count >= targetCount {
+						treesAgreeing++
 						break
 					}
 				}
 			}
-			if validatorsAgreeing >= requiredAgreement {
+			if treesAgreeing >= requiredAgreement {
 				agreedCount = targetCount
-				agreeingCount = int32(validatorsAgreeing)
+				agreeingCount = treesAgreeing
 			}
 		}
 
 		entries = append(entries, &types.PoCConsensusEntry{
 			Participant:     participant,
 			AgreedCount:     agreedCount,
-			TotalValidators: int32(totalValidators),
+			TotalValidators: totalTrees,
 			AgreeingCount:   agreeingCount,
 		})
 	}

@@ -12,6 +12,7 @@ type EpochPhase string
 const (
 	PoCGeneratePhase         EpochPhase = "PoCGenerate"
 	PoCGenerateWindDownPhase EpochPhase = "PoCGenerateWindDown"
+	PoCCommitPhase           EpochPhase = "PoCCommit"
 	PoCValidatePhase         EpochPhase = "PoCValidate"
 	PoCValidateWindDownPhase EpochPhase = "PoCValidateWindDown"
 	InferencePhase           EpochPhase = "Inference"

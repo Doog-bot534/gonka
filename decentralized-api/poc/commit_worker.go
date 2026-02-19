@@ -43,15 +43,13 @@ type CommitWorker struct {
 	lastDistributionAttempt time.Time
 	lastCommitted           map[int64]commitState
 
-	propagationEnabled   bool
-	bundler              *propagation.FLTQBundler
-	propagationCache     *propagation.Cache
-	observationSubmitted map[int64]bool
-	consensusSubmitted   map[int64]bool
+	propagationEnabled bool
+	bundler            *propagation.FLTQBundler
+	propagationCache   *propagation.Cache
+	treeRootSubmitted  map[int64]map[int]bool
+	consensusSubmitted map[int64]bool
 }
 
-// NewCommitWorker creates and starts a new commit worker.
-// The worker runs until Close() is called.
 func NewCommitWorker(
 	store *artifacts.ManagedArtifactStore,
 	recorder cosmosclient.CosmosMessageClient,
@@ -64,23 +62,22 @@ func NewCommitWorker(
 	propagationCache *propagation.Cache,
 ) *CommitWorker {
 	w := &CommitWorker{
-		store:                store,
-		recorder:             recorder,
-		tracker:              tracker,
-		participantAddress:   participantAddress,
-		pubKey:               pubKey,
-		interval:             interval,
-		stop:                 make(chan struct{}),
-		done:                 make(chan struct{}),
-		lastCommitted:        make(map[int64]commitState),
-		propagationEnabled:   propagationEnabled,
-		bundler:              bundler,
-		propagationCache:     propagationCache,
-		observationSubmitted: make(map[int64]bool),
-		consensusSubmitted:   make(map[int64]bool),
+		store:              store,
+		recorder:           recorder,
+		tracker:            tracker,
+		participantAddress: participantAddress,
+		pubKey:             pubKey,
+		interval:           interval,
+		stop:               make(chan struct{}),
+		done:               make(chan struct{}),
+		lastCommitted:      make(map[int64]commitState),
+		propagationEnabled: propagationEnabled,
+		bundler:            bundler,
+		propagationCache:   propagationCache,
+		treeRootSubmitted:  make(map[int64]map[int]bool),
+		consensusSubmitted: make(map[int64]bool),
 	}
 
-	// Start flush - always on (same interval as commits)
 	store.StartPeriodicFlush(interval)
 
 	go w.run()
@@ -88,7 +85,6 @@ func NewCommitWorker(
 	return w
 }
 
-// Close stops the worker and waits for it to finish.
 func (w *CommitWorker) Close() {
 	close(w.stop)
 	<-w.done
@@ -130,7 +126,7 @@ func (w *CommitWorker) tick() {
 		w.currentPocHeight = pocHeight
 		w.lastDistributionAttempt = time.Time{}
 		w.lastCommitted = make(map[int64]commitState)
-		w.observationSubmitted = make(map[int64]bool)
+		w.treeRootSubmitted = make(map[int64]map[int]bool)
 		w.consensusSubmitted = make(map[int64]bool)
 	}
 
@@ -141,16 +137,24 @@ func (w *CommitWorker) tick() {
 				epochState.ActiveConfirmationPoCEvent != nil &&
 				epochState.ActiveConfirmationPoCEvent.Phase == types.ConfirmationPoCPhase_CONFIRMATION_POC_GENERATION)
 		canCommit := ShouldAcceptStoreCommit(epochState, pocHeight)
+		isCommitPhase := epochState.CurrentPhase == types.PoCCommitPhase
+
 		logging.Debug("CommitWorker: tick", types.PoC,
 			"phase", epochState.CurrentPhase,
 			"pocHeight", pocHeight,
 			"isPoCPhase", isPoCPhase,
-			"canCommit", canCommit)
+			"canCommit", canCommit,
+			"isCommitPhase", isCommitPhase)
+
 		if isPoCPhase {
 			w.maybePublishHeaders(pocHeight)
 		}
+
 		if canCommit {
-			w.maybeSubmitObservation(pocHeight)
+			w.maybeSubmitTreeRootCommits(pocHeight)
+		}
+
+		if isCommitPhase || canCommit {
 			w.maybeSubmitConsensusCommit(pocHeight)
 		}
 	}
@@ -187,7 +191,6 @@ func (w *CommitWorker) maybePublishHeaders(pocHeight int64) {
 		return
 	}
 
-	// Skip if unchanged since last commit
 	last := w.lastCommitted[pocHeight]
 	if last.count == count && bytes.Equal(last.rootHash, rootHash) {
 		return
@@ -215,52 +218,7 @@ func (w *CommitWorker) maybePublishHeaders(pocHeight int64) {
 	w.lastCommitted[pocHeight] = commitState{count, rootHash}
 }
 
-func (w *CommitWorker) maybeSubmitObservation(pocHeight int64) {
-	if !w.propagationEnabled || w.propagationCache == nil {
-		return
-	}
-
-	if w.observationSubmitted[pocHeight] {
-		return
-	}
-
-	arrivals, err := w.propagationCache.GetAllFirstArrivals(pocHeight)
-	if err != nil || len(arrivals) == 0 {
-		return
-	}
-
-	if _, hasSelf := arrivals[w.participantAddress]; !hasSelf {
-		return
-	}
-
-	protoArrivals := make([]*inference.PoCObservationArrival, 0, len(arrivals))
-	for participant, info := range arrivals {
-		if info.Count > 0 {
-			protoArrivals = append(protoArrivals, &inference.PoCObservationArrival{
-				Participant: participant,
-				Count:       info.Count,
-			})
-		}
-	}
-
-	if len(protoArrivals) == 0 {
-		return
-	}
-
-	msg := &inference.MsgSubmitPoCObservation{
-		PocStageStartBlockHeight: pocHeight,
-		Arrivals:                 protoArrivals,
-	}
-
-	if err := w.recorder.SubmitPoCObservation(msg); err != nil {
-		logging.Warn("CommitWorker: observation submission failed", types.PoC,
-			"pocHeight", pocHeight, "error", err)
-		return
-	}
-
-	w.observationSubmitted[pocHeight] = true
-	logging.Info("CommitWorker: observation submitted on-chain", types.PoC,
-		"pocHeight", pocHeight, "arrivals", len(protoArrivals))
+func (w *CommitWorker) maybeSubmitTreeRootCommits(pocHeight int64) {
 }
 
 func (w *CommitWorker) maybeSubmitConsensusCommit(pocHeight int64) {
@@ -280,7 +238,7 @@ func (w *CommitWorker) maybeSubmitConsensusCommit(pocHeight int64) {
 		return
 	}
 
-	if !w.propagationEnabled || (w.bundler != nil && !w.bundler.HasPeers()) {
+	if !w.propagationEnabled || w.bundler == nil {
 		if count == 0 {
 			return
 		}

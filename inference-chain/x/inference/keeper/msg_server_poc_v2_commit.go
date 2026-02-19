@@ -40,9 +40,6 @@ func (k msgServer) PoCV2StoreCommit(goCtx context.Context, msg *types.MsgPoCV2St
 		return nil, sdkerrors.Wrap(types.ErrIllegalState, fmt.Sprintf("root_hash must be 32 bytes, got %d", len(msg.RootHash)))
 	}
 
-	// Validate PoC window
-	// For confirmation PoC: accept during batch submission window (generation + exchange)
-	// For regular PoC: accept during exchange window
 	if isActive && activeEvent != nil && startBlockHeight == activeEvent.TriggerHeight {
 		epochParams := params.EpochParams
 		if !activeEvent.IsInBatchSubmissionWindow(currentBlockHeight, epochParams) {
@@ -60,8 +57,8 @@ func (k msgServer) PoCV2StoreCommit(goCtx context.Context, msg *types.MsgPoCV2St
 			return nil, sdkerrors.Wrap(types.ErrPocWrongStartBlockHeight,
 				fmt.Sprintf("start block height %d doesn't match PoC stage start %d", startBlockHeight, epochContext.PocStartBlockHeight))
 		}
-		if !epochContext.IsPoCExchangeWindow(currentBlockHeight) {
-			return nil, sdkerrors.Wrap(types.ErrPocTooLate, "PoC exchange window closed")
+		if !epochContext.IsPoCExchangeWindow(currentBlockHeight) && !epochContext.IsPoCCommitPhase(currentBlockHeight) {
+			return nil, sdkerrors.Wrap(types.ErrPocTooLate, "PoC exchange window and commit phase closed")
 		}
 	}
 

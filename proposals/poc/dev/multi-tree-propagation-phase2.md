@@ -2,9 +2,11 @@
 
 ## Overview
 
-Phase 2 implements the full multi-tree propagation system for distributing PoC commit metadata (headers), proofs, and first-arrival observations across validators. Trees are rebuilt each epoch using weighted participants from the previous epoch, enabling efficient gossip-style propagation.
+Phase 2 implements the full multi-tree propagation system for distributing PoC commit metadata (headers) and proofs across validators. Trees are rebuilt each epoch using weighted participants from the previous epoch, enabling efficient gossip-style propagation.
 
-**Goal**: Enable off-chain distribution of PoC artifacts and timing observations through deterministic, weighted propagation trees.
+Tree roots submit on-chain `MsgTreeRootCommit` messages containing per-participant artifact counts observed via propagation. The chain computes consensus from these tree root commits (majority of trees agreeing on >= count), and participants use the agreed count for their `MsgPoCV2StoreCommit`.
+
+**Goal**: Enable off-chain distribution of PoC artifacts through deterministic, weighted propagation trees, with on-chain consensus via tree root commits.
 
 ---
 
@@ -35,10 +37,8 @@ Phase 2 implements the full multi-tree propagation system for distributing PoC c
 |------|--------|---------|
 | `BundleHeader` | Done | `poc/propagation/bundle.go:17` |
 | `ProofItem` | Done | `poc/propagation/storage.go:14` |
-| `FirstArrivalObservation` | Done | `poc/propagation/types.go:20` |
 | `ArrivalInfo` | Done | Time + Count tracking |
 | Header signing/verification | Done | Ed25519 signatures |
-| Observation signing/verification | Done | Ed25519 signatures |
 
 **BundleHeader Fields**:
 ```go
@@ -60,15 +60,6 @@ VectorBytes string     // Base64-encoded vector data
 Proof       []string   // Merkle proof path (hex-encoded hashes)
 ```
 
-**FirstArrivalObservation Fields**:
-```go
-ValidatorAddress string                 // Observer's address
-PocHeight        int64                  // PoC epoch height
-Arrivals         map[string]ArrivalInfo // participant → arrival time/count
-Timestamp        int64                  // Observation creation time (ms)
-Signature        []byte                 // Ed25519 signature
-```
-
 ### 2.3 Bundler (Publisher)
 
 | Item | Status | Details |
@@ -76,7 +67,6 @@ Signature        []byte                 // Ed25519 signature
 | `Bundler` struct | Done | `poc/propagation/bundler.go:14` |
 | `Publish()` - header publishing | Done | Signs and sends headers |
 | `PublishProofs()` - proof publishing | Done | Sends proofs to network |
-| `BroadcastObservation()` - timing data | Done | Broadcasts first-arrival observations |
 | `sendHeader()` - multi-tree dispatch | Done | Sends to all tree roots |
 | `sendProofs()` - multi-tree dispatch | Done | Sends proofs to all tree roots |
 | Root broadcast optimization | Done | If root, send directly to children |
@@ -104,12 +94,10 @@ Signature        []byte                 // Ed25519 signature
 | `Receiver` struct | Done | `poc/propagation/receiver.go:15` |
 | `OnHeader()` - receive headers | Done | Verify, store, forward |
 | `OnProofs()` - receive proofs | Done | Store, forward |
-| `OnObservation()` - receive timing | Done | Verify, store, forward |
 | Signature verification | Done | Ed25519 verification |
-| Duplicate detection | Done | `processedHeaders`, `processedProofs`, `processedObservations` |
+| Duplicate detection | Done | `processedHeaders`, `processedProofs` |
 | `forwardHeaderAllTrees()` | Done | Forward to children in all trees |
 | `forwardProofsAllTrees()` | Done | Forward proofs to children |
-| `forwardObservationAllTrees()` | Done | Forward observations to children |
 | First-arrival time recording | Done | Records when header first received |
 
 **Receiving Flow**:
@@ -119,7 +107,7 @@ Signature        []byte                 // Ed25519 signature
    - Check for duplicates (already processed)
 
 2. **Store Locally**:
-   - Store header/proofs/observation in cache
+   - Store header/proofs in cache
    - Record first-arrival time for headers
    - Mark as processed
 
@@ -136,16 +124,14 @@ Signature        []byte                 // Ed25519 signature
 | `HTTPTransport` | Done | `poc/propagation/http_transport.go:17` |
 | `SendHeader()` | Done | POST to `/v1/propagation/header` |
 | `SendProofs()` | Done | POST to `/v1/propagation/proofs` |
-| `SendObservation()` | Done | POST to `/v1/propagation/observation` |
 | Local delivery optimization | Done | Calls handler directly for self |
-| HTTP handlers | Done | `HandleHeaderHTTP`, `HandleProofsHTTP`, `HandleObservationHTTP` |
-| Timeout configuration | Done | 10s for headers/obs, 30s for proofs |
+| HTTP handlers | Done | `HandleHeaderHTTP`, `HandleProofsHTTP` |
+| Timeout configuration | Done | 10s for headers, 30s for proofs |
 | Participant URL mapping | Done | `SetParticipantURLs()` |
 
 **HTTP Endpoints**:
 - `POST /v1/propagation/header` - Receive bundle headers
 - `POST /v1/propagation/proofs` - Receive proofs
-- `POST /v1/propagation/observation` - Receive first-arrival observations
 
 **Message Format**:
 ```json
@@ -162,12 +148,6 @@ Signature        []byte                 // Ed25519 signature
   "proofs": [ /* ProofItem[] */ ],
   "from": "validator_address"
 }
-
-// ObservationMessage
-{
-  "observation": { /* FirstArrivalObservation */ },
-  "from": "validator_address"
-}
 ```
 
 ### 2.6 Storage Layer
@@ -182,7 +162,6 @@ Signature        []byte                 // Ed25519 signature
 | Header storage | Done | `StoreHeader()`, `GetHeader()` |
 | Proof storage | Done | `StoreProofs()`, `GetProofs()` |
 | First-arrival storage | Done | `StoreFirstArrival()`, `GetFirstArrival()` |
-| Observation storage | Done | `StoreObservation()`, `GetObservations()` |
 
 ### 2.7 Integration
 
@@ -193,18 +172,43 @@ Signature        []byte                 // Ed25519 signature
 | `SetTrees()` on bundler | Done | Updates trees for new epoch |
 | `ClearProcessedState()` | Done | Clears duplicate tracking on epoch change |
 | Participant URL population | Done | Maps addresses to HTTP endpoints |
-| Header publishing in CommitWorker | Done | `commit_worker.go:191` |
-| Observation broadcasting | Done | `new_block_dispatcher.go:415-425` |
-| Consensus calculation | Done | `poc/propagation/consensus.go` |
+| Header publishing in CommitWorker | Done | `commit_worker.go:181` |
+| Tree root commit submission | Done | `commit_worker.go:225` |
+| On-chain consensus query | Done | `query_poc_consensus.go` |
 
-### 2.8 Consensus Module
+### 2.8 Tree Root Commit Consensus
+
+Replaces the previous off-chain observation-based consensus (removed).
 
 | Item | Status | Details |
 |------|--------|---------|
-| `ConsensusCalculator` | Done | `poc/propagation/consensus.go` |
-| Observation aggregation | Done | Collects observations from validators |
-| Consensus commit calculation | Done | Determines canonical commit per participant |
-| Integration with CommitWorker | Done | Submits consensus commits on-chain |
+| `MsgTreeRootCommit` handler | Done | `keeper/msg_server_tree_root_commit.go` |
+| `PoCConsensus` query | Done | `keeper/query_poc_consensus.go` |
+| `TreeRootCommits` collection | Done | `keeper/keeper.go` |
+| `PoCCommitPhase` epoch stage | Done | `types/epoch_context.go` |
+| `maybeSubmitTreeRootCommits()` | Done | `commit_worker.go:225` |
+| `maybeSubmitConsensusCommit()` | Done | `commit_worker.go:285` |
+| Fallback to local count | Done | When propagation disabled or no peers |
+
+**On-Chain Consensus Algorithm** (`query_poc_consensus.go`):
+
+For each participant, find the highest count where a majority of tree roots reported >= that count:
+
+```
+Input: all MsgTreeRootCommit entries for the PoC height
+totalTrees = number of tree root commits
+requiredAgreement = totalTrees / 2 + 1
+
+For each participant:
+  1. Collect all counts reported by different tree roots
+  2. Get unique counts, sorted ascending
+  3. For each target count (low to high):
+     - Count how many trees reported >= that count for this participant
+     - If treesAgreeing >= requiredAgreement, record as agreed count
+  4. The highest count with majority agreement wins
+
+Output: map[participant] -> {agreedCount, totalValidators, agreeingCount}
+```
 
 ---
 
@@ -231,13 +235,21 @@ decentralized-api/poc/propagation/
   - factory.go (2.37 KB)                  # Component factory
 
 decentralized-api/internal/event_listener/new_block_dispatcher.go
-  - Added tree rebuild on epoch start (lines 363-389)
-  - Added observation broadcast trigger (lines 415-425)
+  - Tree rebuild on epoch start
 
 decentralized-api/poc/commit_worker.go
-  - Added header publishing via bundler (line 191)
-  - Added own arrival tracking (line 198)
-  - Added consensus commit submission
+  - maybePublishHeaders(): publish headers via propagation trees
+  - maybeSubmitTreeRootCommits(): submit MsgTreeRootCommit when root
+  - maybeSubmitConsensusCommit(): query PoCConsensus, commit at agreed count
+
+inference-chain/x/inference/keeper/
+  - msg_server_tree_root_commit.go: MsgTreeRootCommit handler
+  - query_poc_consensus.go: PoCConsensus query using tree root commits
+  - keeper.go: TreeRootCommits collection (Map[Pair[height,treeIndex], TreeRootCommit])
+
+inference-chain/x/inference/types/
+  - epoch_context.go: StartOfPoCCommit(), EndOfPoCCommit(), PoCCommitPhase
+  - epoch_stages.go: PoCCommitStart/PoCCommitEnd in EpochStages
 ```
 
 ---
@@ -307,29 +319,40 @@ decentralized-api/poc/commit_worker.go
    - Track forwarded recipients to avoid duplicates
 5. Parallel dispatch
 
-### Observation Propagation
+### Tree Root Commit Submission
 
-**Publisher Flow** (at observation broadcast height):
-1. Bundler collects all first-arrival times from cache
-2. Creates `FirstArrivalObservation` with arrivals map
-3. Signs observation with Ed25519 key
-4. Stores own observation
-5. Calls `bundler.BroadcastObservation(pocHeight)`
-6. Sends to all tree roots
+**When**: During exchange window (PoCGenerate + PoCGenerateWindDown + IsPoCExchangeWindow)
 
-**Forwarder Flow**:
-1. Receives `OnObservation(obs, from)` via HTTP
-2. Verifies signature against validator's public key
-3. Checks for duplicates by observation ID
-4. Stores observation in cache
-5. Forwards to all children across all trees
+Tree roots collect first-arrival data from headers propagated through their tree and submit it on-chain.
 
-**Consensus Flow**:
-1. `ConsensusCalculator` aggregates observations from validators
-2. For each participant, determines canonical commit based on:
-   - Most commonly observed count
-   - Earliest median arrival time
-3. `CommitWorker` submits consensus commits on-chain
+**Flow** (`maybeSubmitTreeRootCommits`):
+1. Check if this node is root in any propagation tree (`TreeManager.IsRootInAnyTree`)
+2. Get all first arrivals from propagation cache for this PoC height
+3. Wait until own arrival is present (ensures own artifacts are generated)
+4. Build `TreeRootCommitEntry` list: participant + count for each arrival with count > 0
+5. For each tree where this node is root, submit `MsgTreeRootCommit` with entries
+6. Track submitted trees to avoid duplicates
+
+**Chain-Side Validation** (`msg_server_tree_root_commit.go`):
+- V2 must be enabled (or migration tracking mode)
+- Entries must not be empty
+- Tree index must be 0..15
+- Must be within PoC exchange window
+- One commit per tree index per PoC height (no overwrites)
+
+### Consensus Commit
+
+**When**: During PoCCommitPhase (PoCExchangeDeadline+1 to StartOfPoCValidation-1) or exchange window
+
+**Flow** (`maybeSubmitConsensusCommit`):
+1. If propagation disabled or no peers: submit `MsgPoCV2StoreCommit` with local count (fallback)
+2. If propagation enabled: query chain's `PoCConsensus` endpoint
+3. Find own agreed count from consensus response
+4. If agreed count > 0:
+   - Get root hash at the agreed count from local artifact store
+   - Submit `MsgPoCV2StoreCommit` with agreed count and matching root hash
+   - Re-publish proofs at consensus count via propagation if count differs from local
+5. If no consensus yet: retry on next tick
 
 ---
 
@@ -344,6 +367,7 @@ decentralized-api/poc/commit_worker.go
 | **Deduplication** | Receivers track processed IDs (no duplicate processing) |
 | **Integrity** | Ed25519 signatures prevent tampering |
 | **First-arrival** | Timing preserved at first reception (not forwarding time) |
+| **On-chain consensus** | Tree root commits provide verifiable, deterministic consensus |
 
 ---
 
@@ -353,16 +377,32 @@ decentralized-api/poc/commit_worker.go
 |-----------|---------|-------------|
 | `numTrees` | 3 | Number of propagation trees per epoch |
 | `fanout` | 3 | Children per node in each tree |
-| `observationBuffer` | 10 blocks | Blocks before exchange deadline to broadcast |
 
 **Example**: 100 validators, 3 trees, fanout 3
 - Tree depth: ~5 hops
 - Propagation time: ~5 * 100ms = 500ms
 - Redundancy: 3x paths
+- On-chain: 3 `MsgTreeRootCommit` messages per epoch (one per tree root)
+
+---
+
+## Epoch Phase Timeline
+
+```
+PoCGenerate         → Artifacts generated, headers published via trees
+PoCGenerateWindDown → Tree roots submit MsgTreeRootCommit on-chain
+PoCCommit (NEW)     → Nodes query PoCConsensus, submit MsgPoCV2StoreCommit at agreed count
+PoCValidate         → Weight distribution, cross-validation of artifacts
+Inference           → Normal inference operations
+```
+
+`PoCCommitPhase` spans from `PoCExchangeDeadline + 1` to `StartOfPoCValidation - 1`.
 
 ---
 
 ## Related Documents
 
-- `multi-tree-propagation-phase1.md` - Phase 1 (tree coordinator proposal)
+- `multi-tree-propagation.md` - Architecture overview
+- `multi-tree-propagation-phase1.md` - Phase 1 (core tree implementation)
+- `multi-tree-propagation-analysis.md` - Security analysis and simulation results
 - `offchain.md` - PoC V2 off-chain artifacts proposal

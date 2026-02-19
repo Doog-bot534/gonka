@@ -137,8 +137,8 @@ func TestCommitWorker_MaybeSubmitConsensusCommit_SkipsUnchanged(t *testing.T) {
 		recorder:             mockRecorder,
 		participantAddress:   "test_addr",
 		lastCommitted:        make(map[int64]commitState),
-		observationSubmitted: make(map[int64]bool),
-		consensusSubmitted:   make(map[int64]bool),
+		treeRootSubmitted:  make(map[int64]map[int]bool),
+		consensusSubmitted: make(map[int64]bool),
 		propagationEnabled:   true,
 	}
 
@@ -197,8 +197,8 @@ func TestCommitWorker_MaybeSubmitConsensusCommit_ConsensusCountLowerThanLocal(t 
 		recorder:             mockRecorder,
 		participantAddress:   "test_addr",
 		lastCommitted:        make(map[int64]commitState),
-		observationSubmitted: make(map[int64]bool),
-		consensusSubmitted:   make(map[int64]bool),
+		treeRootSubmitted:  make(map[int64]map[int]bool),
+		consensusSubmitted: make(map[int64]bool),
 		propagationEnabled:   true,
 	}
 
@@ -279,8 +279,8 @@ func TestCommitWorker_MaybeSubmitConsensusCommit_RepublishesProofsAtConsensusCou
 		recorder:             mockRecorder,
 		participantAddress:   "test_addr",
 		lastCommitted:        make(map[int64]commitState),
-		observationSubmitted: make(map[int64]bool),
-		consensusSubmitted:   make(map[int64]bool),
+		treeRootSubmitted:  make(map[int64]map[int]bool),
+		consensusSubmitted: make(map[int64]bool),
 		propagationEnabled:   true,
 		bundler:              bundler,
 		propagationCache:     cache,
@@ -348,8 +348,8 @@ func TestCommitWorker_MaybeSubmitConsensusCommit_ConsensusCountHigherThanLocal(t
 		recorder:             mockRecorder,
 		participantAddress:   "test_addr",
 		lastCommitted:        make(map[int64]commitState),
-		observationSubmitted: make(map[int64]bool),
-		consensusSubmitted:   make(map[int64]bool),
+		treeRootSubmitted:  make(map[int64]map[int]bool),
+		consensusSubmitted: make(map[int64]bool),
 		propagationEnabled:   true,
 	}
 
@@ -404,8 +404,8 @@ func TestCommitWorker_MaybeSubmitConsensusCommit_PropagationDisabled(t *testing.
 		recorder:             mockRecorder,
 		participantAddress:   "test_addr",
 		lastCommitted:        make(map[int64]commitState),
-		observationSubmitted: make(map[int64]bool),
-		consensusSubmitted:   make(map[int64]bool),
+		treeRootSubmitted:  make(map[int64]map[int]bool),
+		consensusSubmitted: make(map[int64]bool),
 		propagationEnabled:   false,
 	}
 
@@ -445,7 +445,7 @@ func TestCommitWorker_StartAndStop(t *testing.T) {
 	mockRecorder := &cosmosclient.MockCosmosMessageClient{}
 	tracker := chainphase.NewChainPhaseTracker()
 
-	worker := NewCommitWorker(store, mockRecorder, tracker, "participant_addr", "test_pubkey", 100*time.Millisecond, false, nil, nil)
+	worker := NewCommitWorker(store, mockRecorder, tracker, "participant_addr", "test_pubkey", 100*time.Millisecond, false, nil, nil, nil)
 
 	// Worker should start
 	assert.NotNil(t, worker)
@@ -752,8 +752,8 @@ func TestCommitWorker_PropagationDisabled_ContinuousCommits(t *testing.T) {
 		recorder:             mockRecorder,
 		participantAddress:   "test_addr",
 		lastCommitted:        make(map[int64]commitState),
-		observationSubmitted: make(map[int64]bool),
-		consensusSubmitted:   make(map[int64]bool),
+		treeRootSubmitted:  make(map[int64]map[int]bool),
+		consensusSubmitted: make(map[int64]bool),
 		propagationEnabled:   false,
 	}
 
@@ -830,8 +830,8 @@ func TestSubmitWeightDistribution_UsesExactDistributionAtCount(t *testing.T) {
 		recorder:             mockRecorder,
 		participantAddress:   "test_addr",
 		lastCommitted:        make(map[int64]commitState),
-		observationSubmitted: make(map[int64]bool),
-		consensusSubmitted:   make(map[int64]bool),
+		treeRootSubmitted:  make(map[int64]map[int]bool),
+		consensusSubmitted: make(map[int64]bool),
 		propagationEnabled:   true,
 	}
 

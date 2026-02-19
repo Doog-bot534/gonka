@@ -48,9 +48,6 @@ func RegisterInterfaces(registry cdctypes.InterfaceRegistry) {
 		&MsgMLNodeWeightDistribution{},
 	)
 	registry.RegisterImplementations((*sdk.Msg)(nil),
-		&MsgSubmitPoCObservation{},
-	)
-	registry.RegisterImplementations((*sdk.Msg)(nil),
 		&MsgSubmitSeed{},
 	)
 	registry.RegisterImplementations((*sdk.Msg)(nil),
@@ -115,6 +112,9 @@ func RegisterInterfaces(registry cdctypes.InterfaceRegistry) {
 	)
 	registry.RegisterImplementations((*sdk.Msg)(nil),
 		&MsgRemoveParticipantsFromAllowList{},
+	)
+	registry.RegisterImplementations((*sdk.Msg)(nil),
+		&MsgTreeRootCommit{},
 	)
 	// this line is used by starport scaffolding # 3
 

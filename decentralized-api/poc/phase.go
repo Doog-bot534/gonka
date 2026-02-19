@@ -80,13 +80,16 @@ func ShouldAcceptStoreCommit(epochState *chainphase.EpochState, pocStageStartHei
 		return event.IsInBatchSubmissionWindow(currentHeight, epochParams)
 	}
 
-	// Regular PoC: check exchange window
-	if epochState.CurrentPhase != types.PoCGeneratePhase &&
-		epochState.CurrentPhase != types.PoCGenerateWindDownPhase {
+	if !epochState.LatestEpoch.IsStartOfPocStage(pocStageStartHeight) {
 		return false
 	}
 
-	if !epochState.LatestEpoch.IsStartOfPocStage(pocStageStartHeight) {
+	if epochState.CurrentPhase == types.PoCCommitPhase {
+		return true
+	}
+
+	if epochState.CurrentPhase != types.PoCGeneratePhase &&
+		epochState.CurrentPhase != types.PoCGenerateWindDownPhase {
 		return false
 	}
 
@@ -100,8 +103,8 @@ func ShouldHaveDistributedWeights(epochState *chainphase.EpochState) bool {
 		return false
 	}
 
-	// Regular PoC: Validation or WindDown phases
-	if epochState.CurrentPhase == types.PoCValidatePhase ||
+	if epochState.CurrentPhase == types.PoCCommitPhase ||
+		epochState.CurrentPhase == types.PoCValidatePhase ||
 		epochState.CurrentPhase == types.PoCValidateWindDownPhase ||
 		epochState.CurrentPhase == types.PoCGenerateWindDownPhase {
 		return true

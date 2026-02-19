@@ -38,10 +38,12 @@ The PoC system operates in distinct stages within epochs. Each epoch represents 
 
 Each epoch contains several distinct stages managed by the EpochContext in `inference-chain/x/inference/types/epoch_context.go`:
 
-1. **PoC Generation Stage**: ML nodes generate proof of compute batches
-2. **PoC Validation Stage**: Validators cross-validate submitted batches  
-3. **PoC Validation End Stage**: Results are computed and new weights determined
-4. **Validator Set Update Stage**: New validators are activated with updated voting power
+1. **PoCGenerate**: ML nodes generate proof of compute artifacts, stored in MMR trees
+2. **PoCGenerateWindDown**: Generation continues; tree roots submit `MsgTreeRootCommit` on-chain during exchange window
+3. **PoCCommit**: Participants query on-chain consensus (from tree root commits) and submit `MsgPoCV2StoreCommit` at the agreed count, followed by weight distribution
+4. **PoCValidate**: Validators cross-validate submitted artifacts using MMR proofs
+5. **PoCValidateWindDown**: Validation continues with wind-down
+6. **Validator Set Update**: New validators are activated with updated voting power
 
 ## Detailed PoC Process
 
@@ -196,6 +198,8 @@ The modified system in `cosmos_changes.md` ensures:
 - `inference-chain/x/inference/module/chainvalidation.go` - PoC validation logic
 - `inference-chain/x/inference/keeper/msg_server_submit_poc_batch.go` - Batch submission handler
 - `inference-chain/x/inference/keeper/msg_server_submit_poc_validation.go` - Validation submission handler
+- `inference-chain/x/inference/keeper/msg_server_tree_root_commit.go` - Tree root commit handler
+- `inference-chain/x/inference/keeper/query_poc_consensus.go` - Consensus query from tree root commits
 
 ### API Node Orchestration  
 - `decentralized-api/internal/poc/node_orchestrator.go` - PoC workflow coordination
