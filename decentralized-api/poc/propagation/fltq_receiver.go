@@ -10,6 +10,7 @@ import (
 	"decentralized-api/logging"
 
 	"github.com/productscience/inference/x/inference/types"
+	"golang.org/x/sync/semaphore"
 )
 
 type FLTQReceiver struct {
@@ -24,7 +25,8 @@ type FLTQReceiver struct {
 	pendingHeaders   map[[4]byte]*BundleHeader
 	lastHeaderTime   map[[4]byte]time.Time
 
-	wg sync.WaitGroup
+	wg  sync.WaitGroup
+	sem *semaphore.Weighted
 }
 
 func NewFLTQReceiver(cache *Cache, cube *FLTQCube, verifier PubKeyProvider, myAddr string, sender FLTQSender) *FLTQReceiver {
@@ -37,21 +39,16 @@ func NewFLTQReceiver(cache *Cache, cube *FLTQCube, verifier PubKeyProvider, myAd
 		processedHeaders: make(map[[4]byte]bool),
 		pendingHeaders:   make(map[[4]byte]*BundleHeader),
 		lastHeaderTime:   make(map[[4]byte]time.Time),
+		sem:              semaphore.NewWeighted(100),
 	}
 }
 
 func (r *FLTQReceiver) OnHeader(h BundleHeader, from string) error {
-	logging.Info("FLTQReceiver: received header", types.PoC,
-		"receiver", r.myAddr, "from", from, "publisher", h.Participant, "pocHeight", h.PocHeight,
-		"count", h.Count, "bundleID", fmt.Sprintf("%x", h.BundleID[:]))
-
 	r.mu.RLock()
 	processed := r.processedHeaders[h.BundleID]
 	r.mu.RUnlock()
 
 	if processed {
-		logging.Debug("FLTQReceiver: duplicate header ignored (already processed)", types.PoC,
-			"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", h.BundleID[:]))
 		return nil
 	}
 
@@ -59,8 +56,6 @@ func (r *FLTQReceiver) OnHeader(h BundleHeader, from string) error {
 		r.mu.Lock()
 		r.processedHeaders[h.BundleID] = true
 		r.mu.Unlock()
-		logging.Debug("FLTQReceiver: duplicate header ignored (already in storage)", types.PoC,
-			"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", h.BundleID[:]))
 		return nil
 	}
 
@@ -88,8 +83,6 @@ func (r *FLTQReceiver) OnHeader(h BundleHeader, from string) error {
 	r.mu.Lock()
 	if r.processedHeaders[h.BundleID] {
 		r.mu.Unlock()
-		logging.Info("FLTQReceiver: duplicate header ignored (race detected)", types.PoC,
-			"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", h.BundleID[:]))
 		return nil
 	}
 
@@ -117,10 +110,6 @@ func (r *FLTQReceiver) OnHeader(h BundleHeader, from string) error {
 	r.lastHeaderTime[h.BundleID] = time.Now()
 	cube := r.cube
 	r.mu.Unlock()
-
-	logging.Info("FLTQReceiver: commit metadata verified and stored", types.PoC,
-		"receiver", r.myAddr, "from", from, "publisher", h.Participant, "pocHeight", h.PocHeight,
-		"bundleID", fmt.Sprintf("%x", h.BundleID[:]))
 
 	r.wg.Add(1)
 	go func() {
@@ -151,21 +140,18 @@ func (r *FLTQReceiver) forwardHeaderToNeighbors(h BundleHeader, cube *FLTQCube, 
 		}
 	}
 
-	logging.Info("FLTQReceiver: forwarding to neighbors", types.PoC,
-		"forwarder", r.myAddr, "publisher", h.Participant,
-		"neighbors", len(neighbors))
-
 	for _, neighborAddr := range neighbors {
 		wg.Add(1)
 		go func(addr string) {
 			defer wg.Done()
-			if err := r.sender.SendHeaderFLTQ(addr, h); err != nil {
-				logging.Warn("FLTQReceiver: failed to forward to neighbor", types.PoC,
-					"forwarder", r.myAddr, "neighbor", addr, "error", err)
-			} else {
-				logging.Debug("FLTQReceiver: forwarded to neighbor", types.PoC,
-					"forwarder", r.myAddr, "neighbor", addr)
+			if err := r.sem.Acquire(context.Background(), 1); err != nil {
+				logging.Warn("FLTQReceiver: failed to acquire semaphore", types.PoC,
+					"forwarder", r.myAddr, "error", err)
+				return
 			}
+			defer r.sem.Release(1)
+
+			_ = r.sender.SendHeaderFLTQ(addr, h)
 		}(neighborAddr)
 	}
 

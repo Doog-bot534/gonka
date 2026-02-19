@@ -32,10 +32,10 @@ func (m *FLTQMockTransport) SendHeaderFLTQ(to string, h BundleHeader) error {
 
 func (m *FLTQMockTransport) SendHeaderFLTQFrom(from string, to string, h BundleHeader) error {
 	m.mu.RLock()
-	receiver := m.receivers[to]
+	receiver, ok := m.receivers[to]
 	m.mu.RUnlock()
 
-	if receiver == nil {
+	if !ok {
 		return fmt.Errorf("receiver not found: %s", to)
 	}
 
