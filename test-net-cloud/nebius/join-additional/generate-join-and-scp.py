@@ -55,7 +55,7 @@ class Node:
         if self.custom_base_dir:
             script_lines.append(f'export TESTNET_BASE_DIR="{self.custom_base_dir}"')
         
-        script_lines.append(f'python3 launch.py --mode join --branch {branch}')
+        script_lines.append(f'python3 launch.py --mode join --branch {branch} --chainid "{self.chain_id}"')
         
         return '\n'.join(script_lines) + '\n'
 
