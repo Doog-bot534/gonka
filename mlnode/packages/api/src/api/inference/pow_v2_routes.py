@@ -189,7 +189,7 @@ async def status() -> dict:
 
 @router.post("/generate")
 async def generate(body: PoCGenerateRequest) -> dict:
-    """Route /generate to a backend, preferring non-generating ones."""
+    """Route /generate to a backend using round-robin."""
     try:
         port = await pick_backend_for_pow_generate()
     except RuntimeError:

@@ -17,6 +17,7 @@ import (
 	"decentralized-api/mlnodeclient"
 	"decentralized-api/poc/propagation"
 
+	"github.com/productscience/inference/api/inference/inference"
 	"github.com/productscience/inference/x/inference/types"
 )
 
@@ -200,17 +201,19 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 			return
 		}
 
-		if len(commitsResp.Commits) == 0 {
-			logging.Info("OffChainValidator: no commits found for stage", types.PoC,
-				"pocStageStartBlockHeight", pocStageStartBlockHeight)
-			return
-		}
+	if len(commitsResp.Commits) == 0 {
+		logging.Info("OffChainValidator: no commits found for stage", types.PoC,
+			"pocStageStartBlockHeight", pocStageStartBlockHeight)
+		return
+	}
 
-		logging.Info("OffChainValidator: found participants with commits", types.PoC,
-			"count", len(commitsResp.Commits))
+	logging.Info("OffChainValidator: found participants with commits", types.PoC,
+		"count", len(commitsResp.Commits))
 
+		// Build work items with participant URLs
 		workItems = make([]participantWork, 0, len(commitsResp.Commits))
 		for _, commit := range commitsResp.Commits {
+			// Get participant's inference URL
 			participantResp, err := queryClient.Participant(context.Background(),
 				&types.QueryGetParticipantRequest{Index: commit.ParticipantAddress})
 			if err != nil {
@@ -219,17 +222,18 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 				continue
 			}
 
-			if participantResp.Participant.InferenceUrl == "" {
-				logging.Warn("OffChainValidator: participant has no URL", types.PoC,
-					"address", commit.ParticipantAddress)
-				continue
-			}
+		if participantResp.Participant.InferenceUrl == "" {
+			logging.Warn("OffChainValidator: participant has no URL", types.PoC,
+				"address", commit.ParticipantAddress)
+			continue
+		}
 
-			if commit.HexPubKey == "" {
-				logging.Warn("OffChainValidator: participant has no public key", types.PoC,
-					"address", commit.ParticipantAddress)
-				continue
-			}
+		// Get participant's public key for ML node (from commit query)
+		if commit.HexPubKey == "" {
+			logging.Warn("OffChainValidator: participant has no public key", types.PoC,
+				"address", commit.ParticipantAddress)
+			continue
+		}
 
 			workItems = append(workItems, participantWork{
 				address:  commit.ParticipantAddress,
@@ -363,6 +367,8 @@ func (v *OffChainValidator) worker(
 				sampleSize,
 			)
 
+			var reportAddr string
+
 			statsMu.Lock()
 			switch result {
 			case validateSuccess:
@@ -371,6 +377,9 @@ func (v *OffChainValidator) worker(
 			case validateFailPermanent:
 				*failCount++
 				*pendingCount--
+				// Report participant as invalid to chain
+				// Uncomment when stabilized
+				// reportAddr = work.address
 			case validateFailRetry:
 				// Re-queue for retry if under max attempts
 				if work.attempt < v.config.MaxRetries-1 {
@@ -390,14 +399,20 @@ func (v *OffChainValidator) worker(
 				} else {
 					*failCount++
 					*pendingCount--
-					logging.Warn("OffChainValidator: max retries exceeded", types.PoC,
+					logging.Warn("OffChainValidator: max retries exceeded, reporting as invalid", types.PoC,
 						"participant", work.address, "attempts", work.attempt+1)
+					// Report participant as invalid to chain. We probably should separate only to report failed network requests.
+					// reportAddr = work.address
 				}
 			}
 
 			// Check if all work is done
 			done := *pendingCount <= 0
 			statsMu.Unlock()
+
+			if reportAddr != "" {
+				v.reportInvalidParticipant(pocHeight, reportAddr)
+			}
 
 			if done {
 				cancel()
@@ -716,4 +731,25 @@ func filterNodesForValidation(nodes []broker.NodeResponse) []broker.NodeResponse
 			"node_id", node.Node.Id, "status", node.State.CurrentStatus.String())
 	}
 	return filtered
+}
+
+// reportInvalidParticipant submits a validation result with ValidatedWeight=-1 (invalid) to chain.
+// This is called when validation fails permanently (e.g., retry exhaustion).
+func (v *OffChainValidator) reportInvalidParticipant(pocHeight int64, participantAddress string) {
+	msg := &inference.MsgSubmitPocValidationsV2{
+		PocStageStartBlockHeight: pocHeight,
+		Validations: []*inference.PoCValidationPayloadV2{
+			{
+				ParticipantAddress: participantAddress,
+				ValidatedWeight:    -1, // Invalid
+			},
+		},
+	}
+	if err := v.recorder.SubmitPocValidationsV2(msg); err != nil {
+		logging.Error("OffChainValidator: failed to report invalid participant", types.PoC,
+			"participant", participantAddress, "error", err)
+	} else {
+		logging.Info("OffChainValidator: reported participant as invalid", types.PoC,
+			"participant", participantAddress)
+	}
 }

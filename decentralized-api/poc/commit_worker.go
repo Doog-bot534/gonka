@@ -50,6 +50,8 @@ type CommitWorker struct {
 	consensusSubmitted   map[int64]bool
 }
 
+// NewCommitWorker creates and starts a new commit worker.
+// The worker runs until Close() is called.
 func NewCommitWorker(
 	store *artifacts.ManagedArtifactStore,
 	recorder cosmosclient.CosmosMessageClient,
@@ -78,6 +80,7 @@ func NewCommitWorker(
 		consensusSubmitted:   make(map[int64]bool),
 	}
 
+	// Start flush - always on (same interval as commits)
 	store.StartPeriodicFlush(interval)
 
 	go w.run()
@@ -85,6 +88,7 @@ func NewCommitWorker(
 	return w
 }
 
+// Close stops the worker and waits for it to finish.
 func (w *CommitWorker) Close() {
 	close(w.stop)
 	<-w.done
@@ -170,14 +174,17 @@ func (w *CommitWorker) maybePublishHeaders(pocHeight int64) {
 
 	store, err := w.store.GetStore(pocHeight)
 	if err != nil || store == nil {
+		logging.Debug("CommitWorker: no store for height", types.PoC, "pocHeight", pocHeight)
 		return
 	}
 
 	count, rootHash := store.GetFlushedRoot()
 	if count == 0 || rootHash == nil {
+		logging.Debug("CommitWorker: no flushed data", types.PoC, "pocHeight", pocHeight, "count", count)
 		return
 	}
 
+	// Skip if unchanged since last commit
 	last := w.lastCommitted[pocHeight]
 	if last.count == count && bytes.Equal(last.rootHash, rootHash) {
 		return

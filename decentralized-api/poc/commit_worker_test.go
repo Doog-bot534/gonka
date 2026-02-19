@@ -120,6 +120,7 @@ func TestCommitWorker_GetPocStageHeight_ConfirmationPoC(t *testing.T) {
 }
 
 func TestCommitWorker_MaybeSubmitConsensusCommit_SkipsUnchanged(t *testing.T) {
+	// Create temp dir for artifact store
 	tmpDir, err := os.MkdirTemp("", "commit_worker_test")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
@@ -141,6 +142,7 @@ func TestCommitWorker_MaybeSubmitConsensusCommit_SkipsUnchanged(t *testing.T) {
 
 	pocHeight := int64(100)
 
+	// Get or create store and add an artifact
 	artifactStore, err := store.GetOrCreateStore(pocHeight)
 	assert.NoError(t, err)
 
@@ -166,14 +168,16 @@ func TestCommitWorker_MaybeSubmitConsensusCommit_SkipsUnchanged(t *testing.T) {
 			},
 		}, nil,
 	)
+	// First commit should submit
 	mockRecorder.On("NewInferenceQueryClient").Return(mockQueryClient)
 	mockRecorder.On("SubmitPoCV2StoreCommit", mock.AnythingOfType("*inference.MsgPoCV2StoreCommit")).Return(nil).Once()
 
 	worker.maybeSubmitConsensusCommit(pocHeight)
 	mockRecorder.AssertExpectations(t)
 
+	// Second commit with same state should NOT submit
 	worker.maybeSubmitConsensusCommit(pocHeight)
-	mockRecorder.AssertExpectations(t)
+	mockRecorder.AssertExpectations(t) // No additional calls expected
 }
 
 func TestCommitWorker_StartAndStop(t *testing.T) {
