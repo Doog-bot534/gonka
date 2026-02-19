@@ -25,8 +25,9 @@ type FLTQReceiver struct {
 	pendingHeaders   map[[4]byte]*BundleHeader
 	lastHeaderTime   map[[4]byte]time.Time
 
-	wg  sync.WaitGroup
-	sem *semaphore.Weighted
+	wg      sync.WaitGroup
+	sem     *semaphore.Weighted
+	diskSem *semaphore.Weighted
 }
 
 func NewFLTQReceiver(cache *Cache, cube *FLTQCube, verifier PubKeyProvider, myAddr string, sender FLTQSender) *FLTQReceiver {
@@ -40,6 +41,7 @@ func NewFLTQReceiver(cache *Cache, cube *FLTQCube, verifier PubKeyProvider, myAd
 		pendingHeaders:   make(map[[4]byte]*BundleHeader),
 		lastHeaderTime:   make(map[[4]byte]time.Time),
 		sem:              semaphore.NewWeighted(100),
+		diskSem:          semaphore.NewWeighted(50),
 	}
 }
 
@@ -85,17 +87,34 @@ func (r *FLTQReceiver) OnHeader(h BundleHeader, from string) error {
 		r.mu.Unlock()
 		return nil
 	}
-
-	if err := r.cache.StoreHeader(context.Background(), h); err != nil {
-		r.mu.Unlock()
-		logging.Warn("FLTQReceiver: failed to store header", types.PoC,
-			"bundleID", fmt.Sprintf("%x", h.BundleID[:]), "error", err)
-		return fmt.Errorf("store header: %w", err)
-	}
+	r.processedHeaders[h.BundleID] = true
+	r.pendingHeaders[h.BundleID] = &h
+	r.lastHeaderTime[h.BundleID] = time.Now()
+	cube := r.cube
+	r.mu.Unlock()
 
 	arrivalTime := time.Now().UnixMilli()
 	arrivalCount := h.Count
+
+	r.wg.Add(2)
 	go func() {
+		defer r.wg.Done()
+		if err := r.diskSem.Acquire(context.Background(), 1); err != nil {
+			return
+		}
+		defer r.diskSem.Release(1)
+		if err := r.cache.StoreHeader(context.Background(), h); err != nil {
+			logging.Warn("FLTQReceiver: failed to store header", types.PoC,
+				"bundleID", fmt.Sprintf("%x", h.BundleID[:]), "error", err)
+		}
+	}()
+
+	go func() {
+		defer r.wg.Done()
+		if err := r.diskSem.Acquire(context.Background(), 1); err != nil {
+			return
+		}
+		defer r.diskSem.Release(1)
 		if err := r.cache.StoreFirstArrival(h.Participant, h.PocHeight, arrivalTime, arrivalCount); err != nil {
 			logging.Debug("FLTQReceiver: first arrival already recorded or error", types.PoC,
 				"participant", h.Participant, "pocHeight", h.PocHeight, "error", err)
@@ -104,12 +123,6 @@ func (r *FLTQReceiver) OnHeader(h BundleHeader, from string) error {
 				"participant", h.Participant, "pocHeight", h.PocHeight, "arrivalTime", arrivalTime, "count", arrivalCount)
 		}
 	}()
-
-	r.processedHeaders[h.BundleID] = true
-	r.pendingHeaders[h.BundleID] = &h
-	r.lastHeaderTime[h.BundleID] = time.Now()
-	cube := r.cube
-	r.mu.Unlock()
 
 	r.wg.Add(1)
 	go func() {
