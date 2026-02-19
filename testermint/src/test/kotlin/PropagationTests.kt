@@ -137,8 +137,8 @@ class PropagationTests : TestermintTest() {
             .describedAs("Join2 should have received bundles from other participants")
 
         logSection("✅ Test Complete - Natural propagation verified in 3-node network")
-        Logger.info("All participants successfully propagated and received bundles and proofs automatically")
-        Logger.info("No manual header/proof sending - bundler and tree manager handled propagation")
+        Logger.info("All participants successfully propagated and received bundles automatically")
+        Logger.info("No manual header sending - bundler and tree manager handled propagation")
     }
 
     @Test
