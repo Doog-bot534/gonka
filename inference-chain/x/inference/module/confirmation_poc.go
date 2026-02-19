@@ -18,6 +18,8 @@ import (
 
 const safetyWindow = 50
 
+var pocDeviationCoeff = decimal.New(909, -3)
+
 // handleConfirmationPoC manages confirmation PoC trigger decisions and phase transitions
 func (am AppModule) handleConfirmationPoC(ctx context.Context, blockHeight int64) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
@@ -106,6 +108,11 @@ func (am AppModule) checkConfirmationPoCTrigger(
 	upgradeProtectionWindow := confirmationParams.UpgradeProtectionWindow
 	if upgradeProtectionWindow <= 0 {
 		upgradeProtectionWindow = 500 // Default to 500 blocks if not set
+	}
+	// Check if current epoch is a grace epoch with extended protection window
+	if graceParams, ok := am.keeper.GetPunishmentGraceEpoch(ctx, epochContext.EpochIndex); ok && graceParams.UpgradeProtectionWindow > 0 {
+		upgradeProtectionWindow = graceParams.UpgradeProtectionWindow
+		am.LogDebug("using grace UpgradeProtectionWindow", types.PoC, "epoch", epochContext.EpochIndex, "window", upgradeProtectionWindow)
 	}
 	hasUpgrade, reason, err := am.keeper.HasUpgradeInWindow(ctx, blockHeight, upgradeProtectionWindow)
 	if err != nil {
@@ -625,7 +632,10 @@ func (am AppModule) checkConfirmationSlashing(
 		if notPreservedTotalWeightValue == 0 {
 			participant.CurrentEpochStats.ConfirmationPoCRatio = types.DecimalFromDecimal(decimal.NewFromInt(1))
 		} else {
-			participant.CurrentEpochStats.ConfirmationPoCRatio = types.DecimalFromDecimal(decimal.NewFromInt(confirmationWeight).Div(decimal.NewFromInt(notPreservedTotalWeightValue)))
+			ratio := decimal.NewFromInt(confirmationWeight).Div(decimal.NewFromInt(notPreservedTotalWeightValue))
+			// Use pocDeviationCoeff to avoid decreasing rewards for minor deviations
+			ratio = decimal.Min(ratio.Div(pocDeviationCoeff), decimal.NewFromInt(1))
+			participant.CurrentEpochStats.ConfirmationPoCRatio = types.DecimalFromDecimal(ratio)
 		}
 		am.keeper.SetParticipant(ctx, participant)
 	}
