@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -329,15 +330,17 @@ func TestFLTQPropagationBandwidth(t *testing.T) {
 		pubKeyProvider.RegisterKey(addr, pubKey)
 	}
 
-	pool, cleanup := setupPropagationPostgres(t)
-	defer cleanup()
+	tempDir, err := os.MkdirTemp("", "fltq-bandwidth-")
+	require.NoError(t, err)
+	defer os.RemoveAll(tempDir)
 
 	caches := make(map[string]*Cache)
 	receivers := make(map[string]*FLTQReceiver)
 	bundlers := make(map[string]*FLTQBundler)
 
 	for _, addr := range participants {
-		storage, err := NewPostgresBundleStorage(context.Background(), pool, addr)
+		storageDir := filepath.Join(tempDir, addr, "bundles_fltq")
+		storage, err := NewFileBundleStorage(storageDir)
 		require.NoError(t, err)
 		cache := NewCache(storage)
 		caches[addr] = cache
