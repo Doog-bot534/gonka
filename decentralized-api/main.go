@@ -277,7 +277,7 @@ func main() {
 
 	if propConfig.Enabled && fltqReceiver != nil && fltqBundler != nil {
 		epochGroupDataCache := internal.NewEpochGroupDataCache(recorder)
-		listener.SetPropagationComponents(fltqReceiver, fltqBundler, propagationTransport, recorder.NewInferenceQueryClient(), epochGroupDataCache)
+		listener.SetPropagationComponents(fltqReceiver, fltqBundler, propagationTransport, recorder.NewInferenceQueryClient(), epochGroupDataCache, propagationCache)
 		logging.Info("FLTQ propagation components wired to event listener", types.PoC)
 	}
 

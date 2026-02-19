@@ -28,6 +28,8 @@ type BundleStorage interface {
 	GetFirstArrival(ctx context.Context, participant string, pocHeight int64) (ArrivalInfo, error)
 	GetAllFirstArrivals(ctx context.Context, pocHeight int64) (map[string]ArrivalInfo, error)
 
+	CleanupOldHeights(ctx context.Context, retainCount int) error
+
 	Close() error
 }
 

@@ -153,6 +153,27 @@ func (h *HybridBundleStorage) GetAllFirstArrivals(ctx context.Context, pocHeight
 	return h.file.GetAllFirstArrivals(ctx, pocHeight)
 }
 
+func (h *HybridBundleStorage) CleanupOldHeights(ctx context.Context, retainCount int) error {
+	var pgErr, fileErr error
+
+	if pg := h.currentPg(); pg != nil {
+		pgErr = pg.CleanupOldHeights(ctx, retainCount)
+		if pgErr != nil {
+			logging.Warn("PostgreSQL cleanup failed", types.PoC, "error", pgErr)
+		}
+	}
+
+	fileErr = h.file.CleanupOldHeights(ctx, retainCount)
+	if fileErr != nil {
+		logging.Warn("File cleanup failed", types.PoC, "error", fileErr)
+	}
+
+	if pgErr != nil {
+		return pgErr
+	}
+	return fileErr
+}
+
 func (h *HybridBundleStorage) Close() error {
 	var pgErr, fileErr error
 

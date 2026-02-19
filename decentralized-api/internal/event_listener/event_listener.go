@@ -114,9 +114,10 @@ func (el *EventListener) SetPropagationComponents(
 	transport ParticipantURLSetter,
 	participantQuerier ParticipantQuerier,
 	epochCache *internal.EpochGroupDataCache,
+	cache *propagation.Cache,
 ) {
 	if el.dispatcher != nil {
-		el.dispatcher.SetPropagationComponents(fltqReceiver, fltqBundler, transport, participantQuerier, epochCache)
+		el.dispatcher.SetPropagationComponents(fltqReceiver, fltqBundler, transport, participantQuerier, epochCache, cache)
 	}
 }
 

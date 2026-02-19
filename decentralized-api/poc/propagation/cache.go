@@ -42,3 +42,7 @@ func (c *Cache) GetFirstArrival(participant string, pocHeight int64) (ArrivalInf
 func (c *Cache) GetAllFirstArrivals(pocHeight int64) (map[string]ArrivalInfo, error) {
 	return c.storage.GetAllFirstArrivals(context.Background(), pocHeight)
 }
+
+func (c *Cache) CleanupOldHeights(ctx context.Context, retainCount int) error {
+	return c.storage.CleanupOldHeights(ctx, retainCount)
+}

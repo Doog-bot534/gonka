@@ -83,6 +83,7 @@ type OnNewBlockDispatcher struct {
 	fltqBundler          *propagation.FLTQBundler
 	propagationTransport ParticipantURLSetter
 	participantQuerier   ParticipantQuerier
+	propagationCache     *propagation.Cache
 }
 
 // StatusResponse matches the structure expected by getStatus function
@@ -180,12 +181,14 @@ func (d *OnNewBlockDispatcher) SetPropagationComponents(
 	transport ParticipantURLSetter,
 	participantQuerier ParticipantQuerier,
 	epochCache *internal.EpochGroupDataCache,
+	cache *propagation.Cache,
 ) {
 	d.fltqReceiver = fltqReceiver
 	d.fltqBundler = fltqBundler
 	d.propagationTransport = transport
 	d.participantQuerier = participantQuerier
 	d.epochGroupDataCache = epochCache
+	d.propagationCache = cache
 }
 
 // ProcessNewBlock is the main entry point for processing new block events
@@ -419,6 +422,16 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 						d.populateParticipantURLsFromCube(cube)
 					}
 				}
+			}
+		}
+
+		if d.propagationCache != nil {
+			ctx := context.Background()
+			const retainCount = 0
+			if err := d.propagationCache.CleanupOldHeights(ctx, retainCount); err != nil {
+				logging.Warn("Failed to cleanup old propagation data", types.PoC, "error", err)
+			} else {
+				logging.Info("Cleaned up old propagation data on epoch start", types.PoC, "retainCount", retainCount)
 			}
 		}
 

@@ -246,6 +246,74 @@ func (s *PostgresBundleStorage) GetAllFirstArrivals(ctx context.Context, pocHeig
 	return result, nil
 }
 
+func (s *PostgresBundleStorage) CleanupOldHeights(ctx context.Context, retainCount int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	heights := make(map[int64]struct{})
+	for _, header := range s.bundles {
+		heights[header.PocHeight] = struct{}{}
+	}
+	for key := range s.arrivals {
+		heights[key.PocHeight] = struct{}{}
+	}
+
+	heightList := make([]int64, 0, len(heights))
+	for h := range heights {
+		heightList = append(heightList, h)
+	}
+
+	if len(heightList) <= retainCount {
+		return nil
+	}
+
+	for i := 0; i < len(heightList)-1; i++ {
+		for j := i + 1; j < len(heightList); j++ {
+			if heightList[i] > heightList[j] {
+				heightList[i], heightList[j] = heightList[j], heightList[i]
+			}
+		}
+	}
+
+	toPrune := heightList[:len(heightList)-retainCount]
+
+	for _, height := range toPrune {
+		_, err := s.pool.Exec(ctx, `
+			DELETE FROM poc_bundle_headers
+			WHERE instance = $1 AND poc_height = $2
+		`, s.instance, height)
+		if err != nil {
+			logging.Warn("Failed to delete bundle headers from PostgreSQL", types.PoC,
+				"pocHeight", height, "error", err)
+		}
+
+		_, err = s.pool.Exec(ctx, `
+			DELETE FROM poc_first_arrivals
+			WHERE instance = $1 AND poc_height = $2
+		`, s.instance, height)
+		if err != nil {
+			logging.Warn("Failed to delete first arrivals from PostgreSQL", types.PoC,
+				"pocHeight", height, "error", err)
+		}
+
+		for bundleID, header := range s.bundles {
+			if header.PocHeight == height {
+				delete(s.bundles, bundleID)
+			}
+		}
+
+		for key := range s.arrivals {
+			if key.PocHeight == height {
+				delete(s.arrivals, key)
+			}
+		}
+
+		logging.Info("Cleaned up propagation data for PoC height", types.PoC, "pocHeight", height)
+	}
+
+	return nil
+}
+
 func (s *PostgresBundleStorage) Close() error {
 	return nil
 }

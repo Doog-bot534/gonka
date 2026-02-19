@@ -277,6 +277,88 @@ func (s *FileBundleStorage) GetAllFirstArrivals(ctx context.Context, pocHeight i
 	return result, nil
 }
 
+func (s *FileBundleStorage) CleanupOldHeights(ctx context.Context, retainCount int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	heights := make(map[int64]struct{})
+	for _, header := range s.bundles {
+		heights[header.PocHeight] = struct{}{}
+	}
+	for key := range s.arrivals {
+		heights[key.PocHeight] = struct{}{}
+	}
+
+	heightList := make([]int64, 0, len(heights))
+	for h := range heights {
+		heightList = append(heightList, h)
+	}
+
+	if len(heightList) <= retainCount {
+		return nil
+	}
+
+	for i := 0; i < len(heightList)-1; i++ {
+		for j := i + 1; j < len(heightList); j++ {
+			if heightList[i] > heightList[j] {
+				heightList[i], heightList[j] = heightList[j], heightList[i]
+			}
+		}
+	}
+
+	toPrune := heightList[:len(heightList)-retainCount]
+
+	for _, height := range toPrune {
+		for bundleID, header := range s.bundles {
+			if header.PocHeight == height {
+				filePath := s.bundleFilePath(bundleID)
+				if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+					logging.Warn("Failed to remove bundle file", types.PoC,
+						"bundleID", bundleID, "pocHeight", height, "error", err)
+				}
+				delete(s.bundles, bundleID)
+			}
+		}
+
+		for key := range s.arrivals {
+			if key.PocHeight == height {
+				delete(s.arrivals, key)
+			}
+		}
+
+		logging.Info("Cleaned up propagation data for PoC height", types.PoC, "pocHeight", height)
+	}
+
+	entries := make([]firstArrivalEntry, 0, len(s.arrivals))
+	for k, info := range s.arrivals {
+		entries = append(entries, firstArrivalEntry{
+			Participant: k.Participant,
+			PocHeight:   k.PocHeight,
+			ArrivalTime: info.Time,
+			Count:       info.Count,
+		})
+	}
+
+	data, err := json.Marshal(entries)
+	if err != nil {
+		return fmt.Errorf("marshal arrivals: %w", err)
+	}
+
+	filePath := s.arrivalsFilePath()
+	tempPath := filePath + ".tmp"
+
+	if err := os.WriteFile(tempPath, data, 0644); err != nil {
+		return fmt.Errorf("write temp file: %w", err)
+	}
+
+	if err := os.Rename(tempPath, filePath); err != nil {
+		os.Remove(tempPath)
+		return fmt.Errorf("rename to target: %w", err)
+	}
+
+	return nil
+}
+
 func (s *FileBundleStorage) Close() error {
 	return nil
 }
