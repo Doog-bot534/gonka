@@ -280,7 +280,11 @@ func TestFLTQSmallNetworks(t *testing.T) {
 			}
 
 			blockHash := sha256.Sum256([]byte(fmt.Sprintf("test-%s", tt.name)))
-			cube := BuildFLTQWithWeights(participants, blockHash[:])
+			config := FLTQConfig{
+				NumToSplitPastryDigit: 2,
+				PastryEntriesPerLevel: 0,
+			}
+			cube := BuildFLTQWithConfig(participants, blockHash[:], config)
 
 			require.Equal(t, tt.expectedDim, cube.Dimensions)
 			require.Equal(t, tt.count, len(cube.Nodes))
@@ -648,9 +652,9 @@ func TestPastryDegree(t *testing.T) {
 	t.Logf("  Max degree: %d", maxDegree)
 	t.Logf("  Avg degree: %.2f", avgDegree)
 
-	require.LessOrEqual(t, maxDegree, 75, "max degree should be <= 75")
-	require.GreaterOrEqual(t, avgDegree, 40.0, "avg degree should be >= 40")
-	require.LessOrEqual(t, avgDegree, 60.0, "avg degree should be <= 60")
+	require.LessOrEqual(t, maxDegree, 50, "max degree should be <= 50")
+	require.GreaterOrEqual(t, avgDegree, 20.0, "avg degree should be >= 20")
+	require.LessOrEqual(t, avgDegree, 30.0, "avg degree should be <= 30")
 }
 
 func TestPastryDiameter(t *testing.T) {

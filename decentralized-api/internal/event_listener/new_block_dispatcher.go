@@ -78,9 +78,8 @@ type OnNewBlockDispatcher struct {
 	configManager        *apiconfig.ConfigManager
 	validator            *validation.InferenceValidator
 	epochGroupDataCache  *internal.EpochGroupDataCache
-	treeManager          *propagation.TreeManager
-	propagationReceiver  *propagation.Receiver
-	propagationBundler   *propagation.Bundler
+	fltqReceiver         *propagation.FLTQReceiver
+	fltqBundler          *propagation.FLTQBundler
 	propagationTransport ParticipantURLSetter
 	participantQuerier   ParticipantQuerier
 }
@@ -175,17 +174,17 @@ func NewOnNewBlockDispatcherFromCosmosClient(
 }
 
 func (d *OnNewBlockDispatcher) SetPropagationComponents(
-	treeManager *propagation.TreeManager,
-	receiver *propagation.Receiver,
-	bundler *propagation.Bundler,
+	fltqReceiver *propagation.FLTQReceiver,
+	fltqBundler *propagation.FLTQBundler,
 	transport ParticipantURLSetter,
 	participantQuerier ParticipantQuerier,
+	epochCache *internal.EpochGroupDataCache,
 ) {
-	d.treeManager = treeManager
-	d.propagationReceiver = receiver
-	d.propagationBundler = bundler
+	d.fltqReceiver = fltqReceiver
+	d.fltqBundler = fltqBundler
 	d.propagationTransport = transport
 	d.participantQuerier = participantQuerier
+	d.epochGroupDataCache = epochCache
 }
 
 // ProcessNewBlock is the main entry point for processing new block events
@@ -360,29 +359,47 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 		logging.Info("DapiStage:IsStartOfPocStage: sending StartPoCEvent to the PoC orchestrator", types.Stages, "blockHeight", blockHeight, "blockHash", blockHash)
 		d.randomSeedManager.GenerateSeedInfo(epochContext.EpochIndex)
 
-		if d.treeManager != nil && d.propagationReceiver != nil && d.propagationBundler != nil {
-			logging.Info("Rebuilding propagation trees with weights from previous epoch", types.PoC,
+		if d.fltqReceiver != nil && d.fltqBundler != nil && d.epochGroupDataCache != nil {
+			logging.Info("Rebuilding FLTQ cube with weights from previous epoch", types.PoC,
 				"epoch", epochContext.EpochIndex, "blockHeight", blockHeight)
 
 			blockHashBytes, err := hex.DecodeString(blockHash)
 			if err != nil {
-				logging.Error("Failed to decode block hash for tree building", types.PoC,
+				logging.Error("Failed to decode block hash for FLTQ cube building", types.PoC,
 					"blockHash", blockHash, "error", err)
 			} else {
 				ctx := context.Background()
-				trees, err := d.treeManager.RebuildTreesForEpoch(ctx, epochContext.EpochIndex, blockHashBytes)
+				prevEpoch := epochContext.EpochIndex - 1
+				if prevEpoch < 0 {
+					prevEpoch = 0
+				}
+
+				epochData, err := d.epochGroupDataCache.GetEpochGroupData(ctx, prevEpoch)
 				if err != nil {
-					logging.Error("Failed to rebuild propagation trees", types.PoC,
-						"epoch", epochContext.EpochIndex, "error", err)
-				} else if len(trees) > 0 {
-					d.propagationReceiver.ClearProcessedState()
-					d.propagationReceiver.SetTrees(trees)
-					d.propagationBundler.SetTrees(trees)
-					logging.Info("Propagation trees updated successfully", types.PoC,
-						"epoch", epochContext.EpochIndex, "treeCount", len(trees))
+					logging.Error("Failed to get epoch group data for FLTQ", types.PoC,
+						"epoch", prevEpoch, "error", err)
+				} else if epochData != nil && len(epochData.ValidationWeights) > 0 {
+					// Convert ValidationWeights to WeightedParticipants
+					participants := make([]propagation.WeightedParticipant, 0, len(epochData.ValidationWeights))
+					for _, vw := range epochData.ValidationWeights {
+						participants = append(participants, propagation.WeightedParticipant{
+							Address: vw.MemberAddress,
+							Weight:  uint64(vw.Weight),
+						})
+					}
+
+					cube := propagation.BuildFLTQWithWeights(participants, blockHashBytes)
+
+					// Clear processed state from previous epoch
+					d.fltqReceiver.ClearProcessedState()
+
+					d.fltqReceiver.SetFLTQCube(cube)
+					d.fltqBundler.SetFLTQCube(cube)
+					logging.Info("FLTQ cube updated successfully", types.PoC,
+						"epoch", epochContext.EpochIndex, "participants", len(cube.Nodes), "dimensions", cube.Dimensions)
 
 					if d.propagationTransport != nil && d.participantQuerier != nil {
-						d.populateParticipantURLs(trees)
+						d.populateParticipantURLsFromCube(cube)
 					}
 				}
 			}
@@ -544,17 +561,10 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 	}
 }
 
-func (d *OnNewBlockDispatcher) populateParticipantURLs(trees []*propagation.Tree) {
-	seen := make(map[string]struct{})
-	for _, tree := range trees {
-		for _, addr := range tree.Shuffled {
-			seen[addr] = struct{}{}
-		}
-	}
-
-	urls := make(map[string]string, len(seen))
+func (d *OnNewBlockDispatcher) populateParticipantURLsFromCube(cube *propagation.FLTQCube) {
+	urls := make(map[string]string, len(cube.Nodes))
 	ctx := context.Background()
-	for addr := range seen {
+	for addr := range cube.Nodes {
 		resp, err := d.participantQuerier.Participant(ctx, &types.QueryGetParticipantRequest{Index: addr})
 		if err != nil {
 			logging.Debug("Failed to get participant URL", types.PoC, "address", addr, "error", err)
@@ -567,7 +577,7 @@ func (d *OnNewBlockDispatcher) populateParticipantURLs(trees []*propagation.Tree
 
 	if len(urls) > 0 {
 		d.propagationTransport.SetParticipantURLs(urls)
-		logging.Info("Propagation participant URLs populated", types.PoC, "count", len(urls))
+		logging.Info("Propagation participant URLs populated from FLTQ cube", types.PoC, "count", len(urls))
 	}
 }
 

@@ -6,8 +6,7 @@ import (
 )
 
 type FLTQReceiverHandler interface {
-	OnHeaderFLTQ(h BundleHeader, from string) error
-	OnProofsFLTQ(bundleID [32]byte, proofs []ProofItem, from string) error
+	OnHeader(h BundleHeader, from string) error
 }
 
 type FLTQMockTransport struct {
@@ -40,19 +39,7 @@ func (m *FLTQMockTransport) SendHeaderFLTQFrom(from string, to string, h BundleH
 		return fmt.Errorf("receiver not found: %s", to)
 	}
 
-	return receiver.OnHeaderFLTQ(h, from)
-}
-
-func (m *FLTQMockTransport) SendProofsFLTQFrom(from string, to string, bundleID [32]byte, proofs []ProofItem) error {
-	m.mu.RLock()
-	receiver := m.receivers[to]
-	m.mu.RUnlock()
-
-	if receiver == nil {
-		return fmt.Errorf("receiver not found: %s", to)
-	}
-
-	return receiver.OnProofsFLTQ(bundleID, proofs, from)
+	return receiver.OnHeader(h, from)
 }
 
 type FLTQPerParticipantSender struct {
@@ -69,8 +56,4 @@ func (m *FLTQMockTransport) NewSenderFor(addr string) FLTQSender {
 
 func (p *FLTQPerParticipantSender) SendHeaderFLTQ(to string, h BundleHeader) error {
 	return p.transport.SendHeaderFLTQFrom(p.fromAddr, to, h)
-}
-
-func (p *FLTQPerParticipantSender) SendProofsFLTQ(to string, bundleID [32]byte, proofs []ProofItem) error {
-	return p.transport.SendProofsFLTQFrom(p.fromAddr, to, bundleID, proofs)
 }

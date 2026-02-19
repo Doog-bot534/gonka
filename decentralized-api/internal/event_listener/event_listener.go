@@ -6,6 +6,7 @@ import (
 	"decentralized-api/broker"
 	"decentralized-api/chainphase"
 	"decentralized-api/cosmosclient"
+	"decentralized-api/internal"
 	"decentralized-api/internal/bls"
 	"decentralized-api/internal/event_listener/chainevents"
 	"decentralized-api/internal/startup"
@@ -108,14 +109,14 @@ func NewEventListener(
 }
 
 func (el *EventListener) SetPropagationComponents(
-	treeManager *propagation.TreeManager,
-	receiver *propagation.Receiver,
-	bundler *propagation.Bundler,
+	fltqReceiver *propagation.FLTQReceiver,
+	fltqBundler *propagation.FLTQBundler,
 	transport ParticipantURLSetter,
 	participantQuerier ParticipantQuerier,
+	epochCache *internal.EpochGroupDataCache,
 ) {
 	if el.dispatcher != nil {
-		el.dispatcher.SetPropagationComponents(treeManager, receiver, bundler, transport, participantQuerier)
+		el.dispatcher.SetPropagationComponents(fltqReceiver, fltqBundler, transport, participantQuerier, epochCache)
 	}
 }
 

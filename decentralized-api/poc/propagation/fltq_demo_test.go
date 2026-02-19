@@ -30,19 +30,10 @@ func newFLTQLoggingSender(from string, dst FLTQSender, records *[]string) *fltqL
 func (l *fltqLoggingSender) SendHeaderFLTQ(to string, h BundleHeader) error {
 	l.mu.Lock()
 	if l.records != nil {
-		*l.records = append(*l.records, fmt.Sprintf("header: %s -> %s bundle=%x", l.from, to, h.BundleID[:8]))
+		*l.records = append(*l.records, fmt.Sprintf("header: %s -> %s bundle=%x", l.from, to, h.BundleID[:]))
 	}
 	l.mu.Unlock()
 	return l.dst.SendHeaderFLTQ(to, h)
-}
-
-func (l *fltqLoggingSender) SendProofsFLTQ(to string, bundleID [32]byte, proofs []ProofItem) error {
-	l.mu.Lock()
-	if l.records != nil {
-		*l.records = append(*l.records, fmt.Sprintf("proofs: %s -> %s bundle=%x count=%d", l.from, to, bundleID[:8], len(proofs)))
-	}
-	l.mu.Unlock()
-	return l.dst.SendProofsFLTQ(to, bundleID, proofs)
 }
 
 func testFLTQPropagationDemo(t *testing.T, numParticipants int, storageFactory propagationStorageFactory) {
@@ -95,7 +86,7 @@ func testFLTQPropagationDemo(t *testing.T, numParticipants int, storageFactory p
 
 		perParticipantSender := transport.NewSenderFor(addr)
 		sender := newFLTQLoggingSender(addr, perParticipantSender, &sendLogs)
-		receiver := NewFLTQReceiver(cache, []*FLTQCube{cube}, pubKeyProvider, addr, sender)
+		receiver := NewFLTQReceiver(cache, cube, pubKeyProvider, addr, sender)
 		receivers[addr] = receiver
 		transport.RegisterReceiver(addr, receiver)
 
@@ -122,7 +113,7 @@ func testFLTQPropagationDemo(t *testing.T, numParticipants int, storageFactory p
 		}
 
 		signer := &testED25519Signer{key: privKeys[addr]}
-		bundler := NewFLTQBundler(signer, cache, []*FLTQCube{cube}, sender, addr)
+		bundler := NewFLTQBundler(signer, cache, cube, sender, addr)
 		bundlers[addr] = bundler
 	}
 
@@ -130,7 +121,7 @@ func testFLTQPropagationDemo(t *testing.T, numParticipants int, storageFactory p
 
 	senderCount := stores[sender].Count()
 	senderRoot := stores[sender].GetRoot()
-	if err := bundlers[sender].Publish(pocHeight, sender, pubKeys[sender], senderCount, senderRoot); err != nil {
+	if err := bundlers[sender].Publish(pocHeight, sender, senderCount, senderRoot); err != nil {
 		t.Fatalf("failed to publish: %v", err)
 	}
 
@@ -197,7 +188,6 @@ func testFLTQPropagationDemo(t *testing.T, numParticipants int, storageFactory p
 	t.Logf("- Max connections per participant: %d", maxConns)
 	t.Logf("- Avg connections per participant: %.1f", avgConns)
 	t.Logf("- Total messages sent: %d", len(sendLogs))
-	t.Logf("- Expected max connections per participant: %d (n+1)", cube.Dimensions+1)
 
 	if receivedCount != numParticipants-1 {
 		t.Errorf("Not all participants received the bundle: got %d, want %d", receivedCount, numParticipants-1)
@@ -254,7 +244,11 @@ func TestFLTQTopology(t *testing.T) {
 	}
 
 	blockHash := sha256.Sum256([]byte("test-block"))
-	cube := BuildFLTQWithWeights(participants, blockHash[:])
+	config := FLTQConfig{
+		NumToSplitPastryDigit: 2,
+		PastryEntriesPerLevel: 0,
+	}
+	cube := BuildFLTQWithConfig(participants, blockHash[:], config)
 
 	require.Equal(t, 7, cube.Dimensions)
 	require.Equal(t, 128, cube.Size)
@@ -305,7 +299,6 @@ func TestFLTQTopology(t *testing.T) {
 	t.Logf("- Min neighbors: %d", minNeighbors)
 	t.Logf("- Max neighbors: %d", maxNeighbors)
 	t.Logf("- Avg neighbors: %.2f", avgNeighbors)
-	t.Logf("- Expected degree (n+1): %d", cube.Dimensions+1)
 }
 
 func TestFLTQSmallTopology(t *testing.T) {

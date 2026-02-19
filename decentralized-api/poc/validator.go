@@ -3,7 +3,6 @@ package poc
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -16,7 +15,6 @@ import (
 	"decentralized-api/cosmosclient"
 	"decentralized-api/logging"
 	"decentralized-api/mlnodeclient"
-	"decentralized-api/poc/artifacts"
 	"decentralized-api/poc/propagation"
 
 	"github.com/productscience/inference/x/inference/types"
@@ -174,7 +172,7 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 					continue
 				}
 
-				if header.PubKey == "" {
+				if participantResp.Participant.WorkerPublicKey == "" {
 					logging.Warn("OffChainValidator: participant has no public key", types.PoC,
 						"address", header.Participant)
 					continue
@@ -183,9 +181,9 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 				workItems = append(workItems, participantWork{
 					address:  header.Participant,
 					url:      participantResp.Participant.InferenceUrl,
-					pubKey:   header.PubKey,
+					pubKey:   participantResp.Participant.WorkerPublicKey,
 					count:    header.Count,
-					rootHash: header.RootHash,
+					rootHash: header.RootHash[:],
 				})
 			}
 		}
@@ -433,57 +431,20 @@ func (v *OffChainValidator) validateParticipant(
 	// Sample leaf indices using fresh hash (anti-cheat: prevents validators from predicting sample)
 	leafIndices := sampleLeafIndices(v.pubKey, samplingBlockHash, pocHeight, work.count, sampleSize)
 
-	var verified []VerifiedArtifact
-	var err error
-
-	// Try propagation cache first - iterate through all proof sets until one verifies
-	bundleID := propagation.MakeBundleID(work.address, pocHeight, work.rootHash, work.count)
-	if v.propagationCache != nil {
-		allProofSets, cacheErr := v.propagationCache.GetProofs(bundleID)
-		if cacheErr == nil && len(allProofSets) > 0 {
-			logging.Debug("OffChainValidator: trying proof sets from propagation cache", types.PoC,
-				"participant", work.address, "proofSetsCount", len(allProofSets))
-
-			for i, proofSet := range allProofSets {
-				verified, err = v.verifyProofsFromCache(proofSet, leafIndices, work.rootHash, work.count, work.address)
-				if err == nil {
-					logging.Debug("OffChainValidator: proof set verified successfully", types.PoC,
-						"participant", work.address, "proofSetIndex", i, "totalSets", len(allProofSets))
-					break
-				}
-				logging.Debug("OffChainValidator: proof set verification failed, trying next", types.PoC,
-					"participant", work.address, "proofSetIndex", i, "error", err)
-			}
-
-			if verified == nil {
-				logging.Warn("OffChainValidator: all cached proof sets failed verification, falling back to direct API", types.PoC,
-					"participant", work.address, "triedSets", len(allProofSets))
-			}
-		} else {
-			logging.Debug("OffChainValidator: proofs not in cache, using direct API", types.PoC,
-				"participant", work.address)
+	verified, err := proofClient.FetchAndVerifyProofs(ctx, work.url, ProofRequest{
+		PocStageStartBlockHeight: pocHeight,
+		RootHash:                 work.rootHash,
+		Count:                    work.count,
+		LeafIndices:              leafIndices,
+		ParticipantAddress:       work.address,
+	})
+	if err != nil {
+		logging.Warn("OffChainValidator: proof fetch/verify failed", types.PoC,
+			"participant", work.address, "attempt", work.attempt, "error", err)
+		if errors.Is(err, ErrProofVerificationFailed) || errors.Is(err, ErrIncompleteCoverage) {
+			return validateFailPermanent
 		}
-	}
-
-	// Fallback to direct API if cache miss or verification failed
-	if verified == nil {
-		verified, err = proofClient.FetchAndVerifyProofs(ctx, work.url, ProofRequest{
-			PocStageStartBlockHeight: pocHeight,
-			RootHash:                 work.rootHash,
-			Count:                    work.count,
-			LeafIndices:              leafIndices,
-			ParticipantAddress:       work.address,
-		})
-		if err != nil {
-			logging.Warn("OffChainValidator: proof fetch/verify failed", types.PoC,
-				"participant", work.address, "attempt", work.attempt, "error", err)
-			// Proof verification failures and incomplete coverage are permanent - no point retrying
-			if errors.Is(err, ErrProofVerificationFailed) || errors.Is(err, ErrIncompleteCoverage) {
-				return validateFailPermanent
-			}
-			// Transient error (network/timeout) - retry
-			return validateFailRetry
-		}
+		return validateFailRetry
 	}
 
 	// Check for duplicate nonces (fraud) - permanent failure
@@ -541,63 +502,6 @@ func (v *OffChainValidator) validateParticipant(
 	logging.Warn("OffChainValidator: ML node request failed", types.PoC,
 		"participant", work.address, "node", node.Node.Host, "attempt", work.attempt, "error", err)
 	return validateFailRetry
-}
-
-// verifyProofsFromCache verifies proofs retrieved from propagation cache.
-// Filters cached proofs to only include requested leaf indices.
-func (v *OffChainValidator) verifyProofsFromCache(
-	cachedProofs []propagation.ProofItem,
-	requestedIndices []uint32,
-	rootHash []byte,
-	count uint32,
-	participantAddress string,
-) ([]VerifiedArtifact, error) {
-	requestedSet := make(map[uint32]struct{}, len(requestedIndices))
-	for _, idx := range requestedIndices {
-		requestedSet[idx] = struct{}{}
-	}
-
-	verified := make([]VerifiedArtifact, 0, len(requestedIndices))
-
-	for _, item := range cachedProofs {
-		if _, requested := requestedSet[item.LeafIndex]; !requested {
-			continue
-		}
-
-		vectorBytes, err := base64.StdEncoding.DecodeString(item.VectorBytes)
-		if err != nil {
-			return nil, fmt.Errorf("invalid vector_bytes encoding for leaf %d: %w", item.LeafIndex, err)
-		}
-
-		proofHashes := make([][]byte, len(item.Proof))
-		for i, hashB64 := range item.Proof {
-			hash, err := base64.StdEncoding.DecodeString(hashB64)
-			if err != nil {
-				return nil, fmt.Errorf("invalid proof hash encoding for leaf %d: %w", item.LeafIndex, err)
-			}
-			proofHashes[i] = hash
-		}
-
-		leafData := buildLeafData(item.NonceValue, vectorBytes)
-
-		if !artifacts.VerifyProof(rootHash, count, item.LeafIndex, leafData, proofHashes) {
-			logging.Warn("MMR proof verification failed for cached proof", types.PoC,
-				"participant", participantAddress, "leafIndex", item.LeafIndex)
-			return nil, fmt.Errorf("proof verification failed for leaf %d", item.LeafIndex)
-		}
-
-		verified = append(verified, VerifiedArtifact{
-			LeafIndex: item.LeafIndex,
-			Nonce:     item.NonceValue,
-			VectorB64: item.VectorBytes,
-		})
-	}
-
-	if len(verified) != len(requestedIndices) {
-		return nil, fmt.Errorf("incomplete coverage: expected %d proofs, got %d", len(requestedIndices), len(verified))
-	}
-
-	return verified, nil
 }
 
 // sampleLeafIndices generates deterministic leaf indices using lazy Fisher-Yates.

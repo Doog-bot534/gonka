@@ -19,6 +19,4 @@ chain_node:
   is_genesis: false
 poc_propagation:
   enabled: true
-  trees: 6
-  fanout: 4
   storage_dir: "/root/.inference/propagation/bundles"

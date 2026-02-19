@@ -183,17 +183,15 @@ func main() {
 
 	// Initialize propagation infrastructure (if enabled)
 	var propagationCache *propagation.Cache
-	var propagationBundler *propagation.Bundler
+	var fltqBundler *propagation.FLTQBundler
 	var propagationTransport *propagation.HTTPTransport
-	var propagationReceiver *propagation.Receiver
+	var fltqReceiver *propagation.FLTQReceiver
 	var propagationHandlers *pserver.PropagationHandlers
 	var propagationPool *pgxpool.Pool
-	var treeManager *propagation.TreeManager
 
 	propConfig := config.GetConfig().PocPropagation
 	if propConfig.Enabled {
-		logging.Info("Initializing off-chain propagation system", types.PoC,
-			"trees", propConfig.Trees, "fanout", propConfig.Fanout)
+		logging.Info("Initializing FLTQ-based off-chain propagation system", types.PoC)
 
 		var bundleStorage propagation.BundleStorage
 		bundleStorage, propagationPool = propagation.NewBundleStorage(ctx, propConfig.StorageDir, participantInfo.GetAddress())
@@ -204,31 +202,26 @@ func main() {
 			30*time.Second,
 		)
 
-		treeCount := propConfig.Trees
-		if treeCount <= 0 {
-			treeCount = 1
+		// Start with empty cube - will be rebuilt at epoch start
+		bootstrapCube := &propagation.FLTQCube{
+			Index:      0,
+			Dimensions: 0,
+			Size:       0,
+			Nodes:      make(map[string]*propagation.FLTQNode),
+			Positions:  []*propagation.FLTQNode{},
 		}
-		treeFanout := propConfig.Fanout
-		if treeFanout <= 0 {
-			treeFanout = 1
-		}
-
-		epochGroupDataCache := internal.NewEpochGroupDataCache(recorder)
-		treeManager = propagation.NewTreeManager(epochGroupDataCache, treeCount, treeFanout)
-
-		bootstrapTrees := []*propagation.Tree{}
 
 		pubKeyProvider := &chainPubKeyProvider{queryClient: recorder.NewInferenceQueryClient()}
 
-		propagationReceiver = propagation.NewReceiver(
+		fltqReceiver = propagation.NewFLTQReceiver(
 			propagationCache,
-			bootstrapTrees,
+			bootstrapCube,
 			pubKeyProvider,
 			participantInfo.GetAddress(),
 			propagationTransport,
 		)
 
-		propagationTransport.RegisterReceiver(participantInfo.GetAddress(), propagationReceiver)
+		propagationTransport.RegisterReceiver(participantInfo.GetAddress(), fltqReceiver)
 
 		workerPrivKey, err := config.GetWorkerPrivateKey()
 		if err != nil {
@@ -239,12 +232,12 @@ func main() {
 			logging.Error("Worker private key not found - please ensure participant is registered", types.PoC)
 			panic("worker private key not found")
 		}
-		
+
 		signer := &workerKeySigner{privateKey: workerPrivKey}
-		propagationBundler = propagation.NewBundler(
+		fltqBundler = propagation.NewFLTQBundler(
 			signer,
 			propagationCache,
-			bootstrapTrees,
+			bootstrapCube,
 			propagationTransport,
 			participantInfo.GetAddress(),
 		)
@@ -252,10 +245,10 @@ func main() {
 		propagationHandlers = pserver.NewPropagationHandlers(propagationTransport)
 		propagationHandlers.SetCache(propagationCache)
 
-		defer propagationReceiver.Close()
+		defer fltqReceiver.Close()
 
-		logging.Info("Propagation system initialized with TreeManager", types.PoC,
-			"note", "Trees will be rebuilt dynamically based on previous epoch weights")
+		logging.Info("FLTQ propagation system initialized", types.PoC,
+			"address", participantInfo.GetAddress())
 	} else {
 		logging.Info("Off-chain propagation disabled", types.PoC)
 	}
@@ -282,9 +275,10 @@ func main() {
 
 	listener := event_listener.NewEventListener(config, pocOrchestrator, nodeBroker, validator, *recorder, trainingExecutor, chainPhaseTracker, cancel, blsManager)
 
-	if propConfig.Enabled && treeManager != nil {
-		listener.SetPropagationComponents(treeManager, propagationReceiver, propagationBundler, propagationTransport, recorder.NewInferenceQueryClient())
-		logging.Info("Propagation components wired to event listener", types.PoC)
+	if propConfig.Enabled && fltqReceiver != nil && fltqBundler != nil {
+		epochGroupDataCache := internal.NewEpochGroupDataCache(recorder)
+		listener.SetPropagationComponents(fltqReceiver, fltqBundler, propagationTransport, recorder.NewInferenceQueryClient(), epochGroupDataCache)
+		logging.Info("FLTQ propagation components wired to event listener", types.PoC)
 	}
 
 	go listener.Start(ctx)
@@ -326,7 +320,7 @@ func main() {
 		participantInfo.GetPubKey(),
 		commitInterval,
 		propConfig.Enabled,
-		propagationBundler,
+		fltqBundler,
 		propagationCache,
 	)
 	defer commitWorker.Close()

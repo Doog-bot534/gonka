@@ -5,6 +5,18 @@ import (
 	"encoding/binary"
 )
 
+type FLTQConfig struct {
+	NumToSplitPastryDigit int
+	PastryEntriesPerLevel int
+}
+
+func DefaultFLTQConfig() FLTQConfig {
+	return FLTQConfig{
+		NumToSplitPastryDigit: 2,
+		PastryEntriesPerLevel: 4,
+	}
+}
+
 type FLTQNode struct {
 	Address    string
 	Position   uint16
@@ -32,7 +44,11 @@ func BuildFLTQ(participants []string, blockHash []byte) *FLTQCube {
 }
 
 func BuildFLTQWithWeights(participants []WeightedParticipant, blockHash []byte) *FLTQCube {
-	return buildFLTQWithIndex(0, participants, blockHash)
+	return buildFLTQWithIndex(0, participants, blockHash, DefaultFLTQConfig())
+}
+
+func BuildFLTQWithConfig(participants []WeightedParticipant, blockHash []byte, config FLTQConfig) *FLTQCube {
+	return buildFLTQWithIndex(0, participants, blockHash, config)
 }
 
 func BuildFLTQs(participants []string, blockHash []byte, numCubes int) []*FLTQCube {
@@ -51,15 +67,16 @@ func BuildFLTQsWithWeights(participants []WeightedParticipant, blockHash []byte,
 		return []*FLTQCube{}
 	}
 
+	config := DefaultFLTQConfig()
 	cubes := make([]*FLTQCube, numCubes)
 	for i := 0; i < numCubes; i++ {
 		seed := makeFLTQSeed(blockHash, i)
-		cubes[i] = buildFLTQWithIndex(i, participants, seed)
+		cubes[i] = buildFLTQWithIndex(i, participants, seed, config)
 	}
 	return cubes
 }
 
-func buildFLTQWithIndex(index int, participants []WeightedParticipant, blockHash []byte) *FLTQCube {
+func buildFLTQWithIndex(index int, participants []WeightedParticipant, blockHash []byte, config FLTQConfig) *FLTQCube {
 	if len(participants) == 0 {
 		return &FLTQCube{
 			Index:     index,
@@ -133,7 +150,7 @@ func buildFLTQWithIndex(index int, participants []WeightedParticipant, blockHash
 		}
 	}
 
-	buildPastryEdges(cube, blockHash, 10)
+	buildPastryEdges(cube, blockHash, config)
 
 	return cube
 }
@@ -189,16 +206,16 @@ func (c *FLTQCube) Neighbors(addr string) []string {
 	return node.Neighbors
 }
 
-func splitBits(n int, hops int) []int {
-	if n <= 0 || hops <= 0 {
+func splitBits(n int, numToSplitPastryDigit int) []int {
+	if n <= 0 || numToSplitPastryDigit <= 0 {
 		return []int{}
 	}
 
-	sizes := make([]int, hops)
-	base := n / hops
-	remainder := n % hops
+	sizes := make([]int, numToSplitPastryDigit)
+	base := n / numToSplitPastryDigit
+	remainder := n % numToSplitPastryDigit
 
-	for i := 0; i < hops; i++ {
+	for i := 0; i < numToSplitPastryDigit; i++ {
 		sizes[i] = base
 		if i < remainder {
 			sizes[i]++
@@ -318,8 +335,8 @@ func shuffleInts(values []int, seed []byte, pos int, level int) {
 	}
 }
 
-func buildPastryEdges(cube *FLTQCube, seed []byte, maxEntriesPerLevel int) {
-	digitSizes := splitBits(cube.Dimensions, 3)
+func buildPastryEdges(cube *FLTQCube, seed []byte, config FLTQConfig) {
+	digitSizes := splitBits(cube.Dimensions, config.NumToSplitPastryDigit)
 	prefixIndex := buildPrefixIndex(cube, digitSizes)
 
 	allNeighborsMap := make(map[string]map[string]bool)
@@ -359,11 +376,11 @@ func buildPastryEdges(cube *FLTQCube, seed []byte, maxEntriesPerLevel int) {
 
 			shuffleInts(possibleValues, seed, pos, level)
 
-			limit := maxEntriesPerLevel
-			if limit > len(possibleValues) {
-				limit = len(possibleValues)
-			}
+			limit := config.PastryEntriesPerLevel
 			if limit <= 0 {
+				continue
+			}
+			if limit > len(possibleValues) {
 				limit = len(possibleValues)
 			}
 

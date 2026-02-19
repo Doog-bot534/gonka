@@ -70,7 +70,7 @@ func (h *HybridBundleStorage) StoreHeader(ctx context.Context, header BundleHead
 	return h.file.StoreHeader(ctx, header)
 }
 
-func (h *HybridBundleStorage) GetHeader(ctx context.Context, bundleID [32]byte) (BundleHeader, error) {
+func (h *HybridBundleStorage) GetHeader(ctx context.Context, bundleID [4]byte) (BundleHeader, error) {
 	if pg := h.currentPg(); pg != nil {
 		header, err := pg.GetHeader(ctx, bundleID)
 		if err == nil {
@@ -111,33 +111,6 @@ func (h *HybridBundleStorage) AllBundlesForHeight(ctx context.Context, pocHeight
 	}
 
 	return h.file.AllBundlesForHeight(ctx, pocHeight)
-}
-
-func (h *HybridBundleStorage) StoreProofs(ctx context.Context, bundleID [32]byte, proofs []ProofItem) error {
-	if pg := h.currentPg(); pg != nil {
-		err := pg.StoreProofs(ctx, bundleID, proofs)
-		if err == nil {
-			return nil
-		}
-		logging.Warn("PostgreSQL store proofs failed, falling back to file", types.PoC,
-			"bundleID", bundleID, "error", err)
-	}
-	return h.file.StoreProofs(ctx, bundleID, proofs)
-}
-
-func (h *HybridBundleStorage) GetProofs(ctx context.Context, bundleID [32]byte) ([][]ProofItem, error) {
-	if pg := h.currentPg(); pg != nil {
-		proofs, err := pg.GetProofs(ctx, bundleID)
-		if err == nil {
-			return proofs, nil
-		}
-		if err != ErrProofsNotFound {
-			logging.Debug("PostgreSQL get proofs failed, checking file", types.PoC,
-				"bundleID", bundleID, "error", err)
-		}
-	}
-
-	return h.file.GetProofs(ctx, bundleID)
 }
 
 func (h *HybridBundleStorage) StoreFirstArrival(ctx context.Context, participant string, pocHeight int64, arrivalTime int64, count uint32) error {

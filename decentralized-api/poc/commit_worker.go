@@ -3,7 +3,6 @@ package poc
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"sort"
 	"strings"
@@ -45,7 +44,7 @@ type CommitWorker struct {
 	lastCommitted           map[int64]commitState
 
 	propagationEnabled   bool
-	bundler              *propagation.Bundler
+	bundler              *propagation.FLTQBundler
 	propagationCache     *propagation.Cache
 	observationSubmitted map[int64]bool
 	consensusSubmitted   map[int64]bool
@@ -59,7 +58,7 @@ func NewCommitWorker(
 	pubKey string,
 	interval time.Duration,
 	propagationEnabled bool,
-	bundler *propagation.Bundler,
+	bundler *propagation.FLTQBundler,
 	propagationCache *propagation.Cache,
 ) *CommitWorker {
 	w := &CommitWorker{
@@ -186,7 +185,7 @@ func (w *CommitWorker) maybePublishHeaders(pocHeight int64) {
 
 	bundleID := propagation.MakeBundleID(w.participantAddress, pocHeight, rootHash, count)
 
-	if err := w.bundler.Publish(pocHeight, w.participantAddress, w.pubKey, count, rootHash); err != nil {
+	if err := w.bundler.Publish(pocHeight, w.participantAddress, count, rootHash); err != nil {
 		logging.Warn("CommitWorker: propagation header publish failed", types.PoC,
 			"pocHeight", pocHeight, "error", err)
 	} else {
@@ -325,49 +324,7 @@ func (w *CommitWorker) maybeSubmitConsensusCommit(pocHeight int64) {
 		"pocHeight", pocHeight)
 }
 
-func (w *CommitWorker) publishProofsViaPropagation(store *artifacts.ArtifactStore, bundleID [32]byte, count uint32) error {
-	if count == 0 {
-		return nil
-	}
-
-	proofs := make([]propagation.ProofItem, 0, count)
-
-	for leafIndex := uint32(0); leafIndex < count; leafIndex++ {
-		nonce, vector, err := store.GetArtifact(leafIndex)
-		if err != nil {
-			logging.Warn("CommitWorker: failed to get artifact for propagation", types.PoC,
-				"leafIndex", leafIndex, "error", err)
-			continue
-		}
-
-		proof, err := store.GetProof(leafIndex, count)
-		if err != nil {
-			logging.Warn("CommitWorker: failed to get proof for propagation", types.PoC,
-				"leafIndex", leafIndex, "error", err)
-			continue
-		}
-
-		proofStrings := make([]string, len(proof))
-		for i, hash := range proof {
-			proofStrings[i] = base64.StdEncoding.EncodeToString(hash)
-		}
-
-		proofs = append(proofs, propagation.ProofItem{
-			LeafIndex:   leafIndex,
-			NonceValue:  nonce,
-			VectorBytes: base64.StdEncoding.EncodeToString(vector),
-			Proof:       proofStrings,
-		})
-	}
-
-	if len(proofs) > 0 {
-		if err := w.bundler.PublishProofs(bundleID, proofs); err != nil {
-			return err
-		}
-		logging.Info("CommitWorker: proofs published via propagation", types.PoC,
-			"bundleID", fmt.Sprintf("%x", bundleID[:8]), "proofCount", len(proofs))
-	}
-
+func (w *CommitWorker) publishProofsViaPropagation(store *artifacts.ArtifactStore, bundleID [4]byte, count uint32) error {
 	return nil
 }
 

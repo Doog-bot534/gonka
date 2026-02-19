@@ -165,12 +165,15 @@ func TestPopulateParticipantURLs(t *testing.T) {
 		participantQuerier:   querier,
 	}
 
-	trees := []*propagation.Tree{
-		{Shuffled: []string{"addr1", "addr2", "addr3"}},
-		{Shuffled: []string{"addr2", "addr1"}},
+	cube := &propagation.FLTQCube{
+		Nodes: map[string]*propagation.FLTQNode{
+			"addr1": {Address: "addr1"},
+			"addr2": {Address: "addr2"},
+			"addr3": {Address: "addr3"},
+		},
 	}
 
-	dispatcher.populateParticipantURLs(trees)
+	dispatcher.populateParticipantURLsFromCube(cube)
 
 	assert.Equal(t, map[string]string{
 		"addr1": "http://node1:8080",
@@ -191,11 +194,13 @@ func TestPopulateParticipantURLs_NoURLs(t *testing.T) {
 		participantQuerier:   querier,
 	}
 
-	trees := []*propagation.Tree{
-		{Shuffled: []string{"addr1"}},
+	cube := &propagation.FLTQCube{
+		Nodes: map[string]*propagation.FLTQNode{
+			"addr1": {Address: "addr1"},
+		},
 	}
 
-	dispatcher.populateParticipantURLs(trees)
+	dispatcher.populateParticipantURLsFromCube(cube)
 
 	assert.Nil(t, setter.urls)
 }

@@ -12,23 +12,35 @@ import (
 	"github.com/cometbft/cometbft/crypto/ed25519"
 )
 
-const BundleHeaderVersion = uint32(1)
-
+// BundleHeader represents the metadata for a bundle of artifacts.
+//
+// Memory layout (64-bit architecture):
+// - BundleID [4]byte: 4 bytes + 4 bytes padding
+// - Participant string: 16 bytes (8-byte pointer + 8-byte length)
+// - PocHeight int64: 8 bytes
+// - RootHash [32]byte: 32 bytes
+// - Count uint32: 4 bytes + 4 bytes padding
+// - CreatedAt int64: 8 bytes
+// - Signature [64]byte: 64 bytes
+// Total struct size: 144 bytes
+//
+// Variable data:
+// - Participant: ~43 bytes (bech32 address with "gonka" prefix, e.g., "gonka1abcdef...")
+//
+// Total memory per BundleHeader: ~187 bytes (144 + 43)
 type BundleHeader struct {
-	BundleID    [32]byte
+	BundleID    [4]byte
 	Participant string
-	PubKey      string
 	PocHeight   int64
-	RootHash    []byte
+	RootHash    [32]byte
 	Count       uint32
 	CreatedAt   int64
-	Signature   []byte
+	Signature   [64]byte
 }
 
 type bundleHeaderJSON struct {
 	BundleID    string `json:"bundle_id"`
 	Participant string `json:"participant"`
-	PubKey      string `json:"pub_key"`
 	PocHeight   int64  `json:"poc_height"`
 	RootHash    string `json:"root_hash"`
 	Count       uint32 `json:"count"`
@@ -40,12 +52,11 @@ func (h BundleHeader) MarshalJSON() ([]byte, error) {
 	return json.Marshal(bundleHeaderJSON{
 		BundleID:    hex.EncodeToString(h.BundleID[:]),
 		Participant: h.Participant,
-		PubKey:      h.PubKey,
 		PocHeight:   h.PocHeight,
-		RootHash:    hex.EncodeToString(h.RootHash),
+		RootHash:    hex.EncodeToString(h.RootHash[:]),
 		Count:       h.Count,
 		CreatedAt:   h.CreatedAt,
-		Signature:   hex.EncodeToString(h.Signature),
+		Signature:   hex.EncodeToString(h.Signature[:]),
 	})
 }
 
@@ -59,23 +70,30 @@ func (h *BundleHeader) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	if len(bundleIDBytes) != 32 {
-		return errors.New("bundle_id must be 32 bytes")
+	if len(bundleIDBytes) != 4 {
+		return errors.New("bundle_id must be 4 bytes")
 	}
 	copy(h.BundleID[:], bundleIDBytes)
 
-	h.RootHash, err = hex.DecodeString(j.RootHash)
+	rootHashBytes, err := hex.DecodeString(j.RootHash)
 	if err != nil {
 		return err
 	}
+	if len(rootHashBytes) != 32 {
+		return errors.New("root_hash must be 32 bytes")
+	}
+	copy(h.RootHash[:], rootHashBytes)
 
-	h.Signature, err = hex.DecodeString(j.Signature)
+	signatureBytes, err := hex.DecodeString(j.Signature)
 	if err != nil {
 		return err
 	}
+	if len(signatureBytes) != 64 {
+		return errors.New("signature must be 64 bytes")
+	}
+	copy(h.Signature[:], signatureBytes)
 
 	h.Participant = j.Participant
-	h.PubKey = j.PubKey
 	h.PocHeight = j.PocHeight
 	h.Count = j.Count
 	h.CreatedAt = j.CreatedAt
@@ -83,7 +101,7 @@ func (h *BundleHeader) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func MakeBundleID(participant string, pocHeight int64, rootHash []byte, count uint32) [32]byte {
+func MakeBundleID(participant string, pocHeight int64, rootHash []byte, count uint32) [4]byte {
 	h := sha256.New()
 	h.Write([]byte(participant))
 	var buf [8]byte
@@ -92,9 +110,10 @@ func MakeBundleID(participant string, pocHeight int64, rootHash []byte, count ui
 	h.Write(rootHash)
 	binary.BigEndian.PutUint32(buf[:4], count)
 	h.Write(buf[:4])
-	binary.BigEndian.PutUint32(buf[:4], BundleHeaderVersion)
-	h.Write(buf[:4])
-	return sha256.Sum256(h.Sum(nil))
+	hash := sha256.Sum256(h.Sum(nil))
+	var bundleID [4]byte
+	copy(bundleID[:], hash[:4])
+	return bundleID
 }
 
 type HeaderSigner interface {
@@ -115,26 +134,22 @@ func SignHeaderWith(h BundleHeader, signer HeaderSigner) ([]byte, error) {
 }
 
 func VerifyHeader(h BundleHeader, base64PubKey string) error {
-	if h.Signature == nil {
-		return errors.New("signature missing")
-	}
-	
 	pubKeyBytes, err := base64.StdEncoding.DecodeString(base64PubKey)
 	if err != nil {
 		return err
 	}
-	
+
 	if len(pubKeyBytes) != 32 {
 		return errors.New("invalid ed25519 public key length")
 	}
-	
+
 	msg := headerSigningBytes(h)
 	pubKey := ed25519.PubKey(pubKeyBytes)
-	
-	if !pubKey.VerifySignature(msg, h.Signature) {
+
+	if !pubKey.VerifySignature(msg, h.Signature[:]) {
 		return errors.New("signature verification failed")
 	}
-	
+
 	return nil
 }
 
@@ -142,14 +157,11 @@ func headerSigningBytes(h BundleHeader) []byte {
 	buf := bytes.NewBuffer(nil)
 	buf.Write(h.BundleID[:])
 	buf.WriteString(h.Participant)
-	buf.WriteString(h.PubKey)
 	var tmp [8]byte
 	binary.BigEndian.PutUint64(tmp[:], uint64(h.PocHeight))
 	buf.Write(tmp[:])
-	buf.Write(h.RootHash)
+	buf.Write(h.RootHash[:])
 	binary.BigEndian.PutUint32(tmp[:4], h.Count)
-	buf.Write(tmp[:4])
-	binary.BigEndian.PutUint32(tmp[:4], BundleHeaderVersion)
 	buf.Write(tmp[:4])
 	binary.BigEndian.PutUint64(tmp[:], uint64(h.CreatedAt))
 	buf.Write(tmp[:])

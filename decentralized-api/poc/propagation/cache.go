@@ -18,7 +18,7 @@ func (c *Cache) StoreHeader(ctx context.Context, h BundleHeader) error {
 	return c.storage.StoreHeader(ctx, h)
 }
 
-func (c *Cache) GetHeader(bundleID [32]byte) (BundleHeader, error) {
+func (c *Cache) GetHeader(bundleID [4]byte) (BundleHeader, error) {
 	return c.storage.GetHeader(context.Background(), bundleID)
 }
 
@@ -29,14 +29,6 @@ func (c *Cache) LatestBundle(participant string, pocHeight int64) (BundleHeader,
 func (c *Cache) AllBundlesForHeight(pocHeight int64) []BundleHeader {
 	bundles, _ := c.storage.AllBundlesForHeight(context.Background(), pocHeight)
 	return bundles
-}
-
-func (c *Cache) StoreProofs(ctx context.Context, bundleID [32]byte, proofs []ProofItem) error {
-	return c.storage.StoreProofs(ctx, bundleID, proofs)
-}
-
-func (c *Cache) GetProofs(bundleID [32]byte) ([][]ProofItem, error) {
-	return c.storage.GetProofs(context.Background(), bundleID)
 }
 
 func (c *Cache) StoreFirstArrival(participant string, pocHeight int64, arrivalTime int64, count uint32) error {

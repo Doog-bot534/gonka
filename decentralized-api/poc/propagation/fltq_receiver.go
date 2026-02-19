@@ -14,40 +14,36 @@ import (
 
 type FLTQReceiver struct {
 	cache    *Cache
-	cubes    []*FLTQCube
+	cube     *FLTQCube
 	verifier PubKeyProvider
 	myAddr   string
 	sender   FLTQSender
 
 	mu               sync.RWMutex
-	processedHeaders map[[32]byte]bool
-	processedProofs  map[[32]byte]bool
-	forwardedProofs  map[[32]byte]map[string]bool
-	pendingHeaders   map[[32]byte]*BundleHeader
-	lastHeaderTime   map[[32]byte]time.Time
+	processedHeaders map[[4]byte]bool
+	pendingHeaders   map[[4]byte]*BundleHeader
+	lastHeaderTime   map[[4]byte]time.Time
 
 	wg sync.WaitGroup
 }
 
-func NewFLTQReceiver(cache *Cache, cubes []*FLTQCube, verifier PubKeyProvider, myAddr string, sender FLTQSender) *FLTQReceiver {
+func NewFLTQReceiver(cache *Cache, cube *FLTQCube, verifier PubKeyProvider, myAddr string, sender FLTQSender) *FLTQReceiver {
 	return &FLTQReceiver{
 		cache:            cache,
-		cubes:            cubes,
+		cube:             cube,
 		verifier:         verifier,
 		myAddr:           myAddr,
 		sender:           sender,
-		processedHeaders: make(map[[32]byte]bool),
-		processedProofs:  make(map[[32]byte]bool),
-		forwardedProofs:  make(map[[32]byte]map[string]bool),
-		pendingHeaders:   make(map[[32]byte]*BundleHeader),
-		lastHeaderTime:   make(map[[32]byte]time.Time),
+		processedHeaders: make(map[[4]byte]bool),
+		pendingHeaders:   make(map[[4]byte]*BundleHeader),
+		lastHeaderTime:   make(map[[4]byte]time.Time),
 	}
 }
 
-func (r *FLTQReceiver) OnHeaderFLTQ(h BundleHeader, from string) error {
+func (r *FLTQReceiver) OnHeader(h BundleHeader, from string) error {
 	logging.Info("FLTQReceiver: received header", types.PoC,
 		"receiver", r.myAddr, "from", from, "publisher", h.Participant, "pocHeight", h.PocHeight,
-		"count", h.Count, "bundleID", fmt.Sprintf("%x", h.BundleID[:8]))
+		"count", h.Count, "bundleID", fmt.Sprintf("%x", h.BundleID[:]))
 
 	r.mu.RLock()
 	processed := r.processedHeaders[h.BundleID]
@@ -55,7 +51,16 @@ func (r *FLTQReceiver) OnHeaderFLTQ(h BundleHeader, from string) error {
 
 	if processed {
 		logging.Debug("FLTQReceiver: duplicate header ignored (already processed)", types.PoC,
-			"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", h.BundleID[:8]))
+			"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", h.BundleID[:]))
+		return nil
+	}
+
+	if _, err := r.cache.GetHeader(h.BundleID); err == nil {
+		r.mu.Lock()
+		r.processedHeaders[h.BundleID] = true
+		r.mu.Unlock()
+		logging.Debug("FLTQReceiver: duplicate header ignored (already in storage)", types.PoC,
+			"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", h.BundleID[:]))
 		return nil
 	}
 
@@ -72,11 +77,11 @@ func (r *FLTQReceiver) OnHeaderFLTQ(h BundleHeader, from string) error {
 		return fmt.Errorf("verify header: %w", err)
 	}
 
-	expectedID := MakeBundleID(h.Participant, h.PocHeight, h.RootHash, h.Count)
+	expectedID := MakeBundleID(h.Participant, h.PocHeight, h.RootHash[:], h.Count)
 	if !bytes.Equal(expectedID[:], h.BundleID[:]) {
 		logging.Warn("FLTQReceiver: bundle ID mismatch", types.PoC,
-			"expected", fmt.Sprintf("%x", expectedID[:8]),
-			"got", fmt.Sprintf("%x", h.BundleID[:8]))
+			"expected", fmt.Sprintf("%x", expectedID[:]),
+			"got", fmt.Sprintf("%x", h.BundleID[:]))
 		return fmt.Errorf("bundle ID mismatch")
 	}
 
@@ -84,14 +89,14 @@ func (r *FLTQReceiver) OnHeaderFLTQ(h BundleHeader, from string) error {
 	if r.processedHeaders[h.BundleID] {
 		r.mu.Unlock()
 		logging.Info("FLTQReceiver: duplicate header ignored (race detected)", types.PoC,
-			"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", h.BundleID[:8]))
+			"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", h.BundleID[:]))
 		return nil
 	}
 
 	if err := r.cache.StoreHeader(context.Background(), h); err != nil {
 		r.mu.Unlock()
 		logging.Warn("FLTQReceiver: failed to store header", types.PoC,
-			"bundleID", fmt.Sprintf("%x", h.BundleID[:8]), "error", err)
+			"bundleID", fmt.Sprintf("%x", h.BundleID[:]), "error", err)
 		return fmt.Errorf("store header: %w", err)
 	}
 
@@ -110,44 +115,47 @@ func (r *FLTQReceiver) OnHeaderFLTQ(h BundleHeader, from string) error {
 	r.processedHeaders[h.BundleID] = true
 	r.pendingHeaders[h.BundleID] = &h
 	r.lastHeaderTime[h.BundleID] = time.Now()
-	cubes := r.cubes
+	cube := r.cube
 	r.mu.Unlock()
 
 	logging.Info("FLTQReceiver: commit metadata verified and stored", types.PoC,
 		"receiver", r.myAddr, "from", from, "publisher", h.Participant, "pocHeight", h.PocHeight,
-		"bundleID", fmt.Sprintf("%x", h.BundleID[:8]))
+		"bundleID", fmt.Sprintf("%x", h.BundleID[:]))
 
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
-		r.forwardHeaderToNeighbors(h, cubes, from)
+		r.forwardHeaderToNeighbors(h, cube, from)
 	}()
 
 	return nil
 }
 
-func (r *FLTQReceiver) forwardHeaderToNeighbors(h BundleHeader, cubes []*FLTQCube, from string) {
+func (r *FLTQReceiver) forwardHeaderToNeighbors(h BundleHeader, cube *FLTQCube, from string) {
+	if cube == nil {
+		logging.Warn("FLTQReceiver: no cube configured", types.PoC, "forwarder", r.myAddr)
+		return
+	}
+
+	node := cube.GetNode(r.myAddr)
+	if node == nil {
+		logging.Warn("FLTQReceiver: node not found in cube", types.PoC, "forwarder", r.myAddr)
+		return
+	}
+
 	var wg sync.WaitGroup
-	allNeighbors := make(map[string]bool)
-
-	for _, cube := range cubes {
-		node := cube.GetNode(r.myAddr)
-		if node == nil {
-			continue
-		}
-
-		for _, neighborAddr := range node.Neighbors {
-			if neighborAddr != from && !allNeighbors[neighborAddr] {
-				allNeighbors[neighborAddr] = true
-			}
+	neighbors := make([]string, 0, len(node.Neighbors))
+	for _, neighborAddr := range node.Neighbors {
+		if neighborAddr != from {
+			neighbors = append(neighbors, neighborAddr)
 		}
 	}
 
 	logging.Info("FLTQReceiver: forwarding to neighbors", types.PoC,
 		"forwarder", r.myAddr, "publisher", h.Participant,
-		"neighbors", len(allNeighbors), "cubes", len(cubes))
+		"neighbors", len(neighbors))
 
-	for neighborAddr := range allNeighbors {
+	for _, neighborAddr := range neighbors {
 		wg.Add(1)
 		go func(addr string) {
 			defer wg.Done()
@@ -164,99 +172,18 @@ func (r *FLTQReceiver) forwardHeaderToNeighbors(h BundleHeader, cubes []*FLTQCub
 	wg.Wait()
 }
 
-func (r *FLTQReceiver) OnProofsFLTQ(bundleID [32]byte, proofs []ProofItem, from string) error {
-	logging.Info("FLTQReceiver: received proofs", types.PoC,
-		"receiver", r.myAddr, "from", from, "bundleID", fmt.Sprintf("%x", bundleID[:8]),
-		"proofCount", len(proofs))
-
-	r.mu.Lock()
-	if r.processedProofs[bundleID] {
-		logging.Debug("FLTQReceiver: duplicate proofs", types.PoC,
-			"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", bundleID[:8]))
-	}
-
-	r.processedProofs[bundleID] = true
-	cubes := r.cubes
-	r.mu.Unlock()
-
-	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
-		if err := r.cache.StoreProofs(context.Background(), bundleID, proofs); err != nil {
-			logging.Warn("FLTQReceiver: failed to store proofs", types.PoC,
-				"bundleID", fmt.Sprintf("%x", bundleID[:8]), "error", err)
-			return
-		}
-
-		logging.Info("FLTQReceiver: proofs stored", types.PoC,
-			"receiver", r.myAddr, "bundleID", fmt.Sprintf("%x", bundleID[:8]))
-
-		r.forwardProofsToNeighbors(bundleID, proofs, cubes, from)
-	}()
-
-	return nil
-}
-
-func (r *FLTQReceiver) forwardProofsToNeighbors(bundleID [32]byte, proofs []ProofItem, cubes []*FLTQCube, from string) {
-	var wg sync.WaitGroup
-	allNeighbors := make(map[string]bool)
-
-	for _, cube := range cubes {
-		node := cube.GetNode(r.myAddr)
-		if node == nil {
-			continue
-		}
-
-		for _, neighborAddr := range node.Neighbors {
-			if neighborAddr != from {
-				r.mu.Lock()
-				if r.forwardedProofs[bundleID] == nil {
-					r.forwardedProofs[bundleID] = make(map[string]bool)
-				}
-				if !r.forwardedProofs[bundleID][neighborAddr] {
-					r.forwardedProofs[bundleID][neighborAddr] = true
-					allNeighbors[neighborAddr] = true
-				}
-				r.mu.Unlock()
-			}
-		}
-	}
-
-	logging.Debug("FLTQReceiver: checking neighbors for proof forwarding", types.PoC,
-		"forwarder", r.myAddr, "bundleID", fmt.Sprintf("%x", bundleID[:8]),
-		"neighbors", len(allNeighbors), "cubes", len(cubes))
-
-	for neighborAddr := range allNeighbors {
-		wg.Add(1)
-		go func(addr string) {
-			defer wg.Done()
-			if err := r.sender.SendProofsFLTQ(addr, bundleID, proofs); err != nil {
-				logging.Warn("FLTQReceiver: failed to forward proofs to neighbor", types.PoC,
-					"forwarder", r.myAddr, "neighbor", addr, "error", err)
-			} else {
-				logging.Debug("FLTQReceiver: forwarded proofs to neighbor", types.PoC,
-					"forwarder", r.myAddr, "neighbor", addr)
-			}
-		}(neighborAddr)
-	}
-
-	wg.Wait()
-}
-
-func (r *FLTQReceiver) SetFLTQCubes(cubes []*FLTQCube) {
+func (r *FLTQReceiver) SetFLTQCube(cube *FLTQCube) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.cubes = cubes
+	r.cube = cube
 }
 
 func (r *FLTQReceiver) ClearProcessedState() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.processedHeaders = make(map[[32]byte]bool)
-	r.processedProofs = make(map[[32]byte]bool)
-	r.forwardedProofs = make(map[[32]byte]map[string]bool)
-	r.pendingHeaders = make(map[[32]byte]*BundleHeader)
-	r.lastHeaderTime = make(map[[32]byte]time.Time)
+	r.processedHeaders = make(map[[4]byte]bool)
+	r.pendingHeaders = make(map[[4]byte]*BundleHeader)
+	r.lastHeaderTime = make(map[[4]byte]time.Time)
 }
 
 func (r *FLTQReceiver) Wait() {

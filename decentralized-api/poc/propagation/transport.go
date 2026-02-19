@@ -1,10 +1,5 @@
 package propagation
 
-type Sender interface {
-	SendHeader(treeIdx int, to string, h BundleHeader) error
-}
-
 type ReceiverHandler interface {
-	OnHeader(h BundleHeader, treeIdx int, from string) error
-	OnProofs(bundleID [32]byte, proofs []ProofItem, from string) error
+	OnHeader(h BundleHeader, from string) error
 }
