@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"sync"
 	"time"
-
-	"golang.org/x/sync/semaphore"
 )
+
+type diskWrite struct {
+	header       BundleHeader
+	arrivalTime  int64
+	arrivalCount uint32
+}
 
 type FLTQReceiver struct {
 	cache    *Cache
@@ -21,19 +25,42 @@ type FLTQReceiver struct {
 	pendingHeaders   sync.Map
 	lastHeaderTime   sync.Map
 
-	mu      sync.RWMutex
-	wg      sync.WaitGroup
-	diskSem *semaphore.Weighted
+	mu       sync.RWMutex
+	wg       sync.WaitGroup
+	writeCh  chan diskWrite
+	stopOnce sync.Once
+	stopCh   chan struct{}
 }
 
 func NewFLTQReceiver(cache *Cache, cube *FLTQCube, verifier PubKeyProvider, myAddr string, sender FLTQSender) *FLTQReceiver {
-	return &FLTQReceiver{
+	r := &FLTQReceiver{
 		cache:    cache,
 		cube:     cube,
 		verifier: verifier,
 		myAddr:   myAddr,
 		sender:   sender,
-		diskSem:  semaphore.NewWeighted(20),
+		writeCh:  make(chan diskWrite, 1000),
+		stopCh:   make(chan struct{}),
+	}
+
+	for i := 0; i < 4; i++ {
+		r.wg.Add(1)
+		go r.diskWriter()
+	}
+
+	return r
+}
+
+func (r *FLTQReceiver) diskWriter() {
+	defer r.wg.Done()
+	for {
+		select {
+		case <-r.stopCh:
+			return
+		case w := <-r.writeCh:
+			_ = r.cache.StoreHeader(context.Background(), w.header)
+			_ = r.cache.StoreFirstArrival(w.header.Participant, w.header.PocHeight, w.arrivalTime, w.arrivalCount)
+		}
 	}
 }
 
@@ -70,18 +97,14 @@ func (r *FLTQReceiver) OnHeader(h BundleHeader, from string) error {
 	cube := r.cube
 	r.mu.RUnlock()
 
-	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
-		if err := r.diskSem.Acquire(context.Background(), 1); err != nil {
-			return
-		}
-		defer r.diskSem.Release(1)
-
-		_ = r.cache.StoreHeader(context.Background(), h)
-		arrivalTime := time.Now().UnixMilli()
-		_ = r.cache.StoreFirstArrival(h.Participant, h.PocHeight, arrivalTime, h.Count)
-	}()
+	select {
+	case r.writeCh <- diskWrite{
+		header:       h,
+		arrivalTime:  time.Now().UnixMilli(),
+		arrivalCount: h.Count,
+	}:
+	default:
+	}
 
 	r.forwardHeaderToNeighbors(h, cube, from)
 	return nil
@@ -126,9 +149,14 @@ func (r *FLTQReceiver) ClearProcessedState() {
 }
 
 func (r *FLTQReceiver) Wait() {
-	r.wg.Wait()
+	for len(r.writeCh) > 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func (r *FLTQReceiver) Close() {
+	r.stopOnce.Do(func() {
+		close(r.stopCh)
+	})
 	r.wg.Wait()
 }
