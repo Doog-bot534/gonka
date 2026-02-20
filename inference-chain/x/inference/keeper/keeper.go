@@ -57,9 +57,8 @@ type (
 		Epochs                    collections.Map[uint64, types.Epoch]
 		EffectiveEpochIndex       collections.Item[uint64]
 		EpochGroupValidationsMap  collections.Map[collections.Pair[uint64, string], types.EpochGroupValidations]
-		SettleAmounts             collections.Map[sdk.AccAddress, types.SettleAmount]
-		TopMiners                 collections.Map[sdk.AccAddress, types.TopMiner]
 		PartialUpgrades           collections.Map[uint64, types.PartialUpgrade]
+		SettleAmounts             collections.Map[sdk.AccAddress, types.SettleAmount]
 		EpochPerformanceSummaries collections.Map[collections.Pair[sdk.AccAddress, uint64], types.EpochPerformanceSummary]
 		TrainingExecAllowListSet  collections.KeySet[sdk.AccAddress]
 		TrainingStartAllowListSet collections.KeySet[sdk.AccAddress]
@@ -263,26 +262,19 @@ func NewKeeper(
 			collections.PairKeyCodec(collections.Uint64Key, collections.StringKey),
 			codec.CollValue[types.EpochGroupValidations](cdc),
 		),
-		SettleAmounts: collections.NewMap(
-			sb,
-			types.SettleAmountPrefix,
-			"settle_amount",
-			sdk.AccAddressKey,
-			codec.CollValue[types.SettleAmount](cdc),
-		),
-		TopMiners: collections.NewMap(
-			sb,
-			types.TopMinerPrefix,
-			"top_miner",
-			sdk.AccAddressKey,
-			codec.CollValue[types.TopMiner](cdc),
-		),
 		PartialUpgrades: collections.NewMap(
 			sb,
 			types.PartialUpgradePrefix,
 			"partial_upgrade",
 			collections.Uint64Key,
 			codec.CollValue[types.PartialUpgrade](cdc),
+		),
+		SettleAmounts: collections.NewMap(
+			sb,
+			types.SettleAmountPrefix,
+			"settle_amount",
+			sdk.AccAddressKey,
+			codec.CollValue[types.SettleAmount](cdc),
 		),
 		EpochPerformanceSummaries: collections.NewMap(
 			sb,

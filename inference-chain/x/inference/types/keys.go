@@ -15,7 +15,6 @@ const (
 	// MemStoreKey defines the in-memory store key
 	MemStoreKey = "mem_inference"
 
-	TopRewardPoolAccName     = "top_reward"
 	PreProgrammedSaleAccName = "pre_programmed_sale"
 	BridgeEscrowAccName      = "bridge_escrow"
 )
@@ -37,7 +36,6 @@ var (
 	EpochGroupValidationsPrefix       = collections.NewPrefix(13)
 	InferencesPrefix                  = collections.NewPrefix(14)
 	SettleAmountPrefix                = collections.NewPrefix(15)
-	TopMinerPrefix                    = collections.NewPrefix(16)
 	PartialUpgradePrefix              = collections.NewPrefix(17)
 	EpochPerformanceSummaryPrefix     = collections.NewPrefix(18)
 	TrainingExecAllowListPrefix       = collections.NewPrefix(19)
