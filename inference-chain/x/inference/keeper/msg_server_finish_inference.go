@@ -79,20 +79,9 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 	// - Finish first: verify dev + TA signatures.
 	// - Executor signature verification is disabled by policy in both paths.
 	if existingInference.StartProcessed() {
-		// TODO: punish executor if Dev fails
-		if err := compareFinishDevComponents(msg, &existingInference); err != nil {
-			k.LogError("FinishInference: dev component mismatch", types.Inferences, "error", err, "inferenceId", msg.InferenceId)
-			return failedFinish(ctx, err, msg), nil
-		}
-		// TODO: re-check TA signature if any of the checks fail and punish the TA if the signature is invalid
-		if err := compareFinishTAComponents(msg, &existingInference); err != nil {
-			k.LogError("FinishInference: TA component mismatch", types.Inferences, "error", err, "inferenceId", msg.InferenceId)
-			return failedFinish(ctx, err, msg), nil
-		}
-		if err := compareFinishRoleFields(msg, &existingInference); err != nil {
-			k.LogError("FinishInference: role/address field mismatch", types.Inferences, "error", err, "inferenceId", msg.InferenceId)
-			return failedFinish(ctx, err, msg), nil
-		}
+		k.compareFinishDevComponents(msg, &existingInference)
+		k.compareFinishTAComponents(msg, &existingInference)
+		k.compareFinishRoleFields(msg, &existingInference)
 		k.LogInfo("FinishInference: start-first policy; TA signature skipped and components compared", types.Inferences, "inferenceId", msg.InferenceId)
 	} else {
 		err := k.verifyFinishKeys(ctx, msg, &transferAgent, &requestor)
@@ -238,88 +227,71 @@ func getFinishTASignatureComponents(msg *types.MsgFinishInference) calculations.
 	}
 }
 
-func compareFinishDevComponents(msg *types.MsgFinishInference, inference *types.Inference) error {
-	if inference.OriginalPromptHash != msg.OriginalPromptHash {
-		return sdkerrors.Wrapf(
-			types.ErrDevComponentMismatch,
-			"original_prompt_hash mismatch: finish=%s start=%s",
-			msg.OriginalPromptHash,
-			inference.OriginalPromptHash,
-		)
-	}
-	if inference.RequestTimestamp != msg.RequestTimestamp {
-		return sdkerrors.Wrapf(
-			types.ErrDevComponentMismatch,
-			"request_timestamp mismatch: finish=%d start=%d",
-			msg.RequestTimestamp,
-			inference.RequestTimestamp,
-		)
-	}
-	if inference.TransferredBy != msg.TransferredBy {
-		return sdkerrors.Wrapf(
-			types.ErrDevComponentMismatch,
-			"transfer agent mismatch: finish=%s start=%s",
-			msg.TransferredBy,
-			inference.TransferredBy,
-		)
-	}
-	return nil
+func (k msgServer) compareFinishDevComponents(msg *types.MsgFinishInference, inference *types.Inference) {
+	mismatchCount := 0
+	mismatchCount += k.logFinishFieldComparison("dev", "original_prompt_hash", msg.OriginalPromptHash, inference.OriginalPromptHash, msg.InferenceId)
+	mismatchCount += k.logFinishFieldComparison("dev", "request_timestamp", msg.RequestTimestamp, inference.RequestTimestamp, msg.InferenceId)
+	mismatchCount += k.logFinishFieldComparison("dev", "transfer_agent", msg.TransferredBy, inference.TransferredBy, msg.InferenceId)
+	k.logFinishComparisonSummary("dev", mismatchCount, msg.InferenceId)
 }
 
-func compareFinishTAComponents(msg *types.MsgFinishInference, inference *types.Inference) error {
-	if inference.PromptHash != msg.PromptHash {
-		return sdkerrors.Wrapf(
-			types.ErrTAComponentMismatch,
-			"prompt_hash mismatch: finish=%s start=%s",
-			msg.PromptHash,
-			inference.PromptHash,
-		)
+func (k msgServer) compareFinishTAComponents(msg *types.MsgFinishInference, inference *types.Inference) {
+	mismatchCount := 0
+	mismatchCount += k.logFinishFieldComparison("ta", "prompt_hash", msg.PromptHash, inference.PromptHash, msg.InferenceId)
+	mismatchCount += k.logFinishFieldComparison("ta", "request_timestamp", msg.RequestTimestamp, inference.RequestTimestamp, msg.InferenceId)
+	mismatchCount += k.logFinishFieldComparison("ta", "transfer_agent", msg.TransferredBy, inference.TransferredBy, msg.InferenceId)
+	if inference.AssignedTo == "" {
+		k.LogInfo("FinishInference compare [ta]: executor skipped (empty assigned_to on stored inference)", types.Inferences, "inferenceId", msg.InferenceId)
+	} else {
+		mismatchCount += k.logFinishFieldComparison("ta", "executor", msg.ExecutedBy, inference.AssignedTo, msg.InferenceId)
 	}
-	if inference.RequestTimestamp != msg.RequestTimestamp {
-		return sdkerrors.Wrapf(
-			types.ErrTAComponentMismatch,
-			"request_timestamp mismatch: finish=%d start=%d",
-			msg.RequestTimestamp,
-			inference.RequestTimestamp,
-		)
-	}
-	if inference.TransferredBy != msg.TransferredBy {
-		return sdkerrors.Wrapf(
-			types.ErrTAComponentMismatch,
-			"transfer agent mismatch: finish=%s start=%s",
-			msg.TransferredBy,
-			inference.TransferredBy,
-		)
-	}
-	if inference.AssignedTo != "" && inference.AssignedTo != msg.ExecutedBy {
-		return sdkerrors.Wrapf(
-			types.ErrTAComponentMismatch,
-			"executor mismatch: finish.executed_by=%s start.assigned_to=%s",
-			msg.ExecutedBy,
-			inference.AssignedTo,
-		)
-	}
-	return nil
+	k.logFinishComparisonSummary("ta", mismatchCount, msg.InferenceId)
 }
 
-func compareFinishRoleFields(msg *types.MsgFinishInference, inference *types.Inference) error {
-	if inference.RequestedBy != msg.RequestedBy {
-		return sdkerrors.Wrapf(
-			types.ErrInferenceRoleMismatch,
-			"requested_by mismatch: finish=%s start=%s",
-			msg.RequestedBy,
-			inference.RequestedBy,
-		)
+func (k msgServer) compareFinishRoleFields(msg *types.MsgFinishInference, inference *types.Inference) {
+	mismatchCount := 0
+	mismatchCount += k.logFinishFieldComparison("roles", "requested_by", msg.RequestedBy, inference.RequestedBy, msg.InferenceId)
+	if inference.Model == "" {
+		k.LogInfo("FinishInference compare [roles]: model skipped (empty on stored inference)", types.Inferences, "inferenceId", msg.InferenceId)
+	} else {
+		mismatchCount += k.logFinishFieldComparison("roles", "model", msg.Model, inference.Model, msg.InferenceId)
 	}
-	if inference.Model != "" && inference.Model != msg.Model {
-		return sdkerrors.Wrapf(
-			types.ErrInferenceRoleMismatch,
-			"model mismatch: finish=%s start=%s",
-			msg.Model,
-			inference.Model,
+	k.logFinishComparisonSummary("roles", mismatchCount, msg.InferenceId)
+}
+
+func (k msgServer) logFinishFieldComparison(group string, field string, expected interface{}, actual interface{}, inferenceID string) int {
+	if expected == actual {
+		k.LogInfo("FinishInference compare matched", types.Inferences,
+			"group", group,
+			"field", field,
+			"inferenceId", inferenceID,
+			"value", expected,
 		)
+		return 0
 	}
-	return nil
+	k.LogWarn("FinishInference compare mismatched", types.Inferences,
+		"group", group,
+		"field", field,
+		"inferenceId", inferenceID,
+		"finishValue", expected,
+		"startValue", actual,
+	)
+	return 1
+}
+
+func (k msgServer) logFinishComparisonSummary(group string, mismatchCount int, inferenceID string) {
+	if mismatchCount == 0 {
+		k.LogInfo("FinishInference compare summary: all fields matched", types.Inferences,
+			"group", group,
+			"inferenceId", inferenceID,
+		)
+		return
+	}
+	k.LogWarn("FinishInference compare summary: mismatches detected", types.Inferences,
+		"group", group,
+		"inferenceId", inferenceID,
+		"mismatchCount", mismatchCount,
+	)
 }
 
 func (k msgServer) handleInferenceCompleted(ctx sdk.Context, existingInference *types.Inference) error {

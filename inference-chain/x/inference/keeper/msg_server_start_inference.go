@@ -67,18 +67,9 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 	// - Finish first: start performs equality checks only (no TA/dev re-verification).
 	// - Executor signature verification is disabled by policy in both paths.
 	if existingInference.FinishedProcessed() {
-		if err := compareStartDevComponents(msg, &existingInference); err != nil {
-			k.LogError("StartInference: dev component mismatch", types.Inferences, "error", err, "inferenceId", msg.InferenceId)
-			return failedStart(ctx, err, msg), nil
-		}
-		if err := compareStartTAComponents(msg, &existingInference); err != nil {
-			k.LogError("StartInference: TA component mismatch", types.Inferences, "error", err, "inferenceId", msg.InferenceId)
-			return failedStart(ctx, err, msg), nil
-		}
-		if err := compareStartRoleFields(msg, &existingInference); err != nil {
-			k.LogError("StartInference: role/address field mismatch", types.Inferences, "error", err, "inferenceId", msg.InferenceId)
-			return failedStart(ctx, err, msg), nil
-		}
+		k.compareStartDevComponents(msg, &existingInference)
+		k.compareStartTAComponents(msg, &existingInference)
+		k.compareStartRoleFields(msg, &existingInference)
 		k.LogInfo("StartInference: finish-first policy; signature checks skipped and components compared", types.Inferences, "inferenceId", msg.InferenceId)
 	} else {
 		err := k.verifyStartFirstMessageKeys(ctx, msg, dev)
@@ -158,90 +149,69 @@ func (k msgServer) verifyStartFirstMessageKeys(ctx sdk.Context, msg *types.MsgSt
 	return nil
 }
 
-func compareStartDevComponents(msg *types.MsgStartInference, inference *types.Inference) error {
-	if inference.OriginalPromptHash != msg.OriginalPromptHash {
-		return sdkerrors.Wrapf(
-			types.ErrDevComponentMismatch,
-			"original_prompt_hash mismatch: start=%s finish=%s",
-			msg.OriginalPromptHash,
-			inference.OriginalPromptHash,
-		)
-	}
-	if inference.RequestTimestamp != msg.RequestTimestamp {
-		return sdkerrors.Wrapf(
-			types.ErrDevComponentMismatch,
-			"request_timestamp mismatch: start=%d finish=%d",
-			msg.RequestTimestamp,
-			inference.RequestTimestamp,
-		)
-	}
-	if inference.TransferredBy != msg.Creator {
-		return sdkerrors.Wrapf(
-			types.ErrDevComponentMismatch,
-			"transfer agent mismatch: start=%s finish=%s",
-			msg.Creator,
-			inference.TransferredBy,
-		)
-	}
-	return nil
+func (k msgServer) compareStartDevComponents(msg *types.MsgStartInference, inference *types.Inference) {
+	mismatchCount := 0
+	mismatchCount += k.logStartFieldComparison("dev", "original_prompt_hash", msg.OriginalPromptHash, inference.OriginalPromptHash, msg.InferenceId)
+	mismatchCount += k.logStartFieldComparison("dev", "request_timestamp", msg.RequestTimestamp, inference.RequestTimestamp, msg.InferenceId)
+	mismatchCount += k.logStartFieldComparison("dev", "transfer_agent", msg.Creator, inference.TransferredBy, msg.InferenceId)
+	k.logStartComparisonSummary("dev", mismatchCount, msg.InferenceId)
 }
 
 // TODO: We need to include inferenceId in the TA signature to make sure executor can't substitute the modified prompt
 // TODO: any error here should lead to punishing the TA
-func compareStartTAComponents(msg *types.MsgStartInference, inference *types.Inference) error {
-	if inference.PromptHash != msg.PromptHash {
-		return sdkerrors.Wrapf(
-			types.ErrTAComponentMismatch,
-			"prompt_hash mismatch: start=%s finish=%s",
-			msg.PromptHash,
-			inference.PromptHash,
-		)
-	}
-	if inference.RequestTimestamp != msg.RequestTimestamp {
-		return sdkerrors.Wrapf(
-			types.ErrTAComponentMismatch,
-			"request_timestamp mismatch: start=%d finish=%d",
-			msg.RequestTimestamp,
-			inference.RequestTimestamp,
-		)
-	}
-	if inference.TransferredBy != msg.Creator {
-		return sdkerrors.Wrapf(
-			types.ErrTAComponentMismatch,
-			"transfer agent mismatch: start=%s finish=%s",
-			msg.Creator,
-			inference.TransferredBy,
-		)
-	}
-	if inference.ExecutedBy != msg.AssignedTo {
-		return sdkerrors.Wrapf(
-			types.ErrTAComponentMismatch,
-			"executor mismatch: start.assigned_to=%s finish.executed_by=%s",
-			msg.AssignedTo,
-			inference.ExecutedBy,
-		)
-	}
-	return nil
+func (k msgServer) compareStartTAComponents(msg *types.MsgStartInference, inference *types.Inference) {
+	mismatchCount := 0
+	mismatchCount += k.logStartFieldComparison("ta", "prompt_hash", msg.PromptHash, inference.PromptHash, msg.InferenceId)
+	mismatchCount += k.logStartFieldComparison("ta", "request_timestamp", msg.RequestTimestamp, inference.RequestTimestamp, msg.InferenceId)
+	mismatchCount += k.logStartFieldComparison("ta", "transfer_agent", msg.Creator, inference.TransferredBy, msg.InferenceId)
+	mismatchCount += k.logStartFieldComparison("ta", "executor", msg.AssignedTo, inference.ExecutedBy, msg.InferenceId)
+	k.logStartComparisonSummary("ta", mismatchCount, msg.InferenceId)
 }
 
-func compareStartRoleFields(msg *types.MsgStartInference, inference *types.Inference) error {
-	if inference.RequestedBy != msg.RequestedBy {
-		return sdkerrors.Wrapf(
-			types.ErrInferenceRoleMismatch,
-			"requested_by mismatch: start=%s finish=%s",
-			msg.RequestedBy,
-			inference.RequestedBy,
-		)
+func (k msgServer) compareStartRoleFields(msg *types.MsgStartInference, inference *types.Inference) {
+	mismatchCount := 0
+	mismatchCount += k.logStartFieldComparison("roles", "requested_by", msg.RequestedBy, inference.RequestedBy, msg.InferenceId)
+	if inference.Model == "" {
+		k.LogInfo("StartInference compare [roles]: model skipped (empty on stored inference)", types.Inferences, "inferenceId", msg.InferenceId)
+	} else {
+		mismatchCount += k.logStartFieldComparison("roles", "model", msg.Model, inference.Model, msg.InferenceId)
 	}
-	if inference.Model != "" && inference.Model != msg.Model {
-		return sdkerrors.Wrapf(
-			types.ErrInferenceRoleMismatch,
-			"model mismatch: start=%s finish=%s",
-			msg.Model,
-			inference.Model,
+	k.logStartComparisonSummary("roles", mismatchCount, msg.InferenceId)
+}
+
+func (k msgServer) logStartFieldComparison(group string, field string, expected interface{}, actual interface{}, inferenceID string) int {
+	if expected == actual {
+		k.LogInfo("StartInference compare matched", types.Inferences,
+			"group", group,
+			"field", field,
+			"inferenceId", inferenceID,
+			"value", expected,
 		)
+		return 0
 	}
-	return nil
+	k.LogWarn("StartInference compare mismatched", types.Inferences,
+		"group", group,
+		"field", field,
+		"inferenceId", inferenceID,
+		"startValue", expected,
+		"finishValue", actual,
+	)
+	return 1
+}
+
+func (k msgServer) logStartComparisonSummary(group string, mismatchCount int, inferenceID string) {
+	if mismatchCount == 0 {
+		k.LogInfo("StartInference compare summary: all fields matched", types.Inferences,
+			"group", group,
+			"inferenceId", inferenceID,
+		)
+		return
+	}
+	k.LogWarn("StartInference compare summary: mismatches detected", types.Inferences,
+		"group", group,
+		"inferenceId", inferenceID,
+		"mismatchCount", mismatchCount,
+	)
 }
 
 func (k msgServer) validateTimestamp(
