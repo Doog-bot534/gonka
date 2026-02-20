@@ -356,17 +356,25 @@ func TestFLTQPropagationBandwidth(t *testing.T) {
 		bundlers[addr] = bundler
 	}
 
-	var publishWg sync.WaitGroup
+	publishCh := make(chan string, len(participants))
 	for _, addr := range participants {
+		publishCh <- addr
+	}
+	close(publishCh)
+
+	var publishWg sync.WaitGroup
+	for i := 0; i < 100; i++ {
 		publishWg.Add(1)
-		go func(a string) {
+		go func() {
 			defer publishWg.Done()
-			senderCount := uint32(1)
-			senderRoot := sha256.Sum256([]byte(fmt.Sprintf("root-%s", a)))
-			if err := bundlers[a].Publish(pocHeight, a, senderCount, senderRoot[:]); err != nil {
-				t.Errorf("publish %s: %v", a, err)
+			for a := range publishCh {
+				senderCount := uint32(1)
+				senderRoot := sha256.Sum256([]byte(fmt.Sprintf("root-%s", a)))
+				if err := bundlers[a].Publish(pocHeight, a, senderCount, senderRoot[:]); err != nil {
+					t.Errorf("publish %s: %v", a, err)
+				}
 			}
-		}(addr)
+		}()
 	}
 	publishWg.Wait()
 
