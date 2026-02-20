@@ -70,8 +70,8 @@ func NewFLTQReceiver(cache *Cache, cube *FLTQCube, verifier PubKeyProvider, myAd
 		myAddr:     myAddr,
 		sender:     sender,
 		writeCh:    make(chan *diskWrite, 2000),
-		verifiedCh: make(chan *verifiedWrite, 2000),
-		forwardCh:  make(chan *forwardWork, 2000),
+		verifiedCh: make(chan *verifiedWrite, 10000),
+		forwardCh:  make(chan *forwardWork, 10000),
 		stopCh:     make(chan struct{}),
 	}
 
