@@ -7,7 +7,7 @@ import (
 
 type bundleShard struct {
 	mu      sync.RWMutex
-	bundles map[[4]byte]int64 // bundleID -> pocHeight
+	bundles map[[4]byte]BundleHeader
 }
 
 type MemBundleStorage struct {
@@ -26,9 +26,11 @@ func (s *MemBundleStorage) StoreHeader(_ context.Context, h BundleHeader) error 
 	sh := s.shardFor(h.BundleID)
 	sh.mu.Lock()
 	if sh.bundles == nil {
-		sh.bundles = make(map[[4]byte]int64, 64)
+		sh.bundles = make(map[[4]byte]BundleHeader, 64)
 	}
-	sh.bundles[h.BundleID] = h.PocHeight
+	if _, exists := sh.bundles[h.BundleID]; !exists {
+		sh.bundles[h.BundleID] = h
+	}
 	sh.mu.Unlock()
 	return nil
 }
@@ -38,9 +40,11 @@ func (s *MemBundleStorage) StoreHeaderBatch(_ context.Context, headers []BundleH
 		sh := s.shardFor(h.BundleID)
 		sh.mu.Lock()
 		if sh.bundles == nil {
-			sh.bundles = make(map[[4]byte]int64, 64)
+			sh.bundles = make(map[[4]byte]BundleHeader, 64)
 		}
-		sh.bundles[h.BundleID] = h.PocHeight
+		if _, exists := sh.bundles[h.BundleID]; !exists {
+			sh.bundles[h.BundleID] = h
+		}
 		sh.mu.Unlock()
 	}
 	return nil
@@ -49,31 +53,49 @@ func (s *MemBundleStorage) StoreHeaderBatch(_ context.Context, headers []BundleH
 func (s *MemBundleStorage) GetHeader(_ context.Context, bundleID [4]byte) (BundleHeader, error) {
 	sh := s.shardFor(bundleID)
 	sh.mu.RLock()
-	_, exists := sh.bundles[bundleID]
+	h, exists := sh.bundles[bundleID]
 	sh.mu.RUnlock()
 	if !exists {
 		return BundleHeader{}, ErrBundleNotFound
 	}
-	return BundleHeader{BundleID: bundleID}, nil
+	return h, nil
 }
 
-func (s *MemBundleStorage) LatestBundle(_ context.Context, _ string, _ int64) (BundleHeader, error) {
-	return BundleHeader{}, ErrBundleNotFound
-}
-
-func (s *MemBundleStorage) AllBundlesForHeight(_ context.Context, pocHeight int64) ([]BundleHeader, error) {
-	count := 0
+func (s *MemBundleStorage) LatestBundle(_ context.Context, participant string, pocHeight int64) (BundleHeader, error) {
+	var latest BundleHeader
+	var found bool
 	for i := range s.shards {
 		sh := &s.shards[i]
 		sh.mu.RLock()
 		for _, h := range sh.bundles {
-			if h == pocHeight {
-				count++
+			if h.Participant == participant && h.PocHeight == pocHeight {
+				if !found || h.CreatedAt > latest.CreatedAt {
+					latest = h
+					found = true
+				}
 			}
 		}
 		sh.mu.RUnlock()
 	}
-	return make([]BundleHeader, count), nil
+	if !found {
+		return BundleHeader{}, ErrBundleNotFound
+	}
+	return latest, nil
+}
+
+func (s *MemBundleStorage) AllBundlesForHeight(_ context.Context, pocHeight int64) ([]BundleHeader, error) {
+	result := make([]BundleHeader, 0, 64)
+	for i := range s.shards {
+		sh := &s.shards[i]
+		sh.mu.RLock()
+		for _, h := range sh.bundles {
+			if h.PocHeight == pocHeight {
+				result = append(result, h)
+			}
+		}
+		sh.mu.RUnlock()
+	}
+	return result, nil
 }
 
 func (s *MemBundleStorage) StoreFirstArrival(_ context.Context, _ string, _ int64, _ int64, _ uint32) error {
