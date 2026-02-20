@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -297,7 +296,7 @@ func TestFLTQPropagationDemoSmallPostgres(t *testing.T) {
 }
 
 func TestFLTQPropagationBandwidth(t *testing.T) {
-	numParticipants := 10
+	numParticipants := 100
 	weightedParticipants := make([]WeightedParticipant, numParticipants)
 	privKeys := make(map[string][]byte)
 	pubKeys := make(map[string]string)
@@ -330,18 +329,12 @@ func TestFLTQPropagationBandwidth(t *testing.T) {
 		pubKeyProvider.RegisterKey(addr, pubKey)
 	}
 
-	tempDir, err := os.MkdirTemp("", "fltq-bandwidth-")
-	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
-
 	caches := make(map[string]*Cache)
 	receivers := make(map[string]*FLTQReceiver)
 	bundlers := make(map[string]*FLTQBundler)
 
 	for _, addr := range participants {
-		storageDir := filepath.Join(tempDir, addr, "bundles_fltq")
-		storage, err := NewFileBundleStorage(storageDir)
-		require.NoError(t, err)
+		storage := NewMemBundleStorage()
 		cache := NewCache(storage)
 		caches[addr] = cache
 
@@ -363,7 +356,7 @@ func TestFLTQPropagationBandwidth(t *testing.T) {
 	close(publishCh)
 
 	var publishWg sync.WaitGroup
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 50; i++ {
 		publishWg.Add(1)
 		go func() {
 			defer publishWg.Done()

@@ -148,7 +148,7 @@ func (r *FLTQReceiver) verifyWorker() {
 
 func (r *FLTQReceiver) diskWriter() {
 	defer r.wg.Done()
-	batch := make([]verifiedWrite, 0, 10000)
+	batch := make([]verifiedWrite, 0, 1000)
 	for {
 		select {
 		case <-r.stopCh:

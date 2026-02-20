@@ -16,7 +16,7 @@ import (
 	"github.com/productscience/inference/x/inference/types"
 )
 
-const bundleShardSize = 100
+const bundleShardSize = 500
 
 type FileBundleStorage struct {
 	baseDir             string
