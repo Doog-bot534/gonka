@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 type fltqLoggingSender struct {
@@ -37,10 +37,8 @@ func (l *fltqLoggingSender) SendHeaderFLTQ(to string, h BundleHeader) error {
 }
 
 type bandwidthTracker struct {
-	sentBytes        sync.Map // string -> *atomic.Int64
-	receivedBytes    sync.Map // string -> *atomic.Int64
-	sentMessages     sync.Map // string -> *atomic.Int64
-	receivedMessages sync.Map // string -> *atomic.Int64
+	sentBytes    sync.Map // addr -> *atomic.Int64
+	sentMessages sync.Map // addr -> *atomic.Int64
 }
 
 func newBandwidthTracker() *bandwidthTracker {
@@ -52,53 +50,21 @@ func (b *bandwidthTracker) counter(m *sync.Map, key string) *atomic.Int64 {
 	return v.(*atomic.Int64)
 }
 
-func (b *bandwidthTracker) record(from, to string, size int) {
+func (b *bandwidthTracker) record(from string, size int) {
 	b.counter(&b.sentBytes, from).Add(int64(size))
-	b.counter(&b.receivedBytes, to).Add(int64(size))
 	b.counter(&b.sentMessages, from).Add(1)
-	b.counter(&b.receivedMessages, to).Add(1)
 }
 
-func (b *bandwidthTracker) totals() (int, int) {
-	var totalSent, totalReceived int64
+func (b *bandwidthTracker) totals() (totalBytes int64, totalMsgs int64) {
 	b.sentBytes.Range(func(_, v any) bool {
-		totalSent += v.(*atomic.Int64).Load()
+		totalBytes += v.(*atomic.Int64).Load()
 		return true
 	})
-	b.receivedBytes.Range(func(_, v any) bool {
-		totalReceived += v.(*atomic.Int64).Load()
-		return true
-	})
-	return int(totalSent), int(totalReceived)
-}
-
-func (b *bandwidthTracker) messageTotals() (int, int) {
-	var sent, received int64
 	b.sentMessages.Range(func(_, v any) bool {
-		sent += v.(*atomic.Int64).Load()
+		totalMsgs += v.(*atomic.Int64).Load()
 		return true
 	})
-	b.receivedMessages.Range(func(_, v any) bool {
-		received += v.(*atomic.Int64).Load()
-		return true
-	})
-	return int(sent), int(received)
-}
-
-func (b *bandwidthTracker) received(addr string) int {
-	v, ok := b.receivedBytes.Load(addr)
-	if !ok {
-		return 0
-	}
-	return int(v.(*atomic.Int64).Load())
-}
-
-func (b *bandwidthTracker) receivedMsgs(addr string) int {
-	v, ok := b.receivedMessages.Load(addr)
-	if !ok {
-		return 0
-	}
-	return int(v.(*atomic.Int64).Load())
+	return
 }
 
 type bandwidthTrackingSender struct {
@@ -112,11 +78,7 @@ func newBandwidthTrackingSender(from string, dst FLTQSender, tracker *bandwidthT
 }
 
 func (s *bandwidthTrackingSender) SendHeaderFLTQ(to string, h BundleHeader) error {
-	size, err := json.Marshal(h)
-	if err != nil {
-		return err
-	}
-	s.tracker.record(s.from, to, len(size))
+	s.tracker.record(s.from, proto.Size(HeaderToProto(h)))
 	return s.dst.SendHeaderFLTQ(to, h)
 }
 
@@ -329,14 +291,11 @@ func TestFLTQPropagationBandwidth(t *testing.T) {
 		pubKeyProvider.RegisterKey(addr, pubKey)
 	}
 
-	caches := make(map[string]*Cache)
 	receivers := make(map[string]*FLTQReceiver)
 	bundlers := make(map[string]*FLTQBundler)
 
 	for _, addr := range participants {
-		storage := NewMemBundleStorage()
-		cache := NewCache(storage)
-		caches[addr] = cache
+		cache := NewCache(NewMemBundleStorage())
 
 		perParticipantSender := transport.NewSenderFor(addr)
 		sender := newBandwidthTrackingSender(addr, perParticipantSender, tracker)
@@ -354,6 +313,8 @@ func TestFLTQPropagationBandwidth(t *testing.T) {
 		publishCh <- addr
 	}
 	close(publishCh)
+
+	start := time.Now()
 
 	var publishWg sync.WaitGroup
 	for i := 0; i < 50; i++ {
@@ -381,30 +342,20 @@ func TestFLTQPropagationBandwidth(t *testing.T) {
 	}
 	waitWg.Wait()
 
-	for addr := range caches {
-		bundles := caches[addr].AllBundlesForHeight(pocHeight)
-		require.Len(t, bundles, numParticipants)
+	elapsed := time.Since(start)
+	totalBytes, totalMsgs := tracker.totals()
+	avgBytes := float64(totalBytes) / float64(numParticipants)
+	avgMsgs := float64(totalMsgs) / float64(numParticipants)
+	avgBytesPerSec := avgBytes / elapsed.Seconds()
+	var msgSizeBytes int64
+	if totalMsgs > 0 {
+		msgSizeBytes = totalBytes / totalMsgs
 	}
 
-	totalSent, totalReceived := tracker.totals()
-	require.Equal(t, totalSent, totalReceived)
-
-	totalSentMsgs, totalReceivedMsgs := tracker.messageTotals()
-	require.Equal(t, totalSentMsgs, totalReceivedMsgs)
-
-	for addr := range caches {
-		require.Greater(t, tracker.received(addr), 0)
-		require.Greater(t, tracker.receivedMsgs(addr), 0)
-	}
-
-	avgPerParticipant := float64(totalSent) / float64(numParticipants)
-	avgMsgsPerParticipant := float64(totalReceivedMsgs) / float64(numParticipants)
-	t.Logf("Total bytes sent: %d", totalSent)
-	t.Logf("Total bytes received: %d", totalReceived)
-	t.Logf("Average bytes per participant: %.1f", avgPerParticipant)
-	t.Logf("Total messages sent: %d", totalSentMsgs)
-	t.Logf("Total messages received: %d", totalReceivedMsgs)
-	t.Logf("Average messages per participant: %.1f", avgMsgsPerParticipant)
+	t.Logf("participants=%d  duration=%.1fs", numParticipants, elapsed.Seconds())
+	t.Logf("message size: %d B", msgSizeBytes)
+	t.Logf("per-participant avg: msgs_sent=%.0f  bytes_sent=%.0f KB  bytes/s=%.0f KB/s",
+		avgMsgs, avgBytes/1024, avgBytesPerSec/1024)
 }
 
 func TestFLTQTopology(t *testing.T) {

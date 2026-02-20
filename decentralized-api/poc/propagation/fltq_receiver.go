@@ -33,8 +33,7 @@ var (
 )
 
 type headerState struct {
-	header      *BundleHeader
-	arrivalTime time.Time
+	arrivalTime int64
 	verified    bool
 }
 
@@ -70,9 +69,9 @@ func NewFLTQReceiver(cache *Cache, cube *FLTQCube, verifier PubKeyProvider, myAd
 		verifier:   verifier,
 		myAddr:     myAddr,
 		sender:     sender,
-		writeCh:    make(chan *diskWrite, 12000),
-		verifiedCh: make(chan *verifiedWrite, 12000),
-		forwardCh:  make(chan *forwardWork, 12000),
+		writeCh:    make(chan *diskWrite, 2000),
+		verifiedCh: make(chan *verifiedWrite, 2000),
+		forwardCh:  make(chan *forwardWork, 2000),
 		stopCh:     make(chan struct{}),
 	}
 
@@ -157,7 +156,7 @@ func (r *FLTQReceiver) diskWriter() {
 			batch = append(batch, *vw)
 			verifiedWritePool.Put(vw)
 
-			for len(batch) < 10000 {
+			for len(batch) < 1000 {
 				select {
 				case vw2 := <-r.verifiedCh:
 					batch = append(batch, *vw2)
@@ -214,8 +213,7 @@ func (r *FLTQReceiver) OnHeader(h BundleHeader, from string) error {
 	}
 
 	state := &headerState{
-		header:      &h,
-		arrivalTime: time.Now(),
+		arrivalTime: time.Now().UnixMilli(),
 		verified:    false,
 	}
 
@@ -247,7 +245,7 @@ func (r *FLTQReceiver) OnHeader(h BundleHeader, from string) error {
 	dw := diskWritePool.Get().(*diskWrite)
 	*dw = diskWrite{
 		header:       h,
-		arrivalTime:  state.arrivalTime.UnixMilli(),
+		arrivalTime:  state.arrivalTime,
 		arrivalCount: h.Count,
 	}
 	select {
