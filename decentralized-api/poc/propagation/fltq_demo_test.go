@@ -352,7 +352,7 @@ func TestFLTQPropagationBandwidth(t *testing.T) {
 		msgSizeBytes = totalBytes / totalMsgs
 	}
 
-	t.Logf("participants=%d  duration=%.1fs", numParticipants, elapsed.Seconds())
+	t.Logf("participants=%d  duration=%.3fs", numParticipants, elapsed.Seconds())
 	t.Logf("message size: %d B", msgSizeBytes)
 	t.Logf("per-participant avg: msgs_sent=%.0f  bytes_sent=%.0f KB  bytes/s=%.0f KB/s",
 		avgMsgs, avgBytes/1024, avgBytesPerSec/1024)
