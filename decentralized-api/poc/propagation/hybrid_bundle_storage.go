@@ -70,6 +70,17 @@ func (h *HybridBundleStorage) StoreHeader(ctx context.Context, header BundleHead
 	return h.file.StoreHeader(ctx, header)
 }
 
+func (h *HybridBundleStorage) StoreHeaderBatch(ctx context.Context, headers []BundleHeader) error {
+	if pg := h.currentPg(); pg != nil {
+		err := pg.StoreHeaderBatch(ctx, headers)
+		if err == nil {
+			return nil
+		}
+		logging.Warn("PostgreSQL store header batch failed, falling back to file", types.PoC, "error", err)
+	}
+	return h.file.StoreHeaderBatch(ctx, headers)
+}
+
 func (h *HybridBundleStorage) GetHeader(ctx context.Context, bundleID [4]byte) (BundleHeader, error) {
 	if pg := h.currentPg(); pg != nil {
 		header, err := pg.GetHeader(ctx, bundleID)
@@ -123,6 +134,17 @@ func (h *HybridBundleStorage) StoreFirstArrival(ctx context.Context, participant
 			"participant", participant, "pocHeight", pocHeight, "error", err)
 	}
 	return h.file.StoreFirstArrival(ctx, participant, pocHeight, arrivalTime, count)
+}
+
+func (h *HybridBundleStorage) StoreFirstArrivalBatch(ctx context.Context, arrivals []ArrivalInfo, participants []string, pocHeights []int64) error {
+	if pg := h.currentPg(); pg != nil {
+		err := pg.StoreFirstArrivalBatch(ctx, arrivals, participants, pocHeights)
+		if err == nil {
+			return nil
+		}
+		logging.Warn("PostgreSQL store first arrival batch failed, falling back to file", types.PoC, "error", err)
+	}
+	return h.file.StoreFirstArrivalBatch(ctx, arrivals, participants, pocHeights)
 }
 
 func (h *HybridBundleStorage) GetFirstArrival(ctx context.Context, participant string, pocHeight int64) (ArrivalInfo, error) {

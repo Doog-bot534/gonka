@@ -12,11 +12,13 @@ var (
 
 type BundleStorage interface {
 	StoreHeader(ctx context.Context, h BundleHeader) error
+	StoreHeaderBatch(ctx context.Context, headers []BundleHeader) error
 	GetHeader(ctx context.Context, bundleID [4]byte) (BundleHeader, error)
 	LatestBundle(ctx context.Context, participant string, pocHeight int64) (BundleHeader, error)
 	AllBundlesForHeight(ctx context.Context, pocHeight int64) ([]BundleHeader, error)
 
 	StoreFirstArrival(ctx context.Context, participant string, pocHeight int64, arrivalTime int64, count uint32) error
+	StoreFirstArrivalBatch(ctx context.Context, arrivals []ArrivalInfo, participants []string, pocHeights []int64) error
 	GetFirstArrival(ctx context.Context, participant string, pocHeight int64) (ArrivalInfo, error)
 	GetAllFirstArrivals(ctx context.Context, pocHeight int64) (map[string]ArrivalInfo, error)
 

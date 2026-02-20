@@ -1,0 +1,15 @@
+syntax = "proto3";
+package propagation;
+option go_package = "decentralized-api/poc/propagation/proto;pb";
+
+message PropagationHeader {
+  bytes  bundle_id   = 1;
+  string participant = 2;
+  int64  poc_height  = 3;
+  bytes  root_hash   = 4;
+  uint32 count       = 5;
+  int64  created_at  = 6;
+  bytes  signature   = 7;
+}
+
+

@@ -57,7 +57,7 @@ func (b *FLTQBundler) Publish(pocHeight int64, participant string, count uint32,
 	copy(header.Signature[:], sig)
 
 	if b.cache != nil {
-		if err := b.cache.StoreHeader(context.Background(), header); err != nil {
+		if err := b.cache.StoreHeaderBatch(context.Background(), []BundleHeader{header}); err != nil {
 			logging.Warn("FLTQBundler: failed to cache own header", types.PoC, "error", err)
 		}
 	}

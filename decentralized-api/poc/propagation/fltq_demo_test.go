@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -37,69 +38,68 @@ func (l *fltqLoggingSender) SendHeaderFLTQ(to string, h BundleHeader) error {
 }
 
 type bandwidthTracker struct {
-	mu               sync.Mutex
-	sentBytes        map[string]int
-	receivedBytes    map[string]int
-	sentMessages     map[string]int
-	receivedMessages map[string]int
+	sentBytes        sync.Map // string -> *atomic.Int64
+	receivedBytes    sync.Map // string -> *atomic.Int64
+	sentMessages     sync.Map // string -> *atomic.Int64
+	receivedMessages sync.Map // string -> *atomic.Int64
 }
 
 func newBandwidthTracker() *bandwidthTracker {
-	return &bandwidthTracker{
-		sentBytes:        make(map[string]int),
-		receivedBytes:    make(map[string]int),
-		sentMessages:     make(map[string]int),
-		receivedMessages: make(map[string]int),
-	}
+	return &bandwidthTracker{}
+}
+
+func (b *bandwidthTracker) counter(m *sync.Map, key string) *atomic.Int64 {
+	v, _ := m.LoadOrStore(key, &atomic.Int64{})
+	return v.(*atomic.Int64)
 }
 
 func (b *bandwidthTracker) record(from, to string, size int) {
-	b.mu.Lock()
-	b.sentBytes[from] += size
-	b.receivedBytes[to] += size
-	b.sentMessages[from]++
-	b.receivedMessages[to]++
-	b.mu.Unlock()
+	b.counter(&b.sentBytes, from).Add(int64(size))
+	b.counter(&b.receivedBytes, to).Add(int64(size))
+	b.counter(&b.sentMessages, from).Add(1)
+	b.counter(&b.receivedMessages, to).Add(1)
 }
 
 func (b *bandwidthTracker) totals() (int, int) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	totalSent := 0
-	for _, v := range b.sentBytes {
-		totalSent += v
-	}
-	totalReceived := 0
-	for _, v := range b.receivedBytes {
-		totalReceived += v
-	}
-	return totalSent, totalReceived
+	var totalSent, totalReceived int64
+	b.sentBytes.Range(func(_, v any) bool {
+		totalSent += v.(*atomic.Int64).Load()
+		return true
+	})
+	b.receivedBytes.Range(func(_, v any) bool {
+		totalReceived += v.(*atomic.Int64).Load()
+		return true
+	})
+	return int(totalSent), int(totalReceived)
 }
 
 func (b *bandwidthTracker) messageTotals() (int, int) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	sent := 0
-	for _, v := range b.sentMessages {
-		sent += v
-	}
-	received := 0
-	for _, v := range b.receivedMessages {
-		received += v
-	}
-	return sent, received
+	var sent, received int64
+	b.sentMessages.Range(func(_, v any) bool {
+		sent += v.(*atomic.Int64).Load()
+		return true
+	})
+	b.receivedMessages.Range(func(_, v any) bool {
+		received += v.(*atomic.Int64).Load()
+		return true
+	})
+	return int(sent), int(received)
 }
 
 func (b *bandwidthTracker) received(addr string) int {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.receivedBytes[addr]
+	v, ok := b.receivedBytes.Load(addr)
+	if !ok {
+		return 0
+	}
+	return int(v.(*atomic.Int64).Load())
 }
 
 func (b *bandwidthTracker) receivedMsgs(addr string) int {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.receivedMessages[addr]
+	v, ok := b.receivedMessages.Load(addr)
+	if !ok {
+		return 0
+	}
+	return int(v.(*atomic.Int64).Load())
 }
 
 type bandwidthTrackingSender struct {
@@ -356,15 +356,29 @@ func TestFLTQPropagationBandwidth(t *testing.T) {
 		bundlers[addr] = bundler
 	}
 
+	var publishWg sync.WaitGroup
 	for _, addr := range participants {
-		senderCount := uint32(1)
-		senderRoot := sha256.Sum256([]byte(fmt.Sprintf("root-%s", addr)))
-		require.NoError(t, bundlers[addr].Publish(pocHeight, addr, senderCount, senderRoot[:]))
+		publishWg.Add(1)
+		go func(a string) {
+			defer publishWg.Done()
+			senderCount := uint32(1)
+			senderRoot := sha256.Sum256([]byte(fmt.Sprintf("root-%s", a)))
+			if err := bundlers[a].Publish(pocHeight, a, senderCount, senderRoot[:]); err != nil {
+				t.Errorf("publish %s: %v", a, err)
+			}
+		}(addr)
 	}
+	publishWg.Wait()
 
-	for _, receiver := range receivers {
-		receiver.Wait()
+	var waitWg sync.WaitGroup
+	for _, r := range receivers {
+		waitWg.Add(1)
+		go func(recv *FLTQReceiver) {
+			defer waitWg.Done()
+			recv.Wait()
+		}(r)
 	}
+	waitWg.Wait()
 
 	for addr := range caches {
 		bundles := caches[addr].AllBundlesForHeight(pocHeight)

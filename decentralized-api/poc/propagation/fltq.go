@@ -109,10 +109,15 @@ func buildFLTQWithIndex(index int, participants []WeightedParticipant, blockHash
 			continue
 		}
 
+		neighborCapacity := n + 16
+		if neighborCapacity < 32 {
+			neighborCapacity = 32
+		}
+
 		node := &FLTQNode{
 			Address:    addr,
 			Position:   uint16(pos),
-			Neighbors:  make([]string, 0, n+1),
+			Neighbors:  make([]string, 0, neighborCapacity),
 			Dimensions: n,
 		}
 		cube.Nodes[addr] = node
@@ -413,7 +418,11 @@ func buildPastryEdges(cube *FLTQCube, seed []byte, config FLTQConfig) {
 	for addr, neighborsMap := range allNeighborsMap {
 		node := cube.Nodes[addr]
 		if node != nil {
-			node.Neighbors = make([]string, 0, len(neighborsMap))
+			cap := len(neighborsMap)
+			if cap < 32 {
+				cap = 32
+			}
+			node.Neighbors = make([]string, 0, cap)
 			for neighborAddr := range neighborsMap {
 				node.Neighbors = append(node.Neighbors, neighborAddr)
 			}

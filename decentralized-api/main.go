@@ -184,7 +184,8 @@ func main() {
 	// Initialize propagation infrastructure (if enabled)
 	var propagationCache *propagation.Cache
 	var fltqBundler *propagation.FLTQBundler
-	var propagationTransport *propagation.HTTPTransport
+	var fltqSender propagation.FLTQSender
+	var propagationURLSetter event_listener.ParticipantURLSetter
 	var fltqReceiver *propagation.FLTQReceiver
 	var propagationHandlers *pserver.PropagationHandlers
 	var propagationPool *pgxpool.Pool
@@ -197,11 +198,6 @@ func main() {
 		bundleStorage, propagationPool = propagation.NewBundleStorage(ctx, propConfig.StorageDir, participantInfo.GetAddress())
 		propagationCache = propagation.NewCache(bundleStorage)
 
-		propagationTransport = propagation.NewHTTPTransport(
-			participantInfo.GetAddress(),
-			30*time.Second,
-		)
-
 		// Start with empty cube - will be rebuilt at epoch start
 		bootstrapCube := &propagation.FLTQCube{
 			Index:      0,
@@ -213,16 +209,6 @@ func main() {
 
 		pubKeyProvider := &chainPubKeyProvider{queryClient: recorder.NewInferenceQueryClient()}
 
-		fltqReceiver = propagation.NewFLTQReceiver(
-			propagationCache,
-			bootstrapCube,
-			pubKeyProvider,
-			participantInfo.GetAddress(),
-			propagationTransport,
-		)
-
-		propagationTransport.RegisterReceiver(participantInfo.GetAddress(), fltqReceiver)
-
 		workerPrivKey, err := config.GetWorkerPrivateKey()
 		if err != nil {
 			logging.Error("Failed to get worker private key", types.PoC, "error", err)
@@ -233,22 +219,28 @@ func main() {
 			panic("worker private key not found")
 		}
 
+		httpTransport := propagation.NewHTTPTransport(participantInfo.GetAddress(), 30*time.Second)
+		fltqReceiver = propagation.NewFLTQReceiver(propagationCache, bootstrapCube, pubKeyProvider, participantInfo.GetAddress(), httpTransport)
+		httpTransport.RegisterReceiver(participantInfo.GetAddress(), fltqReceiver)
+		fltqSender = httpTransport
+		propagationURLSetter = httpTransport
+		propagationHandlers = pserver.NewPropagationHandlers(fltqReceiver)
+		propagationHandlers.SetCache(propagationCache)
+
 		signer := &workerKeySigner{privateKey: workerPrivKey}
 		fltqBundler = propagation.NewFLTQBundler(
 			signer,
 			propagationCache,
 			bootstrapCube,
-			propagationTransport,
+			fltqSender,
 			participantInfo.GetAddress(),
 		)
-
-		propagationHandlers = pserver.NewPropagationHandlers(propagationTransport)
-		propagationHandlers.SetCache(propagationCache)
 
 		defer fltqReceiver.Close()
 
 		logging.Info("FLTQ propagation system initialized", types.PoC,
-			"address", participantInfo.GetAddress())
+			"address", participantInfo.GetAddress(),
+			"transport", propConfig.Transport)
 	} else {
 		logging.Info("Off-chain propagation disabled", types.PoC)
 	}
@@ -277,7 +269,7 @@ func main() {
 
 	if propConfig.Enabled && fltqReceiver != nil && fltqBundler != nil {
 		epochGroupDataCache := internal.NewEpochGroupDataCache(recorder)
-		listener.SetPropagationComponents(fltqReceiver, fltqBundler, propagationTransport, recorder.NewInferenceQueryClient(), epochGroupDataCache, propagationCache)
+		listener.SetPropagationComponents(fltqReceiver, fltqBundler, propagationURLSetter, recorder.NewInferenceQueryClient(), epochGroupDataCache, propagationCache, propConfig)
 		logging.Info("FLTQ propagation components wired to event listener", types.PoC)
 	}
 

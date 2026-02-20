@@ -7,6 +7,7 @@ import (
 
 	"decentralized-api/logging"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/productscience/inference/x/inference/types"
 )
@@ -14,9 +15,8 @@ import (
 type PostgresBundleStorage struct {
 	pool     *pgxpool.Pool
 	instance string
-	mu       sync.RWMutex
-	bundles  map[[4]byte]BundleHeader
-	arrivals map[participantPocKey]ArrivalInfo
+	bundles  sync.Map // [4]byte -> BundleHeader
+	arrivals sync.Map // participantPocKey -> ArrivalInfo
 }
 
 func NewPostgresBundleStorage(ctx context.Context, pool *pgxpool.Pool, instance string) (*PostgresBundleStorage, error) {
@@ -30,8 +30,6 @@ func NewPostgresBundleStorage(ctx context.Context, pool *pgxpool.Pool, instance 
 	s := &PostgresBundleStorage{
 		pool:     pool,
 		instance: instance,
-		bundles:  make(map[[4]byte]BundleHeader),
-		arrivals: make(map[participantPocKey]ArrivalInfo),
 	}
 
 	if err := s.ensureSchema(ctx); err != nil {
@@ -84,6 +82,7 @@ func (s *PostgresBundleStorage) loadBundles(ctx context.Context) error {
 	}
 	defer rows.Close()
 
+	bundleCount := 0
 	for rows.Next() {
 		var idBytes []byte
 		var h BundleHeader
@@ -94,7 +93,8 @@ func (s *PostgresBundleStorage) loadBundles(ctx context.Context) error {
 			continue
 		}
 		copy(h.BundleID[:], idBytes)
-		s.bundles[h.BundleID] = h
+		s.bundles.Store(h.BundleID, h)
+		bundleCount++
 	}
 
 	if err := rows.Err(); err != nil {
@@ -111,6 +111,7 @@ func (s *PostgresBundleStorage) loadBundles(ctx context.Context) error {
 	}
 	defer arrivalsRows.Close()
 
+	arrivalCount := 0
 	for arrivalsRows.Next() {
 		var participant string
 		var pocHeight, arrivalTime int64
@@ -119,66 +120,96 @@ func (s *PostgresBundleStorage) loadBundles(ctx context.Context) error {
 			return err
 		}
 		key := participantPocKey{Participant: participant, PocHeight: pocHeight}
-		s.arrivals[key] = ArrivalInfo{Time: arrivalTime, Count: count}
+		s.arrivals.Store(key, ArrivalInfo{Time: arrivalTime, Count: count})
+		arrivalCount++
 	}
 
 	if err := arrivalsRows.Err(); err != nil {
 		return err
 	}
 
-	logging.Info("Loaded bundles from PostgreSQL", types.PoC, "count", len(s.bundles), "arrivals", len(s.arrivals))
+	logging.Info("Loaded bundles from PostgreSQL", types.PoC, "count", bundleCount, "arrivals", arrivalCount)
 	return nil
 }
 
 func (s *PostgresBundleStorage) StoreHeader(ctx context.Context, h BundleHeader) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if _, loaded := s.bundles.LoadOrStore(h.BundleID, h); loaded {
+		return nil
+	}
 
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO poc_bundle_headers (instance, bundle_id, participant, poc_height, root_hash, count, created_at, signature)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		ON CONFLICT (instance, bundle_id) DO UPDATE SET
-			participant = EXCLUDED.participant,
-			poc_height = EXCLUDED.poc_height,
-			root_hash = EXCLUDED.root_hash,
-			count = EXCLUDED.count,
-			created_at = EXCLUDED.created_at,
-			signature = EXCLUDED.signature
+		ON CONFLICT (instance, bundle_id) DO NOTHING
 	`, s.instance, h.BundleID[:], h.Participant, h.PocHeight, h.RootHash[:], h.Count, h.CreatedAt, h.Signature[:])
 	if err != nil {
+		s.bundles.Delete(h.BundleID)
 		return fmt.Errorf("store header: %w", err)
 	}
 
-	s.bundles[h.BundleID] = h
+	return nil
+}
+
+func (s *PostgresBundleStorage) StoreHeaderBatch(ctx context.Context, headers []BundleHeader) error {
+	if len(headers) == 0 {
+		return nil
+	}
+
+	toInsert := make([]BundleHeader, 0, len(headers))
+	for _, h := range headers {
+		if _, loaded := s.bundles.LoadOrStore(h.BundleID, h); !loaded {
+			toInsert = append(toInsert, h)
+		}
+	}
+
+	if len(toInsert) == 0 {
+		return nil
+	}
+
+	batch := &pgx.Batch{}
+	for _, h := range toInsert {
+		batch.Queue(`
+			INSERT INTO poc_bundle_headers (instance, bundle_id, participant, poc_height, root_hash, count, created_at, signature)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			ON CONFLICT (instance, bundle_id) DO NOTHING
+		`, s.instance, h.BundleID[:], h.Participant, h.PocHeight, h.RootHash[:], h.Count, h.CreatedAt, h.Signature[:])
+	}
+
+	results := s.pool.SendBatch(ctx, batch)
+	defer results.Close()
+
+	for _, h := range toInsert {
+		if _, err := results.Exec(); err != nil {
+			logging.Warn("Failed to store header in batch", types.PoC, "error", err, "bundleID", h.BundleID)
+			s.bundles.Delete(h.BundleID)
+		}
+	}
+
 	return nil
 }
 
 func (s *PostgresBundleStorage) GetHeader(ctx context.Context, bundleID [4]byte) (BundleHeader, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	header, exists := s.bundles[bundleID]
+	val, exists := s.bundles.Load(bundleID)
 	if !exists {
 		return BundleHeader{}, ErrBundleNotFound
 	}
-	return header, nil
+	return val.(BundleHeader), nil
 }
 
 func (s *PostgresBundleStorage) LatestBundle(ctx context.Context, participant string, pocHeight int64) (BundleHeader, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	var latest BundleHeader
 	var found bool
 
-	for _, header := range s.bundles {
+	s.bundles.Range(func(_, val interface{}) bool {
+		header := val.(BundleHeader)
 		if header.Participant == participant && header.PocHeight == pocHeight {
 			if !found || header.CreatedAt > latest.CreatedAt {
 				latest = header
 				found = true
 			}
 		}
-	}
+		return true
+	})
 
 	if !found {
 		return BundleHeader{}, ErrBundleNotFound
@@ -187,24 +218,20 @@ func (s *PostgresBundleStorage) LatestBundle(ctx context.Context, participant st
 }
 
 func (s *PostgresBundleStorage) AllBundlesForHeight(ctx context.Context, pocHeight int64) ([]BundleHeader, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	result := make([]BundleHeader, 0)
-	for _, header := range s.bundles {
+	s.bundles.Range(func(_, val interface{}) bool {
+		header := val.(BundleHeader)
 		if header.PocHeight == pocHeight {
 			result = append(result, header)
 		}
-	}
+		return true
+	})
 	return result, nil
 }
 
 func (s *PostgresBundleStorage) StoreFirstArrival(ctx context.Context, participant string, pocHeight int64, arrivalTime int64, count uint32) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	key := participantPocKey{Participant: participant, PocHeight: pocHeight}
-	if _, exists := s.arrivals[key]; exists {
+	if _, loaded := s.arrivals.LoadOrStore(key, ArrivalInfo{Time: arrivalTime, Count: count}); loaded {
 		return nil
 	}
 
@@ -214,49 +241,89 @@ func (s *PostgresBundleStorage) StoreFirstArrival(ctx context.Context, participa
 		ON CONFLICT (instance, participant, poc_height) DO NOTHING
 	`, s.instance, participant, pocHeight, arrivalTime, count)
 	if err != nil {
+		s.arrivals.Delete(key)
 		return fmt.Errorf("store first arrival: %w", err)
 	}
 
-	s.arrivals[key] = ArrivalInfo{Time: arrivalTime, Count: count}
+	return nil
+}
+
+func (s *PostgresBundleStorage) StoreFirstArrivalBatch(ctx context.Context, arrivals []ArrivalInfo, participants []string, pocHeights []int64) error {
+	if len(arrivals) == 0 || len(participants) != len(arrivals) || len(pocHeights) != len(arrivals) {
+		return nil
+	}
+
+	type indexedArrival struct {
+		idx     int
+		key     participantPocKey
+		arrival ArrivalInfo
+	}
+
+	toInsert := make([]indexedArrival, 0, len(arrivals))
+	for i := range arrivals {
+		key := participantPocKey{Participant: participants[i], PocHeight: pocHeights[i]}
+		if _, loaded := s.arrivals.LoadOrStore(key, arrivals[i]); !loaded {
+			toInsert = append(toInsert, indexedArrival{idx: i, key: key, arrival: arrivals[i]})
+		}
+	}
+
+	if len(toInsert) == 0 {
+		return nil
+	}
+
+	batch := &pgx.Batch{}
+	for _, ia := range toInsert {
+		batch.Queue(`
+			INSERT INTO poc_first_arrivals (instance, participant, poc_height, arrival_time, arrival_count)
+			VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (instance, participant, poc_height) DO NOTHING
+		`, s.instance, ia.key.Participant, ia.key.PocHeight, ia.arrival.Time, ia.arrival.Count)
+	}
+
+	results := s.pool.SendBatch(ctx, batch)
+	defer results.Close()
+
+	for _, ia := range toInsert {
+		if _, err := results.Exec(); err != nil {
+			logging.Warn("Failed to store first arrival in batch", types.PoC, "error", err)
+			s.arrivals.Delete(ia.key)
+		}
+	}
+
 	return nil
 }
 
 func (s *PostgresBundleStorage) GetFirstArrival(ctx context.Context, participant string, pocHeight int64) (ArrivalInfo, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	key := participantPocKey{Participant: participant, PocHeight: pocHeight}
-	info, exists := s.arrivals[key]
+	val, exists := s.arrivals.Load(key)
 	if !exists {
 		return ArrivalInfo{}, ErrArrivalNotFound
 	}
-	return info, nil
+	return val.(ArrivalInfo), nil
 }
 
 func (s *PostgresBundleStorage) GetAllFirstArrivals(ctx context.Context, pocHeight int64) (map[string]ArrivalInfo, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	result := make(map[string]ArrivalInfo)
-	for key, info := range s.arrivals {
+	s.arrivals.Range(func(k, val interface{}) bool {
+		key := k.(participantPocKey)
 		if key.PocHeight == pocHeight {
-			result[key.Participant] = info
+			result[key.Participant] = val.(ArrivalInfo)
 		}
-	}
+		return true
+	})
 	return result, nil
 }
 
 func (s *PostgresBundleStorage) CleanupOldHeights(ctx context.Context, retainCount int) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	heights := make(map[int64]struct{})
-	for _, header := range s.bundles {
-		heights[header.PocHeight] = struct{}{}
-	}
-	for key := range s.arrivals {
-		heights[key.PocHeight] = struct{}{}
-	}
+	s.bundles.Range(func(_, val interface{}) bool {
+		heights[val.(BundleHeader).PocHeight] = struct{}{}
+		return true
+	})
+	s.arrivals.Range(func(k, _ interface{}) bool {
+		heights[k.(participantPocKey).PocHeight] = struct{}{}
+		return true
+	})
 
 	heightList := make([]int64, 0, len(heights))
 	for h := range heights {
@@ -296,17 +363,19 @@ func (s *PostgresBundleStorage) CleanupOldHeights(ctx context.Context, retainCou
 				"pocHeight", height, "error", err)
 		}
 
-		for bundleID, header := range s.bundles {
-			if header.PocHeight == height {
-				delete(s.bundles, bundleID)
+		s.bundles.Range(func(key, val interface{}) bool {
+			if val.(BundleHeader).PocHeight == height {
+				s.bundles.Delete(key)
 			}
-		}
+			return true
+		})
 
-		for key := range s.arrivals {
-			if key.PocHeight == height {
-				delete(s.arrivals, key)
+		s.arrivals.Range(func(key, _ interface{}) bool {
+			if key.(participantPocKey).PocHeight == height {
+				s.arrivals.Delete(key)
 			}
-		}
+			return true
+		})
 
 		logging.Info("Cleaned up propagation data for PoC height", types.PoC, "pocHeight", height)
 	}

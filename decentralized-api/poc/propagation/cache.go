@@ -18,6 +18,10 @@ func (c *Cache) StoreHeader(ctx context.Context, h BundleHeader) error {
 	return c.storage.StoreHeader(ctx, h)
 }
 
+func (c *Cache) StoreHeaderBatch(ctx context.Context, headers []BundleHeader) error {
+	return c.storage.StoreHeaderBatch(ctx, headers)
+}
+
 func (c *Cache) GetHeader(bundleID [4]byte) (BundleHeader, error) {
 	return c.storage.GetHeader(context.Background(), bundleID)
 }
@@ -35,12 +39,26 @@ func (c *Cache) StoreFirstArrival(participant string, pocHeight int64, arrivalTi
 	return c.storage.StoreFirstArrival(context.Background(), participant, pocHeight, arrivalTime, count)
 }
 
+func (c *Cache) StoreFirstArrivalBatch(ctx context.Context, arrivals []ArrivalInfo, participants []string, pocHeights []int64) error {
+	return c.storage.StoreFirstArrivalBatch(ctx, arrivals, participants, pocHeights)
+}
+
 func (c *Cache) GetFirstArrival(participant string, pocHeight int64) (ArrivalInfo, error) {
 	return c.storage.GetFirstArrival(context.Background(), participant, pocHeight)
 }
 
 func (c *Cache) GetAllFirstArrivals(pocHeight int64) (map[string]ArrivalInfo, error) {
 	return c.storage.GetAllFirstArrivals(context.Background(), pocHeight)
+}
+
+func (c *Cache) FlushArrivals() error {
+	type flusher interface {
+		FlushArrivals() error
+	}
+	if f, ok := c.storage.(flusher); ok {
+		return f.FlushArrivals()
+	}
+	return nil
 }
 
 func (c *Cache) CleanupOldHeights(ctx context.Context, retainCount int) error {

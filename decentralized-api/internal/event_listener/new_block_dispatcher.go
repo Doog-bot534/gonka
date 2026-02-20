@@ -84,6 +84,7 @@ type OnNewBlockDispatcher struct {
 	propagationTransport ParticipantURLSetter
 	participantQuerier   ParticipantQuerier
 	propagationCache     *propagation.Cache
+	propagationConfig    apiconfig.PocPropagationConfig
 }
 
 // StatusResponse matches the structure expected by getStatus function
@@ -182,6 +183,7 @@ func (d *OnNewBlockDispatcher) SetPropagationComponents(
 	participantQuerier ParticipantQuerier,
 	epochCache *internal.EpochGroupDataCache,
 	cache *propagation.Cache,
+	propConfig apiconfig.PocPropagationConfig,
 ) {
 	d.fltqReceiver = fltqReceiver
 	d.fltqBundler = fltqBundler
@@ -189,6 +191,7 @@ func (d *OnNewBlockDispatcher) SetPropagationComponents(
 	d.participantQuerier = participantQuerier
 	d.epochGroupDataCache = epochCache
 	d.propagationCache = cache
+	d.propagationConfig = propConfig
 }
 
 // ProcessNewBlock is the main entry point for processing new block events
@@ -600,9 +603,11 @@ func (d *OnNewBlockDispatcher) populateParticipantURLsFromCube(cube *propagation
 			logging.Debug("Failed to get participant URL", types.PoC, "address", addr, "error", err)
 			continue
 		}
-		if resp.Participant.InferenceUrl != "" {
-			urls[addr] = resp.Participant.InferenceUrl
+		inferenceURL := resp.Participant.InferenceUrl
+		if inferenceURL == "" {
+			continue
 		}
+		urls[addr] = inferenceURL
 	}
 
 	if len(urls) > 0 {

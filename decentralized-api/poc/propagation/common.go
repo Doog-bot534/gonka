@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"math"
 	"math/rand"
+	"sort"
 )
 
 type PubKeyProvider interface {
@@ -45,13 +46,9 @@ func weightedDeterministicShuffle(participants []WeightedParticipant, seed []byt
 		}
 	}
 
-	for i := 0; i < n-1; i++ {
-		for j := i + 1; j < n; j++ {
-			if items[j].randomScore > items[i].randomScore {
-				items[i], items[j] = items[j], items[i]
-			}
-		}
-	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].randomScore > items[j].randomScore
+	})
 
 	result := make([]string, n)
 	for i, item := range items {
