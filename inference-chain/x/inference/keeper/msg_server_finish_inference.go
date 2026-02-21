@@ -93,12 +93,12 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 			}
 			k.LogWarn("FinishInference: continuing after TA mismatch (log-only mode)", types.Inferences, "inferenceId", msg.InferenceId)
 		}
-		if err := k.compareFinishRoleFields(msg, &existingInference); err != nil {
-			k.LogError("FinishInference: role/address field mismatch", types.Inferences, "error", err, "inferenceId", msg.InferenceId)
+		if err := k.compareFinishModelField(msg, &existingInference); err != nil {
+			k.LogError("FinishInference: model field mismatch", types.Inferences, "error", err, "inferenceId", msg.InferenceId)
 			if k.failOnCompareMismatch {
 				return failedFinish(ctx, err, msg), nil
 			}
-			k.LogWarn("FinishInference: continuing after role mismatch (log-only mode)", types.Inferences, "inferenceId", msg.InferenceId)
+			k.LogWarn("FinishInference: continuing after model mismatch (log-only mode)", types.Inferences, "inferenceId", msg.InferenceId)
 		}
 		k.LogInfo("FinishInference: start-first policy; TA signature skipped and components compared", types.Inferences, "inferenceId", msg.InferenceId)
 	} else {
@@ -270,6 +270,14 @@ func (k msgServer) compareFinishDevComponents(msg *types.MsgFinishInference, inf
 			inference.TransferredBy,
 		)
 	}
+	if inference.RequestedBy != msg.RequestedBy {
+		return sdkerrors.Wrapf(
+			types.ErrDevComponentMismatch,
+			"requested_by mismatch: finish=%s start=%s",
+			msg.RequestedBy,
+			inference.RequestedBy,
+		)
+	}
 	return nil
 }
 
@@ -309,15 +317,7 @@ func (k msgServer) compareFinishTAComponents(msg *types.MsgFinishInference, infe
 	return nil
 }
 
-func (k msgServer) compareFinishRoleFields(msg *types.MsgFinishInference, inference *types.Inference) error {
-	if inference.RequestedBy != msg.RequestedBy {
-		return sdkerrors.Wrapf(
-			types.ErrInferenceRoleMismatch,
-			"requested_by mismatch: finish=%s start=%s",
-			msg.RequestedBy,
-			inference.RequestedBy,
-		)
-	}
+func (k msgServer) compareFinishModelField(msg *types.MsgFinishInference, inference *types.Inference) error {
 	if inference.Model != "" && inference.Model != msg.Model {
 		return sdkerrors.Wrapf(
 			types.ErrInferenceRoleMismatch,
