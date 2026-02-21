@@ -27,10 +27,10 @@ import (
 type ManagedArtifactStore struct {
 	mu          sync.RWMutex
 	baseDir     string
-	stores      map[int64]*ArtifactStore // poc_stage_start_block_height -> store
-	retainCount int                      // keep newest N stores
-	cancel      context.CancelFunc       // cancels cleanup goroutine
-	flushCancel context.CancelFunc       // cancels periodic flush goroutine
+	stores      map[int64]ArtifactStore // poc_stage_start_block_height -> store
+	retainCount int                     // keep newest N stores
+	cancel      context.CancelFunc      // cancels cleanup goroutine
+	flushCancel context.CancelFunc      // cancels periodic flush goroutine
 }
 
 // NewManagedArtifactStore creates a new managed store with automatic pruning.
@@ -39,7 +39,7 @@ func NewManagedArtifactStore(baseDir string, retainCount int) *ManagedArtifactSt
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &ManagedArtifactStore{
 		baseDir:     baseDir,
-		stores:      make(map[int64]*ArtifactStore),
+		stores:      make(map[int64]ArtifactStore),
 		retainCount: retainCount,
 		cancel:      cancel,
 	}
@@ -48,7 +48,7 @@ func NewManagedArtifactStore(baseDir string, retainCount int) *ManagedArtifactSt
 }
 
 // GetOrCreateStore returns the store for the given PoC stage, creating it if needed.
-func (m *ManagedArtifactStore) GetOrCreateStore(pocStageStartHeight int64) (*ArtifactStore, error) {
+func (m *ManagedArtifactStore) GetOrCreateStore(pocStageStartHeight int64) (ArtifactStore, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -57,7 +57,7 @@ func (m *ManagedArtifactStore) GetOrCreateStore(pocStageStartHeight int64) (*Art
 	}
 
 	storeDir := filepath.Join(m.baseDir, strconv.FormatInt(pocStageStartHeight, 10))
-	store, err := Open(storeDir)
+	store, err := OpenSMST(storeDir)
 	if err != nil {
 		return nil, fmt.Errorf("open store for stage %d: %w", pocStageStartHeight, err)
 	}
@@ -68,7 +68,7 @@ func (m *ManagedArtifactStore) GetOrCreateStore(pocStageStartHeight int64) (*Art
 
 // GetStore returns the store for the given PoC stage, or an error if it doesn't exist.
 // Does not create new stores (for proof requests).
-func (m *ManagedArtifactStore) GetStore(pocStageStartHeight int64) (*ArtifactStore, error) {
+func (m *ManagedArtifactStore) GetStore(pocStageStartHeight int64) (ArtifactStore, error) {
 	m.mu.RLock()
 	store, ok := m.stores[pocStageStartHeight]
 	m.mu.RUnlock()
@@ -91,7 +91,7 @@ func (m *ManagedArtifactStore) GetStore(pocStageStartHeight int64) (*ArtifactSto
 		return store, nil
 	}
 
-	store, err := Open(storeDir)
+	store, err := OpenSMST(storeDir)
 	if err != nil {
 		return nil, fmt.Errorf("open store for stage %d: %w", pocStageStartHeight, err)
 	}
@@ -120,7 +120,7 @@ func (m *ManagedArtifactStore) PruneStore(pocStageStartHeight int64) error {
 
 func (m *ManagedArtifactStore) Flush() error {
 	m.mu.RLock()
-	stores := make([]*ArtifactStore, 0, len(m.stores))
+	stores := make([]ArtifactStore, 0, len(m.stores))
 	for _, s := range m.stores {
 		stores = append(stores, s)
 	}
@@ -202,7 +202,7 @@ func (m *ManagedArtifactStore) Close() error {
 			errs = append(errs, fmt.Errorf("close stage %d: %w", height, err))
 		}
 	}
-	m.stores = make(map[int64]*ArtifactStore)
+	m.stores = make(map[int64]ArtifactStore)
 
 	if len(errs) > 0 {
 		return fmt.Errorf("close errors: %v", errs)
