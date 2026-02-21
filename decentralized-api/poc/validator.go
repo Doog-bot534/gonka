@@ -385,7 +385,7 @@ func (v *OffChainValidator) worker(
 				*pendingCount--
 				// Report participant as invalid to chain
 				// Uncomment when stabilized
-				// reportAddr = work.address
+				reportAddr = work.address
 			case validateFailRetry:
 				// Re-queue for retry if under max attempts
 				if work.attempt < v.config.MaxRetries-1 {
