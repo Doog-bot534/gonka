@@ -74,6 +74,7 @@ func ProcessStartInference(
 	currentInference.TransferredBy = startMessage.Creator
 	currentInference.TransferSignature = startMessage.TransferSignature
 	currentInference.PromptHash = startMessage.PromptHash
+	currentInference.OriginalPromptHash = startMessage.OriginalPromptHash
 	if currentInference.PromptTokenCount == 0 {
 		currentInference.PromptTokenCount = startMessage.PromptTokenCount
 	}
@@ -159,6 +160,9 @@ func ProcessFinishInference(
 	currentInference.ExecutionSignature = finishMessage.ExecutorSignature
 	currentInference.CompletionTokenCount = finishMessage.CompletionTokenCount
 	currentInference.ExecutedBy = finishMessage.ExecutedBy
+	currentInference.RequestedBy = finishMessage.RequestedBy
+	currentInference.OriginalPromptHash = finishMessage.OriginalPromptHash
+	currentInference.PromptHash = finishMessage.PromptHash
 	currentInference.EndBlockHeight = blockContext.BlockHeight
 	currentInference.EndBlockTimestamp = blockContext.BlockTimestamp
 
@@ -190,7 +194,7 @@ func startProcessed(inference *types.Inference) bool {
 	// StartInference always assigns MaxTokens (explicit or default).
 	// Finish-first flow can populate PromptHash early, so use MaxTokens to detect
 	// whether StartInference has already been processed.
-	return inference.PromptHash != ""
+	return inference.MaxTokens != 0
 }
 
 func finishedProcessed(inference *types.Inference) bool {

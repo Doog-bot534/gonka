@@ -10,7 +10,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestMsgServer_FinishFirst_MissingSignatureFieldsBreakStartComparison(t *testing.T) {
+func TestMsgServer_FinishFirst_SignatureFieldsPersistedForStartComparison(t *testing.T) {
 	inferenceHelper, k, _ := NewMockInferenceHelper(t)
 	requestTimestamp := inferenceHelper.context.BlockTime().UnixNano()
 
@@ -26,8 +26,9 @@ func TestMsgServer_FinishFirst_MissingSignatureFieldsBreakStartComparison(t *tes
 	inferenceHelper.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), inferenceHelper.MockRequester.GetBechAddress()).Return(inferenceHelper.MockRequester).AnyTimes()
 	inferenceHelper.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), inferenceHelper.MockTransferAgent.GetBechAddress()).Return(inferenceHelper.MockTransferAgent).AnyTimes()
 	inferenceHelper.Mocks.AuthzKeeper.EXPECT().GranterGrants(gomock.Any(), gomock.Any()).Return(&authztypes.QueryGranterGrantsResponse{Grants: []*authztypes.GrantAuthorization{}}, nil).AnyTimes()
+	inferenceHelper.Mocks.BankKeeper.ExpectAny(inferenceHelper.context)
 
-	// 1) Process finish first. Message includes both hash fields, but they are not persisted.
+	// 1) Process finish first — fields should now be persisted.
 	finishResp, err := inferenceHelper.MessageServer.FinishInference(inferenceHelper.context, &types.MsgFinishInference{
 		Creator:              inferenceHelper.MockExecutor.address,
 		InferenceId:          inferenceID,
@@ -51,11 +52,12 @@ func TestMsgServer_FinishFirst_MissingSignatureFieldsBreakStartComparison(t *tes
 
 	savedInference, found := k.GetInference(inferenceHelper.context, inferenceID)
 	require.True(t, found)
-	require.Equal(t, "", savedInference.PromptHash)
-	require.Equal(t, "", savedInference.OriginalPromptHash)
+	require.Equal(t, promptHash, savedInference.PromptHash)
+	require.Equal(t, originalPromptHash, savedInference.OriginalPromptHash)
+	require.Equal(t, inferenceHelper.MockRequester.address, savedInference.RequestedBy)
 	require.Equal(t, inferenceHelper.MockExecutor.address, savedInference.ExecutedBy)
 
-	// 2) Process start second. Comparison against finish-first inference fails.
+	// 2) Process start second — comparison should now pass.
 	startResp, err := inferenceHelper.MessageServer.StartInference(inferenceHelper.context, &types.MsgStartInference{
 		InferenceId:        inferenceID,
 		PromptHash:         promptHash,
@@ -71,5 +73,5 @@ func TestMsgServer_FinishFirst_MissingSignatureFieldsBreakStartComparison(t *tes
 		MaxTokens:          calculations.DefaultMaxTokens,
 	})
 	require.NoError(t, err)
-	require.Contains(t, startResp.ErrorMessage, types.ErrDevComponentMismatch.Error())
+	require.Empty(t, startResp.ErrorMessage)
 }
