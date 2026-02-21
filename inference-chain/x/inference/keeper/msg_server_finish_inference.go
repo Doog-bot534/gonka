@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	sdkerrors "cosmossdk.io/errors"
-	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/productscience/inference/x/inference/calculations"
 	"github.com/productscience/inference/x/inference/types"
@@ -15,6 +14,12 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
 	k.LogInfo("FinishInference", types.Inferences, "inference_id", msg.InferenceId, "executed_by", msg.ExecutedBy, "created_by", msg.Creator)
+
+	if err := k.Keeper.CacheParamsForTx(ctx); err != nil {
+		k.LogError("FinishInference: failed to get params", types.Inferences, "error", err)
+		return failedFinish(ctx, err, msg), nil
+	}
+	defer k.Keeper.ClearParamsCacheForTx()
 
 	if msg.PromptTokenCount > types.MaxAllowedTokens {
 		return failedFinish(ctx, sdkerrors.Wrapf(types.ErrTokenCountOutOfRange, "prompt_token_count exceeds limit (%d > %d)", msg.PromptTokenCount, types.MaxAllowedTokens), msg), nil
@@ -102,25 +107,26 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 		return failedFinish(ctx, err, msg), nil
 	}
 
-	finalInference, err := k.processInferencePayments(ctx, inference, payments, true)
+	finalInference, err := k.processInferencePayments(ctx, inference, payments, true, &executor)
 	if err != nil {
 		return failedFinish(ctx, err, msg), nil
 	}
+	var completionErr error
 	if finalInference.IsCompleted() {
-		err := k.handleInferenceCompleted(ctx, finalInference)
-		if err != nil {
-			// Preserve the finished inference state even when completion-side effects fail.
-			// We return a failed response (nil error), so without this persistence we could
-			// commit payment/state side effects without storing the inference record.
-			if setErr := k.SetInference(ctx, *finalInference); setErr != nil {
-				return failedFinish(ctx, setErr, msg), nil
-			}
+		completionErr = k.handleInferenceCompleted(ctx, finalInference, &executor)
+	}
+	if shouldPersistParticipant(finalInference, payments, &executor) {
+		if err := k.SetParticipant(ctx, executor); err != nil {
 			return failedFinish(ctx, err, msg), nil
 		}
 	}
 	err = k.SetInference(ctx, *finalInference)
 	if err != nil {
 		return failedFinish(ctx, err, msg), nil
+	}
+	if completionErr != nil {
+		// Preserve inference/participant state even when completion side effects fail.
+		return failedFinish(ctx, completionErr, msg), nil
 	}
 
 	return &types.MsgFinishInferenceResponse{InferenceIndex: msg.InferenceId}, nil
@@ -224,89 +230,38 @@ func getFinishTASignatureComponents(msg *types.MsgFinishInference) calculations.
 	}
 }
 
-func (k msgServer) handleInferenceCompleted(ctx sdk.Context, inference *types.Inference) error {
-	executedBy := inference.ExecutedBy
-	executor, found := k.GetParticipant(ctx, executedBy)
-	if !found {
-		k.LogError("handleInferenceCompleted: executor not found", types.Inferences, "executed_by", executedBy)
-	} else {
-		executor.CurrentEpochStats.InferenceCount++
-		executor.LastInferenceTime = inference.EndBlockTimestamp
-		if err := k.SetParticipant(ctx, executor); err != nil {
-			return err
-		}
-
+func (k msgServer) handleInferenceCompleted(ctx sdk.Context, inference *types.Inference, executor *types.Participant) error {
+	if executor == nil {
+		return sdkerrors.Wrap(types.ErrParticipantNotFound, inference.ExecutedBy)
 	}
+
+	ensureParticipantEpochStats(executor)
+	executor.CurrentEpochStats.InferenceCount++
+	executor.LastInferenceTime = inference.EndBlockTimestamp
 
 	effectiveEpoch, found := k.GetEffectiveEpoch(ctx)
 	if !found {
 		k.LogError("Effective Epoch Index not found", types.EpochGroup)
 		return types.ErrEffectiveEpochNotFound.Wrapf("handleInferenceCompleted: Effective Epoch Index not found")
 	}
-	currentEpochGroup, err := k.GetEpochGroupForEpoch(ctx, *effectiveEpoch)
-	if err != nil {
-		k.LogError("Unable to get current Epoch Group", types.EpochGroup, "err", err)
-		return err
-	}
 
 	inference.EpochPocStartBlockHeight = uint64(effectiveEpoch.PocStartBlockHeight)
 	inference.EpochId = effectiveEpoch.Index
-	currentEpochGroup.GroupData.NumberOfRequests++
 	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		"inference_finished",
 		buildInferenceFinishedEventAttributes(inference)...,
 	))
 
-	executorPower := uint64(0)
-	executorReputation := int32(0)
-	for _, weight := range currentEpochGroup.GroupData.ValidationWeights {
-		if weight.MemberAddress == inference.ExecutedBy {
-			executorPower = uint64(weight.Weight)
-			executorReputation = weight.Reputation
-			break
-		}
-	}
-
-	modelEpochGroup, err := currentEpochGroup.GetSubGroup(ctx, inference.Model)
-	if err != nil {
-		k.LogError("Unable to get model Epoch Group", types.EpochGroup, "err", err)
+	if err := k.SetPendingInferenceValidation(ctx, ctx.BlockHeight(), inference.InferenceId); err != nil {
+		k.LogError("Unable to enqueue pending inference validation", types.Validation, "inference_id", inference.InferenceId, "block_height", ctx.BlockHeight(), "err", err)
 		return err
 	}
 
-	inferenceDetails := types.InferenceValidationDetails{
-		InferenceId:          inference.InferenceId,
-		ExecutorId:           inference.ExecutedBy,
-		ExecutorReputation:   executorReputation,
-		TrafficBasis:         uint64(math.Max(currentEpochGroup.GroupData.NumberOfRequests, currentEpochGroup.GroupData.PreviousEpochRequests)),
-		ExecutorPower:        executorPower,
-		EpochId:              effectiveEpoch.Index,
-		Model:                inference.Model,
-		TotalPower:           uint64(modelEpochGroup.GroupData.TotalWeight),
-		CreatedAtBlockHeight: ctx.BlockHeight(),
-	}
-	if inferenceDetails.TotalPower == inferenceDetails.ExecutorPower {
-		k.LogWarn("Executor Power equals Total Power", types.Validation,
-			"model", inference.Model,
-			"epoch_id", currentEpochGroup.GroupData.EpochGroupId,
-			"epoch_start_block_height", currentEpochGroup.GroupData.PocStartBlockHeight,
-			"group_id", modelEpochGroup.GroupData.EpochGroupId,
-			"inference_id", inference.InferenceId,
-			"executor_id", inferenceDetails.ExecutorId,
-			"executor_power", inferenceDetails.ExecutorPower,
-		)
-	}
-	k.LogDebug(
-		"Adding Inference Validation Details",
-		types.Validation,
-		"inference_id", inferenceDetails.InferenceId,
-		"epoch_id", inferenceDetails.EpochId,
-		"executor_id", inferenceDetails.ExecutorId,
-		"executor_power", inferenceDetails.ExecutorPower,
-		"executor_reputation", inferenceDetails.ExecutorReputation,
-		"traffic_basis", inferenceDetails.TrafficBasis,
+	k.LogDebug("Queued inference for deferred validation details processing", types.Validation,
+		"inference_id", inference.InferenceId,
+		"epoch_id", inference.EpochId,
+		"block_height", ctx.BlockHeight(),
 	)
-	k.SetInferenceValidationDetails(ctx, inferenceDetails)
-	k.SetEpochGroupData(ctx, *currentEpochGroup.GroupData)
 	return nil
 }
 

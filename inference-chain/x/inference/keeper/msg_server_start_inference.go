@@ -16,6 +16,12 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 	var ctx sdk.Context = sdk.UnwrapSDKContext(goCtx)
 	k.LogInfo("StartInference", types.Inferences, "inferenceId", msg.InferenceId, "creator", msg.Creator, "requestedBy", msg.RequestedBy, "model", msg.Model)
 
+	if err := k.Keeper.CacheParamsForTx(ctx); err != nil {
+		k.LogError("StartInference: failed to get params", types.Inferences, "error", err)
+		return failedStart(ctx, err, msg), nil
+	}
+	defer k.Keeper.ClearParamsCacheForTx()
+
 	// Developer access gating: before the cutoff height, only allowlisted developers may request inferences.
 	if k.IsDeveloperAccessRestricted(ctx, ctx.BlockHeight()) && !k.IsAllowedDeveloper(ctx, msg.RequestedBy) {
 		return failedStart(ctx, sdkerrors.Wrap(types.ErrDeveloperNotAllowlisted, msg.RequestedBy), msg), nil
@@ -79,26 +85,41 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 		return failedStart(ctx, err, msg), nil
 	}
 
-	finalInference, err := k.processInferencePayments(ctx, inference, payments, false)
+	var executor *types.Participant
+	if inference.ExecutedBy != "" {
+		executorValue, found := k.GetParticipant(ctx, inference.ExecutedBy)
+		if !found {
+			k.LogError("StartInference: executor not found", types.Inferences, "executed_by", inference.ExecutedBy, "inference_id", inference.InferenceId)
+			return failedStart(ctx, sdkerrors.Wrap(types.ErrParticipantNotFound, inference.ExecutedBy), msg), nil
+		}
+		executor = &executorValue
+	}
+
+	finalInference, err := k.processInferencePayments(ctx, inference, payments, false, executor)
 	if err != nil {
 		return failedStart(ctx, err, msg), nil
 	}
 
+	var completionErr error
 	if finalInference.IsCompleted() {
-		err := k.handleInferenceCompleted(ctx, finalInference)
-		if err != nil {
-			// Preserve the completed inference state even when completion-side effects fail.
-			// We return a failed response (nil error), so without this persistence we could
-			// commit payment/state side effects without storing the inference record.
-			if setErr := k.SetInference(ctx, *finalInference); setErr != nil {
-				return failedStart(ctx, setErr, msg), nil
-			}
+		if executor == nil {
+			k.LogError("StartInference: executor not found when completing inference", types.Inferences, "executed_by", finalInference.ExecutedBy, "inference_id", finalInference.InferenceId)
+			return failedStart(ctx, sdkerrors.Wrap(types.ErrParticipantNotFound, finalInference.ExecutedBy), msg), nil
+		}
+		completionErr = k.handleInferenceCompleted(ctx, finalInference, executor)
+	}
+	if shouldPersistParticipant(finalInference, payments, executor) {
+		if err := k.SetParticipant(ctx, *executor); err != nil {
 			return failedStart(ctx, err, msg), nil
 		}
 	}
 	err = k.SetInference(ctx, *finalInference)
 	if err != nil {
 		return failedStart(ctx, err, msg), nil
+	}
+	if completionErr != nil {
+		// Preserve inference/participant state even when completion side effects fail.
+		return failedStart(ctx, completionErr, msg), nil
 	}
 	k.addTimeout(ctx, finalInference)
 
@@ -174,7 +195,7 @@ func (k msgServer) validateTimestamp(
 		k.LogError("StartInference: validateTimestamp failed", types.Inferences, "error", err)
 		return err
 	}
-	return err
+	return nil
 }
 
 func (k msgServer) addTimeout(ctx sdk.Context, inference *types.Inference) {
@@ -205,6 +226,7 @@ func (k msgServer) processInferencePayments(
 	inference *types.Inference,
 	payments *calculations.Payments,
 	allowRefund bool,
+	executor *types.Participant,
 ) (*types.Inference, error) {
 	if payments.EscrowAmount > 0 {
 		escrowAmount, err := k.PutPaymentInEscrow(ctx, inference, payments.EscrowAmount)
@@ -223,21 +245,31 @@ func (k msgServer) processInferencePayments(
 		}
 	}
 	if payments.ExecutorPayment > 0 {
-		executedBy := inference.ExecutedBy
-		executor, found := k.GetParticipant(ctx, executedBy)
-		if !found {
-			return nil, sdkerrors.Wrap(types.ErrParticipantNotFound, executedBy)
+		if executor == nil {
+			return nil, sdkerrors.Wrap(types.ErrParticipantNotFound, inference.ExecutedBy)
 		}
+		ensureParticipantEpochStats(executor)
 		executor.CoinBalance += payments.ExecutorPayment
 		executor.CurrentEpochStats.EarnedCoins += uint64(payments.ExecutorPayment)
 		k.SafeLogSubAccountTransaction(ctx, executor.Address, types.ModuleName, types.OwedSubAccount, executor.CoinBalance, "inference_started:"+inference.InferenceId)
-		err := k.SetParticipant(ctx, executor)
-		if err != nil {
-			return nil, err
-		}
 	}
 	return inference, nil
+}
 
+func shouldPersistParticipant(inference *types.Inference, payments *calculations.Payments, executor *types.Participant) bool {
+	if inference == nil || payments == nil || executor == nil {
+		return false
+	}
+	return inference.IsCompleted() || payments.ExecutorPayment > 0
+}
+
+func ensureParticipantEpochStats(participant *types.Participant) {
+	if participant == nil {
+		return
+	}
+	if participant.CurrentEpochStats == nil {
+		participant.CurrentEpochStats = &types.CurrentEpochStats{}
+	}
 }
 
 // getDevSignatureComponents returns components for dev signature verification

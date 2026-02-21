@@ -33,6 +33,9 @@ type (
 
 		collateralKeeper    types.CollateralKeeper
 		streamvestingKeeper types.StreamVestingKeeper
+		// txParamsCache is an optional tx-scoped params cache used by hot paths
+		// (e.g. Start/Finish inference) to avoid repeated params KV reads.
+		txParamsCache *types.Params
 		// Collections schema and stores
 		Schema         collections.Schema
 		Participants   collections.Map[sdk.AccAddress, types.Participant]
@@ -86,6 +89,8 @@ type (
 		PoCValidationSnapshots collections.Map[int64, types.PoCValidationSnapshot]
 		// Punishment grace epochs for upgrade protection
 		PunishmentGraceEpochs collections.Map[uint64, types.GraceEpochParams]
+		// Pending inference validation queue keyed by (block_height, inference_id)
+		PendingInferenceValidationQueue collections.Map[collections.Pair[int64, string], string]
 	}
 )
 
@@ -427,6 +432,13 @@ func NewKeeper(
 			"punishment_grace_epochs",
 			collections.Uint64Key,
 			codec.CollValue[types.GraceEpochParams](cdc),
+		),
+		PendingInferenceValidationQueue: collections.NewMap(
+			sb,
+			types.PendingInferenceValidationPrefix,
+			"pending_inference_validation",
+			collections.PairKeyCodec(collections.Int64Key, collections.StringKey),
+			collections.StringValue,
 		),
 	}
 	// Build the collections schema
