@@ -83,18 +83,24 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 	if err != nil {
 		return failedStart(ctx, err, msg), nil
 	}
+
+	if finalInference.IsCompleted() {
+		err := k.handleInferenceCompleted(ctx, finalInference)
+		if err != nil {
+			// Preserve the completed inference state even when completion-side effects fail.
+			// We return a failed response (nil error), so without this persistence we could
+			// commit payment/state side effects without storing the inference record.
+			if setErr := k.SetInference(ctx, *finalInference); setErr != nil {
+				return failedStart(ctx, setErr, msg), nil
+			}
+			return failedStart(ctx, err, msg), nil
+		}
+	}
 	err = k.SetInference(ctx, *finalInference)
 	if err != nil {
 		return failedStart(ctx, err, msg), nil
 	}
-	k.addTimeout(ctx, inference)
-
-	if inference.IsCompleted() {
-		err := k.handleInferenceCompleted(ctx, inference)
-		if err != nil {
-			return failedStart(ctx, err, msg), nil
-		}
-	}
+	k.addTimeout(ctx, finalInference)
 
 	return &types.MsgStartInferenceResponse{
 		InferenceIndex: msg.InferenceId,

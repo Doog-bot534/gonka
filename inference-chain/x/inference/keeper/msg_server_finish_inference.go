@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"strconv"
 
 	sdkerrors "cosmossdk.io/errors"
 	"cosmossdk.io/math"
@@ -105,15 +106,21 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 	if err != nil {
 		return failedFinish(ctx, err, msg), nil
 	}
+	if finalInference.IsCompleted() {
+		err := k.handleInferenceCompleted(ctx, finalInference)
+		if err != nil {
+			// Preserve the finished inference state even when completion-side effects fail.
+			// We return a failed response (nil error), so without this persistence we could
+			// commit payment/state side effects without storing the inference record.
+			if setErr := k.SetInference(ctx, *finalInference); setErr != nil {
+				return failedFinish(ctx, setErr, msg), nil
+			}
+			return failedFinish(ctx, err, msg), nil
+		}
+	}
 	err = k.SetInference(ctx, *finalInference)
 	if err != nil {
 		return failedFinish(ctx, err, msg), nil
-	}
-	if existingInference.IsCompleted() {
-		err := k.handleInferenceCompleted(ctx, finalInference)
-		if err != nil {
-			return failedFinish(ctx, err, msg), nil
-		}
 	}
 
 	return &types.MsgFinishInferenceResponse{InferenceIndex: msg.InferenceId}, nil
@@ -217,21 +224,14 @@ func getFinishTASignatureComponents(msg *types.MsgFinishInference) calculations.
 	}
 }
 
-func (k msgServer) handleInferenceCompleted(ctx sdk.Context, existingInference *types.Inference) error {
-	ctx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			"inference_finished",
-			sdk.NewAttribute("inference_id", existingInference.InferenceId),
-		),
-	)
-
-	executedBy := existingInference.ExecutedBy
+func (k msgServer) handleInferenceCompleted(ctx sdk.Context, inference *types.Inference) error {
+	executedBy := inference.ExecutedBy
 	executor, found := k.GetParticipant(ctx, executedBy)
 	if !found {
 		k.LogError("handleInferenceCompleted: executor not found", types.Inferences, "executed_by", executedBy)
 	} else {
 		executor.CurrentEpochStats.InferenceCount++
-		executor.LastInferenceTime = existingInference.EndBlockTimestamp
+		executor.LastInferenceTime = inference.EndBlockTimestamp
 		if err := k.SetParticipant(ctx, executor); err != nil {
 			return err
 		}
@@ -249,44 +249,48 @@ func (k msgServer) handleInferenceCompleted(ctx sdk.Context, existingInference *
 		return err
 	}
 
-	existingInference.EpochPocStartBlockHeight = uint64(effectiveEpoch.PocStartBlockHeight)
-	existingInference.EpochId = effectiveEpoch.Index
+	inference.EpochPocStartBlockHeight = uint64(effectiveEpoch.PocStartBlockHeight)
+	inference.EpochId = effectiveEpoch.Index
 	currentEpochGroup.GroupData.NumberOfRequests++
+	ctx.EventManager().EmitEvent(sdk.NewEvent(
+		"inference_finished",
+		buildInferenceFinishedEventAttributes(inference)...,
+	))
 
 	executorPower := uint64(0)
 	executorReputation := int32(0)
 	for _, weight := range currentEpochGroup.GroupData.ValidationWeights {
-		if weight.MemberAddress == existingInference.ExecutedBy {
+		if weight.MemberAddress == inference.ExecutedBy {
 			executorPower = uint64(weight.Weight)
 			executorReputation = weight.Reputation
 			break
 		}
 	}
 
-	modelEpochGroup, err := currentEpochGroup.GetSubGroup(ctx, existingInference.Model)
+	modelEpochGroup, err := currentEpochGroup.GetSubGroup(ctx, inference.Model)
 	if err != nil {
 		k.LogError("Unable to get model Epoch Group", types.EpochGroup, "err", err)
 		return err
 	}
 
 	inferenceDetails := types.InferenceValidationDetails{
-		InferenceId:          existingInference.InferenceId,
-		ExecutorId:           existingInference.ExecutedBy,
+		InferenceId:          inference.InferenceId,
+		ExecutorId:           inference.ExecutedBy,
 		ExecutorReputation:   executorReputation,
 		TrafficBasis:         uint64(math.Max(currentEpochGroup.GroupData.NumberOfRequests, currentEpochGroup.GroupData.PreviousEpochRequests)),
 		ExecutorPower:        executorPower,
 		EpochId:              effectiveEpoch.Index,
-		Model:                existingInference.Model,
+		Model:                inference.Model,
 		TotalPower:           uint64(modelEpochGroup.GroupData.TotalWeight),
 		CreatedAtBlockHeight: ctx.BlockHeight(),
 	}
 	if inferenceDetails.TotalPower == inferenceDetails.ExecutorPower {
 		k.LogWarn("Executor Power equals Total Power", types.Validation,
-			"model", existingInference.Model,
+			"model", inference.Model,
 			"epoch_id", currentEpochGroup.GroupData.EpochGroupId,
 			"epoch_start_block_height", currentEpochGroup.GroupData.PocStartBlockHeight,
 			"group_id", modelEpochGroup.GroupData.EpochGroupId,
-			"inference_id", existingInference.InferenceId,
+			"inference_id", inference.InferenceId,
 			"executor_id", inferenceDetails.ExecutorId,
 			"executor_power", inferenceDetails.ExecutorPower,
 		)
@@ -302,10 +306,22 @@ func (k msgServer) handleInferenceCompleted(ctx sdk.Context, existingInference *
 		"traffic_basis", inferenceDetails.TrafficBasis,
 	)
 	k.SetInferenceValidationDetails(ctx, inferenceDetails)
-	err = k.SetInference(ctx, *existingInference)
-	if err != nil {
-		return err
-	}
 	k.SetEpochGroupData(ctx, *currentEpochGroup.GroupData)
 	return nil
+}
+
+// buildInferenceFinishedEventAttributes emits only fields required for dev-stats off-chain migration.
+func buildInferenceFinishedEventAttributes(inference *types.Inference) []sdk.Attribute {
+	return []sdk.Attribute{
+		sdk.NewAttribute("inference_id", inference.InferenceId),
+		sdk.NewAttribute("requested_by", inference.RequestedBy),
+		sdk.NewAttribute("model", inference.Model),
+		sdk.NewAttribute("status", inference.Status.String()),
+		sdk.NewAttribute("epoch_id", strconv.FormatUint(inference.EpochId, 10)),
+		sdk.NewAttribute("prompt_token_count", strconv.FormatUint(inference.PromptTokenCount, 10)),
+		sdk.NewAttribute("completion_token_count", strconv.FormatUint(inference.CompletionTokenCount, 10)),
+		sdk.NewAttribute("actual_cost_in_coins", strconv.FormatInt(inference.ActualCost, 10)),
+		sdk.NewAttribute("start_block_timestamp", strconv.FormatInt(inference.StartBlockTimestamp, 10)),
+		sdk.NewAttribute("end_block_timestamp", strconv.FormatInt(inference.EndBlockTimestamp, 10)),
+	}
 }

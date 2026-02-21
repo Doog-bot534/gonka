@@ -157,18 +157,19 @@ func (s *Server) getModelMetrics(queryClient types.QueryClient, context context.
 	currentTime := time.Now().Unix()
 	timeWindowStart := currentTime - int64(params.Params.DynamicPricingParams.UtilizationWindowDuration)
 
-	// Get stats for all models in time window
-	statsResponse, err := queryClient.InferencesAndTokensStatsByModels(context, &types.QueryInferencesAndTokensStatsByModelsRequest{
-		TimeFrom: timeWindowStart,
-		TimeTo:   currentTime,
-	})
+	if s.statsStorage == nil {
+		logging.Warn("Stats storage not configured, utilization metrics unavailable", types.Pricing)
+		return metricsData // Return with capacity data only
+	}
+
+	modelStats, err := s.statsStorage.GetModelStatsByTime(context, timeWindowStart, currentTime)
 	if err != nil {
 		logging.Warn("Failed to get model stats for utilization", types.Pricing, "error", err)
 		return metricsData // Return with capacity data only
 	}
 
 	// Calculate utilization for each model and update metrics
-	for _, modelStat := range statsResponse.StatsModels {
+	for _, modelStat := range modelStats {
 		if capacity, exists := capacityMap[modelStat.Model]; exists && capacity > 0 {
 			// Calculate utilization = tokens_used / capacity
 			utilization := float64(modelStat.AiTokens) / float64(capacity)
