@@ -170,6 +170,21 @@ Each task includes:
 - **Dependencies**: 3.2
 - **Result**: Added `statsstorage.NewStatsStorage(ctx)` initialization in `main.go` with graceful nil behavior when `PGHOST` is unset, and injected storage into public server via new `WithStatsStorage(...)` option.
 
+#### 3.4 Add Retention-Based Stats Auto-Pruning
+
+- **Task**: [x] - Finished Add automatic pruning for old per-inference stats records
+- **What**: Implement retention cleanup for stats storage with:
+  - default retention = 30 days,
+  - static prune cadence (daily, no interval config),
+  - retention override via env (for example, `DAPI_STATS_RETENTION_DAYS`),
+  - disable prune when retention is set to non-positive value.
+- **Where**:
+  - `decentralized-api/statsstorage/`
+  - `decentralized-api/main.go` (if wrapper/lifecycle hook is needed)
+- **Why**: We store one record per finished inference; without retention this grows unbounded over time.
+- **Dependencies**: 3.3
+- **Result**: Added managed stats wrapper (`statsstorage/managed_storage.go`) with static daily prune loop, startup prune pass, and default 30-day retention. Added `PruneOlderThan(...)` to storage interface with implementations for PostgreSQL (`DELETE ... WHERE inference_timestamp < cutoff`) and file storage (remove old record files). Factory now wraps storage with managed retention and reads `DAPI_STATS_RETENTION_DAYS` (default `30`; non-positive disables pruning).
+
 ### Section 4: API Event Listener Ingestion
 
 #### 4.1 Parse New `inference_finished` Attributes

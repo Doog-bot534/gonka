@@ -55,5 +55,6 @@ type StatsStorage interface {
 	GetSummaryByTimePeriod(ctx context.Context, timeFrom, timeTo int64) (Summary, error)
 	GetModelStatsByTime(ctx context.Context, timeFrom, timeTo int64) ([]ModelSummary, error)
 	GetDebugStats(ctx context.Context) (DebugStats, error)
+	PruneOlderThan(ctx context.Context, cutoffTimestamp int64) error
 	Close()
 }

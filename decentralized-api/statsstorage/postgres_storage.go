@@ -33,6 +33,9 @@ CREATE INDEX IF NOT EXISTS inference_stats_epoch_idx
 
 CREATE INDEX IF NOT EXISTS inference_stats_model_time_idx
     ON inference_stats (model, inference_timestamp);
+
+CREATE INDEX IF NOT EXISTS inference_stats_inference_time_idx
+    ON inference_stats (inference_timestamp);
 `
 
 type PostgresStorage struct {
@@ -268,6 +271,17 @@ func (s *PostgresStorage) GetDebugStats(ctx context.Context) (DebugStats, error)
 		StatsByTime:  timeStatsByDeveloper,
 		StatsByEpoch: epochStatsByDeveloper,
 	}, nil
+}
+
+func (s *PostgresStorage) PruneOlderThan(ctx context.Context, cutoffTimestamp int64) error {
+	const q = `
+DELETE FROM inference_stats
+WHERE inference_timestamp < $1
+`
+	if _, err := s.pool.Exec(ctx, q, cutoffTimestamp); err != nil {
+		return fmt.Errorf("prune inference_stats older than cutoff: %w", err)
+	}
+	return nil
 }
 
 func (s *PostgresStorage) getDebugStatsByTime(ctx context.Context) ([]DeveloperTimeStats, error) {

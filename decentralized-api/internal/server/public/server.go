@@ -117,6 +117,8 @@ func NewServer(
 	g.GET("models", s.getModels)
 	g.GET("governance/pricing", s.getGovernancePricing)
 	g.GET("governance/models", s.getGovernanceModels)
+	//TODO: Remove later - response format used by old dashboard
+	g.GET("governance/models-legacy", s.getGovernanceModelsLegacy)
 	g.GET("stats/models", s.getStatsModels)
 	g.GET("stats/developers/:developer/inferences", s.getStatsDeveloperInferences)
 	g.GET("stats/developers/:developer/summary/epochs", s.getStatsDeveloperSummaryEpochs)

@@ -46,6 +46,10 @@ func (m *mockStatsStorage) GetDebugStats(_ context.Context) (statsstorage.DebugS
 	return statsstorage.DebugStats{}, nil
 }
 
+func (m *mockStatsStorage) PruneOlderThan(_ context.Context, _ int64) error {
+	return nil
+}
+
 func (m *mockStatsStorage) Close() {}
 
 func TestGetStatsModels(t *testing.T) {

@@ -225,6 +225,41 @@ func (f *FileStorage) GetDebugStats(ctx context.Context) (DebugStats, error) {
 	}, nil
 }
 
+func (f *FileStorage) PruneOlderThan(ctx context.Context, cutoffTimestamp int64) error {
+	_ = ctx
+	entries, err := os.ReadDir(f.baseDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read stats dir for prune: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		path := filepath.Join(f.baseDir, entry.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read stats file for prune %s: %w", path, err)
+		}
+		var rec InferenceRecord
+		if err := json.Unmarshal(data, &rec); err != nil {
+			// Ignore malformed files during pruning to avoid permanent loop failures.
+			logging.Warn("Skipping malformed stats record in prune", types.System, "path", path, "error", err)
+			continue
+		}
+		rec = normalizeRecord(rec)
+		if rec.InferenceTimestamp < cutoffTimestamp {
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("remove pruned stats file %s: %w", path, err)
+			}
+		}
+	}
+	return nil
+}
+
 func (f *FileStorage) Close() {}
 
 func (f *FileStorage) readAllRecords(ctx context.Context) ([]InferenceRecord, error) {
