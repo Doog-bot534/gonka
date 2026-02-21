@@ -123,6 +123,22 @@ ON CONFLICT (inference_id) DO UPDATE SET
 	return nil
 }
 
+func (s *PostgresStorage) UpdateInferenceStatus(ctx context.Context, inferenceID, status string) error {
+	const q = `
+UPDATE inference_stats
+SET status = $2, updated_at = NOW()
+WHERE inference_id = $1
+`
+	tag, err := s.pool.Exec(ctx, q, inferenceID, status)
+	if err != nil {
+		return fmt.Errorf("update inference status: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrInferenceRecordNotFound
+	}
+	return nil
+}
+
 func (s *PostgresStorage) GetDeveloperInferencesByTime(ctx context.Context, developer string, timeFrom, timeTo int64) ([]InferenceRecord, error) {
 	const q = `
 SELECT

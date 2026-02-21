@@ -94,6 +94,7 @@ func NewEventListener(
 	eventHandlers := []EventHandler{
 		&BlsTransactionEventHandler{},
 		&InferenceFinishedEventHandler{},
+		&InferenceStatusUpdatedEventHandler{},
 		&InferenceValidationEventHandler{},
 		&SubmitProposalEventHandler{},
 		&TrainingTaskAssignedEventHandler{},
@@ -558,6 +559,70 @@ func parseEventInt64(events map[string][]string, key string, idx int) (int64, er
 }
 
 type InferenceValidationEventHandler struct {
+}
+
+type inferenceStatusUpdateRecord struct {
+	InferenceID string
+	Status      string
+}
+
+type InferenceStatusUpdatedEventHandler struct {
+}
+
+func (e *InferenceStatusUpdatedEventHandler) GetName() string {
+	return "inference_status_updated"
+}
+
+func (e *InferenceStatusUpdatedEventHandler) CanHandle(event *chainevents.JSONRPCResponse) bool {
+	return len(event.Result.Events["inference_status_updated.inference_id"]) > 0
+}
+
+func (e *InferenceStatusUpdatedEventHandler) Handle(event *chainevents.JSONRPCResponse, el *EventListener) error {
+	if el.statsStorage == nil {
+		return nil
+	}
+	records, err := parseInferenceStatusUpdatedRecords(event.Result.Events)
+	if err != nil {
+		logging.Warn("Failed to parse inference_status_updated records for stats storage", types.EventProcessing, "error", err)
+		return nil
+	}
+	for _, rec := range records {
+		err := el.statsStorage.UpdateInferenceStatus(context.Background(), rec.InferenceID, rec.Status)
+		if err != nil {
+			if errors.Is(err, statsstorage.ErrInferenceRecordNotFound) {
+				logging.Warn("Ignoring inference_status_updated for unknown inference in stats storage", types.EventProcessing,
+					"inference_id", rec.InferenceID, "status", rec.Status)
+				continue
+			}
+			logging.Error("Failed to update inference status in stats storage", types.EventProcessing,
+				"inference_id", rec.InferenceID, "status", rec.Status, "error", err)
+		}
+	}
+	return nil
+}
+
+func parseInferenceStatusUpdatedRecords(events map[string][]string) ([]inferenceStatusUpdateRecord, error) {
+	ids := events["inference_status_updated.inference_id"]
+	if len(ids) == 0 {
+		return nil, errors.New("missing inference_status_updated.inference_id")
+	}
+	statuses := events["inference_status_updated.status"]
+	if len(statuses) == 0 {
+		return nil, errors.New("missing inference_status_updated.status")
+	}
+
+	records := make([]inferenceStatusUpdateRecord, 0, len(ids))
+	for i, id := range ids {
+		status, ok := getEventValue(events, "inference_status_updated.status", i)
+		if !ok {
+			return nil, fmt.Errorf("missing status for inference %s", id)
+		}
+		records = append(records, inferenceStatusUpdateRecord{
+			InferenceID: id,
+			Status:      status,
+		})
+	}
+	return records, nil
 }
 
 func (e *InferenceValidationEventHandler) GetName() string {

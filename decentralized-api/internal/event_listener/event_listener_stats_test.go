@@ -49,3 +49,25 @@ func TestParseInferenceFinishedRecords_MissingRequiredField(t *testing.T) {
 	_, err := parseInferenceFinishedRecords(events)
 	require.Error(t, err)
 }
+
+func TestParseInferenceStatusUpdatedRecords_Success(t *testing.T) {
+	events := map[string][]string{
+		"inference_status_updated.inference_id": {"inf-1"},
+		"inference_status_updated.status":       {"INVALIDATED"},
+	}
+
+	records, err := parseInferenceStatusUpdatedRecords(events)
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+	require.Equal(t, "inf-1", records[0].InferenceID)
+	require.Equal(t, "INVALIDATED", records[0].Status)
+}
+
+func TestParseInferenceStatusUpdatedRecords_MissingStatus(t *testing.T) {
+	events := map[string][]string{
+		"inference_status_updated.inference_id": {"inf-1"},
+	}
+
+	_, err := parseInferenceStatusUpdatedRecords(events)
+	require.Error(t, err)
+}

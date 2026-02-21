@@ -1,6 +1,11 @@
 package statsstorage
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+var ErrInferenceRecordNotFound = errors.New("inference record not found")
 
 // InferenceRecord is the off-chain source-of-truth record for one inference.
 type InferenceRecord struct {
@@ -49,6 +54,7 @@ type DebugStats struct {
 // StatsStorage defines storage and read models for off-chain developer stats.
 type StatsStorage interface {
 	UpsertInference(ctx context.Context, rec InferenceRecord) error
+	UpdateInferenceStatus(ctx context.Context, inferenceID, status string) error
 	GetDeveloperInferencesByTime(ctx context.Context, developer string, timeFrom, timeTo int64) ([]InferenceRecord, error)
 	GetSummaryByDeveloperEpochsBackwards(ctx context.Context, developer string, epochsN int32) (Summary, error)
 	GetSummaryByEpochsBackwards(ctx context.Context, epochsN int32) (Summary, error)

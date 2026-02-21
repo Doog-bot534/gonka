@@ -22,6 +22,10 @@ func (m *mockStatsStorage) UpsertInference(_ context.Context, _ statsstorage.Inf
 	return nil
 }
 
+func (m *mockStatsStorage) UpdateInferenceStatus(_ context.Context, _, _ string) error {
+	return nil
+}
+
 func (m *mockStatsStorage) GetDeveloperInferencesByTime(_ context.Context, _ string, _, _ int64) ([]statsstorage.InferenceRecord, error) {
 	return []statsstorage.InferenceRecord{}, nil
 }

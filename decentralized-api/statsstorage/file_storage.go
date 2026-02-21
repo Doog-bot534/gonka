@@ -29,12 +29,37 @@ func (f *FileStorage) UpsertInference(ctx context.Context, rec InferenceRecord) 
 	if rec.InferenceID == "" {
 		return fmt.Errorf("inference_id is required")
 	}
+	return f.writeRecord(rec)
+}
+
+func (f *FileStorage) UpdateInferenceStatus(ctx context.Context, inferenceID, status string) error {
+	_ = ctx
+	if inferenceID == "" {
+		return fmt.Errorf("inference_id is required")
+	}
+	targetPath := f.recordPath(inferenceID)
+	data, err := os.ReadFile(targetPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ErrInferenceRecordNotFound
+		}
+		return fmt.Errorf("read stats file for status update %s: %w", targetPath, err)
+	}
+	var rec InferenceRecord
+	if err := json.Unmarshal(data, &rec); err != nil {
+		return fmt.Errorf("unmarshal stats file for status update %s: %w", targetPath, err)
+	}
+	rec = normalizeRecord(rec)
+	rec.InferenceID = inferenceID
+	rec.Status = status
+	return f.writeRecord(rec)
+}
+
+func (f *FileStorage) writeRecord(rec InferenceRecord) error {
 	if err := os.MkdirAll(f.baseDir, 0o755); err != nil {
 		return fmt.Errorf("create stats dir: %w", err)
 	}
-
-	filename := hex.EncodeToString([]byte(rec.InferenceID)) + ".json"
-	targetPath := filepath.Join(f.baseDir, filename)
+	targetPath := f.recordPath(rec.InferenceID)
 	tempPath := targetPath + ".tmp"
 
 	data, err := json.Marshal(rec)
@@ -49,6 +74,11 @@ func (f *FileStorage) UpsertInference(ctx context.Context, rec InferenceRecord) 
 		return fmt.Errorf("rename stats temp file: %w", err)
 	}
 	return nil
+}
+
+func (f *FileStorage) recordPath(inferenceID string) string {
+	filename := hex.EncodeToString([]byte(inferenceID)) + ".json"
+	return filepath.Join(f.baseDir, filename)
 }
 
 func (f *FileStorage) GetDeveloperInferencesByTime(ctx context.Context, developer string, timeFrom, timeTo int64) ([]InferenceRecord, error) {

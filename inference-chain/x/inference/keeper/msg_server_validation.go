@@ -52,6 +52,7 @@ func (k msgServer) Validation(goCtx context.Context, msg *types.MsgValidation) (
 		k.LogError("Inference not finished", types.Validation, "status", inference.Status, "inference", inference)
 		return nil, types.ErrInferenceNotFinished
 	}
+	previousStatus := inference.Status
 
 	executor, found := k.GetParticipant(ctx, inference.ExecutedBy)
 	if !found {
@@ -172,6 +173,9 @@ func (k msgServer) Validation(goCtx context.Context, msg *types.MsgValidation) (
 	if err != nil {
 		k.LogError("Failed to set inference", types.Validation, "inferenceId", inference.InferenceId, "error", err)
 		return nil, err
+	}
+	if inference.Status != previousStatus {
+		emitInferenceStatusUpdatedEvent(ctx, inference.InferenceId, inference.Status)
 	}
 
 	ctx.EventManager().EmitEvent(

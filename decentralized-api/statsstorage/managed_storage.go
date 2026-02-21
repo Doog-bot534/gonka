@@ -49,6 +49,10 @@ func (m *ManagedStorage) UpsertInference(ctx context.Context, rec InferenceRecor
 	return m.storage.UpsertInference(ctx, rec)
 }
 
+func (m *ManagedStorage) UpdateInferenceStatus(ctx context.Context, inferenceID, status string) error {
+	return m.storage.UpdateInferenceStatus(ctx, inferenceID, status)
+}
+
 func (m *ManagedStorage) GetDeveloperInferencesByTime(ctx context.Context, developer string, timeFrom, timeTo int64) ([]InferenceRecord, error) {
 	return m.storage.GetDeveloperInferencesByTime(ctx, developer, timeFrom, timeTo)
 }
