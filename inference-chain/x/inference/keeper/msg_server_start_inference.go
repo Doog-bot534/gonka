@@ -49,12 +49,6 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 	k.LogInfo("DevPubKey", types.Inferences, "DevPubKey", dev.WorkerPublicKey, "DevAddress", dev.Address)
 	k.LogInfo("TransferAgentPubKey", types.Inferences, "TransferAgentPubKey", transferAgent.WorkerPublicKey, "TransferAgentAddress", transferAgent.Address)
 
-	if transferAgent.Address != msg.Creator {
-		err := sdkerrors.Wrapf(types.ErrInvalidAddress, "start creator (%s) must match transfer agent identity (%s)", msg.Creator, transferAgent.Address)
-		k.LogError("StartInference: creator-role invariant failed", types.Inferences, "error", err)
-		return failedStart(ctx, err, msg), nil
-	}
-
 	existingInference, found := k.GetInference(ctx, msg.InferenceId)
 
 	if found && existingInference.StartProcessed() {
