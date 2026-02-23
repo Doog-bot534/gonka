@@ -4,7 +4,7 @@ api:
   public_url: http://localhost:8080
 nodes:
   - id: node1
-    host:  34.171.235.205 # Deployed inference node
+    host: 34.171.235.205 # Deployed inference node
     inference_port: 8080
     poc_port: 5000
     max_concurrent: 500
@@ -22,3 +22,4 @@ poc_propagation:
   trees: 6
   fanout: 4
   storage_dir: "/root/.inference/propagation/bundles"
+  retain_all_proofs: false
