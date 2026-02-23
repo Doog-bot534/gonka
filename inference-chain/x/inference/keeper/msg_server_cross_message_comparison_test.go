@@ -1,0 +1,152 @@
+package keeper_test
+
+import (
+	"encoding/base64"
+	"testing"
+
+	authztypes "github.com/cosmos/cosmos-sdk/x/authz"
+	"github.com/productscience/inference/x/inference/calculations"
+	"github.com/productscience/inference/x/inference/types"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+)
+
+func TestMsgServer_FinishFirst_FieldsPersistedForStartComparison(t *testing.T) {
+	inferenceHelper, k, ctx := NewMockInferenceHelper(t)
+	requestTimestamp := inferenceHelper.context.BlockTime().UnixNano()
+
+	model := types.Model{Id: "model1"}
+	k.SetModel(ctx, &model)
+	StubModelSubgroup(t, ctx, k, inferenceHelper.Mocks, &model)
+
+	originalPromptHash, promptHash, inferenceID, taSignature, executorSignature := buildInferenceSignatures(
+		t,
+		inferenceHelper.MockRequester,
+		inferenceHelper.MockTransferAgent,
+		inferenceHelper.MockExecutor,
+		"promptPayload",
+		requestTimestamp,
+	)
+
+	inferenceHelper.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), inferenceHelper.MockRequester.GetBechAddress()).Return(inferenceHelper.MockRequester).AnyTimes()
+	inferenceHelper.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), inferenceHelper.MockTransferAgent.GetBechAddress()).Return(inferenceHelper.MockTransferAgent).AnyTimes()
+	inferenceHelper.Mocks.AuthzKeeper.EXPECT().GranterGrants(gomock.Any(), gomock.Any()).Return(&authztypes.QueryGranterGrantsResponse{Grants: []*authztypes.GrantAuthorization{}}, nil).AnyTimes()
+	inferenceHelper.Mocks.BankKeeper.ExpectAny(inferenceHelper.context)
+
+	// 1) Process finish first — signature-related fields should be persisted.
+	finishResp, err := inferenceHelper.MessageServer.FinishInference(inferenceHelper.context, &types.MsgFinishInference{
+		Creator:              inferenceHelper.MockExecutor.address,
+		InferenceId:          inferenceID,
+		ResponseHash:         "responseHash",
+		ResponsePayload:      "responsePayload",
+		PromptTokenCount:     10,
+		CompletionTokenCount: 20,
+		ExecutedBy:           inferenceHelper.MockExecutor.address,
+		TransferredBy:        inferenceHelper.MockTransferAgent.address,
+		RequestTimestamp:     requestTimestamp,
+		TransferSignature:    taSignature,
+		ExecutorSignature:    executorSignature,
+		RequestedBy:          inferenceHelper.MockRequester.address,
+		OriginalPrompt:       "promptPayload",
+		PromptHash:           promptHash,
+		OriginalPromptHash:   originalPromptHash,
+		Model:                "model1",
+	})
+	require.NoError(t, err)
+	require.Empty(t, finishResp.ErrorMessage)
+
+	savedInference, found := k.GetInference(inferenceHelper.context, inferenceID)
+	require.True(t, found)
+	require.Equal(t, promptHash, savedInference.PromptHash)
+	require.Equal(t, originalPromptHash, savedInference.OriginalPromptHash)
+	require.Equal(t, inferenceHelper.MockRequester.address, savedInference.RequestedBy)
+	require.Equal(t, inferenceHelper.MockExecutor.address, savedInference.ExecutedBy)
+
+	// 2) Process start second — comparison should pass because fields are populated.
+	startResp, err := inferenceHelper.MessageServer.StartInference(inferenceHelper.context, &types.MsgStartInference{
+		InferenceId:        inferenceID,
+		PromptHash:         promptHash,
+		PromptPayload:      "promptPayload",
+		RequestedBy:        inferenceHelper.MockRequester.address,
+		Creator:            inferenceHelper.MockTransferAgent.address,
+		Model:              "model1",
+		OriginalPrompt:     "promptPayload",
+		OriginalPromptHash: originalPromptHash,
+		RequestTimestamp:   requestTimestamp,
+		TransferSignature:  taSignature,
+		AssignedTo:         inferenceHelper.MockExecutor.address,
+		MaxTokens:          calculations.DefaultMaxTokens,
+	})
+	require.NoError(t, err)
+	require.Empty(t, startResp.ErrorMessage)
+}
+
+func TestMsgServer_StartFirst_FieldsPersistedForFinishComparison(t *testing.T) {
+	inferenceHelper, k, ctx := NewMockInferenceHelper(t)
+	requestTimestamp := inferenceHelper.context.BlockTime().UnixNano()
+
+	model := types.Model{Id: "model1"}
+	k.SetModel(ctx, &model)
+	StubModelSubgroup(t, ctx, k, inferenceHelper.Mocks, &model)
+
+	originalPromptHash, promptHash, inferenceID, taSignature, _ := buildInferenceSignatures(
+		t,
+		inferenceHelper.MockRequester,
+		inferenceHelper.MockTransferAgent,
+		inferenceHelper.MockExecutor,
+		"promptPayload",
+		requestTimestamp,
+	)
+
+	inferenceHelper.Mocks.BankKeeper.ExpectAny(inferenceHelper.context)
+	inferenceHelper.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), inferenceHelper.MockRequester.GetBechAddress()).Return(inferenceHelper.MockRequester).AnyTimes()
+	inferenceHelper.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), inferenceHelper.MockTransferAgent.GetBechAddress()).Return(inferenceHelper.MockTransferAgent).AnyTimes()
+	inferenceHelper.Mocks.AuthzKeeper.EXPECT().GranterGrants(gomock.Any(), gomock.Any()).Return(&authztypes.QueryGranterGrantsResponse{Grants: []*authztypes.GrantAuthorization{}}, nil).AnyTimes()
+
+	// 1) Process start first.
+	startResp, err := inferenceHelper.MessageServer.StartInference(inferenceHelper.context, &types.MsgStartInference{
+		InferenceId:        inferenceID,
+		PromptHash:         promptHash,
+		PromptPayload:      "promptPayload",
+		RequestedBy:        inferenceHelper.MockRequester.address,
+		Creator:            inferenceHelper.MockTransferAgent.address,
+		Model:              "model1",
+		OriginalPrompt:     "promptPayload",
+		OriginalPromptHash: originalPromptHash,
+		RequestTimestamp:   requestTimestamp,
+		TransferSignature:  taSignature,
+		AssignedTo:         inferenceHelper.MockExecutor.address,
+		MaxTokens:          20,
+	})
+	require.NoError(t, err)
+	require.Empty(t, startResp.ErrorMessage)
+
+	savedInference, found := k.GetInference(inferenceHelper.context, inferenceID)
+	require.True(t, found)
+	require.Equal(t, promptHash, savedInference.PromptHash)
+	require.Equal(t, originalPromptHash, savedInference.OriginalPromptHash)
+	require.Equal(t, inferenceHelper.MockRequester.address, savedInference.RequestedBy)
+
+	// 2) Process finish second — comparison should pass.
+	bogusSig := base64.StdEncoding.EncodeToString(make([]byte, 64))
+	finishResp, err := inferenceHelper.MessageServer.FinishInference(inferenceHelper.context, &types.MsgFinishInference{
+		Creator:              inferenceHelper.MockExecutor.address,
+		InferenceId:          inferenceID,
+		ResponseHash:         "responseHash",
+		ResponsePayload:      "responsePayload",
+		PromptTokenCount:     10,
+		CompletionTokenCount: 20,
+		ExecutedBy:           inferenceHelper.MockExecutor.address,
+		TransferredBy:        inferenceHelper.MockTransferAgent.address,
+		RequestTimestamp:     requestTimestamp,
+		TransferSignature:    bogusSig, // ignored when start already processed
+		ExecutorSignature:    bogusSig, // executor verification disabled
+		RequestedBy:          inferenceHelper.MockRequester.address,
+		OriginalPrompt:       "promptPayload",
+		Model:                "model1",
+		PromptHash:           promptHash,
+		OriginalPromptHash:   originalPromptHash,
+	})
+	require.NoError(t, err)
+	require.Empty(t, finishResp.ErrorMessage)
+}
