@@ -4,7 +4,7 @@ api:
   public_url: http://localhost:8080
 nodes:
   - id: node1
-    host:  34.171.235.205:8080/ # Deployed inference node
+    host: 34.171.235.205:8080/ # Deployed inference node
     max_concurrent: 500
     models:
       - Qwen/Qwen2.5-7B-Instruct
@@ -17,4 +17,7 @@ chain_node:
   is_genesis: false
 poc_propagation:
   enabled: true
+  trees: 6
+  fanout: 4
   storage_dir: "/root/.inference/propagation/bundles"
+  retain_all_proofs: false
