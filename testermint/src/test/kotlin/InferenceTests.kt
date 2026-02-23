@@ -219,7 +219,7 @@ class InferenceTests : TestermintTest() {
     }
 
     @Test
-    fun `submit StartInference with bad TA signature`() {
+    fun `submit StartInference with bad TA signature succeeds (start-first policy skips TA verification)`() {
         val timestamp = Instant.now().toEpochNanos()
         val genesisAddress = genesis.node.getColdAddress()
         // Phase 3: Use hashes for signatures
@@ -242,8 +242,9 @@ class InferenceTests : TestermintTest() {
             transferSignature = taSignature.invalidate(),
             originalPromptHash = originalPromptHash
         )
+        // Start-first policy: only dev signature is verified, TA signature is skipped
         val response = genesis.submitMessage(message)
-        assertThat(response).isFailure()
+        assertThat(response).isSuccess()
     }
 
     @Test
@@ -531,7 +532,7 @@ class InferenceTests : TestermintTest() {
     }
 
     @Test
-    fun `finish inference validates ea signature`() {
+    fun `finish inference with bad ea signature succeeds (executor verification disabled by policy)`() {
         val timestamp = Instant.now().toEpochNanos()
         val genesisAddress = genesis.node.getColdAddress()
         // Phase 3: Dev signs original_prompt_hash, TA/Executor sign prompt_hash
@@ -558,8 +559,9 @@ class InferenceTests : TestermintTest() {
             promptHash = promptHash,
             originalPromptHash = originalPromptHash,
         )
+        // Executor signature verification is disabled by policy in both paths
         val response = genesis.submitMessage(message)
-        assertThat(response).isFailure()
+        assertThat(response).isSuccess()
     }
 
 

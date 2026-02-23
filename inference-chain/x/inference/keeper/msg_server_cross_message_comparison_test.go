@@ -5,91 +5,38 @@ import (
 	"testing"
 
 	authztypes "github.com/cosmos/cosmos-sdk/x/authz"
-	"github.com/productscience/inference/x/inference/calculations"
+	"github.com/productscience/inference/testutil"
 	"github.com/productscience/inference/x/inference/types"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
-func TestMsgServer_FinishFirst_FieldsPersistedForStartComparison(t *testing.T) {
-	inferenceHelper, k, ctx := NewMockInferenceHelper(t)
-	requestTimestamp := inferenceHelper.context.BlockTime().UnixNano()
+// --- Helpers ---
 
-	model := types.Model{Id: "model1"}
-	k.SetModel(ctx, &model)
-	StubModelSubgroup(t, ctx, k, inferenceHelper.Mocks, &model)
-
-	originalPromptHash, promptHash, inferenceID, taSignature, executorSignature := buildInferenceSignatures(
-		t,
-		inferenceHelper.MockRequester,
-		inferenceHelper.MockTransferAgent,
-		inferenceHelper.MockExecutor,
-		"promptPayload",
-		requestTimestamp,
-	)
-
-	inferenceHelper.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), inferenceHelper.MockRequester.GetBechAddress()).Return(inferenceHelper.MockRequester).AnyTimes()
-	inferenceHelper.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), inferenceHelper.MockTransferAgent.GetBechAddress()).Return(inferenceHelper.MockTransferAgent).AnyTimes()
-	inferenceHelper.Mocks.AuthzKeeper.EXPECT().GranterGrants(gomock.Any(), gomock.Any()).Return(&authztypes.QueryGranterGrantsResponse{Grants: []*authztypes.GrantAuthorization{}}, nil).AnyTimes()
-	inferenceHelper.Mocks.BankKeeper.ExpectAny(inferenceHelper.context)
-
-	// 1) Process finish first — signature-related fields should be persisted.
-	finishResp, err := inferenceHelper.MessageServer.FinishInference(inferenceHelper.context, &types.MsgFinishInference{
-		Creator:              inferenceHelper.MockExecutor.address,
-		InferenceId:          inferenceID,
-		ResponseHash:         "responseHash",
-		ResponsePayload:      "responsePayload",
-		PromptTokenCount:     10,
-		CompletionTokenCount: 20,
-		ExecutedBy:           inferenceHelper.MockExecutor.address,
-		TransferredBy:        inferenceHelper.MockTransferAgent.address,
-		RequestTimestamp:     requestTimestamp,
-		TransferSignature:    taSignature,
-		ExecutorSignature:    executorSignature,
-		RequestedBy:          inferenceHelper.MockRequester.address,
-		OriginalPrompt:       "promptPayload",
-		PromptHash:           promptHash,
-		OriginalPromptHash:   originalPromptHash,
-		Model:                "model1",
-	})
-	require.NoError(t, err)
-	require.Empty(t, finishResp.ErrorMessage)
-
-	savedInference, found := k.GetInference(inferenceHelper.context, inferenceID)
-	require.True(t, found)
-	require.Equal(t, promptHash, savedInference.PromptHash)
-	require.Equal(t, originalPromptHash, savedInference.OriginalPromptHash)
-	require.Equal(t, inferenceHelper.MockRequester.address, savedInference.RequestedBy)
-	require.Equal(t, inferenceHelper.MockExecutor.address, savedInference.ExecutedBy)
-
-	// 2) Process start second — comparison should pass because fields are populated.
-	startResp, err := inferenceHelper.MessageServer.StartInference(inferenceHelper.context, &types.MsgStartInference{
-		InferenceId:        inferenceID,
-		PromptHash:         promptHash,
-		PromptPayload:      "promptPayload",
-		RequestedBy:        inferenceHelper.MockRequester.address,
-		Creator:            inferenceHelper.MockTransferAgent.address,
-		Model:              "model1",
-		OriginalPrompt:     "promptPayload",
-		OriginalPromptHash: originalPromptHash,
-		RequestTimestamp:   requestTimestamp,
-		TransferSignature:  taSignature,
-		AssignedTo:         inferenceHelper.MockExecutor.address,
-		MaxTokens:          calculations.DefaultMaxTokens,
-	})
-	require.NoError(t, err)
-	require.Empty(t, startResp.ErrorMessage)
+func bogusSig() string {
+	return base64.StdEncoding.EncodeToString(make([]byte, 64))
 }
 
-func TestMsgServer_StartFirst_FieldsPersistedForFinishComparison(t *testing.T) {
+type crossMsgTestSetup struct {
+	helper           *MockInferenceHelper
+	requestTimestamp int64
+	originalHash     string
+	promptHash       string
+	inferenceID      string
+	taSignature      string
+	executorSig      string
+}
+
+func newCrossMsgSetup(t *testing.T) crossMsgTestSetup {
+	t.Helper()
 	inferenceHelper, k, ctx := NewMockInferenceHelper(t)
-	requestTimestamp := inferenceHelper.context.BlockTime().UnixNano()
 
 	model := types.Model{Id: "model1"}
 	k.SetModel(ctx, &model)
 	StubModelSubgroup(t, ctx, k, inferenceHelper.Mocks, &model)
 
-	originalPromptHash, promptHash, inferenceID, taSignature, _ := buildInferenceSignatures(
+	requestTimestamp := inferenceHelper.context.BlockTime().UnixNano()
+	originalHash, promptHash, inferenceID, taSig, execSig := buildInferenceSignatures(
 		t,
 		inferenceHelper.MockRequester,
 		inferenceHelper.MockTransferAgent,
@@ -98,55 +45,289 @@ func TestMsgServer_StartFirst_FieldsPersistedForFinishComparison(t *testing.T) {
 		requestTimestamp,
 	)
 
-	inferenceHelper.Mocks.BankKeeper.ExpectAny(inferenceHelper.context)
 	inferenceHelper.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), inferenceHelper.MockRequester.GetBechAddress()).Return(inferenceHelper.MockRequester).AnyTimes()
 	inferenceHelper.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), inferenceHelper.MockTransferAgent.GetBechAddress()).Return(inferenceHelper.MockTransferAgent).AnyTimes()
 	inferenceHelper.Mocks.AuthzKeeper.EXPECT().GranterGrants(gomock.Any(), gomock.Any()).Return(&authztypes.QueryGranterGrantsResponse{Grants: []*authztypes.GrantAuthorization{}}, nil).AnyTimes()
+	inferenceHelper.Mocks.BankKeeper.ExpectAny(inferenceHelper.context)
 
-	// 1) Process start first.
-	startResp, err := inferenceHelper.MessageServer.StartInference(inferenceHelper.context, &types.MsgStartInference{
-		InferenceId:        inferenceID,
-		PromptHash:         promptHash,
-		PromptPayload:      "promptPayload",
-		RequestedBy:        inferenceHelper.MockRequester.address,
-		Creator:            inferenceHelper.MockTransferAgent.address,
-		Model:              "model1",
-		OriginalPrompt:     "promptPayload",
-		OriginalPromptHash: originalPromptHash,
-		RequestTimestamp:   requestTimestamp,
-		TransferSignature:  taSignature,
-		AssignedTo:         inferenceHelper.MockExecutor.address,
-		MaxTokens:          20,
-	})
-	require.NoError(t, err)
-	require.Empty(t, startResp.ErrorMessage)
+	return crossMsgTestSetup{
+		helper:           inferenceHelper,
+		requestTimestamp: requestTimestamp,
+		originalHash:     originalHash,
+		promptHash:       promptHash,
+		inferenceID:      inferenceID,
+		taSignature:      taSig,
+		executorSig:      execSig,
+	}
+}
 
-	savedInference, found := k.GetInference(inferenceHelper.context, inferenceID)
-	require.True(t, found)
-	require.Equal(t, promptHash, savedInference.PromptHash)
-	require.Equal(t, originalPromptHash, savedInference.OriginalPromptHash)
-	require.Equal(t, inferenceHelper.MockRequester.address, savedInference.RequestedBy)
-
-	// 2) Process finish second — comparison should pass.
-	bogusSig := base64.StdEncoding.EncodeToString(make([]byte, 64))
-	finishResp, err := inferenceHelper.MessageServer.FinishInference(inferenceHelper.context, &types.MsgFinishInference{
-		Creator:              inferenceHelper.MockExecutor.address,
-		InferenceId:          inferenceID,
+func (s *crossMsgTestSetup) validFinishMsg() *types.MsgFinishInference {
+	return &types.MsgFinishInference{
+		Creator:              s.helper.MockExecutor.address,
+		InferenceId:          s.inferenceID,
 		ResponseHash:         "responseHash",
-		ResponsePayload:      "responsePayload",
 		PromptTokenCount:     10,
 		CompletionTokenCount: 20,
-		ExecutedBy:           inferenceHelper.MockExecutor.address,
-		TransferredBy:        inferenceHelper.MockTransferAgent.address,
-		RequestTimestamp:     requestTimestamp,
-		TransferSignature:    bogusSig, // ignored when start already processed
-		ExecutorSignature:    bogusSig, // executor verification disabled
-		RequestedBy:          inferenceHelper.MockRequester.address,
-		OriginalPrompt:       "promptPayload",
+		ExecutedBy:           s.helper.MockExecutor.address,
+		TransferredBy:        s.helper.MockTransferAgent.address,
+		RequestTimestamp:     s.requestTimestamp,
+		TransferSignature:    s.taSignature,
+		ExecutorSignature:    s.executorSig,
+		RequestedBy:          s.helper.MockRequester.address,
+		PromptHash:           s.promptHash,
+		OriginalPromptHash:   s.originalHash,
 		Model:                "model1",
-		PromptHash:           promptHash,
-		OriginalPromptHash:   originalPromptHash,
-	})
+	}
+}
+
+func (s *crossMsgTestSetup) validStartMsg() *types.MsgStartInference {
+	return &types.MsgStartInference{
+		InferenceId:        s.inferenceID,
+		PromptHash:         s.promptHash,
+		RequestedBy:        s.helper.MockRequester.address,
+		Creator:            s.helper.MockTransferAgent.address,
+		Model:              "model1",
+		OriginalPromptHash: s.originalHash,
+		RequestTimestamp:   s.requestTimestamp,
+		TransferSignature:  s.taSignature,
+		AssignedTo:         s.helper.MockExecutor.address,
+		MaxTokens:          20,
+	}
+}
+
+func (s *crossMsgTestSetup) mustFinishFirst(t *testing.T) {
+	t.Helper()
+	resp, err := s.helper.MessageServer.FinishInference(s.helper.context, s.validFinishMsg())
 	require.NoError(t, err)
-	require.Empty(t, finishResp.ErrorMessage)
+	require.Empty(t, resp.ErrorMessage)
+}
+
+func (s *crossMsgTestSetup) mustStartFirst(t *testing.T) {
+	t.Helper()
+	resp, err := s.helper.MessageServer.StartInference(s.helper.context, s.validStartMsg())
+	require.NoError(t, err)
+	require.Empty(t, resp.ErrorMessage)
+}
+
+// ========================
+// Happy path (both orders)
+// ========================
+
+func TestCrossMsg_FinishFirst_ThenStart_Succeeds(t *testing.T) {
+	s := newCrossMsgSetup(t)
+	s.mustFinishFirst(t)
+	s.mustStartFirst(t)
+}
+
+func TestCrossMsg_StartFirst_ThenFinish_Succeeds(t *testing.T) {
+	s := newCrossMsgSetup(t)
+	s.mustStartFirst(t)
+
+	resp, err := s.helper.MessageServer.FinishInference(s.helper.context, s.validFinishMsg())
+	require.NoError(t, err)
+	require.Empty(t, resp.ErrorMessage)
+}
+
+// ================================
+// Dev signature on first message
+// ================================
+
+func TestCrossMsg_StartFirst_BadDevSignature_Rejected(t *testing.T) {
+	s := newCrossMsgSetup(t)
+	msg := s.validStartMsg()
+	msg.InferenceId = bogusSig() // dev signature is the inferenceId
+	resp, err := s.helper.MessageServer.StartInference(s.helper.context, msg)
+	require.NoError(t, err)
+	require.Contains(t, resp.ErrorMessage, types.ErrInvalidSignature.Error())
+}
+
+func TestCrossMsg_FinishFirst_BadDevSignature_Rejected(t *testing.T) {
+	s := newCrossMsgSetup(t)
+	msg := s.validFinishMsg()
+	msg.InferenceId = bogusSig()
+	resp, err := s.helper.MessageServer.FinishInference(s.helper.context, msg)
+	require.NoError(t, err)
+	require.Contains(t, resp.ErrorMessage, types.ErrInvalidSignature.Error())
+}
+
+// ========================================
+// TA signature on finish-first (verified)
+// ========================================
+
+func TestCrossMsg_FinishFirst_BadTASignature_Rejected(t *testing.T) {
+	s := newCrossMsgSetup(t)
+	msg := s.validFinishMsg()
+	msg.TransferSignature = bogusSig()
+	resp, err := s.helper.MessageServer.FinishInference(s.helper.context, msg)
+	require.NoError(t, err)
+	require.Contains(t, resp.ErrorMessage, types.ErrInvalidSignature.Error())
+}
+
+// TA signature is NOT checked on start-first — it's deferred to the finish comparison
+func TestCrossMsg_StartFirst_BadTASignature_Accepted(t *testing.T) {
+	s := newCrossMsgSetup(t)
+	msg := s.validStartMsg()
+	msg.TransferSignature = bogusSig()
+	resp, err := s.helper.MessageServer.StartInference(s.helper.context, msg)
+	require.NoError(t, err)
+	require.Empty(t, resp.ErrorMessage)
+}
+
+// ================================================
+// Executor signature is NEVER checked (both paths)
+// ================================================
+
+func TestCrossMsg_FinishFirst_BadExecutorSignature_Accepted(t *testing.T) {
+	s := newCrossMsgSetup(t)
+	msg := s.validFinishMsg()
+	msg.ExecutorSignature = bogusSig()
+	resp, err := s.helper.MessageServer.FinishInference(s.helper.context, msg)
+	require.NoError(t, err)
+	require.Empty(t, resp.ErrorMessage)
+}
+
+// ============================================================
+// Dev component mismatch on second message (both orderings)
+// ============================================================
+
+func TestCrossMsg_FinishFirst_StartSecond_OriginalPromptHashMismatch(t *testing.T) {
+	s := newCrossMsgSetup(t)
+	s.mustFinishFirst(t)
+
+	msg := s.validStartMsg()
+	msg.OriginalPromptHash = sha256Hash("different_prompt")
+	resp, err := s.helper.MessageServer.StartInference(s.helper.context, msg)
+	require.NoError(t, err)
+	require.Contains(t, resp.ErrorMessage, types.ErrDevComponentMismatch.Error())
+}
+
+func TestCrossMsg_FinishFirst_StartSecond_RequestedByMismatch(t *testing.T) {
+	s := newCrossMsgSetup(t)
+	s.mustFinishFirst(t)
+
+	other := NewMockAccount(testutil.Executor2)
+	MustAddParticipant(t, s.helper.MessageServer, s.helper.context, *other)
+
+	msg := s.validStartMsg()
+	msg.RequestedBy = other.address
+	resp, err := s.helper.MessageServer.StartInference(s.helper.context, msg)
+	require.NoError(t, err)
+	require.Contains(t, resp.ErrorMessage, types.ErrDevComponentMismatch.Error())
+}
+
+func TestCrossMsg_StartFirst_FinishSecond_OriginalPromptHashMismatch(t *testing.T) {
+	s := newCrossMsgSetup(t)
+	s.mustStartFirst(t)
+
+	msg := s.validFinishMsg()
+	msg.OriginalPromptHash = sha256Hash("different_prompt")
+	resp, err := s.helper.MessageServer.FinishInference(s.helper.context, msg)
+	require.NoError(t, err)
+	require.Contains(t, resp.ErrorMessage, types.ErrDevComponentMismatch.Error())
+}
+
+func TestCrossMsg_StartFirst_FinishSecond_RequestedByMismatch(t *testing.T) {
+	s := newCrossMsgSetup(t)
+	s.mustStartFirst(t)
+
+	other := NewMockAccount(testutil.Executor2)
+	MustAddParticipant(t, s.helper.MessageServer, s.helper.context, *other)
+
+	msg := s.validFinishMsg()
+	msg.RequestedBy = other.address
+	resp, err := s.helper.MessageServer.FinishInference(s.helper.context, msg)
+	require.NoError(t, err)
+	require.Contains(t, resp.ErrorMessage, types.ErrDevComponentMismatch.Error())
+}
+
+func TestCrossMsg_StartFirst_FinishSecond_RequestTimestampMismatch(t *testing.T) {
+	s := newCrossMsgSetup(t)
+	s.mustStartFirst(t)
+
+	msg := s.validFinishMsg()
+	msg.RequestTimestamp = s.requestTimestamp + 999
+	resp, err := s.helper.MessageServer.FinishInference(s.helper.context, msg)
+	require.NoError(t, err)
+	require.Contains(t, resp.ErrorMessage, types.ErrDevComponentMismatch.Error())
+}
+
+// =========================================================
+// TA component mismatch on second message (both orderings)
+// =========================================================
+
+func TestCrossMsg_FinishFirst_StartSecond_PromptHashMismatch(t *testing.T) {
+	s := newCrossMsgSetup(t)
+	s.mustFinishFirst(t)
+
+	msg := s.validStartMsg()
+	msg.PromptHash = sha256Hash("different_prompt")
+	resp, err := s.helper.MessageServer.StartInference(s.helper.context, msg)
+	require.NoError(t, err)
+	require.Contains(t, resp.ErrorMessage, types.ErrTAComponentMismatch.Error())
+}
+
+func TestCrossMsg_FinishFirst_StartSecond_ExecutorMismatch(t *testing.T) {
+	s := newCrossMsgSetup(t)
+	s.mustFinishFirst(t)
+
+	other := NewMockAccount(testutil.Executor2)
+	MustAddParticipant(t, s.helper.MessageServer, s.helper.context, *other)
+
+	msg := s.validStartMsg()
+	msg.AssignedTo = other.address
+	resp, err := s.helper.MessageServer.StartInference(s.helper.context, msg)
+	require.NoError(t, err)
+	require.Contains(t, resp.ErrorMessage, types.ErrTAComponentMismatch.Error())
+}
+
+func TestCrossMsg_StartFirst_FinishSecond_PromptHashMismatch(t *testing.T) {
+	s := newCrossMsgSetup(t)
+	s.mustStartFirst(t)
+
+	msg := s.validFinishMsg()
+	msg.PromptHash = sha256Hash("different_prompt")
+	resp, err := s.helper.MessageServer.FinishInference(s.helper.context, msg)
+	require.NoError(t, err)
+	require.Contains(t, resp.ErrorMessage, types.ErrTAComponentMismatch.Error())
+}
+
+func TestCrossMsg_StartFirst_FinishSecond_ExecutorMismatch(t *testing.T) {
+	s := newCrossMsgSetup(t)
+	s.mustStartFirst(t)
+
+	other := NewMockAccount(testutil.Executor2)
+	MustAddParticipant(t, s.helper.MessageServer, s.helper.context, *other)
+
+	msg := s.validFinishMsg()
+	msg.ExecutedBy = other.address
+	msg.Creator = other.address // creator must == executed_by
+	resp, err := s.helper.MessageServer.FinishInference(s.helper.context, msg)
+	require.NoError(t, err)
+	require.Contains(t, resp.ErrorMessage, types.ErrTAComponentMismatch.Error())
+}
+
+// =============================================
+// Model mismatch on second message (both ways)
+// =============================================
+
+func TestCrossMsg_FinishFirst_StartSecond_ModelMismatch(t *testing.T) {
+	s := newCrossMsgSetup(t)
+	s.mustFinishFirst(t)
+
+	msg := s.validStartMsg()
+	msg.Model = "different_model"
+	resp, err := s.helper.MessageServer.StartInference(s.helper.context, msg)
+	require.NoError(t, err)
+	require.Contains(t, resp.ErrorMessage, types.ErrInferenceRoleMismatch.Error())
+}
+
+func TestCrossMsg_StartFirst_FinishSecond_ModelMismatch(t *testing.T) {
+	s := newCrossMsgSetup(t)
+	s.mustStartFirst(t)
+
+	msg := s.validFinishMsg()
+	msg.Model = "different_model"
+	resp, err := s.helper.MessageServer.FinishInference(s.helper.context, msg)
+	require.NoError(t, err)
+	require.Contains(t, resp.ErrorMessage, types.ErrInferenceRoleMismatch.Error())
 }
