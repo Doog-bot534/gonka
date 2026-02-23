@@ -625,7 +625,7 @@ func (s *FileBundleStorage) CleanupOldHeights(ctx context.Context, retainCount i
 }
 
 func (s *FileBundleStorage) Close() error {
-	return nil
+	return s.FlushArrivals()
 }
 
 var _ BundleStorage = (*FileBundleStorage)(nil)
