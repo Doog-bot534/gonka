@@ -6,25 +6,25 @@ import (
 )
 
 type Config struct {
-	Api                 ApiConfig             `koanf:"api" json:"api"`
-	Nodes               []InferenceNodeConfig `koanf:"nodes" json:"nodes"`
-	NodeConfigIsMerged  bool                  `koanf:"merged_node_config" json:"merged_node_config"`
-	ChainNode           ChainNodeConfig       `koanf:"chain_node" json:"chain_node"`
-	UpcomingSeed        SeedInfo              `koanf:"upcoming_seed" json:"upcoming_seed"`
-	CurrentSeed         SeedInfo              `koanf:"current_seed" json:"current_seed"`
-	PreviousSeed        SeedInfo              `koanf:"previous_seed" json:"previous_seed"`
-	CurrentHeight       int64                 `koanf:"current_height" json:"current_height"`
-	LastProcessedHeight int64                 `koanf:"last_processed_height" json:"last_processed_height"`
-	UpgradePlan         UpgradePlan           `koanf:"upgrade_plan" json:"upgrade_plan"`
-	MLNodeKeyConfig     MLNodeKeyConfig       `koanf:"ml_node_key_config" json:"ml_node_key_config"`
-	Nats                NatsServerConfig      `koanf:"nats" json:"nats"`
-	TxBatching          TxBatchingConfig      `koanf:"tx_batching" json:"tx_batching"`
-	CurrentNodeVersion  string                `koanf:"current_node_version" json:"current_node_version"`
-	LastUsedVersion     string                `koanf:"last_used_version" json:"last_used_version"`
-	ValidationParams    ValidationParamsCache `koanf:"validation_params" json:"validation_params"`
-	BandwidthParams     BandwidthParamsCache  `koanf:"bandwidth_params" json:"bandwidth_params"`
+	Api                      ApiConfig                `koanf:"api" json:"api"`
+	Nodes                    []InferenceNodeConfig    `koanf:"nodes" json:"nodes"`
+	NodeConfigIsMerged       bool                     `koanf:"merged_node_config" json:"merged_node_config"`
+	ChainNode                ChainNodeConfig          `koanf:"chain_node" json:"chain_node"`
+	UpcomingSeed             SeedInfo                 `koanf:"upcoming_seed" json:"upcoming_seed"`
+	CurrentSeed              SeedInfo                 `koanf:"current_seed" json:"current_seed"`
+	PreviousSeed             SeedInfo                 `koanf:"previous_seed" json:"previous_seed"`
+	CurrentHeight            int64                    `koanf:"current_height" json:"current_height"`
+	LastProcessedHeight      int64                    `koanf:"last_processed_height" json:"last_processed_height"`
+	UpgradePlan              UpgradePlan              `koanf:"upgrade_plan" json:"upgrade_plan"`
+	MLNodeKeyConfig          MLNodeKeyConfig          `koanf:"ml_node_key_config" json:"ml_node_key_config"`
+	Nats                     NatsServerConfig         `koanf:"nats" json:"nats"`
+	TxBatching               TxBatchingConfig         `koanf:"tx_batching" json:"tx_batching"`
+	CurrentNodeVersion       string                   `koanf:"current_node_version" json:"current_node_version"`
+	LastUsedVersion          string                   `koanf:"last_used_version" json:"last_used_version"`
+	ValidationParams         ValidationParamsCache    `koanf:"validation_params" json:"validation_params"`
+	BandwidthParams          BandwidthParamsCache     `koanf:"bandwidth_params" json:"bandwidth_params"`
 	TransferAgentAccessCache TransferAgentAccessCache `koanf:"-" json:"-"` // not persisted, synced from chain
-	PocPropagation      PocPropagationConfig  `koanf:"poc_propagation" json:"poc_propagation"`
+	PocPropagation           PocPropagationConfig     `koanf:"poc_propagation" json:"poc_propagation"`
 }
 
 type NatsServerConfig struct {
@@ -177,10 +177,11 @@ type BandwidthParamsCache struct {
 }
 
 type PocPropagationConfig struct {
-	Enabled    bool   `koanf:"enabled" json:"enabled"`
-	Trees      int    `koanf:"trees" json:"trees"`
-	Fanout     int    `koanf:"fanout" json:"fanout"`
-	StorageDir string `koanf:"storage_dir" json:"storage_dir"`
+	Enabled         bool   `koanf:"enabled" json:"enabled"`
+	Trees           int    `koanf:"trees" json:"trees"`
+	Fanout          int    `koanf:"fanout" json:"fanout"`
+	StorageDir      string `koanf:"storage_dir" json:"storage_dir"`
+	RetainAllProofs bool   `koanf:"retain_all_proofs" json:"retain_all_proofs"` // If true, proofs are never deleted; if false, proofs from epoch N-2 are deleted when epoch N starts
 }
 
 // TransferAgentAccessCache caches the allowed TA addresses for O(1) lookups.

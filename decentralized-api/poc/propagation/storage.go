@@ -31,6 +31,10 @@ type BundleStorage interface {
 	GetFirstArrival(ctx context.Context, participant string, pocHeight int64) (ArrivalInfo, error)
 	GetAllFirstArrivals(ctx context.Context, pocHeight int64) (map[string]ArrivalInfo, error)
 
+	// DeleteBeforeHeight removes all bundles and proofs for PoC heights
+	// less than or equal to the specified height. Returns the number of items deleted.
+	DeleteBeforeHeight(ctx context.Context, maxPocHeight int64) (int, error)
+
 	Close() error
 }
 

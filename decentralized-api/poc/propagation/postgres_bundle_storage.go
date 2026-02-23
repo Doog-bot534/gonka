@@ -13,11 +13,11 @@ import (
 )
 
 type PostgresBundleStorage struct {
-	pool         *pgxpool.Pool
-	instance     string
-	mu           sync.RWMutex
-	bundles      map[[32]byte]BundleHeader
-	proofs       map[[32]byte][][]ProofItem // Multiple proof sets per bundleID
+	pool     *pgxpool.Pool
+	instance string
+	mu       sync.RWMutex
+	bundles  map[[32]byte]BundleHeader
+	proofs   map[[32]byte][][]ProofItem // Multiple proof sets per bundleID
 	arrivals map[participantPocKey]ArrivalInfo
 }
 
@@ -30,11 +30,11 @@ func NewPostgresBundleStorage(ctx context.Context, pool *pgxpool.Pool, instance 
 	}
 
 	s := &PostgresBundleStorage{
-		pool:         pool,
-		instance:     instance,
-		bundles:      make(map[[32]byte]BundleHeader),
-		proofs:       make(map[[32]byte][][]ProofItem),
-		arrivals:     make(map[participantPocKey]ArrivalInfo),
+		pool:     pool,
+		instance: instance,
+		bundles:  make(map[[32]byte]BundleHeader),
+		proofs:   make(map[[32]byte][][]ProofItem),
+		arrivals: make(map[participantPocKey]ArrivalInfo),
 	}
 
 	if err := s.ensureSchema(ctx); err != nil {
@@ -63,7 +63,7 @@ func (s *PostgresBundleStorage) ensureSchema(ctx context.Context) error {
 			signature BYTEA,
 			PRIMARY KEY (instance, bundle_id)
 		);
-		
+
 		CREATE TABLE IF NOT EXISTS poc_bundle_proofs (
 			instance TEXT NOT NULL,
 			bundle_id BYTEA NOT NULL,
@@ -331,6 +331,61 @@ func (s *PostgresBundleStorage) GetAllFirstArrivals(ctx context.Context, pocHeig
 		}
 	}
 	return result, nil
+}
+
+func (s *PostgresBundleStorage) DeleteBeforeHeight(ctx context.Context, maxPocHeight int64) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Execute all deletes in tx
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx) // No-op if committed, ensures cleanup on error/panic
+
+	deletedCount := 0
+
+	// Delete proofs for all matching bundles
+	result, err := tx.Exec(ctx, `
+		DELETE FROM poc_bundle_proofs
+		WHERE instance = $1 AND bundle_id IN (
+			SELECT bundle_id FROM poc_bundle_headers
+			WHERE instance = $1 AND poc_height <= $2
+		)
+	`, s.instance, maxPocHeight)
+	if err != nil {
+		return 0, fmt.Errorf("delete proofs: %w", err)
+	}
+	deletedCount += int(result.RowsAffected())
+
+	// Delete headers
+	result, err = tx.Exec(ctx, `
+		DELETE FROM poc_bundle_headers
+		WHERE instance = $1 AND poc_height <= $2
+	`, s.instance, maxPocHeight)
+	if err != nil {
+		return 0, fmt.Errorf("delete headers: %w", err)
+	}
+	deletedCount += int(result.RowsAffected())
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	// Only update in-memory maps after successful commit
+	for bundleID, header := range s.bundles {
+		if header.PocHeight <= maxPocHeight {
+			delete(s.bundles, bundleID)
+			delete(s.proofs, bundleID)
+		}
+	}
+
+	logging.Info("Deleted data for PoC heights from PostgreSQL", types.PoC,
+		"maxPocHeight", maxPocHeight,
+		"totalItemsDeleted", deletedCount)
+
+	return deletedCount, nil
 }
 
 func (s *PostgresBundleStorage) Close() error {

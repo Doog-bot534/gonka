@@ -180,6 +180,29 @@ func (h *HybridBundleStorage) GetAllFirstArrivals(ctx context.Context, pocHeight
 	return h.file.GetAllFirstArrivals(ctx, pocHeight)
 }
 
+func (h *HybridBundleStorage) DeleteBeforeHeight(ctx context.Context, maxPocHeight int64) (int, error) {
+	totalDeleted := 0
+
+	// Delete from both storages
+	if pg := h.currentPg(); pg != nil {
+		pgDeleted, err := pg.DeleteBeforeHeight(ctx, maxPocHeight)
+		if err != nil {
+			logging.Warn("PostgreSQL delete before height failed", types.PoC,
+				"maxPocHeight", maxPocHeight, "error", err)
+		} else {
+			totalDeleted += pgDeleted
+		}
+	}
+
+	fileDeleted, err := h.file.DeleteBeforeHeight(ctx, maxPocHeight)
+	if err != nil {
+		return totalDeleted, err
+	}
+	totalDeleted += fileDeleted
+
+	return totalDeleted, nil
+}
+
 func (h *HybridBundleStorage) Close() error {
 	var pgErr, fileErr error
 

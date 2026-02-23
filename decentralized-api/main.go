@@ -239,7 +239,7 @@ func main() {
 			logging.Error("Worker private key not found - please ensure participant is registered", types.PoC)
 			panic("worker private key not found")
 		}
-		
+
 		signer := &workerKeySigner{privateKey: workerPrivKey}
 		propagationBundler = propagation.NewBundler(
 			signer,
@@ -283,7 +283,7 @@ func main() {
 	listener := event_listener.NewEventListener(config, pocOrchestrator, nodeBroker, validator, *recorder, trainingExecutor, chainPhaseTracker, cancel, blsManager)
 
 	if propConfig.Enabled && treeManager != nil {
-		listener.SetPropagationComponents(treeManager, propagationReceiver, propagationBundler, propagationTransport, recorder.NewInferenceQueryClient())
+		listener.SetPropagationComponents(treeManager, propagationReceiver, propagationBundler, propagationCache, propagationTransport, recorder.NewInferenceQueryClient())
 		logging.Info("Propagation components wired to event listener", types.PoC)
 	}
 
