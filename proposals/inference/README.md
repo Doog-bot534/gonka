@@ -39,7 +39,7 @@ Effectively, as each subgroup would have to achieve consensus for the final stat
 
 Sub-chains will be able to process only the inference related transactions and their decision might affect only the escrows, assigned to such sub-chains
 
-> Note: "sub-chain" does not have to mean a real blockchain. Because the group carries no state outside of its assigned user, groups can be dynamic -- formed per session, with large overlaps between them. The only thing they share is the mainnet escrow as anchor.
+> Note: "sub-chain" does not have to mean a real blockchain. Because the group carries no state outside of its assigned user, groups can be dynamic: formed per session, with large overlaps between them. The only thing they share is the mainnet escrow as anchor.
 
 ### Architecture
 
@@ -64,7 +64,7 @@ Sub-chains will be able to process only the inference related transactions and t
 ```
 
 User sends exactly 2 transactions to mainnet: `MsgCreateEscrow` to open the session, `MsgSettleEscrow` to close it.
-All inference requests happen directly with the assigned subnet group -- mainnet never sees individual requests.
+All inference requests happen directly with the assigned subnet group; mainnet never sees individual requests.
 
 **Example: 3 inference requests**
 
@@ -93,12 +93,19 @@ User -> Mainnet:  MsgSettleEscrow(finalState, signatures=[h1_sig, h2_sig, ...], 
 - [subchain]: user interact with hosts in subgroup in pre-defined order
 - [mainnet]: at the end of session, user creates `MsgSettleEscrow(finalState, signatures, missed, invalid)`
 
-Q1: How validation / invalidation stats from subchain is settled? Same `MsgSettleEscrow` or smth else. I'd consider separate to settle only decisions / punishments (they might be included also?)
-Q2: Do Hosts have per group state, not per participant? 
+Q1: Who decides host punishments, the subchain or mainnet?
 
-A: Seems like it's better to start with decisions on main chain, to avoid global (not per used) state at each Host. But that can be decision inside the subgroup later
+If the subchain decides: it needs to aggregate stats across users, which requires shared persistent state per group, which requires fixed groups rather than dynamic per-user ones.
 
-The further proposal will follow this lightweight architecture: "chain per user"
+Current approach: mainnet decides. The subchain only records raw per-session stats (missed/invalid counts per host) inside `MsgSettleEscrow`. Mainnet aggregates across sessions and applies punishment. Can be revisited.
+
+Q2: Do hosts maintain per-group state or per-user state?
+
+If per-group: same consequence as Q1 option A, fixed groups required.
+
+Current approach: per-user, following from Q1. Each host tracks only what happened inside each user session. No shared state between users in the same group. This is what makes dynamic per-session groups possible. Can be revisited.
+
+The further proposal follows this architecture: "chain per user".
 
 
 ### Main Network Protocol
@@ -110,7 +117,7 @@ MsgCreateEscrow(
 )
 ```
 1. move money to escrow via `MsgCreateEscrow`
-2. return id to sample N(64?) slots-hosts (same design as optimize.md) 
+2. return id to sample N(64?) slots-hosts using weighted random sampling (see [proposals/poc/optimize.md](../poc/optimize.md) for the slot idea)
 3. interact in sub-chain during session 
 4. settle on-chain via `MsgSettleEscrow`
 
