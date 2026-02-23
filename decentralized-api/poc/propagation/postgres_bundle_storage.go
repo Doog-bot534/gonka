@@ -58,6 +58,15 @@ func (s *PostgresBundleStorage) ensureSchema(ctx context.Context) error {
 			PRIMARY KEY (instance, bundle_id)
 		);
 
+		CREATE TABLE IF NOT EXISTS poc_bundle_proofs (
+			instance TEXT NOT NULL,
+			bundle_id BYTEA NOT NULL,
+			proof_index INTEGER NOT NULL DEFAULT 0,
+			proofs JSONB NOT NULL,
+			received_at BIGINT NOT NULL DEFAULT 0,
+			PRIMARY KEY (instance, bundle_id, proof_index)
+		);
+
 		CREATE TABLE IF NOT EXISTS poc_first_arrivals (
 			instance TEXT NOT NULL,
 			participant TEXT NOT NULL,
@@ -381,6 +390,76 @@ func (s *PostgresBundleStorage) CleanupOldHeights(ctx context.Context, retainCou
 	}
 
 	return nil
+}
+
+func (s *PostgresBundleStorage) DeleteBeforeHeight(ctx context.Context, maxPocHeight int64) (int, error) {
+	if maxPocHeight <= 0 {
+		return 0, nil
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	deletedCount := 0
+
+	result, err := tx.Exec(ctx, `
+		DELETE FROM poc_bundle_proofs
+		WHERE instance = $1 AND bundle_id IN (
+			SELECT bundle_id FROM poc_bundle_headers
+			WHERE instance = $1 AND poc_height <= $2
+		)
+	`, s.instance, maxPocHeight)
+	if err != nil {
+		return 0, fmt.Errorf("delete proofs: %w", err)
+	}
+	deletedCount += int(result.RowsAffected())
+
+	result, err = tx.Exec(ctx, `
+		DELETE FROM poc_bundle_headers
+		WHERE instance = $1 AND poc_height <= $2
+	`, s.instance, maxPocHeight)
+	if err != nil {
+		return 0, fmt.Errorf("delete headers: %w", err)
+	}
+	deletedCount += int(result.RowsAffected())
+
+	result, err = tx.Exec(ctx, `
+		DELETE FROM poc_first_arrivals
+		WHERE instance = $1 AND poc_height <= $2
+	`, s.instance, maxPocHeight)
+	if err != nil {
+		return 0, fmt.Errorf("delete arrivals: %w", err)
+	}
+	deletedCount += int(result.RowsAffected())
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	s.bundles.Range(func(key, val interface{}) bool {
+		header := val.(BundleHeader)
+		if header.PocHeight <= maxPocHeight {
+			s.bundles.Delete(key)
+		}
+		return true
+	})
+
+	s.arrivals.Range(func(key, val interface{}) bool {
+		arrivalKey := key.(participantPocKey)
+		if arrivalKey.PocHeight <= maxPocHeight {
+			s.arrivals.Delete(key)
+		}
+		return true
+	})
+
+	logging.Info("Deleted data for PoC heights from PostgreSQL", types.PoC,
+		"maxPocHeight", maxPocHeight,
+		"totalItemsDeleted", deletedCount)
+
+	return deletedCount, nil
 }
 
 func (s *PostgresBundleStorage) Close() error {

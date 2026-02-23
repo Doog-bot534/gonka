@@ -118,6 +118,26 @@ func (s *MemBundleStorage) CleanupOldHeights(_ context.Context, _ int) error {
 	return nil
 }
 
+func (s *MemBundleStorage) DeleteBeforeHeight(_ context.Context, maxPocHeight int64) (int, error) {
+	if maxPocHeight <= 0 {
+		return 0, nil
+	}
+
+	deletedCount := 0
+	for i := range s.shards {
+		sh := &s.shards[i]
+		sh.mu.Lock()
+		for id, h := range sh.bundles {
+			if h.PocHeight <= maxPocHeight {
+				delete(sh.bundles, id)
+				deletedCount++
+			}
+		}
+		sh.mu.Unlock()
+	}
+	return deletedCount, nil
+}
+
 func (s *MemBundleStorage) Close() error {
 	return nil
 }

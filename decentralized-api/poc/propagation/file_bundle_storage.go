@@ -530,7 +530,6 @@ func (s *FileBundleStorage) CleanupOldHeights(ctx context.Context, retainCount i
 			bundleID := key.([4]byte)
 			header := val.(BundleHeader)
 			if header.PocHeight == height {
-				// Remove old single-bundle .json files if any remain
 				oldPath := filepath.Join(s.baseDir, fmt.Sprintf("%x.json", bundleID))
 				if err := os.Remove(oldPath); err != nil && !os.IsNotExist(err) {
 					logging.Warn("Failed to remove bundle file", types.PoC,
@@ -541,14 +540,12 @@ func (s *FileBundleStorage) CleanupOldHeights(ctx context.Context, retainCount i
 			return true
 		})
 
-		// Remove legacy single-file format
 		legacyPath := s.legacyHeightFilePath(height)
 		if err := os.Remove(legacyPath); err != nil && !os.IsNotExist(err) {
 			logging.Warn("Failed to remove legacy JSONL file", types.PoC,
 				"pocHeight", height, "error", err)
 		}
 
-		// Remove all shard files for this height
 		pattern := filepath.Join(s.baseDir, fmt.Sprintf("height_%d_*.jsonl", height))
 		matches, _ := filepath.Glob(pattern)
 		for _, match := range matches {
@@ -566,7 +563,6 @@ func (s *FileBundleStorage) CleanupOldHeights(ctx context.Context, retainCount i
 			return true
 		})
 
-		// Reset shard counter for this height
 		s.writeMu.Lock()
 		delete(s.shardCounters, height)
 		s.writeMu.Unlock()
@@ -574,16 +570,13 @@ func (s *FileBundleStorage) CleanupOldHeights(ctx context.Context, retainCount i
 		logging.Info("Cleaned up propagation data for PoC height", types.PoC, "pocHeight", height)
 	}
 
-	// Remove all existing arrivals shards and rewrite survivors
 	pattern := filepath.Join(s.baseDir, "arrivals_*.jsonl")
 	oldShards, _ := filepath.Glob(pattern)
 	for _, f := range oldShards {
 		os.Remove(f)
 	}
-	// Remove legacy arrivals.json if present
 	os.Remove(s.legacyArrivalsFilePath())
 
-	// Collect remaining arrivals and rewrite to fresh shards
 	remaining := make([]firstArrivalEntry, 0)
 	s.arrivals.Range(func(key, val interface{}) bool {
 		k := key.(participantPocKey)
@@ -622,6 +615,124 @@ func (s *FileBundleStorage) CleanupOldHeights(ctx context.Context, retainCount i
 	}
 
 	return nil
+}
+
+func (s *FileBundleStorage) DeleteBeforeHeight(ctx context.Context, maxPocHeight int64) (int, error) {
+	if maxPocHeight <= 0 {
+		return 0, nil
+	}
+
+	heights := make(map[int64]struct{})
+	s.bundles.Range(func(key, val interface{}) bool {
+		header := val.(BundleHeader)
+		if header.PocHeight <= maxPocHeight {
+			heights[header.PocHeight] = struct{}{}
+		}
+		return true
+	})
+	s.arrivals.Range(func(key, val interface{}) bool {
+		k := key.(participantPocKey)
+		if k.PocHeight <= maxPocHeight {
+			heights[k.PocHeight] = struct{}{}
+		}
+		return true
+	})
+
+	if len(heights) == 0 {
+		return 0, nil
+	}
+
+	deletedCount := 0
+	for height := range heights {
+		s.bundles.Range(func(key, val interface{}) bool {
+			bundleID := key.([4]byte)
+			header := val.(BundleHeader)
+			if header.PocHeight == height {
+				oldPath := filepath.Join(s.baseDir, fmt.Sprintf("%x.json", bundleID))
+				if err := os.Remove(oldPath); err != nil && !os.IsNotExist(err) {
+					logging.Warn("Failed to remove bundle file", types.PoC,
+						"bundleID", bundleID, "pocHeight", height, "error", err)
+				}
+				s.bundles.Delete(bundleID)
+				deletedCount++
+			}
+			return true
+		})
+
+		legacyPath := s.legacyHeightFilePath(height)
+		if err := os.Remove(legacyPath); err != nil && !os.IsNotExist(err) {
+			logging.Warn("Failed to remove legacy JSONL file", types.PoC,
+				"pocHeight", height, "error", err)
+		}
+
+		pattern := filepath.Join(s.baseDir, fmt.Sprintf("height_%d_*.jsonl", height))
+		matches, _ := filepath.Glob(pattern)
+		for _, match := range matches {
+			if err := os.Remove(match); err != nil && !os.IsNotExist(err) {
+				logging.Warn("Failed to remove shard file", types.PoC,
+					"file", match, "pocHeight", height, "error", err)
+			}
+		}
+
+		s.arrivals.Range(func(k, val interface{}) bool {
+			key := k.(participantPocKey)
+			if key.PocHeight == height {
+				s.arrivals.Delete(key)
+				deletedCount++
+			}
+			return true
+		})
+
+		s.writeMu.Lock()
+		delete(s.shardCounters, height)
+		s.writeMu.Unlock()
+	}
+
+	pattern := filepath.Join(s.baseDir, "arrivals_*.jsonl")
+	oldShards, _ := filepath.Glob(pattern)
+	for _, f := range oldShards {
+		os.Remove(f)
+	}
+	os.Remove(s.legacyArrivalsFilePath())
+
+	remaining := make([]firstArrivalEntry, 0)
+	s.arrivals.Range(func(key, val interface{}) bool {
+		k := key.(participantPocKey)
+		info := val.(ArrivalInfo)
+		remaining = append(remaining, firstArrivalEntry{
+			Participant: k.Participant,
+			PocHeight:   k.PocHeight,
+			ArrivalTime: info.Time,
+			Count:       info.Count,
+		})
+		return true
+	})
+
+	s.arrivalsMu.Lock()
+	s.arrivalShardCounter = 0
+	s.pendingArrivals = nil
+	s.arrivalsMu.Unlock()
+
+	for len(remaining) > 0 {
+		chunkSize := len(remaining)
+		if chunkSize > bundleShardSize {
+			chunkSize = bundleShardSize
+		}
+		chunk := remaining[:chunkSize]
+		remaining = remaining[chunkSize:]
+
+		s.arrivalsMu.Lock()
+		idx := s.arrivalShardCounter
+		s.arrivalShardCounter++
+		s.arrivalsMu.Unlock()
+
+		if err := s.writeArrivalJSONLShard(s.arrivalShardFilePath(idx), chunk); err != nil {
+			logging.Warn("DeleteBeforeHeight: failed to write arrivals shard", types.PoC,
+				"shard", idx, "error", err)
+		}
+	}
+
+	return deletedCount, nil
 }
 
 func (s *FileBundleStorage) Close() error {

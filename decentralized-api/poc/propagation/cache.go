@@ -64,3 +64,7 @@ func (c *Cache) FlushArrivals() error {
 func (c *Cache) CleanupOldHeights(ctx context.Context, retainCount int) error {
 	return c.storage.CleanupOldHeights(ctx, retainCount)
 }
+
+func (c *Cache) DeleteBeforeHeight(pocHeight int64) (int, error) {
+	return c.storage.DeleteBeforeHeight(context.Background(), pocHeight)
+}

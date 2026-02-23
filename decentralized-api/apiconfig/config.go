@@ -183,6 +183,7 @@ type PocPropagationConfig struct {
 	StorageDir      string `koanf:"storage_dir" json:"storage_dir"`
 	Transport       string `koanf:"transport" json:"transport"`                 // "http" (default: "http")
 	FlushIntervalMs int    `koanf:"flush_interval_ms" json:"flush_interval_ms"` // default: 50
+	RetainAllProofs bool   `koanf:"retain_all_proofs" json:"retain_all_proofs"`
 }
 
 // TransferAgentAccessCache caches the allowed TA addresses for O(1) lookups.

@@ -23,6 +23,7 @@ type BundleStorage interface {
 	GetAllFirstArrivals(ctx context.Context, pocHeight int64) (map[string]ArrivalInfo, error)
 
 	CleanupOldHeights(ctx context.Context, retainCount int) error
+	DeleteBeforeHeight(ctx context.Context, maxPocHeight int64) (int, error)
 
 	Close() error
 }
