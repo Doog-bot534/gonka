@@ -71,33 +71,6 @@ Sub-chains will be able to process only the inference related transactions and t
 User sends exactly 2 transactions to mainnet: `MsgCreateEscrow` to open the session, `MsgSettleEscrow` to close it.
 All inference requests happen directly with the assigned subnet group; mainnet never sees individual requests.
 
-**Example: 3 inference requests**
-
-```
-User -> Mainnet:  MsgCreateEscrow(amount=100GNK)
-                  <- escrow_id=42, group=[host1, host2, host3, ...]
-
-User -> host1:    POST /chat/completions  (req 1, diffs=[])
-                  <- streamed response + sign(state after MsgStartInference(1))
-
-User -> host2:    POST /chat/completions  (req 2, diffs=[
-                    {txs:[MsgStartInference(1)], sigs:[h1_sig]},
-                    {txs:[MsgFinishInference(1)]}
-                  ])
-                  <- streamed response + sign(state after MsgStartInference(2))
-
-User -> host3:    POST /chat/completions  (req 3, diffs=[
-                    {txs:[MsgStartInference(2)], sigs:[h2_sig]},
-                    {txs:[MsgFinishInference(2)]}
-                  ])
-                  <- streamed response + sign(state after MsgStartInference(3))
-
-...
-
-User -> Mainnet:  MsgSettleEscrow(finalState, signatures=[h1_sig, h2_sig, ...], missed, invalid)
-                  <- user refund + hosts paid
-```
-
 ### User Flow
 
 - [mainchain]: user creates `MsgCreateEscrow(100GNK)` 
@@ -146,40 +119,52 @@ MsgSettleEscrow(
 Once signatures are verified it settles escrow for the user, updates stats for hosts (missed, invalid).
 
 
-### Sub-Chain Protocol
+### Subnet Protocol
 
-Let's focus on the subnet logic. Essentially, it's some sort of shard and might be considered as own blockchain with voting weight if fully provided by mainnet and then it's settled on mainnet when "session" is finished.
+The subnet is a lightweight shard with voting weight provided by mainnet. It settles back to mainnet when the session ends.
 
-To make it more lightweight, parallizable and enforce user to use all hosts from the group for inferece requests, we introduce new assumption "per user state".
+Design goals: lightweight, parallelizable, enforce that the user uses all hosts from the group.
 
-What user wants to do?
-Send openapi-compartible REST API requests like `/chat/completions`, `/embeddings`, etc. And now as less as possible about the blockchain 
+What does the user want?
+Send OpenAPI-compatible REST requests (`/chat/completions`, `/embeddings`, etc.) and know as little as possible about the blockchain.
 
-What chain wants (and essentiallly what we tried to achive on mainnet but less successfull that we would want to have):
-- chain knows when request is started and finished => another hosts can measure performance of request to compare with expected performance and punish if some executor works much worse then expected (essentailly missed rate now)
-- chain knows the initial hash of prompt and hash of final payload with signatures of user (for hash of prompt) and executor (for hash of payload). signatures of prompt is used to authorize payment, signature of payload if used for probabilistic inference validation (if invalid => invalidation rate punishment)
-- chain enforces distribution of requests between executors proportionally to their weight
+What does the chain want?
+Same properties we tried to achieve on mainnet:
+- Know when each request starts and finishes. Other hosts measure executor performance against expected throughput and punish underperformance (missed rate).
+- Know the hash of prompt (signed by user) and hash of response payload (signed by executor). Prompt signature authorizes payment. Payload signature enables probabilistic inference validation (invalid rate).
+- Enforce distribution of requests across executors proportionally to their weight.
 
-And as already mention - chain doesn't want to have all these data to be processed on mainnet
+The chain needs these properties but does not want to process this data on mainnet.
 
 ----
 
-Key points of the idea:
+#### Per-user state
 
-- data is saved per user independely. for example, there is a chain of base diffs for the specific user / its transaction.state is updated based on such state 
-  => it's possible to parallize processors by user. e.g. load balancer routes request from the user with address A to group of nodes which has access to DB with it's data. single state is not needed even inside the shard
+State is saved per user independently. Each user's history is a chain of diffs. Each diff is essentially a block.
 
-- it's mainly responsibility of the user to propagate transaction (both created by the user itself and initiated from nodes at response)
+Since there is no cross-user state, a node operator can shard its database and resources per user. Each node can participate in any number of subnets simultaneously. Subnet processing scales linearly with user count. Only escrow creation and settlement on mainnet do not.
 
-- user attach diffs data in inference requests it makes 
-  - gossiping might still be needed as it requires full round to propagate transaction. how to effectively propagate is open question
+#### User-driven propagation
 
-- signature of state(hieight) should be returned immediately after request
-  - if `/chat/completions` request is sent host1, it essentially user creates `MsgStartInference(1)` task at host1. if host1 is honest, it must immediatly return `(state, signature)`, without waiting for execution of request. it then will return sign `MsgFinishInference(1)` and user will propagate it to the network (when it'll be in state of that user).
+The user is responsible for propagating transactions: both its own (MsgStartInference) and those initiated by hosts at response (MsgFinishInference).
 
-- user must iterate hosts in group by pre-defined order. it naturally distribute requests accross hosts (not the amount of real work but at least requests). It attach nonce to each transaction (or each diff) => it can't skip
-  - if some host if not available, user keeps to propagate diffs to the next host. as it's essentially propagates ALL diffs in the current round (to cover all hosts), it'll attach diff without signature too. another host will follow protocol to decide together if host must be punished or not in that case
-  - ideally, locks must be only on nonces producing and new messages from the host itself. we can't rely in waiting for response + signature from hosts => it might be additional optimistic delay in getting data. if to wait for at least some request result => it's wont allow to send requests fast
+User attaches accumulated diffs to each inference request. This piggybacks propagation on normal API usage.
+
+Gossiping might still be needed since propagation requires a full round through the group. How to propagate efficiently is an open question.
+
+#### Round-robin host ordering
+
+The user must iterate hosts in the group in a predefined order. This naturally distributes requests across hosts (not real work amount, but request count). Each diff carries a nonce, so the user cannot skip hosts.
+
+#### Signing flow
+
+When a `/chat/completions` request is sent to host1, the user creates MsgStartInference(1). If host1 is honest, it must immediately return `(state, signature)` without waiting for execution. After execution, host1 signs MsgFinishInference(1) and the user propagates it to the network in the next round (or later, depends on performance).
+
+Locks should only be needed to generate new nonces and compose new messages, not to record incoming data. The user does not block on receiving a host's signature before sending the next request. Signatures arrive asynchronously and get included in later diffs. This keeps request submission fast at the cost of signatures lagging behind by one or more rounds.
+
+#### Host unavailability
+
+If a host is not available, the user continues to the next host in order. Since each request carries ALL accumulated diffs for the current round, it includes the unsigned diff for the unavailable host. The receiving host follows the protocol to decide together with the group whether the unavailable host should be punished.
 
 
 
@@ -217,9 +202,16 @@ Q1: how exactly to propagate signatures? each diff essentially a new block and h
 Q2: currently consider that ever
 
 
-### Weights in sub-chain
+### Weights in subnet
 
+Subnet group formation reuses the slot sampling mechanism from PoC validation (see [proposals/poc/optimize.md](../poc/optimize.md)).
 
------
+Slot assignment is a deterministic function of (app_hash after escrow creation, escrow_id, validator_weights) using the same `GetSlotsFromSorted` algorithm as in PoC. The chain does not need to compute it at escrow creation. Anyone can derive the group independently. The chain only verifies the group was correct at settlement time (MsgSettleEscrow).
 
-InferenceGroup:
+Each slot maps to a host. If a host is sampled into 3 slots, it has weight 3 in the subnet. Each slot carries weight 1. This preserves the mainnet weight distribution inside the subnet without requiring any additional weight tracking.
+
+The slot sequence also defines the round-robin order for user requests.
+
+Requirements for slot count are less strict than in PoC. In PoC, slots protect against adversarial validation (fake participant attacks). In the subnet, the group only needs enough redundancy for availability and settlement signatures. The exact slot count (64 vs 128) is TBD.
+
+TODO: define settlement signature threshold relative to slot count
