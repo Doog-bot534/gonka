@@ -148,7 +148,9 @@ The chain needs these properties but does not want to process this data on mainn
 
 **Escrow accounting.** On each MsgStartInference, the subnet tracks spending against the user's escrow balance. Same idea as mainnet: verify user has enough funds before accepting the request. Minimum escrow balance must be at least `subnet_size * max_inference_cost` at all times, ensuring enough to cover the worst case where every host in the group is processing a concurrent request.
 
-**Host unavailability.** If a host is not available, the user continues to the next host in order. Since each request carries ALL accumulated diffs for the current round, it includes the unsigned diff for the unavailable host. The receiving host follows the protocol to decide together with the group whether the unavailable host should be punished.
+**Host unavailability.** If a host is not available, the user continues to the next host in order. Since each request carries ALL accumulated diffs for the current round, it includes the unsigned diff for the unavailable host. Detection and recovery are handled via nonce propagation (see scenarios below).
+
+**Nonce propagation.** After processing each user request, the receiving host gossips the current nonce to the group. Small constant-overhead message. Each host tracks the highest nonce seen. If host_i sees that nonce has advanced past its assigned position but was never contacted, it detects a gap and can act proactively. This is the only reliable detection mechanism: other hosts cannot distinguish "still computing" from "never received data" by looking at diffs (execution time varies), and signature lag is normal (signatures always trail by at least one round).
 
 **Host-proposed transactions.** Hosts produce transactions (MsgFinishInference, invalidation triggers, etc.) that must be included in the state. The user is the sequencer, but cannot be trusted to include them. Propagation channels:
 - Response body: host returns its proposed transactions to the user alongside the inference result.
@@ -194,21 +196,46 @@ Transaction statuses after 3 requests:
 
 The user is the sequencer: it decides at which nonce each transaction is placed. All hosts seeing the same nonce see the same content. Signatures lag behind by one or more rounds.
 
-#### One (or minority) of hosts are not responding
+#### Host doesn't respond or doesn't finish inference
 
-TODO
+MsgStartInference(N) exists in the state but MsgFinishInference(N) never arrives. Possible causes:
+- Host genuinely down, didn't receive the request
+- Connection broke between user and host mid-request
+- Host received data but refuses to compute
+- User recorded MsgStartInference but withheld prompt data from the host
 
-#### Host doesn't return FinishInference
+Attribution is hard. The user could attack a host by recording MsgStartInference but withholding prompt data. The host could attack by pretending not to have received it. Both look identical from the outside. Without a recovery mechanism, whoever is honest gets punished.
 
-TODO
+**If host_i signed the state at nonce N:** host_i acknowledged receipt. The signature propagates through later diffs, so all hosts can verify host_i had the data. If MsgFinishInference(N) doesn't arrive by timeout, missed += 1 for host_i. No ambiguity.
+
+**If host_i never signed:** ambiguous. Recovery protocol applies.
+
+**Recovery protocol:**
+1. host_i detects via nonce propagation that a nonce assigned to it has passed without receiving data.
+2. host_i gossips MsgRequestPrompt(N) to the group.
+3. Each host that sees MsgRequestPrompt(N) independently includes it in its next response to the user: "provide prompt for nonce N."
+4. A small relay group is sampled from the subnet using the mainnet block hash at 1 block after MsgRequestPrompt(N). This way host_i has already committed to the claim before learning who the relay group will be, and the user cannot preselect colluding intermediaries.
+5. User provides prompt data to the relay group. Each member signs a receipt and relays to host_i independently.
+6. host_i computes, produces MsgFinishInference(N). User can reconnect to host_i directly for the response, or receive it through a relay member.
+7. If host_i still hasn't received the data, host_i can re-request with another MsgRequestPrompt.
+
+If user doesn't provide prompt within R_prompt rounds (TBD), hosts refuse to sign further state updates. host_i not penalized.
+
+If host_i receives prompt via relay but still doesn't finish by timeout, missed += 1. Multiple hosts can attest the prompt was delivered.
+
+**Timeout.** Timestamp in MsgStartInference + T seconds. On mainnet, timeout was block-height-based (expirationHeight). In the subnet there are no blocks, so wall-clock time anchored to the StartInference timestamp is the replacement. T must account for the full recovery protocol (nonce propagation + MsgRequestPrompt + prompt relay + execution).
+
+**Incentives.** The recovery protocol removes both attack vectors:
+- User cannot selectively starve a host of data. The group detects the gap via nonce propagation and requests the prompt through intermediaries. If the user refuses within R_prompt rounds, hosts stop signing.
+- Host cannot pretend it didn't receive data. The group will deliver it via relay. If the host still doesn't compute, it's clearly at fault.
 
 #### User creates StartInference but doesn't provide data to host_i
 
-TODO
+Covered by the recovery protocol above. This is the "user withheld prompt data" cause. Nonce propagation detects the gap, MsgRequestPrompt forces the user to provide data or face hosts refusing to sign.
 
 #### User sends request to host_i but doesn't record StartInference
 
-TODO
+Not possible. host_i checks the diffs and rejects requests without a corresponding MsgStartInference. No StartInference = no payment authorization = no reason to compute.
 
 ### Example requests
 ```
