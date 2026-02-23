@@ -51,8 +51,9 @@ Sub-chains will be able to process only the inference related transactions and t
 Q1: How validation / invalidation stats from subchain is settled? Same `MsgSettleEscrow` or smth else. I'd consider separate to settle only decisions / punishments (they might be included also?)
 Q2: Do Hosts have per group state, not per participant? 
 
-A: Seems like it's better to start with full decisions on main chain, to avoid global (not per used) state at each Host. But that can be decision inside the subgroup later
+A: Seems like it's better to start with decisions on main chain, to avoid global (not per used) state at each Host. But that can be decision inside the subgroup later
 
+The further proposal will follow this lightweight architecture: "chain per user"
 
 
 ### Main Network Protocol
@@ -63,20 +64,61 @@ MsgCreateEscrow(
   amount,
 )
 ```
-1. move money to escrow
+1. move money to escrow via `MsgCreateEscrow`
 2. return id to sample N(64?) slots-hosts (same design as optimize.md) 
+3. interact in sub-chain during session 
+4. settle on-chain via `MsgSettleEscrow`
 
 ```
 MsgSettleEscrow(
   creatorAddr, # can be both user or someone from group
-  finalState,
-  signatures,
-  missed,
-  invalid
+  finalState, # hash
+  signatures, # signed by majority form group
+  missed, # [groupMember -> uint32]
+  invalid # [groupMember -> uint32]
 )
 ```
 
+5. On the escrow settlement, mainnet verifyes signatures from subnet. Must be signed by majoriry / supermajority
+Once signatures are verified it settle escrow for the user, updated stats for hosts (missed, invalid)
+
+
 ### Sub-Chain Protocol
+
+Let's focus on the subnet logic. Essentially, it's some sort of shard and might be considered as own blockchain with voting weight if fully provided by mainnet and then it's settled on mainnet when "session" is finished.
+
+To make it more lightweight, parallizable and enforce user to use all hosts from the group for inferece requests, we introduce new assumption "per user state".
+
+What user wants to do?
+Send openapi-compartible REST API requests like `/chat/completions`, `/embeddings`, etc. And now as less as possible about the blockchain 
+
+What chain wants (and essentiallly what we tried to achive on mainnet but less successfull that we would want to have):
+- chain knows when request is started and finished => another hosts can measure performance of request to compare with expected performance and punish if some executor works much worse then expected (essentailly missed rate now)
+- chain knows the initial hash of prompt and hash of final payload with signatures of user (for hash of prompt) and executor (for hash of payload). signatures of prompt is used to authorize payment, signature of payload if used for probabilistic inference validation (if invalid => invalidation rate punishment)
+- chain enforces distribution of requests between executors proportionally to their weight
+
+And as already mention - chain doesn't want to have all these data to be processed on mainnet
+
+----
+
+Key points of the idea:
+
+- data is saved per user independely. for example, there is a chain of base diffs for the specific user / its transaction.state is updated based on such state 
+  => it's possible to parallize processors by user. e.g. load balancer routes request from the user with address A to group of nodes which has access to DB with it's data. single state is not needed even inside the shard
+
+- it's mainly responsibility of the user to propagate transaction (both created by the user itself and initiated from nodes at response)
+
+- user attach diffs data in inference requests it makes 
+  - gossiping might still be needed as it requires full round to propagate transaction. how to effectively propagate is open question
+
+- signature of state(hieight) should be returned immediately after request
+  - if `/chat/completions` request is sent host1, it essentially user creates `MsgStartInference(1)` task at host1. if host1 is honest, it must immediatly return `(state, signature)`, without waiting for execution of request. it then will return sign `MsgFinishInference(1)` and user will propagate it to the network (when it'll be in state of that user).
+
+- user must iterate hosts in group by pre-defined order. it naturally distribute requests accross hosts (not the amount of real work but at least requests). It attach nonce to each transaction (or each diff) => it can't skip
+  - if some host if not available, user keeps to propagate diffs to the next host. as it's essentially propagates ALL diffs in the current round (to cover all hosts), it'll attach diff without signature too. another host will follow protocol to decide together if host must be punished or not in that case
+  - ideally, locks must be only on nonces producing and new messages from the host itself. we can't rely in waiting for response + signature from hosts => it might be additional optimistic delay in getting data. if to wait for at least some request result => it's wont allow to send requests fast
+
+
 
 ```
 /chat/completions -d '{
@@ -110,19 +152,7 @@ Q1: how exactly to propagate signatures? each diff essentially a new block and h
 Q2: currently consider that ever
 
 
-
-
-host_1, ..., host_N
-weight(host_i)
-
-top-K hosts are validators of main chain (as currently)
-
-new1: no StartInference, FinishInference, Inference Validation on main chain
-
-new2: per user chain, to use inference user must send tx OpenInferenceGroup(amount)
-  gets group_id 
-
-Group - group of host with identical weight, samlped from host in slot-style way (see: optimize.md). Size of group is N
+### Weights in sub-chain
 
 
 -----
