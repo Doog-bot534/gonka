@@ -248,36 +248,41 @@ TODO: cover the following scenarios:
 - Inflated state: user claims false usage. Requires 2/3 host signatures over the false state, so reduces to BFT assumption (<1/3 malicious).
 
 ## Example requests
+
+Third request in the happy path (sent to h3). Carries all accumulated diffs with signatures collected so far.
+
 ```
-/chat/completions -d '{
-  "model":"Qwen/Qwen3-235B-A22B-Instruct-2507-FP8",
-  "stream":true, "logprobs":true, "top_logprobs": 5,
-  "messages":[
-    {"role":"system","content":"You are a helpful assistant."},
-    {"role":"user","content":"Write a haiku about Seattle."}
+POST /chat/completions
+Host: h3
+
+{
+  "model": "Qwen/Qwen3-235B-A22B-Instruct-2507-FP8",
+  "stream": true,
+  "messages": [
+    {"role": "user", "content": "Write a haiku about Seattle."}
   ],
   "diffs": [
-    {
-      "txs": [MsgStartInference(1)], # sent with first /chat/completions
-      "signatures": [sign1, sign2, sign], # 
-    },
-    {
-      "txs": [MsgStartInference(2)],  # sent with second /chat/completions
-    },
-    {
-      "txs": [MsgStartInference(3), MsgFinishInference(2), MsgFinishInference(1)], # sent with third /chat/completions
-    },
-    
-    
-    
-    ...
+    {"nonce": 1, "txs": ["MsgStartInference(1)"], "sigs": ["sig_h1"]},
+    {"nonce": 2, "txs": ["MsgStartInference(2)"], "sigs": ["sig_h2"]},
+    {"nonce": 3, "txs": ["MsgFinishInference(1)", "MsgStartInference(3)"], "sigs": []}
   ],
-  "last_state_hash": "<SHA256>"
-}'
+  "state_hash": "<SHA256>"
+}
 ```
 
-Q1: how exactly to propagate signatures? each diff essentially a new block and has it's own signatures
-Q2: currently consider that ever
+For comparison, the first request (to h1) carries only one diff:
+
+```
+{
+  ...
+  "diffs": [
+    {"nonce": 1, "txs": ["MsgStartInference(1)"], "sigs": []}
+  ],
+  "state_hash": "<SHA256>"
+}
+```
+
+Each diff is a block at a given nonce. Signatures for earlier nonces accumulate over time as hosts return them. By the 3rd request, sig_h1 (returned with req1 response) and sig_h2 (returned with req2 response) are attached to their respective nonces. Nonce 3 has no signatures yet -- h3 will sign it and return sig_h3 in the response.
 
 
 ## Weights in subnet
