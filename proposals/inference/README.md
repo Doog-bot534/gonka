@@ -138,36 +138,37 @@ The chain needs these properties but does not want to process this data on mainn
 
 ----
 
-#### Per-user state
+**Per-user state.** State is saved per user independently. Each user's history is a chain of diffs. Each diff is essentially a block. Since there is no cross-user state, a node operator can shard its database and resources per user. Each node can participate in any number of subnets simultaneously. Subnet processing scales linearly with user count. Only escrow creation and settlement on mainnet do not.
 
-State is saved per user independently. Each user's history is a chain of diffs. Each diff is essentially a block.
+**User-driven propagation.** The user is responsible for propagating transactions: both its own (MsgStartInference) and those initiated by hosts at response (MsgFinishInference). User attaches accumulated diffs to each inference request. This piggybacks propagation on normal API usage. Gossiping might still be needed since propagation requires a full round through the group. How to propagate efficiently is an open question.
 
-Since there is no cross-user state, a node operator can shard its database and resources per user. Each node can participate in any number of subnets simultaneously. Subnet processing scales linearly with user count. Only escrow creation and settlement on mainnet do not.
+**Round-robin host ordering.** The user must iterate hosts in the group in a predefined order. This naturally distributes requests across hosts (not real work amount, but request count). Each diff carries a nonce, so the user cannot skip hosts.
 
-#### User-driven propagation
+**Signing flow.** When a `/chat/completions` request is sent to host1, the user creates MsgStartInference(1). If host1 is honest, it must immediately return `(state, signature)` without waiting for execution. After execution, host1 signs MsgFinishInference(1) and the user propagates it to the network in the next round (or later, depends on performance). Locks should only be needed to generate new nonces and compose new messages, not to record incoming data. The user does not block on receiving a host's signature before sending the next request. Signatures arrive asynchronously and get included in later diffs. This keeps request submission fast at the cost of signatures lagging behind by one or more rounds.
 
-The user is responsible for propagating transactions: both its own (MsgStartInference) and those initiated by hosts at response (MsgFinishInference).
+**Host unavailability.** If a host is not available, the user continues to the next host in order. Since each request carries ALL accumulated diffs for the current round, it includes the unsigned diff for the unavailable host. The receiving host follows the protocol to decide together with the group whether the unavailable host should be punished.
 
-User attaches accumulated diffs to each inference request. This piggybacks propagation on normal API usage.
+#### Scenarios
 
-Gossiping might still be needed since propagation requires a full round through the group. How to propagate efficiently is an open question.
+#### Everyone is working correctly
 
-#### Round-robin host ordering
+TODO
 
-The user must iterate hosts in the group in a predefined order. This naturally distributes requests across hosts (not real work amount, but request count). Each diff carries a nonce, so the user cannot skip hosts.
+#### One (or minority) of hosts are not responding
 
-#### Signing flow
+TODO
 
-When a `/chat/completions` request is sent to host1, the user creates MsgStartInference(1). If host1 is honest, it must immediately return `(state, signature)` without waiting for execution. After execution, host1 signs MsgFinishInference(1) and the user propagates it to the network in the next round (or later, depends on performance).
+#### Host doesn't return FinishInference
 
-Locks should only be needed to generate new nonces and compose new messages, not to record incoming data. The user does not block on receiving a host's signature before sending the next request. Signatures arrive asynchronously and get included in later diffs. This keeps request submission fast at the cost of signatures lagging behind by one or more rounds.
+TODO
 
-#### Host unavailability
+#### User creates StartInference but doesn't provide data to host_i
 
-If a host is not available, the user continues to the next host in order. Since each request carries ALL accumulated diffs for the current round, it includes the unsigned diff for the unavailable host. The receiving host follows the protocol to decide together with the group whether the unavailable host should be punished.
+TODO
 
+#### User sends request to host_i but doesn't record StartInference
 
-
+TODO
 
 ### Example requests
 ```
