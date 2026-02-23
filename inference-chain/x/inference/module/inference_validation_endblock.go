@@ -12,14 +12,26 @@ type executorValidationInfo struct {
 	reputation int32
 }
 
-func (am AppModule) processPendingInferenceValidationQueue(
+func (am AppModule) processFinishedInferencesInBlock(
 	ctx context.Context,
 	blockHeight int64,
 	effectiveEpoch *types.Epoch,
 	currentEpochGroup *epochgroup.EpochGroup,
+	params *types.Params,
 ) {
-	pendingInferenceIDs := am.keeper.GetAllPendingInferenceValidationForHeight(ctx, blockHeight)
+	pendingInferenceIDs := am.keeper.GetFinishedInferenceIDsForHeight(ctx, blockHeight)
+	modelBlockLoads := make(map[string]uint64)
+	modelBlockInferenceCounts := make(map[string]uint64)
 	if len(pendingInferenceIDs) == 0 {
+		if err := am.keeper.UpdateModelRollingWindows(
+			ctx,
+			currentEpochGroup.GroupData,
+			params,
+			modelBlockLoads,
+			modelBlockInferenceCounts,
+		); err != nil {
+			am.LogError("Failed to update model rolling windows", types.Pricing, "error", err)
+		}
 		return
 	}
 
@@ -48,6 +60,8 @@ func (am AppModule) processPendingInferenceValidationQueue(
 				"inference_id", inferenceID, "status", inference.Status.String(), "blockHeight", blockHeight)
 			continue
 		}
+		modelBlockLoads[inference.Model] += inference.PromptTokenCount + inference.CompletionTokenCount
+		modelBlockInferenceCounts[inference.Model]++
 
 		modelEpochGroup, found := modelEpochGroupCache[inference.Model]
 		if !found {
@@ -112,4 +126,13 @@ func (am AppModule) processPendingInferenceValidationQueue(
 		"queued", len(pendingInferenceIDs),
 		"processed", processedCount,
 	)
+	if err := am.keeper.UpdateModelRollingWindows(
+		ctx,
+		currentEpochGroup.GroupData,
+		params,
+		modelBlockLoads,
+		modelBlockInferenceCounts,
+	); err != nil {
+		am.LogError("Failed to update model rolling windows", types.Pricing, "error", err)
+	}
 }

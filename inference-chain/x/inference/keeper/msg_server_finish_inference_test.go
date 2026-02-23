@@ -146,7 +146,7 @@ func TestMsgServer_FinishInference(t *testing.T) {
 	require.False(t, found)
 
 	// Task III: validation-details creation is deferred to EndBlock.
-	queuedInferenceIDs := k.GetAllPendingInferenceValidationForHeight(ctx, expectedFinished.EndBlockHeight)
+	queuedInferenceIDs := k.GetFinishedInferenceIDsForHeight(ctx, expectedFinished.EndBlockHeight)
 	require.Contains(t, queuedInferenceIDs, expected.InferenceId)
 
 	_, found = k.GetInferenceValidationDetails(ctx, epochId2, expected.InferenceId)

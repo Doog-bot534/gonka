@@ -75,7 +75,7 @@ func TestEndBlock_ProcessesPendingInferenceValidationQueue(t *testing.T) {
 	am := inference.NewAppModule(nil, k, nil, nil, nil, nil)
 	require.NoError(t, am.EndBlock(ctx))
 
-	require.Empty(t, k.GetAllPendingInferenceValidationForHeight(ctx, ctx.BlockHeight()))
+	require.Empty(t, k.GetFinishedInferenceIDsForHeight(ctx, ctx.BlockHeight()))
 
 	details, found := k.GetInferenceValidationDetails(ctx, effectiveEpoch.Index, inferenceID)
 	require.True(t, found)

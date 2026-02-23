@@ -353,4 +353,94 @@ Each task includes:
 - **Why**: Confirms Task II changes produce measurable performance improvement.
 - **Dependencies**: 6.4
 
+### Section 7: On-Chain Dynamic Pricing and Invalidation Input Replacement
+
+#### 7.1 Add Reusable Per-Model Rolling-Window State in EndBlock
+
+- **Task**: [x] - Finished Add reusable per-model rolling-window state with active-model reconciliation
+- **What**:
+  - Introduce a reusable rolling-window state structure keyed by `model_id` that stores both:
+    - fixed-size per-block values array, and
+    - running sum.
+  - Use this same structure for at least two stores:
+    - model token-load per block (for dynamic pricing),
+    - model inference-count per block (for invalidation limits).
+  - During EndBlock, compute per-model block load and per-model block inference count from finished inferences and push values into rolling windows.
+  - Iterate all active models every block; if model has no block data, push `0`.
+  - Reconcile stores against active models every block: remove state for inactive models.
+  - Support window-size changes from params:
+    - if new window is larger, pad with zeros on the left before push,
+    - if new window is smaller, drop oldest values and subtract them from running sum before push.
+  - Derive window length from params using `window_blocks = max(1, seconds / 5)` (block time ~= 5s).
+- **Where**:
+  - `inference-chain/x/inference/keeper/keeper.go` (new collections prefixes/maps)
+  - `inference-chain/x/inference/module/inference_validation_endblock.go` (rolling-window update inputs)
+  - `inference-chain/x/inference/module/module.go` (EndBlock rolling-window writes)
+  - `inference-chain/x/inference/keeper/rolling_window_state.go` (rolling-window helper implementation)
+- **Why**: Gives exact rolling aggregates with bounded storage and O(1) per-block updates.
+- **Dependencies**: Section 2 (chain refactor), Section 4 (event ingestion and stats storage)
+- **Result**: Added rolling-window model stores and helpers (values + running sum), wired EndBlock updates for both per-model token load and inference count, and added active-model reconciliation/removal logic.
+
+#### 7.2 Switch Dynamic Pricing to Rolling-Average Utilization Inputs
+
+- **Task**: [x] - Finished Replace `GetSummaryByModelAndTime` dependency in dynamic-pricing path with rolling average
+- **What**:
+  - Read per-model rolling load state and compute exact rolling average load per block as `sum / window_blocks`.
+  - Update `UpdateDynamicPricing` to use rolling-average utilization instead of devstats-backed `GetSummaryByModelAndTime`.
+  - Keep existing price-adjustment formulas and caps unchanged; only utilization source changes.
+  - Ensure params changes only affect rolling window length; stored state is resized deterministically during updates.
+- **Where**:
+  - `inference-chain/x/inference/keeper/dynamic_pricing.go`
+  - `inference-chain/x/inference/keeper/rolling_window_state.go` (rolling-window state helpers)
+- **Why**: Restores dynamic-pricing correctness after Task II removed on-chain devstats updates from `SetInference`, using exact rolling averages rather than EMA approximation.
+- **Dependencies**: 7.1
+- **Result**: `UpdateDynamicPricing` now reads per-model rolling average load and computes utilization as `average_load_per_block / (capacity_per_sec * 5)`; it no longer calls `GetSummaryByModelAndTime`. Added/updated keeper tests for rolling-window reconciliation/update behavior and price updates using rolling-average inputs.
+
+#### 7.3 Audit Remaining On-Chain Developer-Stats Usage
+
+- **Task**: [x] - Finished Inventory and decide disposition of remaining devstats-backed chain paths
+- **What**:
+  - Confirm runtime call-sites still touching old devstats stores/queries.
+  - Decide per call-site: migrate to new lightweight data source, keep temporarily for legacy API compatibility, or deprecate/remove.
+  - Document migration decisions and follow-up tasks for deprecated query endpoints.
+- **Where**:
+  - `inference-chain/x/inference/keeper/msg_server_validation.go` (`MaximumInvalidationsReached`)
+  - `inference-chain/x/inference/keeper/query_developer_stats_aggregation.go`
+  - `inference-chain/x/inference/keeper/developer_stats_aggregation.go`
+- **Why**: Prevent hidden coupling to stale devstats data after Task II migration.
+- **Dependencies**: 7.2
+- **Result**:
+  - **Runtime dependency audit**:
+    - `msg_server_validation.go` -> `MaximumInvalidationsReached(...)` was identified as the last runtime devstats dependency and is now migrated in 7.4 to rolling on-chain counters.
+  - **Legacy query surface still devstats-backed**:
+    - `StatsByTimePeriodByDeveloper`
+    - `StatsByDeveloperAndEpochsBackwards`
+    - `InferencesAndTokensStatsByEpochsBackwards`
+    - `InferencesAndTokensStatsByTimePeriod`
+    - `InferencesAndTokensStatsByModels`
+    - `DebugStatsDeveloperStats`
+    (all in `query_developer_stats_aggregation.go`, backed by `developer_stats_aggregation.go` and `developer_stats_store.go`).
+  - **Write-path status**:
+    - `SetDeveloperStats(...)` remains implemented, but no longer invoked from `SetInference` hot path.
+  - **Disposition recommendation**:
+    - Migrate `MaximumInvalidationsReached(...)` to dedicated per-model rolling inference-count counter to remove runtime dependence on stale devstats.
+    - Keep legacy query methods temporarily for compatibility/read-only diagnostics, then deprecate and remove in a follow-up once API-node replacements are fully adopted.
+
+#### 7.4 Replace `MaximumInvalidationsReached` Devstats Query with On-Chain Rolling Counter
+
+- **Task**: [x] - Finished Migrate invalidation-limit runtime calculation off `GetSummaryByModelAndTime`
+- **What**:
+  - Use per-model rolling inference-count state (same rolling-structure and reconciliation policy as 7.1: update all active models each block, missing=`0`, remove inactive models).
+  - In `MaximumInvalidationsReached(...)`, stop querying devstats time stores and use exact rolling-window inference count sum instead.
+  - Convert `InvalidationsSamplePeriod` seconds to blocks using `window_blocks = max(1, sample_period_seconds / 5)` and use exact `window_inference_count = rolling_sum`.
+  - Keep existing `CalculateInvalidations(...)` and params semantics unchanged; only the data source changes.
+  - Add targeted tests for threshold behavior (low/high activity, missing rolling state, and epoch/model isolation).
+- **Where**:
+  - `inference-chain/x/inference/keeper/msg_server_validation.go`
+  - `inference-chain/x/inference/keeper/rolling_window_state.go` (rolling-window helpers used by both pricing and invalidations)
+  - `inference-chain/x/inference/keeper/msg_server_validation_test.go`
+- **Why**: `MaximumInvalidationsReached` is the last runtime path still coupled to stale on-chain developer-stats aggregation.
+- **Dependencies**: 7.1, 7.3
+- **Result**: `MaximumInvalidationsReached(...)` now reads per-model rolling inference-count sums and no longer queries `GetSummaryByModelAndTime(...)`. Added validation test coverage for high-activity gating behavior using rolling state.
+
 **Summary**: This plan implements Task II by removing heavy stats writes from the Start/Finish hot path, ensuring single inference persistence per transaction flow, and moving developer stats collection to API-node storage via minimal `inference_finished` event payload. The task sequence prioritizes small, reviewable, direct implementation steps.

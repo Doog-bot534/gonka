@@ -64,8 +64,11 @@ var (
 	PocV2EnabledEpochPrefix           = collections.NewPrefix(41)
 	PoCValidationSnapshotPrefix       = collections.NewPrefix(42)
 	PunishmentGraceEpochsPrefix       = collections.NewPrefix(43)
-	PendingInferenceValidationPrefix  = collections.NewPrefix(44)
-	ParamsKey                         = []byte("p_inference")
+	FinishedInferenceQueuePrefix      = collections.NewPrefix(44)
+
+	ModelLoadRollingWindowPrefix           = collections.NewPrefix(45)
+	ModelInferenceCountRollingWindowPrefix = collections.NewPrefix(46)
+	ParamsKey                              = []byte("p_inference")
 )
 
 func KeyPrefix(p string) []byte {

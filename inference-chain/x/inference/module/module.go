@@ -343,7 +343,7 @@ func (am AppModule) EndBlock(ctx context.Context) error {
 		return nil
 	}
 
-	am.processPendingInferenceValidationQueue(ctx, blockHeight, currentEpoch, currentEpochGroup)
+	am.processFinishedInferencesInBlock(ctx, blockHeight, currentEpoch, currentEpochGroup, &params)
 
 	timeouts := am.keeper.GetAllInferenceTimeoutForHeight(ctx, uint64(blockHeight))
 	err = am.expireInferences(ctx, timeouts, blockHeight, currentEpoch, &params)

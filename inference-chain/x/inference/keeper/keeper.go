@@ -47,8 +47,10 @@ type (
 		PoCV2StoreCommits         collections.Map[collections.Pair[int64, sdk.AccAddress], types.PoCV2StoreCommit]
 		MLNodeWeightDistributions collections.Map[collections.Pair[int64, sdk.AccAddress], types.MLNodeWeightDistribution]
 		// Dynamic pricing collections
-		ModelCurrentPriceMap collections.Map[string, uint64]
-		ModelCapacityMap     collections.Map[string, uint64]
+		ModelCurrentPriceMap                collections.Map[string, uint64]
+		ModelCapacityMap                    collections.Map[string, uint64]
+		ModelLoadRollingWindowMap           collections.Map[string, types.RollingWindowState]
+		ModelInferenceCountRollingWindowMap collections.Map[string, types.RollingWindowState]
 		// Governance models
 		Models                        collections.Map[string, types.Model]
 		Inferences                    collections.Map[string, types.Inference]
@@ -89,8 +91,8 @@ type (
 		PoCValidationSnapshots collections.Map[int64, types.PoCValidationSnapshot]
 		// Punishment grace epochs for upgrade protection
 		PunishmentGraceEpochs collections.Map[uint64, types.GraceEpochParams]
-		// Pending inference validation queue keyed by (block_height, inference_id)
-		PendingInferenceValidationQueue collections.Map[collections.Pair[int64, string], string]
+		// Finished inference queue keyed by (block_height, inference_id)
+		FinishedInferenceQueue collections.Map[collections.Pair[int64, string], string]
 	}
 )
 
@@ -201,6 +203,20 @@ func NewKeeper(
 			"model_capacity",
 			collections.StringKey,
 			collections.Uint64Value,
+		),
+		ModelLoadRollingWindowMap: collections.NewMap(
+			sb,
+			types.ModelLoadRollingWindowPrefix,
+			"model_load_rolling_window",
+			collections.StringKey,
+			codec.CollValue[types.RollingWindowState](cdc),
+		),
+		ModelInferenceCountRollingWindowMap: collections.NewMap(
+			sb,
+			types.ModelInferenceCountRollingWindowPrefix,
+			"model_inference_count_rolling_window",
+			collections.StringKey,
+			codec.CollValue[types.RollingWindowState](cdc),
 		),
 		// governance models map
 		Models: collections.NewMap(
@@ -433,10 +449,10 @@ func NewKeeper(
 			collections.Uint64Key,
 			codec.CollValue[types.GraceEpochParams](cdc),
 		),
-		PendingInferenceValidationQueue: collections.NewMap(
+		FinishedInferenceQueue: collections.NewMap(
 			sb,
-			types.PendingInferenceValidationPrefix,
-			"pending_inference_validation",
+			types.FinishedInferenceQueuePrefix,
+			"finished_inference_queue",
 			collections.PairKeyCodec(collections.Int64Key, collections.StringKey),
 			collections.StringValue,
 		),

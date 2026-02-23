@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPendingInferenceValidationQueue_GetAllForHeight_Deterministic(t *testing.T) {
+func TestPendingInferenceValidationQueue_GetFinishedInferenceIDsForHeight_Deterministic(t *testing.T) {
 	keeper, ctx := keepertest.InferenceKeeper(t)
 	blockHeight := int64(100)
 
@@ -16,7 +16,7 @@ func TestPendingInferenceValidationQueue_GetAllForHeight_Deterministic(t *testin
 	require.NoError(t, keeper.SetPendingInferenceValidation(ctx, blockHeight, "b"))
 	require.NoError(t, keeper.SetPendingInferenceValidation(ctx, blockHeight+1, "other-height"))
 
-	got := keeper.GetAllPendingInferenceValidationForHeight(ctx, blockHeight)
+	got := keeper.GetFinishedInferenceIDsForHeight(ctx, blockHeight)
 	require.Equal(t, []string{"a", "b", "c"}, got)
 }
 
@@ -28,8 +28,8 @@ func TestPendingInferenceValidationQueue_Remove(t *testing.T) {
 	require.NoError(t, keeper.SetPendingInferenceValidation(ctx, blockHeight, "b"))
 
 	keeper.RemovePendingInferenceValidation(ctx, blockHeight, "a")
-	require.Equal(t, []string{"b"}, keeper.GetAllPendingInferenceValidationForHeight(ctx, blockHeight))
+	require.Equal(t, []string{"b"}, keeper.GetFinishedInferenceIDsForHeight(ctx, blockHeight))
 
 	keeper.RemovePendingInferenceValidation(ctx, blockHeight, "missing")
-	require.Equal(t, []string{"b"}, keeper.GetAllPendingInferenceValidationForHeight(ctx, blockHeight))
+	require.Equal(t, []string{"b"}, keeper.GetFinishedInferenceIDsForHeight(ctx, blockHeight))
 }

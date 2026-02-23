@@ -212,17 +212,23 @@ func (k msgServer) MaximumInvalidationsReached(ctx sdk.Context, creator sdk.AccA
 		k.LogError("Failed to get params", types.Validation, "error", err)
 		return false
 	}
-	blockTime := sdk.UnwrapSDKContext(ctx).BlockTime()
-	currentTimeMillis := blockTime.UnixMilli()                                             // Current time in milliseconds
-	windowDurationSeconds := int64(params.BandwidthLimitsParams.InvalidationsSamplePeriod) // Window duration in seconds (e.g., 60)
-	windowDurationMillis := windowDurationSeconds * 1000                                   // Convert to milliseconds for time queries
-	timeWindowStartMillis := currentTimeMillis - windowDurationMillis                      // Start time in milliseconds
+	if params.BandwidthLimitsParams == nil {
+		k.LogError("Failed to get bandwidth limits params", types.Validation)
+		return false
+	}
 
-	recentInferencesMap := k.GetSummaryByModelAndTime(ctx, timeWindowStartMillis, currentTimeMillis)
-	inferencesForModel, found := recentInferencesMap[data.ModelId]
-	if !found {
-		// InferenceCount will be zero here... that's fine, it will return the default value of 1
-		k.LogInfo("No inferences for model", types.Validation, "model", data.ModelId, "error", err)
+	windowBlocks := invalidationsSamplePeriodToBlocks(params.BandwidthLimitsParams.InvalidationsSamplePeriod)
+	inferencesForModel := int64(0)
+	rollingInferenceCount, found, err := k.GetModelInferenceCountRollingSum(ctx, data.ModelId, windowBlocks)
+	if err != nil {
+		k.LogError("Failed to get rolling inference count", types.Validation, "model", data.ModelId, "error", err)
+		return false
+	}
+	if found {
+		inferencesForModel = int64(rollingInferenceCount)
+	} else {
+		// Default to zero when there is no model state yet.
+		k.LogInfo("No rolling inference count for model", types.Validation, "model", data.ModelId)
 	}
 
 	participant := data.ValidationWeight(creator.String())
@@ -232,7 +238,7 @@ func (k msgServer) MaximumInvalidationsReached(ctx sdk.Context, creator sdk.AccA
 	}
 	participantWeightPercent := decimal.NewFromInt(participant.Weight).Div(decimal.NewFromInt(data.TotalWeight))
 	maxValidations := calculations.CalculateInvalidations(
-		int64(inferencesForModel.InferenceCount),
+		inferencesForModel,
 		participantWeightPercent,
 		participant.Reputation,
 		int64(params.BandwidthLimitsParams.InvalidationsLimit),
