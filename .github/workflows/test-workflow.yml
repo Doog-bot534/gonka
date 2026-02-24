@@ -137,6 +137,17 @@ jobs:
           docker --version
           docker compose version
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Create Buildx builder accessible from sudo
+        run: |
+          sudo docker buildx create --name ci-builder --driver docker-container --use
+          sudo docker buildx inspect --bootstrap ci-builder
+
       - name: Install Make
         run: |
           sudo apt-get update
@@ -157,7 +168,7 @@ jobs:
         env:
           GENESIS_OVERRIDES_FILE: "inference-chain/test_genesis_overrides.json"
         run: |
-          sudo make build-docker
+          sudo -E make build-docker USE_REGISTRY_CACHE=1
           echo "=== Images immediately after build ==="
           sudo docker images | head -20
 

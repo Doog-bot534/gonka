@@ -17,15 +17,22 @@ BUILD_FLAGS ?= -ldflags '$(ldflags)'
 
 WASMVM_STATIC_LINUX_X64_URL := https://github.com/CosmWasm/wasmvm/releases/download/v2.2.4/libwasmvm_muslc.x86_64.a
 
+USE_REGISTRY_CACHE ?= 0
+ifeq ($(USE_REGISTRY_CACHE),1)
+DOCKER_CACHE_ARGS := --cache-from type=registry,ref=ghcr.io/product-science/api:buildcache --cache-to type=registry,ref=ghcr.io/product-science/api:buildcache,mode=max
+else
+DOCKER_CACHE_ARGS ?=
+endif
+
 define DOCKER_BUILD
 	@echo "--> building decentralized-api docker image"
 	@echo "    	platform: $(PLATFORM)"
 	@echo "    	BUILD_FLAGS: $(BUILD_FLAGS)"
 	@echo "    	GOOS: $(GOOS)"
 	@echo "    	GOARCH: $(GOARCH)"
-	@DOCKER_BUILDKIT=1 \
-	docker build \
+	@docker buildx build \
 		--load \
+		$(DOCKER_CACHE_ARGS) \
 		--platform $(PLATFORM) \
 		--build-arg BUILD_FLAGS="$(BUILD_FLAGS)" \
 		--build-arg GOOS=$(GOOS) \
@@ -42,7 +49,8 @@ define DOCKER_BUILD_UPGRADE
 	@echo "    	BUILD_FLAGS: $(BUILD_FLAGS)"
 	@echo "    	GOOS: $(GOOS)"
 	@echo "    	GOARCH: $(GOARCH)"
-	@docker build \
+	@docker buildx build \
+		$(DOCKER_CACHE_ARGS) \
 		--platform $(PLATFORM) \
 		--build-arg BUILD_FLAGS="$(BUILD_FLAGS)" \
 		--build-arg GOOS=$(GOOS) \
