@@ -26,8 +26,8 @@ WASMVM_STATIC_LINUX_ARM64_URL := https://github.com/CosmWasm/wasmvm/releases/dow
 
 USE_REGISTRY_CACHE ?= 0
 ifeq ($(USE_REGISTRY_CACHE),1)
-DOCKER_CACHE_ARGS := --cache-from type=registry,ref=ghcr.io/product-science/inferenced:buildcache --cache-to type=registry,ref=ghcr.io/product-science/inferenced:buildcache,mode=max
-DOCKER_CACHE_ARGS_UPGRADE := --cache-from type=registry,ref=ghcr.io/product-science/inferenced:buildcache-upgrade --cache-to type=registry,ref=ghcr.io/product-science/inferenced:buildcache-upgrade,mode=max
+DOCKER_CACHE_ARGS := --cache-from type=registry,ref=ghcr.io/gonka-ai/inferenced:buildcache --cache-to type=registry,ref=ghcr.io/gonka-ai/inferenced:buildcache,mode=max
+DOCKER_CACHE_ARGS_UPGRADE := --cache-from type=registry,ref=ghcr.io/gonka-ai/inferenced:buildcache-upgrade --cache-to type=registry,ref=ghcr.io/gonka-ai/inferenced:buildcache-upgrade,mode=max
 else
 DOCKER_CACHE_ARGS :=
 DOCKER_CACHE_ARGS_UPGRADE :=

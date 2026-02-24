@@ -4,7 +4,7 @@ VERSION ?= $(shell git describe --always)
 TAG_NAME := "release/v$(VERSION)"
 USE_REGISTRY_CACHE ?= 0
 ifeq ($(USE_REGISTRY_CACHE),1)
-_MOCK_CACHE_ARGS := --cache-from type=registry,ref=ghcr.io/product-science/mock-server:buildcache --cache-to type=registry,ref=ghcr.io/product-science/mock-server:buildcache,mode=max
+_MOCK_CACHE_ARGS := --cache-from type=registry,ref=ghcr.io/gonka-ai/mock-server:buildcache --cache-to type=registry,ref=ghcr.io/gonka-ai/mock-server:buildcache,mode=max
 else
 _MOCK_CACHE_ARGS :=
 endif

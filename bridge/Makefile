@@ -5,7 +5,7 @@ SET_LATEST ?= 0
 SET_LATEST := $(shell if [ "$(SET_LATEST)" = "1" ]; then echo 1; else echo 0; fi)
 USE_REGISTRY_CACHE ?= 0
 ifeq ($(USE_REGISTRY_CACHE),1)
-DOCKER_CACHE_ARGS := --cache-from type=registry,ref=ghcr.io/product-science/bridge:buildcache --cache-to type=registry,ref=ghcr.io/product-science/bridge:buildcache,mode=max
+DOCKER_CACHE_ARGS := --cache-from type=registry,ref=ghcr.io/gonka-ai/bridge:buildcache --cache-to type=registry,ref=ghcr.io/gonka-ai/bridge:buildcache,mode=max
 else
 DOCKER_CACHE_ARGS ?=
 endif
