@@ -82,17 +82,16 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 			}
 			k.LogWarn("StartInference: continuing after model mismatch (log-only mode)", types.Inferences, "inferenceId", msg.InferenceId)
 		}
-		k.LogInfo("StartInference: finish-first policy; signature checks skipped and components compared", types.Inferences, "inferenceId", msg.InferenceId)
+		k.LogDebug("StartInference: cryptographic signature verification skipped; dev and TA components compared for consistency", types.Inferences, "inferenceId", msg.InferenceId)
 	} else {
 		err := k.verifyStartFirstMessageKeys(ctx, msg, dev)
 		if err != nil {
 			k.LogError("StartInference: verifyStartFirstMessageKeys failed", types.Inferences, "error", err)
 			return failedStart(ctx, sdkerrors.Wrap(types.ErrInvalidSignature, err.Error()), msg), nil
 		}
-		k.LogInfo("StartInference: dev signature verified on first message", types.Inferences, "inferenceId", msg.InferenceId)
-		k.LogInfo("StartInference: TA signature skipped (start-first policy)", types.Inferences, "inferenceId", msg.InferenceId)
+		k.LogDebug("StartInference: dev signature cryptographically verified; TA signature deferred to FinishInference", types.Inferences, "inferenceId", msg.InferenceId)
 	}
-	k.LogInfo("StartInference: executor signature verification disabled by policy", types.Inferences, "inferenceId", msg.InferenceId)
+	k.LogDebug("StartInference: executor signature verification disabled by policy", types.Inferences, "inferenceId", msg.InferenceId)
 
 	// Record the current price only if this is the first message (FinishInference not processed yet)
 	// This ensures consistent pricing regardless of message arrival order
