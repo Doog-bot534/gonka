@@ -32,10 +32,9 @@ func TestStartProcessed(t *testing.T) {
 			expected:  false,
 		},
 		{
-			name: "Inference with PromptHash",
+			name: "Inference with AssignedTo",
 			inference: &types.Inference{
-				PromptHash: "hash",
-				MaxTokens:  20,
+				AssignedTo: "executor",
 			},
 			expected: true,
 		},

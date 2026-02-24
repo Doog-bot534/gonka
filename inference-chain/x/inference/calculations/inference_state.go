@@ -191,10 +191,9 @@ func ProcessFinishInference(
 }
 
 func startProcessed(inference *types.Inference) bool {
-	// StartInference always assigns MaxTokens (explicit or default).
-	// Finish-first flow can populate PromptHash early, so use MaxTokens to detect
-	// whether StartInference has already been processed.
-	return inference.MaxTokens != 0
+	// StartInference always assigns AssignedTo (required by ValidateBasic).
+	// Symmetric with finishedProcessed which checks ExecutedBy.
+	return inference.AssignedTo != ""
 }
 
 func finishedProcessed(inference *types.Inference) bool {
