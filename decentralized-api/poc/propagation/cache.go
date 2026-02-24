@@ -50,3 +50,8 @@ func (c *Cache) GetFirstArrival(participant string, pocHeight int64) (ArrivalInf
 func (c *Cache) GetAllFirstArrivals(pocHeight int64) (map[string]ArrivalInfo, error) {
 	return c.storage.GetAllFirstArrivals(context.Background(), pocHeight)
 }
+
+// DeleteBeforeHeight removes all bundles, proofs for PoC heights <= pocHeight.
+func (c *Cache) DeleteBeforeHeight(pocHeight int64) (int, error) {
+	return c.storage.DeleteBeforeHeight(context.Background(), pocHeight)
+}

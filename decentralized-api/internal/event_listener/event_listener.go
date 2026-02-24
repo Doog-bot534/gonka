@@ -111,11 +111,12 @@ func (el *EventListener) SetPropagationComponents(
 	treeManager *propagation.TreeManager,
 	receiver *propagation.Receiver,
 	bundler *propagation.Bundler,
+	cache *propagation.Cache,
 	transport ParticipantURLSetter,
 	participantQuerier ParticipantQuerier,
 ) {
 	if el.dispatcher != nil {
-		el.dispatcher.SetPropagationComponents(treeManager, receiver, bundler, transport, participantQuerier)
+		el.dispatcher.SetPropagationComponents(treeManager, receiver, bundler, cache, transport, participantQuerier)
 	}
 }
 

@@ -82,8 +82,11 @@ type OnNewBlockDispatcher struct {
 	treeManager          *propagation.TreeManager
 	propagationReceiver  *propagation.Receiver
 	propagationBundler   *propagation.Bundler
+	propagationCache     *propagation.Cache
 	propagationTransport ParticipantURLSetter
 	participantQuerier   ParticipantQuerier
+
+	lastCleanedEpoch uint64 // Track last epoch for which proof cleanup was performed
 }
 
 // StatusResponse matches the structure expected by getStatus function
@@ -179,12 +182,14 @@ func (d *OnNewBlockDispatcher) SetPropagationComponents(
 	treeManager *propagation.TreeManager,
 	receiver *propagation.Receiver,
 	bundler *propagation.Bundler,
+	cache *propagation.Cache,
 	transport ParticipantURLSetter,
 	participantQuerier ParticipantQuerier,
 ) {
 	d.treeManager = treeManager
 	d.propagationReceiver = receiver
 	d.propagationBundler = bundler
+	d.propagationCache = cache
 	d.propagationTransport = transport
 	d.participantQuerier = participantQuerier
 }
@@ -404,6 +409,9 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 				}
 			}
 		}
+
+		// Cleanup old propagation data from epoch N-2 when entering epoch N
+		d.cleanupOldPropagationData(epochContext.EpochIndex, epochContext.PocStartBlockHeight)
 
 		return
 	}
@@ -810,4 +818,69 @@ func getBlockHash(data map[string]interface{}) (string, error) {
 	}
 
 	return hash, nil
+}
+
+// cleanupOldPropagationData deletes propagation data (bundles, proofs) from old epochs.
+// When entering epoch N, we delete data from epoch N-2, keeping epoch N-1 data available for validation recovery.
+func (d *OnNewBlockDispatcher) cleanupOldPropagationData(currentEpochIndex uint64, currentPocStartHeight int64) {
+	// Skip if we already cleaned up for this epoch
+	if d.lastCleanedEpoch >= currentEpochIndex {
+		return
+	}
+
+	if d.propagationCache == nil {
+		return
+	}
+
+	if d.configManager == nil {
+		return
+	}
+
+	propConfig := d.configManager.GetConfig().PocPropagation
+	if propConfig.RetainAllProofs {
+		logging.Debug("Propagation proof cleanup skipped: RetainAllProofs is enabled", types.PoC,
+			"currentEpoch", currentEpochIndex)
+		d.lastCleanedEpoch = currentEpochIndex // Mark as handled to avoid repeated checks
+		return
+	}
+
+	if currentEpochIndex < 2 {
+		logging.Debug("Propagation proof cleanup skipped: not enough epochs", types.PoC,
+			"currentEpoch", currentEpochIndex)
+		d.lastCleanedEpoch = currentEpochIndex
+		return
+	}
+
+	epochParams := d.phaseTracker.GetEpochParams()
+	if epochParams == nil {
+		return
+	}
+
+	// The PoC start height for epoch N-2
+	oldPocHeight := currentPocStartHeight - (2 * epochParams.EpochLength)
+
+	if oldPocHeight <= 0 {
+		d.lastCleanedEpoch = currentEpochIndex
+		return
+	}
+
+	d.lastCleanedEpoch = currentEpochIndex
+
+	go func() {
+		deletedCount, err := d.propagationCache.DeleteBeforeHeight(oldPocHeight)
+		if err != nil {
+			logging.Warn("Failed to cleanup old propagation proofs", types.PoC,
+				"maxPocHeight", oldPocHeight,
+				"currentEpoch", currentEpochIndex,
+				"error", err)
+			return
+		}
+
+		if deletedCount > 0 {
+			logging.Info("Cleaned up old propagation proofs", types.PoC,
+				"maxPocHeight", oldPocHeight,
+				"currentEpoch", currentEpochIndex,
+				"deletedCount", deletedCount)
+		}
+	}()
 }

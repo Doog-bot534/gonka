@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -588,4 +589,153 @@ func TestReceiverClearProcessedState(t *testing.T) {
 	require.Empty(t, receiver.processedHeaders)
 	require.Empty(t, receiver.processedProofs)
 	receiver.mu.RUnlock()
+}
+
+func TestFileBundleStorageDeleteBeforeHeight(t *testing.T) {
+	tempDir := t.TempDir()
+	storageDir := filepath.Join(tempDir, "bundles")
+	storage, err := NewFileBundleStorage(storageDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	heights := []int64{100, 200, 300, 400, 500}
+	for i, height := range heights {
+		bundleID := [32]byte{byte(i)}
+		header := BundleHeader{
+			BundleID:    bundleID,
+			Participant: fmt.Sprintf("participant%d", i),
+			PubKey:      "test-pubkey",
+			PocHeight:   height,
+			RootHash:    []byte("root-hash"),
+			Count:       10,
+			CreatedAt:   time.Now().UnixMilli(),
+		}
+		err := storage.StoreHeader(ctx, header)
+		require.NoError(t, err)
+
+		proofs := []ProofItem{{LeafIndex: uint32(i), NonceValue: int32(i)}}
+		err = storage.StoreProofs(ctx, bundleID, proofs)
+		require.NoError(t, err)
+	}
+
+	// Delete bundles with height <= 300
+	deleted, err := storage.DeleteBeforeHeight(ctx, 300)
+	require.NoError(t, err)
+	require.Greater(t, deleted, 0, "should have deleted some items")
+
+	for i, _ := range []int64{100, 200, 300} {
+		bundleID := [32]byte{byte(i)}
+		_, err := storage.GetHeader(ctx, bundleID)
+		require.ErrorIs(t, err, ErrBundleNotFound)
+
+		_, err = storage.GetProofs(ctx, bundleID)
+		require.ErrorIs(t, err, ErrProofsNotFound)
+	}
+
+	for i, _ := range []int64{400, 500} {
+		bundleID := [32]byte{byte(i + 3)}
+		_, err := storage.GetHeader(ctx, bundleID)
+		require.NoError(t, err)
+
+		_, err = storage.GetProofs(ctx, bundleID)
+		require.NoError(t, err)
+	}
+
+	// Verify files are actually deleted from disk
+	entries, err := os.ReadDir(storageDir)
+	require.NoError(t, err)
+	// Should have 2 bundle headers + 2 proof files
+	bundleFileCount := 0
+	proofFileCount := 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if filepath.Ext(name) == ".json" && !strings.Contains(name, "_proofs") && name != "arrivals.json" {
+			bundleFileCount++
+		}
+		if strings.Contains(name, "_proofs") {
+			proofFileCount++
+		}
+	}
+	require.Equal(t, 2, bundleFileCount)
+	require.Equal(t, 2, proofFileCount)
+}
+
+func TestFileBundleStorageDeleteBeforeHeightEmpty(t *testing.T) {
+	tempDir := t.TempDir()
+	storageDir := filepath.Join(tempDir, "bundles")
+	storage, err := NewFileBundleStorage(storageDir)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Delete from empty storage should not error
+	deleted, err := storage.DeleteBeforeHeight(ctx, 1000)
+	require.NoError(t, err)
+	require.Equal(t, 0, deleted)
+}
+
+func TestPostgresBundleStorageDeleteBeforeHeight(t *testing.T) {
+	pool, cleanup := setupPropagationPostgres(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	storage, err := NewPostgresBundleStorage(ctx, pool, "test-cleanup")
+	require.NoError(t, err)
+
+	heights := []int64{100, 200, 300, 400, 500}
+	for i, height := range heights {
+		bundleID := [32]byte{byte(i)}
+		header := BundleHeader{
+			BundleID:    bundleID,
+			Participant: fmt.Sprintf("participant%d", i),
+			PubKey:      "test-pubkey",
+			PocHeight:   height,
+			RootHash:    []byte("root-hash"),
+			Count:       10,
+			CreatedAt:   time.Now().UnixMilli(),
+		}
+		err := storage.StoreHeader(ctx, header)
+		require.NoError(t, err)
+
+		proofs := []ProofItem{{LeafIndex: uint32(i), NonceValue: int32(i)}}
+		err = storage.StoreProofs(ctx, bundleID, proofs)
+		require.NoError(t, err)
+	}
+
+	// Delete bundles with height <= 300
+	deleted, err := storage.DeleteBeforeHeight(ctx, 300)
+	require.NoError(t, err)
+	require.Greater(t, deleted, 0, "should have deleted some items")
+
+	// Verify bundles at heights 100, 200, 300 are deleted
+	for i, height := range []int64{100, 200, 300} {
+		bundleID := [32]byte{byte(i)}
+		_, err := storage.GetHeader(ctx, bundleID)
+		require.ErrorIs(t, err, ErrBundleNotFound, "bundle at height %d should be deleted", height)
+
+		_, err = storage.GetProofs(ctx, bundleID)
+		require.ErrorIs(t, err, ErrProofsNotFound, "proofs at height %d should be deleted", height)
+	}
+
+	// Verify bundles at heights 400, 500 still exist
+	for i, height := range []int64{400, 500} {
+		bundleID := [32]byte{byte(i + 3)}
+		_, err := storage.GetHeader(ctx, bundleID)
+		require.NoError(t, err, "bundle at height %d should still exist", height)
+
+		_, err = storage.GetProofs(ctx, bundleID)
+		require.NoError(t, err, "proofs at height %d should still exist", height)
+	}
+
+	// Verify database rows are actually deleted
+	var headerCount int
+	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM poc_bundle_headers WHERE instance = $1", "test-cleanup").Scan(&headerCount)
+	require.NoError(t, err)
+	require.Equal(t, 2, headerCount, "should have 2 headers remaining in database")
+
+	var proofCount int
+	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM poc_bundle_proofs WHERE instance = $1", "test-cleanup").Scan(&proofCount)
+	require.NoError(t, err)
+	require.Equal(t, 2, proofCount, "should have 2 proof sets remaining in database")
 }

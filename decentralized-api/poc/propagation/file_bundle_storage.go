@@ -18,10 +18,10 @@ import (
 var proofsFileRegex = regexp.MustCompile(`^[0-9a-fA-F]{64}_proofs(_\d+)?\.json$`)
 
 type FileBundleStorage struct {
-	baseDir      string
-	mu           sync.RWMutex
-	bundles      map[[32]byte]BundleHeader
-	proofs       map[[32]byte][][]ProofItem // Multiple proof sets per bundleID
+	baseDir  string
+	mu       sync.RWMutex
+	bundles  map[[32]byte]BundleHeader
+	proofs   map[[32]byte][][]ProofItem // Multiple proof sets per bundleID
 	arrivals map[participantPocKey]ArrivalInfo
 }
 
@@ -35,10 +35,10 @@ func NewFileBundleStorage(baseDir string) (*FileBundleStorage, error) {
 	}
 
 	s := &FileBundleStorage{
-		baseDir:      baseDir,
-		bundles:      make(map[[32]byte]BundleHeader),
-		proofs:       make(map[[32]byte][][]ProofItem),
-		arrivals:     make(map[participantPocKey]ArrivalInfo),
+		baseDir:  baseDir,
+		bundles:  make(map[[32]byte]BundleHeader),
+		proofs:   make(map[[32]byte][][]ProofItem),
+		arrivals: make(map[participantPocKey]ArrivalInfo),
 	}
 
 	if err := s.loadBundles(); err != nil {
@@ -380,6 +380,68 @@ func (s *FileBundleStorage) GetAllFirstArrivals(ctx context.Context, pocHeight i
 		}
 	}
 	return result, nil
+}
+
+func (s *FileBundleStorage) DeleteBeforeHeight(ctx context.Context, maxPocHeight int64) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	deletedCount := 0
+
+	// Find and delete bundles for heights <= maxPocHeight
+	bundlesToDelete := make([][32]byte, 0)
+	for bundleID, header := range s.bundles {
+		if header.PocHeight <= maxPocHeight {
+			bundlesToDelete = append(bundlesToDelete, bundleID)
+		}
+	}
+
+	for _, bundleID := range bundlesToDelete {
+		// Delete all proof files for this bundle
+		proofSets := s.proofs[bundleID]
+		allProofsCleaned := true
+		for i := range proofSets {
+			proofPath := s.proofsFilePath(bundleID, i)
+			if err := os.Remove(proofPath); err != nil && !os.IsNotExist(err) {
+				allProofsCleaned = false
+				logging.Warn("Failed to delete proofs file", types.PoC,
+					"bundleID", fmt.Sprintf("%x", bundleID[:8]),
+					"index", i,
+					"error", err)
+			} else if err == nil {
+				deletedCount++
+			}
+		}
+
+		// Continue cleaning only if all proofs were deleted
+		if !allProofsCleaned {
+			logging.Warn("Failed to delete all proofs for bundle", types.PoC,
+				"bundleID", fmt.Sprintf("%x", bundleID[:8]),
+				"error", "not all proofs deleted")
+			continue
+		}
+
+		// Delete bundle header file
+		bundlePath := s.bundleFilePath(bundleID)
+		if err := os.Remove(bundlePath); err != nil && !os.IsNotExist(err) {
+			logging.Warn("Failed to delete bundle file", types.PoC,
+				"bundleID", fmt.Sprintf("%x", bundleID[:8]),
+				"error", err)
+		} else if err == nil {
+			deletedCount++
+		}
+
+		// Remove from in-memory maps
+		delete(s.bundles, bundleID)
+		delete(s.proofs, bundleID)
+	}
+
+	logging.Info("Deleted data for PoC heights", types.PoC,
+		"maxPocHeight", maxPocHeight,
+		"bundlesDeleted", len(bundlesToDelete),
+		"totalItemsDeleted", deletedCount)
+
+	return deletedCount, nil
 }
 
 func (s *FileBundleStorage) Close() error {
