@@ -141,15 +141,11 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
-        run: |
-          sudo mkdir -p /root/.docker
-          AUTH=$(echo -n "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64 -w 0)
-          echo "{\"auths\":{\"ghcr.io\":{\"auth\":\"${AUTH}\"}}}" | sudo tee /root/.docker/config.json > /dev/null
-
-      - name: Create Buildx builder accessible from sudo
-        run: |
-          sudo docker buildx create --name ci-builder --driver docker-container --use
-          sudo docker buildx inspect --bootstrap ci-builder
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Make
         run: |
@@ -171,9 +167,9 @@ jobs:
         env:
           GENESIS_OVERRIDES_FILE: "inference-chain/test_genesis_overrides.json"
         run: |
-          sudo -E make build-docker USE_REGISTRY_CACHE=1
+          make build-docker USE_REGISTRY_CACHE=1
           echo "=== Images immediately after build ==="
-          sudo docker images | head -20
+          docker images | head -20
 
       - name: Save Docker Images
         run: |
