@@ -42,7 +42,7 @@ func TestStartProcessed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := startProcessed(tt.inference)
+			result := tt.inference.StartProcessed()
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -70,7 +70,7 @@ func TestFinishedProcessed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := finishedProcessed(tt.inference)
+			result := tt.inference.FinishedProcessed()
 			assert.Equal(t, tt.expected, result)
 		})
 	}
