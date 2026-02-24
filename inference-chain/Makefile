@@ -27,8 +27,10 @@ WASMVM_STATIC_LINUX_ARM64_URL := https://github.com/CosmWasm/wasmvm/releases/dow
 USE_REGISTRY_CACHE ?= 0
 ifeq ($(USE_REGISTRY_CACHE),1)
 DOCKER_CACHE_ARGS := --cache-from type=registry,ref=ghcr.io/product-science/inferenced:buildcache --cache-to type=registry,ref=ghcr.io/product-science/inferenced:buildcache,mode=max
+DOCKER_CACHE_ARGS_UPGRADE := --cache-from type=registry,ref=ghcr.io/product-science/inferenced:buildcache-upgrade --cache-to type=registry,ref=ghcr.io/product-science/inferenced:buildcache-upgrade,mode=max
 else
-DOCKER_CACHE_ARGS ?=
+DOCKER_CACHE_ARGS :=
+DOCKER_CACHE_ARGS_UPGRADE :=
 endif
 
 install:
@@ -117,7 +119,7 @@ define DOCKER_BUILD_UPGRADE
 	@rm -rf .docker-context/inference-chain/.docker-context
 	@mkdir -p .docker-context/cosmovisor && cp -r ../cosmovisor/* .docker-context/cosmovisor/
 	@docker buildx build \
-		$(DOCKER_CACHE_ARGS) \
+		$(DOCKER_CACHE_ARGS_UPGRADE) \
 		--platform $(PLATFORM) \
 		--build-arg LDFLAGS='$(ldflags)' \
 		--build-arg GOOS=$(GOOS) \

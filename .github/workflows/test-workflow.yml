@@ -141,7 +141,10 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        run: |
+          sudo mkdir -p /root/.docker
+          AUTH=$(echo -n "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64 -w 0)
+          echo "{\"auths\":{\"ghcr.io\":{\"auth\":\"${AUTH}\"}}}" | sudo tee /root/.docker/config.json > /dev/null
 
       - name: Create Buildx builder accessible from sudo
         run: |
