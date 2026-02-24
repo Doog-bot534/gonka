@@ -63,24 +63,15 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 	if existingInference.FinishedProcessed() {
 		if err := k.compareStartDevComponents(msg, &existingInference); err != nil {
 			k.LogError("StartInference: dev component mismatch", types.Inferences, "error", err, "inferenceId", msg.InferenceId)
-			if k.failOnCompareMismatch {
-				return failedStart(ctx, err, msg), nil
-			}
-			k.LogWarn("StartInference: continuing after dev mismatch (log-only mode)", types.Inferences, "inferenceId", msg.InferenceId)
+			return failedStart(ctx, err, msg), nil
 		}
 		if err := k.compareStartTAComponents(msg, &existingInference); err != nil {
 			k.LogError("StartInference: TA component mismatch", types.Inferences, "error", err, "inferenceId", msg.InferenceId)
-			if k.failOnCompareMismatch {
-				return failedStart(ctx, err, msg), nil
-			}
-			k.LogWarn("StartInference: continuing after TA mismatch (log-only mode)", types.Inferences, "inferenceId", msg.InferenceId)
+			return failedStart(ctx, err, msg), nil
 		}
 		if err := k.compareStartModelField(msg, &existingInference); err != nil {
 			k.LogError("StartInference: model field mismatch", types.Inferences, "error", err, "inferenceId", msg.InferenceId)
-			if k.failOnCompareMismatch {
-				return failedStart(ctx, err, msg), nil
-			}
-			k.LogWarn("StartInference: continuing after model mismatch (log-only mode)", types.Inferences, "inferenceId", msg.InferenceId)
+			return failedStart(ctx, err, msg), nil
 		}
 		k.LogDebug("StartInference: cryptographic signature verification skipped; dev and TA components compared for consistency", types.Inferences, "inferenceId", msg.InferenceId)
 	} else {

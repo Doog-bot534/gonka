@@ -81,24 +81,15 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 	if existingInference.StartProcessed() {
 		if err := k.compareFinishDevComponents(msg, &existingInference); err != nil {
 			k.LogError("FinishInference: dev component mismatch", types.Inferences, "error", err, "inferenceId", msg.InferenceId)
-			if k.failOnCompareMismatch {
-				return failedFinish(ctx, err, msg), nil
-			}
-			k.LogWarn("FinishInference: continuing after dev mismatch (log-only mode)", types.Inferences, "inferenceId", msg.InferenceId)
+			return failedFinish(ctx, err, msg), nil
 		}
 		if err := k.compareFinishTAComponents(msg, &existingInference); err != nil {
 			k.LogError("FinishInference: TA component mismatch", types.Inferences, "error", err, "inferenceId", msg.InferenceId)
-			if k.failOnCompareMismatch {
-				return failedFinish(ctx, err, msg), nil
-			}
-			k.LogWarn("FinishInference: continuing after TA mismatch (log-only mode)", types.Inferences, "inferenceId", msg.InferenceId)
+			return failedFinish(ctx, err, msg), nil
 		}
 		if err := k.compareFinishModelField(msg, &existingInference); err != nil {
 			k.LogError("FinishInference: model field mismatch", types.Inferences, "error", err, "inferenceId", msg.InferenceId)
-			if k.failOnCompareMismatch {
-				return failedFinish(ctx, err, msg), nil
-			}
-			k.LogWarn("FinishInference: continuing after model mismatch (log-only mode)", types.Inferences, "inferenceId", msg.InferenceId)
+			return failedFinish(ctx, err, msg), nil
 		}
 		k.LogDebug("FinishInference: cryptographic signature verification skipped; dev and TA components compared for consistency", types.Inferences, "inferenceId", msg.InferenceId)
 	} else {
@@ -305,7 +296,6 @@ func (k msgServer) compareFinishTAComponents(msg *types.MsgFinishInference, infe
 			inference.TransferredBy,
 		)
 	}
-	// Start-first flow guarantees AssignedTo is set by StartInference and immutable thereafter, so compare against that field
 	if inference.AssignedTo != msg.ExecutedBy {
 		return sdkerrors.Wrapf(
 			types.ErrTAComponentMismatch,
