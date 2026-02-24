@@ -525,6 +525,114 @@ The host is passive -- it reacts to the bridge notification, doesn't poll. One n
 If the user disappears, any group member can submit MsgSettleEscrow after a timeout (TBD: wall-clock from last nonce or escrow expiry height set at creation). All hosts have full state within one round (propagated via diffs). If a host is missing recent state, it requests from other hosts via the public API endpoint. Same 2/3+ signature requirement, same dispute window.
 
 
+## ML Node Integration
+
+The subnet reuses the existing dapi infrastructure for ML node interaction. Two interfaces defined in the subnet package, implemented by dapi as thin adapters over existing code. Zero cosmos-sdk in subnet, minimal changes in dapi.
+
+### What dapi Already Has
+
+Inference execution and validation re-execution share the same core: send an OpenAI-compatible request to a vLLM node, collect response, extract logits and token counts. This logic lives in:
+
+- `completionapi/` -- request modification (`ModifyRequestBody`), response parsing (`CompletionResponse` interface), streaming processor (`ExecutorResponseProcessor`), logit extraction. Pure HTTP + JSON, zero chain dependencies.
+- `internal/server/public/proxy.go` -- streaming response handler. Pure HTTP.
+- `broker/` -- ML node locking, retry on transport/5xx errors, model-based node selection (`DoWithLockedNodeHTTPRetry`, `LockNode`).
+- `internal/validation/inference_validation.go` -- `validateWithPayloads()` re-executes inference with enforced tokens, `compareLogits()` computes similarity score. Core logic is pure compute, only depends on node URL and payloads.
+
+Chain-coupled parts that the subnet does NOT need: MsgStartInference/MsgFinishInference/MsgValidation chain transactions (subnet tracks its own state), transfer agent logic, escrow validation. Authz verification is still needed for warm key grants.
+
+### Subnet Interfaces
+
+```go
+// subnet/engine/interface.go
+
+// InferenceEngine executes inference on an ML node.
+// Implemented by dapi using existing broker + completionapi.
+type InferenceEngine interface {
+    // Execute sends request to ML node, streams response to writer,
+    // returns result with response hash and token counts.
+    Execute(ctx context.Context, req ExecuteRequest) (*ExecuteResult, error)
+}
+
+type ExecuteRequest struct {
+    Model       string
+    RequestBody []byte              // original OpenAI-compatible JSON
+    Seed        int32
+    Writer      http.ResponseWriter // receives streaming response
+}
+
+type ExecuteResult struct {
+    ResponsePayload  []byte
+    PromptPayload    []byte  // canonicalized request
+    PromptHash       string
+    ResponseHash     string
+    PromptTokens     uint64
+    CompletionTokens uint64
+}
+
+// ValidationEngine re-executes inference and compares logits.
+// Implemented by dapi using existing broker + completionapi.
+type ValidationEngine interface {
+    Validate(ctx context.Context, req ValidateRequest) (*ValidateResult, error)
+}
+
+type ValidateRequest struct {
+    Model           string
+    PromptPayload   []byte
+    ResponsePayload []byte
+}
+
+type ValidateResult struct {
+    Similarity   float64 // 1.0 = identical, <0.99 = invalid
+    ResponseHash string
+}
+```
+
+### dapi Adapters
+
+Adapters live in dapi, not in the subnet package. Each wraps existing functions with no modifications to the originals.
+
+```
+decentralized-api/
+  internal/
+    subnet/
+      engine_adapter.go       # implements InferenceEngine
+      validation_adapter.go   # implements ValidationEngine
+      router.go               # mounts /subnet/v1/ routes, wires adapters
+```
+
+InferenceEngine adapter (~50-80 lines):
+1. `completionapi.ModifyRequestBody(requestBody, seed)` -- existing
+2. `broker.DoWithLockedNodeHTTPRetry(broker, model, ...)` -- existing, broker used as-is
+3. `http.Post(completionsUrl, body)` -- existing pattern
+4. `completionapi.NewExecutorResponseProcessor` + `proxyResponse` -- existing, streams to writer
+5. Extract hash + usage from `responseProcessor.GetResponse()` -- existing
+6. Return `ExecuteResult`
+
+ValidationEngine adapter (~40-60 lines):
+1. `broker.LockNode(broker, model, ...)` -- existing
+2. Parse payloads, extract enforced tokens via `completionapi` -- existing
+3. POST to mlnode with enforced tokens -- existing pattern from `validateWithPayloads`
+4. Compare logits via `compareLogits()` -- existing
+5. Return `ValidateResult`
+
+### Integration Point
+
+The subnet mounts on the existing dapi server as a new echo router group:
+
+```go
+// decentralized-api/internal/subnet/router.go
+
+func Mount(group *echo.Group, engine InferenceEngine, validator ValidationEngine, ...) {
+    host := subnet.NewHost(engine, validator, storage, signer, ...)
+    group.POST("/sessions/:escrow_id/chat/completions", host.HandleInference)
+    group.POST("/sessions/:escrow_id/gossip/nonce", host.HandleNonceGossip)
+    group.POST("/sessions/:escrow_id/gossip/txs", host.HandleTxGossip)
+}
+```
+
+The dapi server startup wires the adapters and mounts the group at `/subnet/v1/`. The subnet handler receives user requests with diffs, applies them to subnet state, calls `InferenceEngine.Execute()`, creates MsgFinishInference for subnet state, signs the new state, returns signature + streaming response.
+
+
 ## Open Questions
 
 1. Re-propagation timeout: 120s is a starting point. Should it scale with model latency or be fixed?
