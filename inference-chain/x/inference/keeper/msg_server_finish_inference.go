@@ -305,7 +305,8 @@ func (k msgServer) compareFinishTAComponents(msg *types.MsgFinishInference, infe
 			inference.TransferredBy,
 		)
 	}
-	if inference.AssignedTo != "" && inference.AssignedTo != msg.ExecutedBy {
+	// Start-first flow guarantees AssignedTo is set by StartInference and immutable thereafter, so compare against that field
+	if inference.AssignedTo != msg.ExecutedBy {
 		return sdkerrors.Wrapf(
 			types.ErrTAComponentMismatch,
 			"executor mismatch: finish.executed_by=%s start.assigned_to=%s",
