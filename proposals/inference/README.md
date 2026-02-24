@@ -112,15 +112,14 @@ MsgSettleEscrow(
   nonce,                              # latest nonce
   signatures,                         # map[slot_id -> sig] over (state_root, escrow_id, nonce)
   inferences_root,                    # Merkle sibling for proof
-  usage,                              # UsageStats (total_cost, total_input_tokens, total_output_tokens)
-  host_stats,                         # map[slot_id -> HostStats(missed, invalid)]
+  host_stats,                         # map[slot_id -> HostStats(missed, invalid, cost, input_tokens, output_tokens)]
 )
 ```
 
-The state is structured as a Merkle tree: `state_root = hash(settlement_hash || inferences_root)`. Mainnet receives usage and host_stats in plaintext plus the Merkle sibling (inferences_root). It recomputes settlement_hash, verifies the Merkle proof against state_root, and checks 2/3+ slot-weighted signatures. This allows settlement without mainnet ever seeing individual inference records.
+The state is structured as a Merkle tree: `state_root = hash(settlement_hash || inferences_root)`. Mainnet receives host_stats in plaintext plus the Merkle sibling (inferences_root). It recomputes settlement_hash from host_stats, verifies the Merkle proof against state_root, and checks 2/3+ slot-weighted signatures. This allows settlement without mainnet ever seeing individual inference records.
 
 5. On the escrow settlement, mainnet verifies the Merkle proof and 2/3+ slot-weighted signatures.
-Once verified it settles escrow for the user: hosts are paid from escrow proportionally to usage.total_cost, unused balance is refunded to user, host_stats are recorded.
+Once verified it settles escrow for the user: each host is paid from escrow according to host_stats[slot].cost, remaining balance is refunded to user, host_stats are recorded.
 
 
 ## Subnet Protocol
