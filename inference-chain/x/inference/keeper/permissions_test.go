@@ -117,7 +117,7 @@ func TestPermission_ActiveParticipant_CurrentAndPrevious(t *testing.T) {
 	// ensure current epoch is 10
 	require.NoError(t, k.EffectiveEpochIndex.Set(ctx, 10))
 	// We also need to clear current active participants cache for epoch 10 if it was set before
-	require.NoError(t, k.ActiveParticipantsCache.Remove(ctx, collections.Join(uint64(10), sdk.MustAccAddressFromBech32(signer))))
+	require.NoError(t, k.ActiveParticipantsSet.Remove(ctx, collections.Join(uint64(10), sdk.MustAccAddressFromBech32(signer))))
 
 	// check OR: should pass because PreviousActive holds even if Active doesn't
 	err = keeper.CheckPermission(ms, ctx, msgVal, keeper.ActiveParticipantPermission, keeper.PreviousActiveParticipantPermission)
@@ -127,11 +127,11 @@ func TestPermission_ActiveParticipant_CurrentAndPrevious(t *testing.T) {
 	emptyCurrent := types.ActiveParticipants{EpochId: 10, Participants: []*types.ActiveParticipant{}}
 	require.NoError(t, k.SetActiveParticipants(ctx, emptyCurrent))
 	// Clear the cache manually because SetActiveParticipants with empty list doesn't clear it
-	require.NoError(t, k.ActiveParticipantsCache.Remove(ctx, collections.Join(uint64(10), sdk.MustAccAddressFromBech32(signer))))
+	require.NoError(t, k.ActiveParticipantsSet.Remove(ctx, collections.Join(uint64(10), sdk.MustAccAddressFromBech32(signer))))
 	emptyPrevious := types.ActiveParticipants{EpochId: 9, Participants: []*types.ActiveParticipant{}}
 	require.NoError(t, k.SetActiveParticipants(ctx, emptyPrevious))
 	// Clear the cache manually
-	require.NoError(t, k.ActiveParticipantsCache.Remove(ctx, collections.Join(uint64(9), sdk.MustAccAddressFromBech32(signer))))
+	require.NoError(t, k.ActiveParticipantsSet.Remove(ctx, collections.Join(uint64(9), sdk.MustAccAddressFromBech32(signer))))
 	err = keeper.CheckPermission(ms, ctx, msgVal, keeper.ActiveParticipantPermission, keeper.PreviousActiveParticipantPermission)
 	require.Error(t, err)
 }

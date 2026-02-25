@@ -87,10 +87,10 @@ func TestSetActiveParticipants(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify cache
-	has, err := keeper.ActiveParticipantsCache.Has(ctx, collections.Join(uint64(1), addr0))
+	has, err := keeper.ActiveParticipantsSet.Has(ctx, collections.Join(uint64(1), addr0))
 	require.NoError(t, err)
 	require.True(t, has)
-	has, err = keeper.ActiveParticipantsCache.Has(ctx, collections.Join(uint64(1), addr1))
+	has, err = keeper.ActiveParticipantsSet.Has(ctx, collections.Join(uint64(1), addr1))
 	require.NoError(t, err)
 	require.True(t, has)
 
@@ -119,7 +119,7 @@ func TestSetActiveParticipants(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify updated cache
-	has, err = keeper.ActiveParticipantsCache.Has(ctx, collections.Join(uint64(1), addr2))
+	has, err = keeper.ActiveParticipantsSet.Has(ctx, collections.Join(uint64(1), addr2))
 	require.NoError(t, err)
 	require.True(t, has)
 

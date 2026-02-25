@@ -212,7 +212,7 @@ func (k msgServer) checkActiveParticipantPermission(ctx context.Context, signer 
 	if currentEpoch < epochOffset {
 		return types.ErrActiveParticipantNotFound
 	}
-	found, err := k.ActiveParticipantsCache.Has(ctx, collections.Join(currentEpoch-epochOffset, signer))
+	found, err := k.ActiveParticipantsSet.Has(ctx, collections.Join(currentEpoch-epochOffset, signer))
 	if err != nil {
 		return err
 	}

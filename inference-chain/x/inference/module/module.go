@@ -588,7 +588,7 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 	}
 	if upcomingEpoch.Index > 3 {
 		outOfDateActiveParticipants := collections.NewPrefixedPairRange[uint64, sdk.AccAddress](upcomingEpoch.Index - 2)
-		err = am.keeper.ActiveParticipantsCache.Clear(ctx, outOfDateActiveParticipants)
+		err = am.keeper.ActiveParticipantsSet.Clear(ctx, outOfDateActiveParticipants)
 		if err != nil {
 			am.LogWarn("onEndOfPoCValidationStage: Unable to clear old active participants cache", types.EpochGroup, "epochIndex", upcomingEpoch.Index-2, "error", err.Error())
 		}

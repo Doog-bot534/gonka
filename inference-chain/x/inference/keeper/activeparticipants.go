@@ -64,7 +64,7 @@ func (k Keeper) SetActiveParticipants(ctx context.Context, participants types.Ac
 
 func (k Keeper) SetActiveParticipantsCache(ctx context.Context, participants types.ActiveParticipants) error {
 	r := collections.NewPrefixedPairRange[uint64, sdk.AccAddress](participants.EpochId)
-	err := k.ActiveParticipantsCache.Clear(ctx, r)
+	err := k.ActiveParticipantsSet.Clear(ctx, r)
 	if err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func (k Keeper) SetActiveParticipantsCache(ctx context.Context, participants typ
 		if err != nil {
 			return err
 		}
-		err = k.ActiveParticipantsCache.Set(ctx, collections.Join(participants.EpochId, addr))
+		err = k.ActiveParticipantsSet.Set(ctx, collections.Join(participants.EpochId, addr))
 		if err != nil {
 			return err
 		}
