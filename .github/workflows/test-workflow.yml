@@ -235,10 +235,10 @@ jobs:
       - name: Load Docker Images
         run: |
           gunzip docker-images/*.tar.gz || true
-          docker load -i docker-images/inference-chain.tar || true
-          docker load -i docker-images/decentralized-api.tar || true
-          docker load -i docker-images/inference-mock-server.tar || true
-          docker load -i docker-images/proxy.tar || true
+          sudo docker load -i docker-images/inference-chain.tar || true
+          sudo docker load -i docker-images/decentralized-api.tar || true
+          sudo docker load -i docker-images/inference-mock-server.tar || true
+          sudo docker load -i docker-images/proxy.tar || true
 
       - name: Install Make
         run: |
