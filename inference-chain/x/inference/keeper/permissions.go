@@ -145,7 +145,7 @@ func (k msgServer) CheckPermission(ctx context.Context, msg HasSigners, permissi
 	signers := msg.GetSignersStrings()
 	var err error
 	for _, signer := range signers {
-		err = k.checkPermissions(ctx, signer, append(permissions, permission))
+		err = k.checkPermissions(ctx, signer, permission, permissions)
 		if err == nil {
 			return nil
 		}
@@ -153,13 +153,16 @@ func (k msgServer) CheckPermission(ctx context.Context, msg HasSigners, permissi
 	return err
 }
 
-func (k msgServer) checkPermissions(ctx context.Context, signer string, permissions []Permission) error {
+func (k msgServer) checkPermissions(ctx context.Context, signer string, requiredPermission Permission, additionalPermissions []Permission) error {
 	signerAddr, err := sdk.AccAddressFromBech32(signer)
 	if err != nil {
 		return err
 	}
 	var lastErr error
-	for _, perm := range permissions {
+	if err := k.checkSinglePermission(ctx, requiredPermission, signerAddr); err == nil {
+		return nil
+	}
+	for _, perm := range additionalPermissions {
 		err := k.checkSinglePermission(ctx, perm, signerAddr)
 		if err == nil {
 			return nil
