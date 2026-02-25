@@ -163,7 +163,8 @@ func TestCrossMsg_FinishFirst_BadTASignature_Rejected(t *testing.T) {
 	require.Contains(t, resp.ErrorMessage, types.ErrInvalidSignature.Error())
 }
 
-// TA signature is NOT checked on start-first — it's deferred to the finish comparison
+// TA signature is NOT checked on start-first
+// When finish comes in we only care about field correctness
 func TestCrossMsg_StartFirst_BadTASignature_Accepted(t *testing.T) {
 	s := newCrossMsgSetup(t)
 	msg := s.validStartMsg()
@@ -171,6 +172,12 @@ func TestCrossMsg_StartFirst_BadTASignature_Accepted(t *testing.T) {
 	resp, err := s.helper.MessageServer.StartInference(s.helper.context, msg)
 	require.NoError(t, err)
 	require.Empty(t, resp.ErrorMessage)
+
+	msgF := s.validFinishMsg()
+	msgF.TransferSignature = bogusSig()
+	respF, err := s.helper.MessageServer.FinishInference(s.helper.context, msgF)
+	require.NoError(t, err)
+	require.Empty(t, respF.ErrorMessage)
 }
 
 // ================================================
