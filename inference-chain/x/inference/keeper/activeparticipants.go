@@ -44,15 +44,9 @@ func (k Keeper) GetActiveParticipants(ctx context.Context, epochId uint64) (val 
 }
 
 func (k Keeper) SetActiveParticipants(ctx context.Context, participants types.ActiveParticipants) error {
-	for _, p := range participants.Participants {
-		addr, err := sdk.AccAddressFromBech32(p.Index)
-		if err != nil {
-			return err
-		}
-		err = k.ActiveParticipantsCache.Set(ctx, collections.Join(participants.EpochId, addr))
-		if err != nil {
-			return err
-		}
+	err := k.SetActiveParticipantsCache(ctx, participants)
+	if err != nil {
+		return err
 	}
 
 	storeAdapter := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
@@ -65,5 +59,24 @@ func (k Keeper) SetActiveParticipants(ctx context.Context, participants types.Ac
 		return err
 	}
 	store.Set(key, b)
+	return nil
+}
+
+func (k Keeper) SetActiveParticipantsCache(ctx context.Context, participants types.ActiveParticipants) error {
+	r := collections.NewPrefixedPairRange[uint64, sdk.AccAddress](participants.EpochId)
+	err := k.ActiveParticipantsCache.Clear(ctx, r)
+	if err != nil {
+		return err
+	}
+	for _, p := range participants.Participants {
+		addr, err := sdk.AccAddressFromBech32(p.Index)
+		if err != nil {
+			return err
+		}
+		err = k.ActiveParticipantsCache.Set(ctx, collections.Join(participants.EpochId, addr))
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
