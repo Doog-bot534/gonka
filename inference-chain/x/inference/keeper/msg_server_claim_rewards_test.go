@@ -58,6 +58,19 @@ func TestMsgServer_ClaimRewards(t *testing.T) {
 	}
 	k.SetEpochGroupData(sdk.UnwrapSDKContext(ctx), currentEpochData)
 
+	// Register participant and set as active in current epoch
+	creatorAddr, _ := sdk.AccAddressFromBech32(testutil.Creator)
+	k.Participants.Set(ctx, creatorAddr, types.Participant{Index: testutil.Creator, Address: testutil.Creator, Status: types.ParticipantStatus_ACTIVE})
+	// Set active for both previous (when work was done) and current (when claiming)
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      epochIndex,
+		Participants: []*types.ActiveParticipant{{Index: testutil.Creator}},
+	})
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      currentEpochIndex,
+		Participants: []*types.ActiveParticipant{{Index: testutil.Creator}},
+	})
+
 	// Create a settle amount for the participant with the signature
 	settleAmount := types.SettleAmount{
 		Participant:   testutil.Creator,
@@ -103,6 +116,7 @@ func TestMsgServer_ClaimRewards(t *testing.T) {
 	require.NoError(t, err)
 
 	// Mock the account keeper to return our mock account
+	mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), addr).Return(true).AnyTimes()
 	mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), addr).Return(mockAccount).AnyTimes()
 
 	// Mock the AuthzKeeper to return empty grants (no grantees)
@@ -164,10 +178,19 @@ func TestMsgServer_ClaimRewards(t *testing.T) {
 		gomock.Any(),
 	).Return(nil).AnyTimes()
 
-	k.SetParticipant(ctx, types.Participant{
+	creatorAddr, _ = sdk.AccAddressFromBech32(testutil.Creator)
+	k.Participants.Set(ctx, creatorAddr, types.Participant{
 		Index:   testutil.Creator,
 		Address: testutil.Creator,
 		Status:  types.ParticipantStatus_ACTIVE,
+	})
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      epochIndex,
+		Participants: []*types.ActiveParticipant{{Index: testutil.Creator}},
+	})
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      currentEpochIndex,
+		Participants: []*types.ActiveParticipant{{Index: testutil.Creator}},
 	})
 	// Call ClaimRewards
 	resp, err := ms.ClaimRewards(ctx.WithBlockHeight(claimDebounceBlocks+1), &types.MsgClaimRewards{
@@ -215,10 +238,19 @@ func TestMsgServer_ClaimRewards_NoRewards(t *testing.T) {
 	}
 	k.SetEpochGroupData(ctx, currentEpochData)
 
-	k.SetParticipant(ctx, types.Participant{
+	creatorAddr, _ := sdk.AccAddressFromBech32(testutil.Creator)
+	k.Participants.Set(ctx, creatorAddr, types.Participant{
 		Index:   testutil.Creator,
 		Address: testutil.Creator,
 		Status:  types.ParticipantStatus_ACTIVE,
+	})
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      100, // epochIndex
+		Participants: []*types.ActiveParticipant{{Index: testutil.Creator}},
+	})
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      currentEpochIndex,
+		Participants: []*types.ActiveParticipant{{Index: testutil.Creator}},
 	})
 	// Call ClaimRewards without setting up any rewards
 	resp, err := ms.ClaimRewards(ctx.WithBlockHeight(claimDebounceBlocks+1), &types.MsgClaimRewards{
@@ -256,10 +288,19 @@ func TestMsgServer_ClaimRewards_WrongHeight(t *testing.T) {
 		},
 	}
 	k.SetEpochGroupData(sdk.UnwrapSDKContext(ctx), currentEpochData)
-	k.SetParticipant(ctx, types.Participant{
+	creatorAddr, _ := sdk.AccAddressFromBech32(testutil.Creator)
+	k.Participants.Set(ctx, creatorAddr, types.Participant{
 		Index:   testutil.Creator,
 		Address: testutil.Creator,
 		Status:  types.ParticipantStatus_ACTIVE,
+	})
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      200, // epochIndex in this test
+		Participants: []*types.ActiveParticipant{{Index: testutil.Creator}},
+	})
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      currentEpochIndex,
+		Participants: []*types.ActiveParticipant{{Index: testutil.Creator}},
 	})
 
 	// Setup a settle amount for the participant but with a different height
@@ -319,10 +360,19 @@ func TestMsgServer_ClaimRewards_ZeroRewards(t *testing.T) {
 	}
 	_ = k.SetSettleAmount(sdk.UnwrapSDKContext(ctx), settleAmount)
 
-	_ = k.SetParticipant(ctx, types.Participant{
+	creatorAddr, _ := sdk.AccAddressFromBech32(testutil.Creator)
+	k.Participants.Set(ctx, creatorAddr, types.Participant{
 		Index:   testutil.Creator,
 		Address: testutil.Creator,
 		Status:  types.ParticipantStatus_ACTIVE,
+	})
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      100, // epochIndex
+		Participants: []*types.ActiveParticipant{{Index: testutil.Creator}},
+	})
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      currentEpochIndex,
+		Participants: []*types.ActiveParticipant{{Index: testutil.Creator}},
 	})
 	// Call ClaimRewards
 	resp, err := ms.ClaimRewards(ctx.WithBlockHeight(claimDebounceBlocks+1), &types.MsgClaimRewards{
@@ -392,6 +442,21 @@ func TestMsgServer_ClaimRewards_ValidationLogic(t *testing.T) {
 		SeedSignature: signatureHex,
 	}
 	_ = k.SetSettleAmount(sdkCtx, settleAmount)
+
+	creatorAddr, _ := sdk.AccAddressFromBech32(testutil.Creator)
+	k.Participants.Set(ctx, creatorAddr, types.Participant{
+		Index:   testutil.Creator,
+		Address: testutil.Creator,
+		Status:  types.ParticipantStatus_ACTIVE,
+	})
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      epochIndex,
+		Participants: []*types.ActiveParticipant{{Index: testutil.Creator}},
+	})
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      currentEpochIndex,
+		Participants: []*types.ActiveParticipant{{Index: testutil.Creator}},
+	})
 
 	// Setup epoch group data with specific weights
 	epochData := types.EpochGroupData{
@@ -490,11 +555,6 @@ func TestMsgServer_ClaimRewards_ValidationLogic(t *testing.T) {
 	// Mock the AuthzKeeper to return empty grants (no grantees)
 	mocks.AuthzKeeper.EXPECT().GranterGrants(gomock.Any(), gomock.Any()).Return(&authztypes.QueryGranterGrantsResponse{Grants: []*authztypes.GrantAuthorization{}}, nil).AnyTimes()
 
-	k.SetParticipant(ctx, types.Participant{
-		Index:   testutil.Creator,
-		Address: testutil.Creator,
-		Status:  types.ParticipantStatus_ACTIVE,
-	})
 	// Call ClaimRewards - this should fail because we haven't validated any inferences yet
 	// Missing all required validations should exceed the threshold.
 	resp, err := ms.ClaimRewards(ctx.WithBlockHeight(claimDebounceBlocks+1), &types.MsgClaimRewards{
@@ -615,6 +675,21 @@ func TestMsgServer_ClaimRewards_PartialValidation(t *testing.T) {
 	}
 	_ = k.SetSettleAmount(sdkCtx, settleAmount)
 
+	creatorAddr, _ := sdk.AccAddressFromBech32(testutil.Creator)
+	k.Participants.Set(ctx, creatorAddr, types.Participant{
+		Index:   testutil.Creator,
+		Address: testutil.Creator,
+		Status:  types.ParticipantStatus_ACTIVE,
+	})
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      epochIndex,
+		Participants: []*types.ActiveParticipant{{Index: testutil.Creator}},
+	})
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      currentEpochIndex,
+		Participants: []*types.ActiveParticipant{{Index: testutil.Creator}},
+	})
+
 	// Setup epoch group data with specific weights
 	epochData := types.EpochGroupData{
 		EpochIndex:          epoch.Index,
@@ -712,11 +787,6 @@ func TestMsgServer_ClaimRewards_PartialValidation(t *testing.T) {
 	// Mock the AuthzKeeper to return empty grants (no grantees)
 	mocks.AuthzKeeper.EXPECT().GranterGrants(gomock.Any(), gomock.Any()).Return(&authztypes.QueryGranterGrantsResponse{Grants: []*authztypes.GrantAuthorization{}}, nil).AnyTimes()
 
-	k.SetParticipant(ctx, types.Participant{
-		Index:   testutil.Creator,
-		Address: testutil.Creator,
-		Status:  types.ParticipantStatus_ACTIVE,
-	})
 	// Call ClaimRewards - this should fail because we haven't validated any inferences yet
 	// Missing all required validations should exceed the threshold.
 	resp, err := ms.ClaimRewards(ctx.WithBlockHeight(claimDebounceBlocks+1), &types.MsgClaimRewards{
@@ -871,6 +941,15 @@ func TestMsgServer_ClaimRewards_PartialValidation(t *testing.T) {
 	}
 	_ = k.SetSettleAmount(sdkCtx, settleAmount2)
 
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      epochIndex2,
+		Participants: []*types.ActiveParticipant{{Index: testutil.Creator}},
+	})
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      currentEpochIndex2,
+		Participants: []*types.ActiveParticipant{{Index: testutil.Creator}},
+	})
+
 	// Setup performance summary for second epoch
 	perfSummary2 := types.EpochPerformanceSummary{
 		EpochIndex:    epochIndex2,
@@ -972,6 +1051,21 @@ func pocAvailabilityTest(t *testing.T, validatorIsAvailableDuringPoC bool) {
 		SeedSignature: signatureHex,
 	}
 	_ = k.SetSettleAmount(sdkCtx, settleAmount)
+
+	creatorAddr, _ := sdk.AccAddressFromBech32(testutil.Creator)
+	k.Participants.Set(ctx, creatorAddr, types.Participant{
+		Index:   testutil.Creator,
+		Address: testutil.Creator,
+		Status:  types.ParticipantStatus_ACTIVE,
+	})
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      epochIndex,
+		Participants: []*types.ActiveParticipant{{Index: testutil.Creator}},
+	})
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      currentEpochIndex,
+		Participants: []*types.ActiveParticipant{{Index: testutil.Creator}},
+	})
 
 	// Epoch Group Data (Main and Sub-group)
 	// Claimant has two nodes, one with full availability

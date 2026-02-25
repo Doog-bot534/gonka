@@ -85,7 +85,8 @@ type (
 		// PoC validation sampling snapshots
 		PoCValidationSnapshots collections.Map[int64, types.PoCValidationSnapshot]
 		// Punishment grace epochs for upgrade protection
-		PunishmentGraceEpochs collections.Map[uint64, types.GraceEpochParams]
+		PunishmentGraceEpochs   collections.Map[uint64, types.GraceEpochParams]
+		ActiveParticipantsCache collections.KeySet[collections.Pair[uint64, sdk.AccAddress]]
 	}
 )
 
@@ -427,6 +428,12 @@ func NewKeeper(
 			"punishment_grace_epochs",
 			collections.Uint64Key,
 			codec.CollValue[types.GraceEpochParams](cdc),
+		),
+		ActiveParticipantsCache: collections.NewKeySet(
+			sb,
+			types.ActiveParticipantsCachePrefix,
+			"active_participants_cache",
+			collections.PairKeyCodec(collections.Uint64Key, sdk.AccAddressKey),
 		),
 	}
 	// Build the collections schema

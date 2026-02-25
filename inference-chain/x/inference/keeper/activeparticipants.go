@@ -3,8 +3,10 @@ package keeper
 import (
 	"context"
 
+	"cosmossdk.io/collections"
 	"cosmossdk.io/store/prefix"
 	"github.com/cosmos/cosmos-sdk/runtime"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/productscience/inference/x/inference/types"
 )
 
@@ -42,6 +44,17 @@ func (k Keeper) GetActiveParticipants(ctx context.Context, epochId uint64) (val 
 }
 
 func (k Keeper) SetActiveParticipants(ctx context.Context, participants types.ActiveParticipants) error {
+	for _, p := range participants.Participants {
+		addr, err := sdk.AccAddressFromBech32(p.Index)
+		if err != nil {
+			return err
+		}
+		err = k.ActiveParticipantsCache.Set(ctx, collections.Join(participants.EpochId, addr))
+		if err != nil {
+			return err
+		}
+	}
+
 	storeAdapter := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
 	store := prefix.NewStore(storeAdapter, []byte{})
 

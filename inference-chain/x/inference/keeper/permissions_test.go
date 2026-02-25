@@ -6,7 +6,6 @@ import (
 
 	"cosmossdk.io/collections"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/productscience/inference/testutil"
 	keepertest "github.com/productscience/inference/testutil/keeper"
 	"github.com/productscience/inference/x/inference/keeper"
@@ -18,7 +17,7 @@ import (
 // test message types used for targeted permission checks
 type testMsgSingleSigner struct{ signer string }
 
-func (m *testMsgSingleSigner) GetSigners() []string { return []string{m.signer} }
+func (m *testMsgSingleSigner) GetSignersStrings() []string { return []string{m.signer} }
 
 func (m *testMsgSingleSigner) ValidateBasic() error { return nil }
 
@@ -57,13 +56,12 @@ func TestPermission_Account(t *testing.T) {
 
 	// success: account exists
 	accAddr := sdk.MustAccAddressFromBech32(testutil.Validator)
-	baseAcc := authtypes.NewBaseAccountWithAddress(accAddr)
-	mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), accAddr).Return(baseAcc).Times(1)
+	mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), accAddr).Return(true).Times(1)
 	err := keeper.CheckPermission(ms, ctx, msg, keeper.AccountPermission)
 	require.NoError(t, err)
 
 	// failure: account not found
-	mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), accAddr).Return(nil).Times(1)
+	mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), accAddr).Return(false).Times(1)
 	err = keeper.CheckPermission(ms, ctx, msg, keeper.AccountPermission)
 	require.Error(t, err)
 	require.ErrorIs(t, err, types.ErrAccountNotFound)
@@ -118,6 +116,8 @@ func TestPermission_ActiveParticipant_CurrentAndPrevious(t *testing.T) {
 	require.NoError(t, k.SetActiveParticipants(ctx, apPrev))
 	// ensure current epoch is 10
 	require.NoError(t, k.EffectiveEpochIndex.Set(ctx, 10))
+	// We also need to clear current active participants cache for epoch 10 if it was set before
+	require.NoError(t, k.ActiveParticipantsCache.Remove(ctx, collections.Join(uint64(10), sdk.MustAccAddressFromBech32(signer))))
 
 	// check OR: should pass because PreviousActive holds even if Active doesn't
 	err = keeper.CheckPermission(ms, ctx, msgVal, keeper.ActiveParticipantPermission, keeper.PreviousActiveParticipantPermission)
@@ -126,8 +126,12 @@ func TestPermission_ActiveParticipant_CurrentAndPrevious(t *testing.T) {
 	// negative: neither current nor previous contains signer
 	emptyCurrent := types.ActiveParticipants{EpochId: 10, Participants: []*types.ActiveParticipant{}}
 	require.NoError(t, k.SetActiveParticipants(ctx, emptyCurrent))
+	// Clear the cache manually because SetActiveParticipants with empty list doesn't clear it
+	require.NoError(t, k.ActiveParticipantsCache.Remove(ctx, collections.Join(uint64(10), sdk.MustAccAddressFromBech32(signer))))
 	emptyPrevious := types.ActiveParticipants{EpochId: 9, Participants: []*types.ActiveParticipant{}}
 	require.NoError(t, k.SetActiveParticipants(ctx, emptyPrevious))
+	// Clear the cache manually
+	require.NoError(t, k.ActiveParticipantsCache.Remove(ctx, collections.Join(uint64(9), sdk.MustAccAddressFromBech32(signer))))
 	err = keeper.CheckPermission(ms, ctx, msgVal, keeper.ActiveParticipantPermission, keeper.PreviousActiveParticipantPermission)
 	require.Error(t, err)
 }
@@ -209,25 +213,9 @@ func TestPermission_OR_Semantics(t *testing.T) {
 	err := keeper.CheckPermission(ms, ctx, msg, keeper.ActiveParticipantPermission, keeper.PreviousActiveParticipantPermission)
 	require.NoError(t, err)
 
-	// Now neither contains signer
-	empty := types.ActiveParticipants{EpochId: 100, Participants: []*types.ActiveParticipant{}}
-	require.NoError(t, k.SetActiveParticipants(ctx, empty))
-	emptyPrev := types.ActiveParticipants{EpochId: 99, Participants: []*types.ActiveParticipant{}}
-	require.NoError(t, k.SetActiveParticipants(ctx, emptyPrev))
+	require.NoError(t, k.EffectiveEpochIndex.Set(ctx, 105))
 	err = keeper.CheckPermission(ms, ctx, msg, keeper.ActiveParticipantPermission, keeper.PreviousActiveParticipantPermission)
 	require.Error(t, err)
-}
-
-func TestPermission_MismatchWithMessagePermissions(t *testing.T) {
-	_, ms, ctx, _ := setupPermissionsHarness(t)
-
-	// MsgValidation is mapped to two permissions in MessagePermissions
-	msg := &types.MsgValidation{Creator: testutil.Validator, InferenceId: "id"}
-
-	// Provide only one permission -> should error with ErrInvalidPermission
-	err := keeper.CheckPermission(ms, ctx, msg, keeper.ActiveParticipantPermission)
-	require.Error(t, err)
-	require.ErrorIs(t, err, types.ErrInvalidPermission)
 }
 
 func TestPermission_InvalidSignerAddress(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/productscience/inference/x/inference/keeper"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,14 +33,14 @@ func TestTxProtoMsgHandlersUseUnifiedPermissions(t *testing.T) {
 
 	for methodName, msgType := range protoRPCs {
 		h, ok := handlers[methodName]
-		require.Truef(t, ok, "missing msgServer handler for rpc %s(%s)", methodName, msgType)
-		require.Equalf(t, msgType, h.msgType, "handler %s uses wrong msg type", methodName)
-		require.Truef(t, strings.HasPrefix(filepath.Base(h.filePath), "msg_server_"), "handler %s must be in msg_server_*.go, found %s", methodName, h.filePath)
-		require.Truef(t, h.hasCheck, "handler %s is missing CheckPermission call", methodName)
+		assert.Truef(t, ok, "missing msgServer handler for rpc %s(%s)", methodName, msgType)
+		assert.Equalf(t, msgType, h.msgType, "handler %s uses wrong msg type", methodName)
+		assert.Truef(t, strings.HasPrefix(filepath.Base(h.filePath), "msg_server_"), "handler %s must be in msg_server_*.go, found %s", methodName, h.filePath)
+		assert.Truef(t, h.hasCheck, "handler %s is missing CheckPermission call", methodName)
 
 		perms, ok := mapPerms[msgType]
-		require.Truef(t, ok, "permissions.go is missing MessagePermissions entry for %s", msgType)
-		require.Equalf(t, sorted(perms), sorted(h.checkPermissions), "permissions mismatch for %s", methodName)
+		assert.Truef(t, ok, "permissions.go is missing MessagePermissions entry for %s", msgType)
+		assert.Equalf(t, sorted(perms), sorted(h.checkPermissions), "permissions mismatch for %s", methodName)
 	}
 }
 

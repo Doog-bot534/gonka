@@ -11,7 +11,7 @@ import (
 )
 
 func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishInference) (*types.MsgFinishInferenceResponse, error) {
-	if err := k.CheckPermission(goCtx, msg, ParticipantPermission); err != nil {
+	if err := k.CheckPermission(goCtx, msg, ActiveParticipantPermission, PreviousActiveParticipantPermission); err != nil {
 		ctx := sdk.UnwrapSDKContext(goCtx)
 		return failedFinish(ctx, err, msg), nil
 	}

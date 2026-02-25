@@ -29,8 +29,11 @@ func TestMsgServer_OutOfOrderInference(t *testing.T) {
 
 	// For escrow calls
 	mocks.BankKeeper.ExpectAny(ctx)
+	mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), mockRequester.GetBechAddress()).Return(true).AnyTimes()
 	mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), mockRequester.GetBechAddress()).Return(mockRequester).Times(2)
+	mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), mockTransferAgent.GetBechAddress()).Return(true).AnyTimes()
 	mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), mockTransferAgent.GetBechAddress()).Return(mockTransferAgent).Times(2)
+	mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), mockExecutor.GetBechAddress()).Return(true).AnyTimes()
 	mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), mockExecutor.GetBechAddress()).Return(mockExecutor).Times(1)
 
 	// For GranteesByMessageType calls (used by both FinishInference and StartInference)

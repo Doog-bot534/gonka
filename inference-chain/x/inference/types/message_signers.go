@@ -1,52 +1,70 @@
 package types
 
-// This file defines GetSigners() implementations for messages to satisfy the
+// This file defines GetSignersStrings() implementations for messages to satisfy the
 // HasSigners interface expected by keeper.CheckPermission.
 
 // Governance-authority messages
-func (msg *MsgUpdateParams) GetSigners() []string                    { return []string{msg.Authority} }
-func (msg *MsgRegisterModel) GetSigners() []string                   { return []string{msg.Authority} }
-func (msg *MsgApproveBridgeTokenForTrading) GetSigners() []string    { return []string{msg.Authority} }
-func (msg *MsgRegisterBridgeAddresses) GetSigners() []string         { return []string{msg.Authority} }
-func (msg *MsgRegisterLiquidityPool) GetSigners() []string           { return []string{msg.Authority} }
-func (msg *MsgRegisterTokenMetadata) GetSigners() []string           { return []string{msg.Authority} }
-func (msg *MsgMigrateAllWrappedTokens) GetSigners() []string         { return []string{msg.Authority} }
-func (msg *MsgRegisterWrappedTokenContract) GetSigners() []string    { return []string{msg.Authority} }
-func (msg *MsgAddUserToTrainingAllowList) GetSigners() []string      { return []string{msg.Authority} }
-func (msg *MsgCreatePartialUpgrade) GetSigners() []string            { return []string{msg.Authority} }
-func (msg *MsgRemoveUserFromTrainingAllowList) GetSigners() []string { return []string{msg.Authority} }
-func (msg *MsgSetTrainingAllowList) GetSigners() []string            { return []string{msg.Authority} }
-func (msg *MsgAddParticipantsToAllowList) GetSigners() []string      { return []string{msg.Authority} }
-func (msg *MsgRemoveParticipantsFromAllowList) GetSigners() []string { return []string{msg.Authority} }
+func (msg *MsgUpdateParams) GetSignersStrings() []string  { return []string{msg.Authority} }
+func (msg *MsgRegisterModel) GetSignersStrings() []string { return []string{msg.Authority} }
+func (msg *MsgApproveBridgeTokenForTrading) GetSignersStrings() []string {
+	return []string{msg.Authority}
+}
+func (msg *MsgRegisterBridgeAddresses) GetSignersStrings() []string { return []string{msg.Authority} }
+func (msg *MsgRegisterLiquidityPool) GetSignersStrings() []string   { return []string{msg.Authority} }
+func (msg *MsgRegisterTokenMetadata) GetSignersStrings() []string   { return []string{msg.Authority} }
+func (msg *MsgMigrateAllWrappedTokens) GetSignersStrings() []string { return []string{msg.Authority} }
+func (msg *MsgRegisterWrappedTokenContract) GetSignersStrings() []string {
+	return []string{msg.Authority}
+}
+func (msg *MsgAddUserToTrainingAllowList) GetSignersStrings() []string {
+	return []string{msg.Authority}
+}
+func (msg *MsgCreatePartialUpgrade) GetSignersStrings() []string { return []string{msg.Authority} }
+func (msg *MsgRemoveUserFromTrainingAllowList) GetSignersStrings() []string {
+	return []string{msg.Authority}
+}
+func (msg *MsgSetTrainingAllowList) GetSignersStrings() []string { return []string{msg.Authority} }
+func (msg *MsgAddParticipantsToAllowList) GetSignersStrings() []string {
+	return []string{msg.Authority}
+}
+func (msg *MsgRemoveParticipantsFromAllowList) GetSignersStrings() []string {
+	return []string{msg.Authority}
+}
 
 // Creator signed messages
-func (msg *MsgCreateTrainingTask) GetSigners() []string               { return []string{msg.Creator} }
-func (msg *MsgCreateDummyTrainingTask) GetSigners() []string          { return []string{msg.Creator} }
-func (msg *MsgAssignTrainingTask) GetSigners() []string               { return []string{msg.Creator} }
-func (msg *MsgClaimTrainingTaskForAssignment) GetSigners() []string   { return []string{msg.Creator} }
-func (msg *MsgFinishInference) GetSigners() []string                  { return []string{msg.Creator} }
-func (msg *MsgInvalidateInference) GetSigners() []string              { return []string{msg.Creator} }
-func (msg *MsgRevalidateInference) GetSigners() []string              { return []string{msg.Creator} }
-func (msg *MsgStartInference) GetSigners() []string                   { return []string{msg.Creator} }
-func (msg *MsgJoinTraining) GetSigners() []string                     { return []string{msg.Creator} }
-func (msg *MsgJoinTrainingStatus) GetSigners() []string               { return []string{msg.Creator} }
-func (msg *MsgSetBarrier) GetSigners() []string                       { return []string{msg.Creator} }
-func (msg *MsgSubmitHardwareDiff) GetSigners() []string               { return []string{msg.Creator} }
-func (msg *MsgSubmitNewParticipant) GetSigners() []string             { return []string{msg.Creator} }
-func (msg *MsgSubmitNewUnfundedParticipant) GetSigners() []string     { return []string{msg.Creator} }
-func (msg *MsgSubmitPocBatch) GetSigners() []string                   { return []string{msg.Creator} }
-func (msg *MsgSubmitPocValidation) GetSigners() []string              { return []string{msg.Creator} }
-func (msg *MsgSubmitPocValidationsV2) GetSigners() []string           { return []string{msg.Creator} }
-func (msg *MsgPoCV2StoreCommit) GetSigners() []string                 { return []string{msg.Creator} }
-func (msg *MsgMLNodeWeightDistribution) GetSigners() []string         { return []string{msg.Creator} }
-func (msg *MsgSubmitSeed) GetSigners() []string                       { return []string{msg.Creator} }
-func (msg *MsgSubmitTrainingKvRecord) GetSigners() []string           { return []string{msg.Creator} }
-func (msg *MsgSubmitUnitOfComputePriceProposal) GetSigners() []string { return []string{msg.Creator} }
-func (msg *MsgTrainingHeartbeat) GetSigners() []string                { return []string{msg.Creator} }
-func (msg *MsgValidation) GetSigners() []string                       { return []string{msg.Creator} }
-func (msg *MsgClaimRewards) GetSigners() []string                     { return []string{msg.Creator} }
-func (msg *MsgRequestBridgeMint) GetSigners() []string                { return []string{msg.Creator} }
-func (msg *MsgRequestBridgeWithdrawal) GetSigners() []string          { return []string{msg.Creator} }
+func (msg *MsgCreateTrainingTask) GetSignersStrings() []string      { return []string{msg.Creator} }
+func (msg *MsgCreateDummyTrainingTask) GetSignersStrings() []string { return []string{msg.Creator} }
+func (msg *MsgAssignTrainingTask) GetSignersStrings() []string      { return []string{msg.Creator} }
+func (msg *MsgClaimTrainingTaskForAssignment) GetSignersStrings() []string {
+	return []string{msg.Creator}
+}
+func (msg *MsgFinishInference) GetSignersStrings() []string      { return []string{msg.Creator} }
+func (msg *MsgInvalidateInference) GetSignersStrings() []string  { return []string{msg.Creator} }
+func (msg *MsgRevalidateInference) GetSignersStrings() []string  { return []string{msg.Creator} }
+func (msg *MsgStartInference) GetSignersStrings() []string       { return []string{msg.Creator} }
+func (msg *MsgJoinTraining) GetSignersStrings() []string         { return []string{msg.Creator} }
+func (msg *MsgJoinTrainingStatus) GetSignersStrings() []string   { return []string{msg.Creator} }
+func (msg *MsgSetBarrier) GetSignersStrings() []string           { return []string{msg.Creator} }
+func (msg *MsgSubmitHardwareDiff) GetSignersStrings() []string   { return []string{msg.Creator} }
+func (msg *MsgSubmitNewParticipant) GetSignersStrings() []string { return []string{msg.Creator} }
+func (msg *MsgSubmitNewUnfundedParticipant) GetSignersStrings() []string {
+	return []string{msg.Creator}
+}
+func (msg *MsgSubmitPocBatch) GetSignersStrings() []string           { return []string{msg.Creator} }
+func (msg *MsgSubmitPocValidation) GetSignersStrings() []string      { return []string{msg.Creator} }
+func (msg *MsgSubmitPocValidationsV2) GetSignersStrings() []string   { return []string{msg.Creator} }
+func (msg *MsgPoCV2StoreCommit) GetSignersStrings() []string         { return []string{msg.Creator} }
+func (msg *MsgMLNodeWeightDistribution) GetSignersStrings() []string { return []string{msg.Creator} }
+func (msg *MsgSubmitSeed) GetSignersStrings() []string               { return []string{msg.Creator} }
+func (msg *MsgSubmitTrainingKvRecord) GetSignersStrings() []string   { return []string{msg.Creator} }
+func (msg *MsgSubmitUnitOfComputePriceProposal) GetSignersStrings() []string {
+	return []string{msg.Creator}
+}
+func (msg *MsgTrainingHeartbeat) GetSignersStrings() []string       { return []string{msg.Creator} }
+func (msg *MsgValidation) GetSignersStrings() []string              { return []string{msg.Creator} }
+func (msg *MsgClaimRewards) GetSignersStrings() []string            { return []string{msg.Creator} }
+func (msg *MsgRequestBridgeMint) GetSignersStrings() []string       { return []string{msg.Creator} }
+func (msg *MsgRequestBridgeWithdrawal) GetSignersStrings() []string { return []string{msg.Creator} }
 
 // And one validator signed message?
-func (msg *MsgBridgeExchange) GetSigners() []string { return []string{msg.Validator} }
+func (msg *MsgBridgeExchange) GetSignersStrings() []string { return []string{msg.Validator} }

@@ -34,7 +34,7 @@ func (k msgServer) RequestBridgeWithdrawal(goCtx context.Context, msg *types.Msg
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
 	// 1. Get the actual transaction signer (currently just the Creator of the message and is only one signer)
-	signers := msg.GetSigners()
+	signers := msg.GetSignersStrings()
 	if len(signers) != 1 {
 		return nil, fmt.Errorf("expected exactly one signer, got %d", len(signers))
 	}
