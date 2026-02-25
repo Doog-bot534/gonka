@@ -2,6 +2,7 @@ package keeper_test
 
 import (
 	"encoding/base64"
+	"github.com/productscience/inference/x/inference/calculations"
 	"testing"
 
 	authztypes "github.com/cosmos/cosmos-sdk/x/authz"
@@ -59,6 +60,42 @@ func newCrossMsgSetup(t *testing.T) crossMsgTestSetup {
 		taSignature:      taSig,
 		executorSig:      execSig,
 	}
+}
+
+func buildInferenceSignatures(
+	t *testing.T,
+	requester *MockAccount,
+	transferAgent *MockAccount,
+	executor *MockAccount,
+	promptPayload string,
+	requestTimestamp int64,
+) (string, string, string, string, string) {
+	t.Helper()
+
+	originalPromptHash := sha256Hash(promptPayload)
+	promptHash := sha256Hash(promptPayload)
+
+	devComponents := calculations.SignatureComponents{
+		Payload:         originalPromptHash,
+		Timestamp:       requestTimestamp,
+		TransferAddress: transferAgent.address,
+		ExecutorAddress: "",
+	}
+	inferenceId, err := calculations.Sign(requester, devComponents, calculations.Developer)
+	require.NoError(t, err)
+
+	taComponents := calculations.SignatureComponents{
+		Payload:         promptHash,
+		Timestamp:       requestTimestamp,
+		TransferAddress: transferAgent.address,
+		ExecutorAddress: executor.address,
+	}
+	taSignature, err := calculations.Sign(transferAgent, taComponents, calculations.TransferAgent)
+	require.NoError(t, err)
+	executorSignature, err := calculations.Sign(executor, taComponents, calculations.ExecutorAgent)
+	require.NoError(t, err)
+
+	return originalPromptHash, promptHash, inferenceId, taSignature, executorSignature
 }
 
 func (s *crossMsgTestSetup) validFinishMsg() *types.MsgFinishInference {

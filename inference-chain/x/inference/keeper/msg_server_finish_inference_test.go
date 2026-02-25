@@ -29,42 +29,6 @@ func sha256Hash(input string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func buildInferenceSignatures(
-	t *testing.T,
-	requester *MockAccount,
-	transferAgent *MockAccount,
-	executor *MockAccount,
-	promptPayload string,
-	requestTimestamp int64,
-) (string, string, string, string, string) {
-	t.Helper()
-
-	originalPromptHash := sha256Hash(promptPayload)
-	promptHash := sha256Hash(promptPayload)
-
-	devComponents := calculations.SignatureComponents{
-		Payload:         originalPromptHash,
-		Timestamp:       requestTimestamp,
-		TransferAddress: transferAgent.address,
-		ExecutorAddress: "",
-	}
-	inferenceId, err := calculations.Sign(requester, devComponents, calculations.Developer)
-	require.NoError(t, err)
-
-	taComponents := calculations.SignatureComponents{
-		Payload:         promptHash,
-		Timestamp:       requestTimestamp,
-		TransferAddress: transferAgent.address,
-		ExecutorAddress: executor.address,
-	}
-	taSignature, err := calculations.Sign(transferAgent, taComponents, calculations.TransferAgent)
-	require.NoError(t, err)
-	executorSignature, err := calculations.Sign(executor, taComponents, calculations.ExecutorAgent)
-	require.NoError(t, err)
-
-	return originalPromptHash, promptHash, inferenceId, taSignature, executorSignature
-}
-
 func advanceEpoch(ctx sdk.Context, k *keeper.Keeper, mocks *keeper2.InferenceMocks, blockHeight int64, epochGroupId uint64) (sdk.Context, error) {
 	ctx = ctx.WithBlockHeight(blockHeight)
 	ctx = ctx.WithBlockTime(ctx.BlockTime().Add(10 * 60 * 1000 * 1000)) // 10 minutes later
