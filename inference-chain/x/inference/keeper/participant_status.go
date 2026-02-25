@@ -41,7 +41,7 @@ func (k Keeper) UpdateParticipantStatus(ctx context.Context, participant *types.
 	)
 	participant.CurrentEpochStats = &newStats
 
-	k.LogInfo("Participant status updated", types.Validation, "address", participant.Address, "original", originalStatus, "new", newStatus, "reason", reason, "stats", participant.CurrentEpochStats)
+	k.LogInfo("Participant status updated", types.Validation, "address", participant.Address, "original", originalStatus, "new", newStatus, "reason", reason)
 
 	if originalStatus == newStatus {
 		return nil

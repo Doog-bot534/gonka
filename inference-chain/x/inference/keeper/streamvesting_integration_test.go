@@ -123,9 +123,8 @@ func TestVestingIntegration_ParameterBased(t *testing.T) {
 
 	// Set parameters for vesting periods
 	params := types.DefaultParams()
-	params.TokenomicsParams.WorkVestingPeriod = 5      // 5 epochs for work coins
-	params.TokenomicsParams.RewardVestingPeriod = 10   // 10 epochs for reward coins
-	params.TokenomicsParams.TopMinerVestingPeriod = 15 // 15 epochs for top miner rewards
+	params.TokenomicsParams.WorkVestingPeriod = 5    // 5 epochs for work coins
+	params.TokenomicsParams.RewardVestingPeriod = 10 // 10 epochs for reward coins
 	k.SetParams(ctx, params)
 
 	participantAddrStr := sample.AccAddress()
@@ -154,7 +153,7 @@ func TestVestingIntegration_ParameterBased(t *testing.T) {
 		Return(nil)
 
 	// Execute payment from top reward pool module
-	err = k.PayParticipantFromModule(ctx, participantAddrStr, rewardAmount, types.TopRewardPoolAccName, "reward-memo", &rewardVestingPeriod)
+	err = k.PayParticipantFromModule(ctx, participantAddrStr, rewardAmount, types.PreProgrammedSaleAccName, "reward-memo", &rewardVestingPeriod)
 	require.NoError(t, err)
 }
 
@@ -180,13 +179,13 @@ func TestVestingIntegration_DirectPayment(t *testing.T) {
 	// Mock expectation for direct payment (no vesting)
 
 	mocks.BankKeeper.EXPECT().
-		SendCoinsFromModuleToAccount(ctx, types.TopRewardPoolAccName, participantAddr, expectedCoins, gomock.Any()).
+		SendCoinsFromModuleToAccount(ctx, types.PreProgrammedSaleAccName, participantAddr, expectedCoins, gomock.Any()).
 		Return(nil)
 
 	// No vesting keeper calls should be made
 
 	// Execute payment with zero vesting period
-	err = k.PayParticipantFromModule(ctx, participantAddrStr, amount, types.TopRewardPoolAccName, "direct-payment", &zeroVestingPeriod)
+	err = k.PayParticipantFromModule(ctx, participantAddrStr, amount, types.PreProgrammedSaleAccName, "direct-payment", &zeroVestingPeriod)
 	require.NoError(t, err)
 }
 
@@ -281,30 +280,7 @@ func TestVestingIntegration_MixedVestingScenario(t *testing.T) {
 		AddVestedRewards(ctx, participantAddrStr, "inference", expectedRewardCoins, &rewardVestingPeriod, gomock.Any()).
 		Return(nil)
 
-	err = k.PayParticipantFromModule(ctx, participantAddrStr, rewardAmount, types.TopRewardPoolAccName, "reward-payment", &rewardVestingPeriod)
-	require.NoError(t, err)
-}
-
-func TestVestingIntegration_TopMinerRewards(t *testing.T) {
-	k, _, ctx, mocks := setupKeeperWithMocksForStreamVesting(t)
-
-	// Configure top miner vesting period
-	params := types.DefaultParams()
-	params.TokenomicsParams.TopMinerVestingPeriod = 15 // 15 epochs for top miner rewards
-	k.SetParams(ctx, params)
-
-	participantAddrStr := sample.AccAddress()
-	rewardAmount := int64(5000)
-	topMinerVestingPeriod := uint64(15)
-
-	expectedCoins := sdk.NewCoins(sdk.NewInt64Coin(types.BaseCoin, int64(rewardAmount)))
-
-	mocks.StreamVestingKeeper.EXPECT().
-		AddVestedRewards(ctx, participantAddrStr, "inference", expectedCoins, &topMinerVestingPeriod, gomock.Any()).
-		Return(nil)
-
-	// Execute top miner reward payment
-	err := k.PayParticipantFromModule(ctx, participantAddrStr, rewardAmount, types.TopRewardPoolAccName, "top-miner-reward", &topMinerVestingPeriod)
+	err = k.PayParticipantFromModule(ctx, participantAddrStr, rewardAmount, types.PreProgrammedSaleAccName, "reward-payment", &rewardVestingPeriod)
 	require.NoError(t, err)
 }
 
@@ -315,7 +291,6 @@ func TestVestingIntegration_ParameterValidation(t *testing.T) {
 	params := types.DefaultParams()
 	params.TokenomicsParams.WorkVestingPeriod = 0
 	params.TokenomicsParams.RewardVestingPeriod = 180
-	params.TokenomicsParams.TopMinerVestingPeriod = 365
 
 	// Should not error on valid parameters
 	err := k.SetParams(ctx, params)
@@ -326,7 +301,6 @@ func TestVestingIntegration_ParameterValidation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), retrievedParams.TokenomicsParams.WorkVestingPeriod)
 	require.Equal(t, uint64(180), retrievedParams.TokenomicsParams.RewardVestingPeriod)
-	require.Equal(t, uint64(365), retrievedParams.TokenomicsParams.TopMinerVestingPeriod)
 }
 
 func TestVestingIntegration_ErrorHandling(t *testing.T) {
@@ -343,7 +317,7 @@ func TestVestingIntegration_ErrorHandling(t *testing.T) {
 		AddVestedRewards(ctx, participantAddrStr, types.ModuleName, expectedCoins, &vestingPeriod, gomock.Any()).
 		Return(fmt.Errorf("invalid request"))
 
-	err := k.PayParticipantFromModule(ctx, participantAddrStr, amount, types.TopRewardPoolAccName, "vesting-error-test", &vestingPeriod)
+	err := k.PayParticipantFromModule(ctx, participantAddrStr, amount, types.PreProgrammedSaleAccName, "vesting-error-test", &vestingPeriod)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid request")
 }

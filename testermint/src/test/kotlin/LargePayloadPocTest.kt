@@ -41,15 +41,6 @@ class LargePayloadPocTest : TestermintTest() {
         logSection("PoC cycle completed. Verifying genesis node's PoC status.")
         // Check if the genesis node, after submitting PoC with large callback payloads,
         // is recognized in the top miners list. This indicates successful PoC processing.
-        val topMiners = genesis.node.getTopMiners()
-        assertThat(topMiners.topMiner)
-            .withFailMessage("Top miners list should not be empty after PoC submission by genesis.")
-            .isNotEmpty
-
-        assertThat(topMiners.topMiner.any { it.address == genesis.node.getAddress() })
-            .withFailMessage("Genesis node should be listed among the top miners after successful PoC submission.")
-            .isTrue()
-
         Logger.info("Successfully completed PoC cycle with large callback payloads for genesis node.")*/
     }
 } 

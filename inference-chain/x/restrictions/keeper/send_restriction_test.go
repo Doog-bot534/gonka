@@ -199,10 +199,6 @@ func TestIsModuleAccount(t *testing.T) {
 	gov := authtypes.NewModuleAddress("gov")
 	require.True(t, keeper.IsModuleAccount(ctx, gov))
 
-	// Test special sub-accounts (the main focus of this enhancement)
-	topReward := authtypes.NewModuleAddress("top_reward")
-	require.True(t, keeper.IsModuleAccount(ctx, topReward))
-
 	preProgrammedSale := authtypes.NewModuleAddress("pre_programmed_sale")
 	require.True(t, keeper.IsModuleAccount(ctx, preProgrammedSale))
 

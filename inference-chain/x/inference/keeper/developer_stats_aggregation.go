@@ -29,7 +29,7 @@ func (k Keeper) SetDeveloperStats(ctx context.Context, inference types.Inference
 
 	k.LogInfo("SetDeveloperStats: got stat", types.Stat,
 		"inference_id", inference.InferenceId,
-		"inference_status", inference.Status.String(),
+		"inference_status", inference.Status,
 		"developer", inference.RequestedBy,
 		"poc_block_height", inference.EpochPocStartBlockHeight,
 		"epoch_id", epochId)

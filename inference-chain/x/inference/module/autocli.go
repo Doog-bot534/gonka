@@ -138,17 +138,6 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 				},
 
 				{
-					RpcMethod: "TopMinerAll",
-					Use:       "list-top-miner",
-					Short:     "List all top_miner",
-				},
-				{
-					RpcMethod:      "TopMiner",
-					Use:            "show-top-miner [id]",
-					Short:          "Shows a top_miner",
-					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "address"}},
-				},
-				{
 					RpcMethod: "InferenceTimeoutAll",
 					Use:       "list-inference-timeout",
 					Short:     "List all inference_timeout",

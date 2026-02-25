@@ -264,7 +264,10 @@ func (p *CollateralParams) ParamSetPairs() paramtypes.ParamSetPairs {
 
 // ParamSetPairs gets the params for the tokenomics vesting parameters
 func (p *TokenomicsParams) ParamSetPairs() paramtypes.ParamSetPairs {
-	return paramtypes.ParamSetPairs{}
+	return paramtypes.ParamSetPairs{
+		paramtypes.NewParamSetPair(KeyWorkVestingPeriod, &p.WorkVestingPeriod, validateVestingPeriod),
+		paramtypes.NewParamSetPair(KeyRewardVestingPeriod, &p.RewardVestingPeriod, validateVestingPeriod),
+	}
 }
 
 // ParamSetPairs gets the params for the Bitcoin reward system

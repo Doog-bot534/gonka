@@ -30,49 +30,39 @@ func TestTokenomicsParamsGovernance(t *testing.T) {
 
 	// Test updating vesting parameters through governance
 	testCases := []struct {
-		name                    string
-		workVestingPeriod       uint64
-		rewardVestingPeriod     uint64
-		topMinerVestingPeriod   uint64
-		expectedWorkVesting     uint64
-		expectedRewardVesting   uint64
-		expectedTopMinerVesting uint64
+		name                  string
+		workVestingPeriod     uint64
+		rewardVestingPeriod   uint64
+		expectedWorkVesting   uint64
+		expectedRewardVesting uint64
 	}{
 		{
-			name:                    "default vesting periods (no vesting)",
-			workVestingPeriod:       0,
-			rewardVestingPeriod:     0,
-			topMinerVestingPeriod:   0,
-			expectedWorkVesting:     0,
-			expectedRewardVesting:   0,
-			expectedTopMinerVesting: 0,
+			name:                  "default vesting periods (no vesting)",
+			workVestingPeriod:     0,
+			rewardVestingPeriod:   0,
+			expectedWorkVesting:   0,
+			expectedRewardVesting: 0,
 		},
 		{
-			name:                    "enable vesting for all reward types",
-			workVestingPeriod:       180,
-			rewardVestingPeriod:     180,
-			topMinerVestingPeriod:   180,
-			expectedWorkVesting:     180,
-			expectedRewardVesting:   180,
-			expectedTopMinerVesting: 180,
+			name:                  "enable vesting for all reward types",
+			workVestingPeriod:     180,
+			rewardVestingPeriod:   180,
+			expectedWorkVesting:   180,
+			expectedRewardVesting: 180,
 		},
 		{
-			name:                    "different vesting periods for different reward types",
-			workVestingPeriod:       90,
-			rewardVestingPeriod:     180,
-			topMinerVestingPeriod:   360,
-			expectedWorkVesting:     90,
-			expectedRewardVesting:   180,
-			expectedTopMinerVesting: 360,
+			name:                  "different vesting periods for different reward types",
+			workVestingPeriod:     90,
+			rewardVestingPeriod:   180,
+			expectedWorkVesting:   90,
+			expectedRewardVesting: 180,
 		},
 		{
-			name:                    "test vesting periods (fast for E2E tests)",
-			workVestingPeriod:       2,
-			rewardVestingPeriod:     2,
-			topMinerVestingPeriod:   2,
-			expectedWorkVesting:     2,
-			expectedRewardVesting:   2,
-			expectedTopMinerVesting: 2,
+			name:                  "test vesting periods (fast for E2E tests)",
+			workVestingPeriod:     2,
+			rewardVestingPeriod:   2,
+			expectedWorkVesting:   2,
+			expectedRewardVesting: 2,
 		},
 	}
 
@@ -82,7 +72,6 @@ func TestTokenomicsParamsGovernance(t *testing.T) {
 			updatedParams := params
 			updatedParams.TokenomicsParams.WorkVestingPeriod = tc.workVestingPeriod
 			updatedParams.TokenomicsParams.RewardVestingPeriod = tc.rewardVestingPeriod
-			updatedParams.TokenomicsParams.TopMinerVestingPeriod = tc.topMinerVestingPeriod
 
 			// Set the updated parameters
 			require.NoError(t, k.SetParams(ctx, updatedParams))
@@ -92,7 +81,6 @@ func TestTokenomicsParamsGovernance(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedWorkVesting, retrievedParams.TokenomicsParams.WorkVestingPeriod)
 			require.Equal(t, tc.expectedRewardVesting, retrievedParams.TokenomicsParams.RewardVestingPeriod)
-			require.Equal(t, tc.expectedTopMinerVesting, retrievedParams.TokenomicsParams.TopMinerVestingPeriod)
 		})
 	}
 }
@@ -165,13 +153,12 @@ func TestTokenomicsParamsParamSetPairs(t *testing.T) {
 
 	// Test that ParamSetPairs returns the correct number of pairs
 	pairs := params.ParamSetPairs()
-	require.Len(t, pairs, 3, "TokenomicsParams should have 3 parameter pairs for vesting")
+	require.Len(t, pairs, 2, "TokenomicsParams should have 2 parameter pairs for vesting")
 
 	// Verify the parameter keys are correctly set
 	expectedKeys := [][]byte{
 		types.KeyWorkVestingPeriod,
 		types.KeyRewardVestingPeriod,
-		types.KeyTopMinerVestingPeriod,
 	}
 
 	for i, pair := range pairs {
@@ -181,33 +168,29 @@ func TestTokenomicsParamsParamSetPairs(t *testing.T) {
 
 func TestTokenomicsParamsValidate(t *testing.T) {
 	testCases := []struct {
-		name                  string
-		workVestingPeriod     uint64
-		rewardVestingPeriod   uint64
-		topMinerVestingPeriod uint64
-		expectedError         bool
-		expectedErrMsg        string
+		name                string
+		workVestingPeriod   uint64
+		rewardVestingPeriod uint64
+		expectedError       bool
+		expectedErrMsg      string
 	}{
 		{
-			name:                  "valid vesting parameters",
-			workVestingPeriod:     180,
-			rewardVestingPeriod:   180,
-			topMinerVestingPeriod: 180,
-			expectedError:         false,
+			name:                "valid vesting parameters",
+			workVestingPeriod:   180,
+			rewardVestingPeriod: 180,
+			expectedError:       false,
 		},
 		{
-			name:                  "valid vesting parameters - zero values",
-			workVestingPeriod:     0,
-			rewardVestingPeriod:   0,
-			topMinerVestingPeriod: 0,
-			expectedError:         false,
+			name:                "valid vesting parameters - zero values",
+			workVestingPeriod:   0,
+			rewardVestingPeriod: 0,
+			expectedError:       false,
 		},
 		{
-			name:                  "valid vesting parameters - mixed values",
-			workVestingPeriod:     90,
-			rewardVestingPeriod:   180,
-			topMinerVestingPeriod: 360,
-			expectedError:         false,
+			name:                "valid vesting parameters - mixed values",
+			workVestingPeriod:   90,
+			rewardVestingPeriod: 180,
+			expectedError:       false,
 		},
 	}
 
@@ -216,7 +199,6 @@ func TestTokenomicsParamsValidate(t *testing.T) {
 			params := *types.DefaultTokenomicsParams()
 			params.WorkVestingPeriod = tc.workVestingPeriod
 			params.RewardVestingPeriod = tc.rewardVestingPeriod
-			params.TopMinerVestingPeriod = tc.topMinerVestingPeriod
 
 			err := params.Validate()
 
@@ -239,7 +221,6 @@ func TestParamsValidateCallsTokenomicsValidation(t *testing.T) {
 	// Set valid vesting parameters
 	params.TokenomicsParams.WorkVestingPeriod = 180
 	params.TokenomicsParams.RewardVestingPeriod = 180
-	params.TokenomicsParams.TopMinerVestingPeriod = 180
 
 	// This should pass validation
 	err := params.Validate()
@@ -253,7 +234,6 @@ func TestParamsValidateCallsTokenomicsValidation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(180), retrievedParams.TokenomicsParams.WorkVestingPeriod)
 	require.Equal(t, uint64(180), retrievedParams.TokenomicsParams.RewardVestingPeriod)
-	require.Equal(t, uint64(180), retrievedParams.TokenomicsParams.TopMinerVestingPeriod)
 }
 
 func TestParamsValidateNilChecks(t *testing.T) {
@@ -474,15 +454,6 @@ func TestTokenomicsParamsNilFieldChecks(t *testing.T) {
 				return params
 			},
 			expectedErrMsg: "current subsidy percentage cannot be nil",
-		},
-		{
-			name: "nil TopRewardAllowedFailure",
-			setupParams: func() *types.TokenomicsParams {
-				params := types.DefaultTokenomicsParams()
-				params.TopRewardAllowedFailure = nil
-				return params
-			},
-			expectedErrMsg: "top reward allowed failure cannot be nil",
 		},
 		{
 			name: "valid TokenomicsParams",
