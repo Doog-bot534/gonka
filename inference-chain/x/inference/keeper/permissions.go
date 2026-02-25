@@ -159,7 +159,7 @@ func (k msgServer) checkPermissions(ctx context.Context, signer string, required
 		return err
 	}
 	var lastErr error
-	if err := k.checkSinglePermission(ctx, requiredPermission, signerAddr); err == nil {
+	if lastErr = k.checkSinglePermission(ctx, requiredPermission, signerAddr); lastErr == nil {
 		return nil
 	}
 	for _, perm := range additionalPermissions {
