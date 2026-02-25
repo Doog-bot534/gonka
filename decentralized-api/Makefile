@@ -20,8 +20,10 @@ WASMVM_STATIC_LINUX_X64_URL := https://github.com/CosmWasm/wasmvm/releases/downl
 USE_REGISTRY_CACHE ?= 0
 ifeq ($(USE_REGISTRY_CACHE),1)
 DOCKER_CACHE_ARGS := --cache-from type=registry,ref=ghcr.io/gonka-ai/api:buildcache --cache-to type=registry,ref=ghcr.io/gonka-ai/api:buildcache,mode=max
+DOCKER_CACHE_ARGS_UPGRADE := --cache-from type=registry,ref=ghcr.io/gonka-ai/api:buildcache-upgrade --cache-to type=registry,ref=ghcr.io/gonka-ai/api:buildcache-upgrade,mode=max
 else
 DOCKER_CACHE_ARGS ?=
+DOCKER_CACHE_ARGS_UPGRADE ?=
 endif
 
 define DOCKER_BUILD
@@ -50,7 +52,7 @@ define DOCKER_BUILD_UPGRADE
 	@echo "    	GOOS: $(GOOS)"
 	@echo "    	GOARCH: $(GOARCH)"
 	@docker buildx build \
-		$(DOCKER_CACHE_ARGS) \
+		$(DOCKER_CACHE_ARGS_UPGRADE) \
 		--platform $(PLATFORM) \
 		--build-arg BUILD_FLAGS="$(BUILD_FLAGS)" \
 		--build-arg GOOS=$(GOOS) \

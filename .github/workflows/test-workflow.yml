@@ -192,7 +192,7 @@ jobs:
       - name: Make Upgrade Build
         if: ${{ inputs.enable_upgrades }}
         run: |
-          sudo make build-for-upgrade-tests
+          make build-for-upgrade-tests USE_REGISTRY_CACHE=1
           # Fix ownership of upgrade build files
           sudo chown -R $USER:$USER public-html/ || true
 
