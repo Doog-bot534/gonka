@@ -14,8 +14,8 @@ import (
 
 func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInference) (*types.MsgStartInferenceResponse, error) {
 	if err := k.CheckPermission(goCtx, msg, ActiveParticipantPermission); err != nil {
-		var ctx = sdk.UnwrapSDKContext(goCtx)
-		return failedStart(ctx, err, msg), nil
+		// return the failure and back out even batch transactions, since permissions will not change in a batch
+		return nil, err
 	}
 
 	var ctx = sdk.UnwrapSDKContext(goCtx)

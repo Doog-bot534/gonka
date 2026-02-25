@@ -185,7 +185,14 @@ func MustAddParticipant(t *testing.T, ms types.MsgServer, ctx context.Context, m
 func TestMsgServer_FinishInference_InferenceNotFound(t *testing.T) {
 	k, ms, ctx := setupMsgServer(t)
 	k.SetEffectiveEpochIndex(ctx, 1) // Set to non-zero epoch to avoid epoch not found error
-	k.SetActiveParticipants(ctx, types.ActiveParticipants{})
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId: 1,
+		Participants: []*types.ActiveParticipant{
+			{
+				Index: testutil.Executor,
+			},
+		},
+	})
 	response, err := ms.FinishInference(ctx, &types.MsgFinishInference{
 		Creator:              testutil.Executor,
 		InferenceId:          "inferenceId",

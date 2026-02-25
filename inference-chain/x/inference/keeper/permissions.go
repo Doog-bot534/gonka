@@ -11,6 +11,48 @@ import (
 
 type Permission string
 
+type permissionChecker func(k msgServer, ctx context.Context, signer sdk.AccAddress) error
+
+var permissionCheckers = map[Permission]permissionChecker{
+	GovernancePermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return k.checkGovernancePermission(ctx, signer)
+	},
+	AccountPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return k.checkAccountPermission(ctx, signer)
+	},
+	ParticipantPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return k.checkParticipantPermission(ctx, signer)
+	},
+	ActiveParticipantPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return k.checkActiveParticipantPermission(ctx, signer, 0)
+	},
+	PreviousActiveParticipantPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return k.checkActiveParticipantPermission(ctx, signer, 1)
+	},
+	TrainingExecPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return k.checkTrainingExecPermission(ctx, signer)
+	},
+	TrainingStartPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return k.checkTrainingStartPermission(ctx, signer)
+	},
+	CurrentActiveParticipantPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return k.checkCurrentActiveParticipantPermission(ctx, signer)
+	},
+	ContractPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return k.checkContractPermission(ctx, signer)
+	},
+	OpenRegistrationPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		sdkCtx := sdk.UnwrapSDKContext(ctx)
+		if k.IsNewParticipantRegistrationClosed(ctx, sdkCtx.BlockHeight()) {
+			return types.ErrNewParticipantRegistrationClosed
+		}
+		return nil
+	},
+	NoPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return nil
+	},
+}
+
 const (
 	// GovernancePermission allows only the module authority signer.
 	GovernancePermission Permission = "governance"
@@ -118,75 +160,21 @@ func (k msgServer) checkPermissions(ctx context.Context, signer string, permissi
 	}
 	var lastErr error
 	for _, perm := range permissions {
-		switch perm {
-		case GovernancePermission:
-			if err := k.checkGovernancePermission(ctx, signerAddr); err == nil {
-				return nil
-			} else {
-				lastErr = err
-			}
-		case AccountPermission:
-			if err := k.checkAccountPermission(ctx, signerAddr); err == nil {
-				return nil
-			} else {
-				lastErr = err
-			}
-		case ParticipantPermission:
-			if err := k.checkParticipantPermission(ctx, signerAddr); err == nil {
-				return nil
-			} else {
-				lastErr = err
-			}
-		case ActiveParticipantPermission:
-			if err := k.checkActiveParticipantPermission(ctx, signerAddr, 0); err == nil {
-				return nil
-			} else {
-				lastErr = err
-			}
-		case PreviousActiveParticipantPermission:
-			if err := k.checkActiveParticipantPermission(ctx, signerAddr, 1); err == nil {
-				return nil
-			} else {
-				lastErr = err
-			}
-		case TrainingExecPermission:
-			if err := k.checkTrainingExecPermission(ctx, signerAddr); err == nil {
-				return nil
-			} else {
-				lastErr = err
-			}
-		case TrainingStartPermission:
-			if err := k.checkTrainingStartPermission(ctx, signerAddr); err == nil {
-				return nil
-			} else {
-				lastErr = err
-			}
-		case CurrentActiveParticipantPermission:
-			if err := k.checkCurrentActiveParticipantPermission(ctx, signerAddr); err == nil {
-				return nil
-			} else {
-				lastErr = err
-			}
-		case ContractPermission:
-			if err := k.checkContractPermission(ctx, signerAddr); err == nil {
-				return nil
-			} else {
-				lastErr = err
-			}
-		case OpenRegistrationPermission:
-			sdkCtx := sdk.UnwrapSDKContext(ctx)
-			if k.IsNewParticipantRegistrationClosed(ctx, sdkCtx.BlockHeight()) {
-				return types.ErrNewParticipantRegistrationClosed
-			}
+		err := k.checkSinglePermission(ctx, perm, signerAddr)
+		if err == nil {
 			return nil
-		case NoPermission:
-			return nil
-		default:
-			return types.ErrInvalidPermission
 		}
+		lastErr = err
 	}
 	return lastErr
+}
 
+func (k msgServer) checkSinglePermission(ctx context.Context, perm Permission, signerAddr sdk.AccAddress) error {
+	checker, ok := permissionCheckers[perm]
+	if !ok {
+		return types.ErrInvalidPermission
+	}
+	return checker(k, ctx, signerAddr)
 }
 
 func (k msgServer) checkAccountPermission(ctx context.Context, signer sdk.AccAddress) error {
