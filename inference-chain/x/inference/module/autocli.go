@@ -346,10 +346,10 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "epoch_index"}},
 				},
 				{
-					RpcMethod:      "PoCConsensus",
-					Use:            "poc-consensus [poc-stage-start-block-height]",
-					Short:          "Query PoC consensus for a stage",
-					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "poc_stage_start_block_height"}},
+					RpcMethod:      "AgreedCount",
+					Use:            "agreed-count [poc-stage-start-block-height] [participant-address]",
+					Short:          "Query agreed count for a participant",
+					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "poc_stage_start_block_height"}, {ProtoField: "participant_address"}},
 				},
 				// this line is used by ignite scaffolding # autocli/query
 			},
@@ -505,6 +505,18 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 					Use:            "request-bridge-mint [amount] [destination-address] [target-chain-id]",
 					Short:          "Request minting of WGNK tokens on Ethereum by bridging native Gonka",
 					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "amount"}, {ProtoField: "destination_address"}, {ProtoField: "chain_id"}},
+				},
+				{
+					RpcMethod:      "PocCount",
+					Use:            "poc-count [poc-stage-start-block-height]",
+					Short:          "Submit PoC count observations",
+					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "poc_stage_start_block_height"}},
+				},
+				{
+					RpcMethod:      "PocWeightCommit",
+					Use:            "poc-weight-commit [poc-stage-start-block-height] [count] [root-hash]",
+					Short:          "Submit combined PoC weight commit",
+					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "poc_stage_start_block_height"}, {ProtoField: "count"}, {ProtoField: "root_hash"}},
 				},
 				// this line is used by ignite scaffolding # autocli/tx
 			},

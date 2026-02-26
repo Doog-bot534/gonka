@@ -38,6 +38,7 @@ data class LatestEpochDto(
 enum class EpochPhase {
     PoCGenerate,
     PoCGenerateWindDown,
+    PoCCount,
     PoCValidate,
     PoCValidateWindDown,
     Inference
@@ -52,6 +53,10 @@ data class EpochStages(
     val pocGenerationWindDown: Long,
     @SerializedName("poc_generation_end")
     val pocGenerationEnd: Long,
+    @SerializedName("poc_count_start")
+    val pocCountStart: Long = 0,
+    @SerializedName("poc_count_deadline")
+    val pocCountDeadline: Long = 0,
     @SerializedName("poc_validation_start")
     val pocValidationStart: Long,
     @SerializedName("poc_validation_wind_down")

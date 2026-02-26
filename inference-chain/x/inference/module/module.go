@@ -393,6 +393,13 @@ func (am AppModule) EndBlock(ctx context.Context) error {
 	// This separation ensures clean boundaries between epoch preparation and validator switching
 	// and allow time for api nodes to load models on ml nodes.
 
+	if epochContext.IsPoCCountDeadline(blockHeight) {
+		am.LogInfo("StartStage:PoCCountDeadline", types.Stages, "blockHeight", blockHeight)
+		if err := am.keeper.ComputeAgreedCounts(ctx, epochContext.PocStartBlockHeight); err != nil {
+			am.LogError("Failed to compute agreed counts", types.PoC, "error", err)
+		}
+	}
+
 	if epochContext.IsEndOfPoCValidationStage(blockHeight) {
 		am.LogInfo("StartStage:onEndOfPoCValidationStage", types.Stages, "blockHeight", blockHeight)
 		am.onEndOfPoCValidationStage(ctx, blockHeight, blockTime)

@@ -57,8 +57,8 @@ func (k msgServer) PoCV2StoreCommit(goCtx context.Context, msg *types.MsgPoCV2St
 			return nil, sdkerrors.Wrap(types.ErrPocWrongStartBlockHeight,
 				fmt.Sprintf("start block height %d doesn't match PoC stage start %d", startBlockHeight, epochContext.PocStartBlockHeight))
 		}
-		if !epochContext.IsPoCExchangeWindow(currentBlockHeight) && !epochContext.IsPoCCommitPhase(currentBlockHeight) {
-			return nil, sdkerrors.Wrap(types.ErrPocTooLate, "PoC exchange window and commit phase closed")
+		if !epochContext.IsPoCExchangeWindow(currentBlockHeight) && !epochContext.IsPoCCountPhase(currentBlockHeight) {
+			return nil, sdkerrors.Wrap(types.ErrPocTooLate, "PoC exchange window and count phase closed")
 		}
 	}
 

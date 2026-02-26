@@ -617,7 +617,7 @@ func (d *OnNewBlockDispatcher) shouldTriggerReconciliation(epochState chainphase
 		return shouldTriggerReconciliation(epochState.CurrentBlock.Height, &d.reconciliationConfig, d.reconciliationConfig.PoC)
 	case types.InferencePhase:
 		return shouldTriggerReconciliation(epochState.CurrentBlock.Height, &d.reconciliationConfig, d.reconciliationConfig.Inference)
-	case types.PoCGenerateWindDownPhase, types.PoCValidateWindDownPhase:
+	case types.PoCGenerateWindDownPhase, types.PoCCountPhase, types.PoCValidateWindDownPhase:
 		return false
 	}
 	return false
@@ -687,7 +687,7 @@ func getCommandForPhase(phaseInfo chainphase.EpochState) (broker.Command, *chan 
 
 	// Regular phase commands
 	switch phaseInfo.CurrentPhase {
-	case types.PoCGeneratePhase, types.PoCGenerateWindDownPhase:
+	case types.PoCGeneratePhase, types.PoCGenerateWindDownPhase, types.PoCCountPhase:
 		cmd := broker.NewStartPocCommand()
 		return cmd, &cmd.Response
 	case types.PoCValidatePhase, types.PoCValidateWindDownPhase:

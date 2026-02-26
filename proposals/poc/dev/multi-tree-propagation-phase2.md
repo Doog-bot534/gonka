@@ -225,7 +225,7 @@ decentralized-api/poc/propagation/
   - http_transport.go (8.03 KB)           # HTTP transport layer
   - transport.go (431 B)                  # Transport interfaces
   - bundle.go (3.62 KB)                   # BundleHeader type and signing
-  - types.go (3.86 KB)                    # FirstArrivalObservation type
+  - types.go (3.86 KB)                    # ArrivalInfo type
   - storage.go (1.52 KB)                  # Storage interfaces
   - cache.go (1.84 KB)                    # Cache wrapper
   - postgres_bundle_storage.go (10.92 KB) # Postgres implementation

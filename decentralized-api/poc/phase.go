@@ -84,7 +84,7 @@ func ShouldAcceptStoreCommit(epochState *chainphase.EpochState, pocStageStartHei
 		return false
 	}
 
-	if epochState.CurrentPhase == types.PoCCommitPhase {
+	if epochState.CurrentPhase == types.PoCCountPhase {
 		return true
 	}
 
@@ -103,7 +103,7 @@ func ShouldHaveDistributedWeights(epochState *chainphase.EpochState) bool {
 		return false
 	}
 
-	if epochState.CurrentPhase == types.PoCCommitPhase ||
+	if epochState.CurrentPhase == types.PoCCountPhase ||
 		epochState.CurrentPhase == types.PoCValidatePhase ||
 		epochState.CurrentPhase == types.PoCValidateWindDownPhase ||
 		epochState.CurrentPhase == types.PoCGenerateWindDownPhase {

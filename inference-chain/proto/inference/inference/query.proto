@@ -147,13 +147,8 @@ service Query {
 
   }
 
-  rpc PoCConsensus (QueryPoCConsensusRequest) returns (QueryPoCConsensusResponse) {
-    option (google.api.http).get = "/productscience/inference/inference/poc_consensus/{poc_stage_start_block_height}";
-
-  }
-
-  rpc TreeRootCommitsForStage (QueryTreeRootCommitsForStageRequest) returns (QueryTreeRootCommitsForStageResponse) {
-    option (google.api.http).get = "/productscience/inference/inference/tree_root_commits/{poc_stage_start_block_height}";
+  rpc AgreedCount (QueryAgreedCountRequest) returns (QueryAgreedCountResponse) {
+    option (google.api.http).get = "/productscience/inference/inference/agreed_count/{poc_stage_start_block_height}/{participant_address}";
 
   }
 
@@ -696,27 +691,14 @@ message MLNodeWeightDistributionWithAddress {
   repeated MLNodeWeight weights = 2;
 }
 
-message PoCConsensusEntry {
-  string participant = 1;
-  uint32 agreed_count = 2;
-  int32 total_validators = 3;
-  int32 agreeing_count = 4;
-}
-
-message QueryPoCConsensusRequest {
+message QueryAgreedCountRequest {
   int64 poc_stage_start_block_height = 1;
+  string participant_address = 2;
 }
 
-message QueryPoCConsensusResponse {
-  repeated PoCConsensusEntry entries = 1;
-}
-
-message QueryTreeRootCommitsForStageRequest {
-  int64 poc_stage_start_block_height = 1;
-}
-
-message QueryTreeRootCommitsForStageResponse {
-  repeated TreeRootCommit commits = 1;
+message QueryAgreedCountResponse {
+  uint32 agreed_count = 1;
+  bool found = 2;
 }
 
 message QueryGetCurrentEpochRequest {}

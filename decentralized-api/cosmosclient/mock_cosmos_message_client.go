@@ -142,7 +142,12 @@ func (m *MockCosmosMessageClient) SubmitPoCV2StoreCommit(transaction *inference.
 	return args.Error(0)
 }
 
-func (m *MockCosmosMessageClient) SubmitTreeRootCommit(transaction *types.MsgTreeRootCommit) error {
+func (m *MockCosmosMessageClient) SubmitPocCount(transaction *types.MsgPocCount) error {
+	args := m.Called(transaction)
+	return args.Error(0)
+}
+
+func (m *MockCosmosMessageClient) SubmitPocWeightCommit(transaction *types.MsgPocWeightCommit) error {
 	args := m.Called(transaction)
 	return args.Error(0)
 }

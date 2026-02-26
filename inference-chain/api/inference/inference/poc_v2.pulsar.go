@@ -3235,27 +3235,27 @@ func (x *fastReflection_MLNodeWeightDistribution) ProtoMethods() *protoiface.Met
 }
 
 var (
-	md_TreeRootCommitEntry             protoreflect.MessageDescriptor
-	fd_TreeRootCommitEntry_participant protoreflect.FieldDescriptor
-	fd_TreeRootCommitEntry_count       protoreflect.FieldDescriptor
+	md_PocCountEntry             protoreflect.MessageDescriptor
+	fd_PocCountEntry_participant protoreflect.FieldDescriptor
+	fd_PocCountEntry_count       protoreflect.FieldDescriptor
 )
 
 func init() {
 	file_inference_inference_poc_v2_proto_init()
-	md_TreeRootCommitEntry = File_inference_inference_poc_v2_proto.Messages().ByName("TreeRootCommitEntry")
-	fd_TreeRootCommitEntry_participant = md_TreeRootCommitEntry.Fields().ByName("participant")
-	fd_TreeRootCommitEntry_count = md_TreeRootCommitEntry.Fields().ByName("count")
+	md_PocCountEntry = File_inference_inference_poc_v2_proto.Messages().ByName("PocCountEntry")
+	fd_PocCountEntry_participant = md_PocCountEntry.Fields().ByName("participant")
+	fd_PocCountEntry_count = md_PocCountEntry.Fields().ByName("count")
 }
 
-var _ protoreflect.Message = (*fastReflection_TreeRootCommitEntry)(nil)
+var _ protoreflect.Message = (*fastReflection_PocCountEntry)(nil)
 
-type fastReflection_TreeRootCommitEntry TreeRootCommitEntry
+type fastReflection_PocCountEntry PocCountEntry
 
-func (x *TreeRootCommitEntry) ProtoReflect() protoreflect.Message {
-	return (*fastReflection_TreeRootCommitEntry)(x)
+func (x *PocCountEntry) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_PocCountEntry)(x)
 }
 
-func (x *TreeRootCommitEntry) slowProtoReflect() protoreflect.Message {
+func (x *PocCountEntry) slowProtoReflect() protoreflect.Message {
 	mi := &file_inference_inference_poc_v2_proto_msgTypes[6]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -3267,43 +3267,43 @@ func (x *TreeRootCommitEntry) slowProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-var _fastReflection_TreeRootCommitEntry_messageType fastReflection_TreeRootCommitEntry_messageType
-var _ protoreflect.MessageType = fastReflection_TreeRootCommitEntry_messageType{}
+var _fastReflection_PocCountEntry_messageType fastReflection_PocCountEntry_messageType
+var _ protoreflect.MessageType = fastReflection_PocCountEntry_messageType{}
 
-type fastReflection_TreeRootCommitEntry_messageType struct{}
+type fastReflection_PocCountEntry_messageType struct{}
 
-func (x fastReflection_TreeRootCommitEntry_messageType) Zero() protoreflect.Message {
-	return (*fastReflection_TreeRootCommitEntry)(nil)
+func (x fastReflection_PocCountEntry_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_PocCountEntry)(nil)
 }
-func (x fastReflection_TreeRootCommitEntry_messageType) New() protoreflect.Message {
-	return new(fastReflection_TreeRootCommitEntry)
+func (x fastReflection_PocCountEntry_messageType) New() protoreflect.Message {
+	return new(fastReflection_PocCountEntry)
 }
-func (x fastReflection_TreeRootCommitEntry_messageType) Descriptor() protoreflect.MessageDescriptor {
-	return md_TreeRootCommitEntry
+func (x fastReflection_PocCountEntry_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_PocCountEntry
 }
 
 // Descriptor returns message descriptor, which contains only the protobuf
 // type information for the message.
-func (x *fastReflection_TreeRootCommitEntry) Descriptor() protoreflect.MessageDescriptor {
-	return md_TreeRootCommitEntry
+func (x *fastReflection_PocCountEntry) Descriptor() protoreflect.MessageDescriptor {
+	return md_PocCountEntry
 }
 
 // Type returns the message type, which encapsulates both Go and protobuf
 // type information. If the Go type information is not needed,
 // it is recommended that the message descriptor be used instead.
-func (x *fastReflection_TreeRootCommitEntry) Type() protoreflect.MessageType {
-	return _fastReflection_TreeRootCommitEntry_messageType
+func (x *fastReflection_PocCountEntry) Type() protoreflect.MessageType {
+	return _fastReflection_PocCountEntry_messageType
 }
 
 // New returns a newly allocated and mutable empty message.
-func (x *fastReflection_TreeRootCommitEntry) New() protoreflect.Message {
-	return new(fastReflection_TreeRootCommitEntry)
+func (x *fastReflection_PocCountEntry) New() protoreflect.Message {
+	return new(fastReflection_PocCountEntry)
 }
 
 // Interface unwraps the message reflection interface and
 // returns the underlying ProtoMessage interface.
-func (x *fastReflection_TreeRootCommitEntry) Interface() protoreflect.ProtoMessage {
-	return (*TreeRootCommitEntry)(x)
+func (x *fastReflection_PocCountEntry) Interface() protoreflect.ProtoMessage {
+	return (*PocCountEntry)(x)
 }
 
 // Range iterates over every populated field in an undefined order,
@@ -3311,16 +3311,16 @@ func (x *fastReflection_TreeRootCommitEntry) Interface() protoreflect.ProtoMessa
 // Range returns immediately if f returns false.
 // While iterating, mutating operations may only be performed
 // on the current field descriptor.
-func (x *fastReflection_TreeRootCommitEntry) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+func (x *fastReflection_PocCountEntry) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
 	if x.Participant != "" {
 		value := protoreflect.ValueOfString(x.Participant)
-		if !f(fd_TreeRootCommitEntry_participant, value) {
+		if !f(fd_PocCountEntry_participant, value) {
 			return
 		}
 	}
 	if x.Count != uint32(0) {
 		value := protoreflect.ValueOfUint32(x.Count)
-		if !f(fd_TreeRootCommitEntry_count, value) {
+		if !f(fd_PocCountEntry_count, value) {
 			return
 		}
 	}
@@ -3337,17 +3337,17 @@ func (x *fastReflection_TreeRootCommitEntry) Range(f func(protoreflect.FieldDesc
 // In other cases (aside from the nullable cases above),
 // a proto3 scalar field is populated if it contains a non-zero value, and
 // a repeated field is populated if it is non-empty.
-func (x *fastReflection_TreeRootCommitEntry) Has(fd protoreflect.FieldDescriptor) bool {
+func (x *fastReflection_PocCountEntry) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "inference.inference.TreeRootCommitEntry.participant":
+	case "inference.inference.PocCountEntry.participant":
 		return x.Participant != ""
-	case "inference.inference.TreeRootCommitEntry.count":
+	case "inference.inference.PocCountEntry.count":
 		return x.Count != uint32(0)
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommitEntry"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocCountEntry"))
 		}
-		panic(fmt.Errorf("message inference.inference.TreeRootCommitEntry does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.PocCountEntry does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -3357,17 +3357,17 @@ func (x *fastReflection_TreeRootCommitEntry) Has(fd protoreflect.FieldDescriptor
 // associated with the given field number.
 //
 // Clear is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_TreeRootCommitEntry) Clear(fd protoreflect.FieldDescriptor) {
+func (x *fastReflection_PocCountEntry) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "inference.inference.TreeRootCommitEntry.participant":
+	case "inference.inference.PocCountEntry.participant":
 		x.Participant = ""
-	case "inference.inference.TreeRootCommitEntry.count":
+	case "inference.inference.PocCountEntry.count":
 		x.Count = uint32(0)
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommitEntry"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocCountEntry"))
 		}
-		panic(fmt.Errorf("message inference.inference.TreeRootCommitEntry does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.PocCountEntry does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -3377,19 +3377,19 @@ func (x *fastReflection_TreeRootCommitEntry) Clear(fd protoreflect.FieldDescript
 // the default value of a bytes scalar is guaranteed to be a copy.
 // For unpopulated composite types, it returns an empty, read-only view
 // of the value; to obtain a mutable reference, use Mutable.
-func (x *fastReflection_TreeRootCommitEntry) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+func (x *fastReflection_PocCountEntry) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "inference.inference.TreeRootCommitEntry.participant":
+	case "inference.inference.PocCountEntry.participant":
 		value := x.Participant
 		return protoreflect.ValueOfString(value)
-	case "inference.inference.TreeRootCommitEntry.count":
+	case "inference.inference.PocCountEntry.count":
 		value := x.Count
 		return protoreflect.ValueOfUint32(value)
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommitEntry"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocCountEntry"))
 		}
-		panic(fmt.Errorf("message inference.inference.TreeRootCommitEntry does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message inference.inference.PocCountEntry does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -3403,17 +3403,17 @@ func (x *fastReflection_TreeRootCommitEntry) Get(descriptor protoreflect.FieldDe
 // empty, read-only value, then it panics.
 //
 // Set is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_TreeRootCommitEntry) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+func (x *fastReflection_PocCountEntry) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "inference.inference.TreeRootCommitEntry.participant":
+	case "inference.inference.PocCountEntry.participant":
 		x.Participant = value.Interface().(string)
-	case "inference.inference.TreeRootCommitEntry.count":
+	case "inference.inference.PocCountEntry.count":
 		x.Count = uint32(value.Uint())
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommitEntry"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocCountEntry"))
 		}
-		panic(fmt.Errorf("message inference.inference.TreeRootCommitEntry does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.PocCountEntry does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -3427,44 +3427,44 @@ func (x *fastReflection_TreeRootCommitEntry) Set(fd protoreflect.FieldDescriptor
 // It panics if the field does not contain a composite type.
 //
 // Mutable is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_TreeRootCommitEntry) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+func (x *fastReflection_PocCountEntry) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "inference.inference.TreeRootCommitEntry.participant":
-		panic(fmt.Errorf("field participant of message inference.inference.TreeRootCommitEntry is not mutable"))
-	case "inference.inference.TreeRootCommitEntry.count":
-		panic(fmt.Errorf("field count of message inference.inference.TreeRootCommitEntry is not mutable"))
+	case "inference.inference.PocCountEntry.participant":
+		panic(fmt.Errorf("field participant of message inference.inference.PocCountEntry is not mutable"))
+	case "inference.inference.PocCountEntry.count":
+		panic(fmt.Errorf("field count of message inference.inference.PocCountEntry is not mutable"))
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommitEntry"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocCountEntry"))
 		}
-		panic(fmt.Errorf("message inference.inference.TreeRootCommitEntry does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.PocCountEntry does not contain field %s", fd.FullName()))
 	}
 }
 
 // NewField returns a new value that is assignable to the field
 // for the given descriptor. For scalars, this returns the default value.
 // For lists, maps, and messages, this returns a new, empty, mutable value.
-func (x *fastReflection_TreeRootCommitEntry) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+func (x *fastReflection_PocCountEntry) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "inference.inference.TreeRootCommitEntry.participant":
+	case "inference.inference.PocCountEntry.participant":
 		return protoreflect.ValueOfString("")
-	case "inference.inference.TreeRootCommitEntry.count":
+	case "inference.inference.PocCountEntry.count":
 		return protoreflect.ValueOfUint32(uint32(0))
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommitEntry"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocCountEntry"))
 		}
-		panic(fmt.Errorf("message inference.inference.TreeRootCommitEntry does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.PocCountEntry does not contain field %s", fd.FullName()))
 	}
 }
 
 // WhichOneof reports which field within the oneof is populated,
 // returning nil if none are populated.
 // It panics if the oneof descriptor does not belong to this message.
-func (x *fastReflection_TreeRootCommitEntry) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+func (x *fastReflection_PocCountEntry) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in inference.inference.TreeRootCommitEntry", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in inference.inference.PocCountEntry", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -3472,7 +3472,7 @@ func (x *fastReflection_TreeRootCommitEntry) WhichOneof(d protoreflect.OneofDesc
 // GetUnknown retrieves the entire list of unknown fields.
 // The caller may only mutate the contents of the RawFields
 // if the mutated bytes are stored back into the message with SetUnknown.
-func (x *fastReflection_TreeRootCommitEntry) GetUnknown() protoreflect.RawFields {
+func (x *fastReflection_PocCountEntry) GetUnknown() protoreflect.RawFields {
 	return x.unknownFields
 }
 
@@ -3483,7 +3483,7 @@ func (x *fastReflection_TreeRootCommitEntry) GetUnknown() protoreflect.RawFields
 // An empty RawFields may be passed to clear the fields.
 //
 // SetUnknown is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_TreeRootCommitEntry) SetUnknown(fields protoreflect.RawFields) {
+func (x *fastReflection_PocCountEntry) SetUnknown(fields protoreflect.RawFields) {
 	x.unknownFields = fields
 }
 
@@ -3495,7 +3495,7 @@ func (x *fastReflection_TreeRootCommitEntry) SetUnknown(fields protoreflect.RawF
 // message type, but the details are implementation dependent.
 // Validity is not part of the protobuf data model, and may not
 // be preserved in marshaling or other operations.
-func (x *fastReflection_TreeRootCommitEntry) IsValid() bool {
+func (x *fastReflection_PocCountEntry) IsValid() bool {
 	return x != nil
 }
 
@@ -3505,9 +3505,9 @@ func (x *fastReflection_TreeRootCommitEntry) IsValid() bool {
 // The returned methods type is identical to
 // "google.golang.org/protobuf/runtime/protoiface".Methods.
 // Consult the protoiface package documentation for details.
-func (x *fastReflection_TreeRootCommitEntry) ProtoMethods() *protoiface.Methods {
+func (x *fastReflection_PocCountEntry) ProtoMethods() *protoiface.Methods {
 	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
-		x := input.Message.Interface().(*TreeRootCommitEntry)
+		x := input.Message.Interface().(*PocCountEntry)
 		if x == nil {
 			return protoiface.SizeOutput{
 				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -3536,7 +3536,7 @@ func (x *fastReflection_TreeRootCommitEntry) ProtoMethods() *protoiface.Methods 
 	}
 
 	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
-		x := input.Message.Interface().(*TreeRootCommitEntry)
+		x := input.Message.Interface().(*PocCountEntry)
 		if x == nil {
 			return protoiface.MarshalOutput{
 				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -3578,7 +3578,7 @@ func (x *fastReflection_TreeRootCommitEntry) ProtoMethods() *protoiface.Methods 
 		}, nil
 	}
 	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
-		x := input.Message.Interface().(*TreeRootCommitEntry)
+		x := input.Message.Interface().(*PocCountEntry)
 		if x == nil {
 			return protoiface.UnmarshalOutput{
 				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -3610,10 +3610,10 @@ func (x *fastReflection_TreeRootCommitEntry) ProtoMethods() *protoiface.Methods 
 			fieldNum := int32(wire >> 3)
 			wireType := int(wire & 0x7)
 			if wireType == 4 {
-				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: TreeRootCommitEntry: wiretype end group for non-group")
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: PocCountEntry: wiretype end group for non-group")
 			}
 			if fieldNum <= 0 {
-				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: TreeRootCommitEntry: illegal tag %d (wire type %d)", fieldNum, wire)
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: PocCountEntry: illegal tag %d (wire type %d)", fieldNum, wire)
 			}
 			switch fieldNum {
 			case 1:
@@ -3702,85 +3702,83 @@ func (x *fastReflection_TreeRootCommitEntry) ProtoMethods() *protoiface.Methods 
 	}
 }
 
-var _ protoreflect.List = (*_TreeRootCommit_4_list)(nil)
+var _ protoreflect.List = (*_PocCount_3_list)(nil)
 
-type _TreeRootCommit_4_list struct {
-	list *[]*TreeRootCommitEntry
+type _PocCount_3_list struct {
+	list *[]*PocCountEntry
 }
 
-func (x *_TreeRootCommit_4_list) Len() int {
+func (x *_PocCount_3_list) Len() int {
 	if x.list == nil {
 		return 0
 	}
 	return len(*x.list)
 }
 
-func (x *_TreeRootCommit_4_list) Get(i int) protoreflect.Value {
+func (x *_PocCount_3_list) Get(i int) protoreflect.Value {
 	return protoreflect.ValueOfMessage((*x.list)[i].ProtoReflect())
 }
 
-func (x *_TreeRootCommit_4_list) Set(i int, value protoreflect.Value) {
+func (x *_PocCount_3_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*TreeRootCommitEntry)
+	concreteValue := valueUnwrapped.Interface().(*PocCountEntry)
 	(*x.list)[i] = concreteValue
 }
 
-func (x *_TreeRootCommit_4_list) Append(value protoreflect.Value) {
+func (x *_PocCount_3_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.Message()
-	concreteValue := valueUnwrapped.Interface().(*TreeRootCommitEntry)
+	concreteValue := valueUnwrapped.Interface().(*PocCountEntry)
 	*x.list = append(*x.list, concreteValue)
 }
 
-func (x *_TreeRootCommit_4_list) AppendMutable() protoreflect.Value {
-	v := new(TreeRootCommitEntry)
+func (x *_PocCount_3_list) AppendMutable() protoreflect.Value {
+	v := new(PocCountEntry)
 	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
-func (x *_TreeRootCommit_4_list) Truncate(n int) {
+func (x *_PocCount_3_list) Truncate(n int) {
 	for i := n; i < len(*x.list); i++ {
 		(*x.list)[i] = nil
 	}
 	*x.list = (*x.list)[:n]
 }
 
-func (x *_TreeRootCommit_4_list) NewElement() protoreflect.Value {
-	v := new(TreeRootCommitEntry)
+func (x *_PocCount_3_list) NewElement() protoreflect.Value {
+	v := new(PocCountEntry)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
-func (x *_TreeRootCommit_4_list) IsValid() bool {
+func (x *_PocCount_3_list) IsValid() bool {
 	return x.list != nil
 }
 
 var (
-	md_TreeRootCommit                              protoreflect.MessageDescriptor
-	fd_TreeRootCommit_creator                      protoreflect.FieldDescriptor
-	fd_TreeRootCommit_poc_stage_start_block_height protoreflect.FieldDescriptor
-	fd_TreeRootCommit_tree_index                   protoreflect.FieldDescriptor
-	fd_TreeRootCommit_entries                      protoreflect.FieldDescriptor
-	fd_TreeRootCommit_block_height                 protoreflect.FieldDescriptor
+	md_PocCount                              protoreflect.MessageDescriptor
+	fd_PocCount_creator                      protoreflect.FieldDescriptor
+	fd_PocCount_poc_stage_start_block_height protoreflect.FieldDescriptor
+	fd_PocCount_entries                      protoreflect.FieldDescriptor
+	fd_PocCount_block_height                 protoreflect.FieldDescriptor
 )
 
 func init() {
 	file_inference_inference_poc_v2_proto_init()
-	md_TreeRootCommit = File_inference_inference_poc_v2_proto.Messages().ByName("TreeRootCommit")
-	fd_TreeRootCommit_creator = md_TreeRootCommit.Fields().ByName("creator")
-	fd_TreeRootCommit_poc_stage_start_block_height = md_TreeRootCommit.Fields().ByName("poc_stage_start_block_height")
-	fd_TreeRootCommit_tree_index = md_TreeRootCommit.Fields().ByName("tree_index")
-	fd_TreeRootCommit_entries = md_TreeRootCommit.Fields().ByName("entries")
-	fd_TreeRootCommit_block_height = md_TreeRootCommit.Fields().ByName("block_height")
+	md_PocCount = File_inference_inference_poc_v2_proto.Messages().ByName("PocCount")
+	fd_PocCount_creator = md_PocCount.Fields().ByName("creator")
+	fd_PocCount_poc_stage_start_block_height = md_PocCount.Fields().ByName("poc_stage_start_block_height")
+	fd_PocCount_entries = md_PocCount.Fields().ByName("entries")
+	fd_PocCount_block_height = md_PocCount.Fields().ByName("block_height")
 }
 
-var _ protoreflect.Message = (*fastReflection_TreeRootCommit)(nil)
+var _ protoreflect.Message = (*fastReflection_PocCount)(nil)
 
-type fastReflection_TreeRootCommit TreeRootCommit
+type fastReflection_PocCount PocCount
 
-func (x *TreeRootCommit) ProtoReflect() protoreflect.Message {
-	return (*fastReflection_TreeRootCommit)(x)
+func (x *PocCount) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_PocCount)(x)
 }
 
-func (x *TreeRootCommit) slowProtoReflect() protoreflect.Message {
+func (x *PocCount) slowProtoReflect() protoreflect.Message {
 	mi := &file_inference_inference_poc_v2_proto_msgTypes[7]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -3792,43 +3790,43 @@ func (x *TreeRootCommit) slowProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-var _fastReflection_TreeRootCommit_messageType fastReflection_TreeRootCommit_messageType
-var _ protoreflect.MessageType = fastReflection_TreeRootCommit_messageType{}
+var _fastReflection_PocCount_messageType fastReflection_PocCount_messageType
+var _ protoreflect.MessageType = fastReflection_PocCount_messageType{}
 
-type fastReflection_TreeRootCommit_messageType struct{}
+type fastReflection_PocCount_messageType struct{}
 
-func (x fastReflection_TreeRootCommit_messageType) Zero() protoreflect.Message {
-	return (*fastReflection_TreeRootCommit)(nil)
+func (x fastReflection_PocCount_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_PocCount)(nil)
 }
-func (x fastReflection_TreeRootCommit_messageType) New() protoreflect.Message {
-	return new(fastReflection_TreeRootCommit)
+func (x fastReflection_PocCount_messageType) New() protoreflect.Message {
+	return new(fastReflection_PocCount)
 }
-func (x fastReflection_TreeRootCommit_messageType) Descriptor() protoreflect.MessageDescriptor {
-	return md_TreeRootCommit
+func (x fastReflection_PocCount_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_PocCount
 }
 
 // Descriptor returns message descriptor, which contains only the protobuf
 // type information for the message.
-func (x *fastReflection_TreeRootCommit) Descriptor() protoreflect.MessageDescriptor {
-	return md_TreeRootCommit
+func (x *fastReflection_PocCount) Descriptor() protoreflect.MessageDescriptor {
+	return md_PocCount
 }
 
 // Type returns the message type, which encapsulates both Go and protobuf
 // type information. If the Go type information is not needed,
 // it is recommended that the message descriptor be used instead.
-func (x *fastReflection_TreeRootCommit) Type() protoreflect.MessageType {
-	return _fastReflection_TreeRootCommit_messageType
+func (x *fastReflection_PocCount) Type() protoreflect.MessageType {
+	return _fastReflection_PocCount_messageType
 }
 
 // New returns a newly allocated and mutable empty message.
-func (x *fastReflection_TreeRootCommit) New() protoreflect.Message {
-	return new(fastReflection_TreeRootCommit)
+func (x *fastReflection_PocCount) New() protoreflect.Message {
+	return new(fastReflection_PocCount)
 }
 
 // Interface unwraps the message reflection interface and
 // returns the underlying ProtoMessage interface.
-func (x *fastReflection_TreeRootCommit) Interface() protoreflect.ProtoMessage {
-	return (*TreeRootCommit)(x)
+func (x *fastReflection_PocCount) Interface() protoreflect.ProtoMessage {
+	return (*PocCount)(x)
 }
 
 // Range iterates over every populated field in an undefined order,
@@ -3836,34 +3834,28 @@ func (x *fastReflection_TreeRootCommit) Interface() protoreflect.ProtoMessage {
 // Range returns immediately if f returns false.
 // While iterating, mutating operations may only be performed
 // on the current field descriptor.
-func (x *fastReflection_TreeRootCommit) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+func (x *fastReflection_PocCount) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
 	if x.Creator != "" {
 		value := protoreflect.ValueOfString(x.Creator)
-		if !f(fd_TreeRootCommit_creator, value) {
+		if !f(fd_PocCount_creator, value) {
 			return
 		}
 	}
 	if x.PocStageStartBlockHeight != int64(0) {
 		value := protoreflect.ValueOfInt64(x.PocStageStartBlockHeight)
-		if !f(fd_TreeRootCommit_poc_stage_start_block_height, value) {
-			return
-		}
-	}
-	if x.TreeIndex != int32(0) {
-		value := protoreflect.ValueOfInt32(x.TreeIndex)
-		if !f(fd_TreeRootCommit_tree_index, value) {
+		if !f(fd_PocCount_poc_stage_start_block_height, value) {
 			return
 		}
 	}
 	if len(x.Entries) != 0 {
-		value := protoreflect.ValueOfList(&_TreeRootCommit_4_list{list: &x.Entries})
-		if !f(fd_TreeRootCommit_entries, value) {
+		value := protoreflect.ValueOfList(&_PocCount_3_list{list: &x.Entries})
+		if !f(fd_PocCount_entries, value) {
 			return
 		}
 	}
 	if x.BlockHeight != int64(0) {
 		value := protoreflect.ValueOfInt64(x.BlockHeight)
-		if !f(fd_TreeRootCommit_block_height, value) {
+		if !f(fd_PocCount_block_height, value) {
 			return
 		}
 	}
@@ -3880,23 +3872,21 @@ func (x *fastReflection_TreeRootCommit) Range(f func(protoreflect.FieldDescripto
 // In other cases (aside from the nullable cases above),
 // a proto3 scalar field is populated if it contains a non-zero value, and
 // a repeated field is populated if it is non-empty.
-func (x *fastReflection_TreeRootCommit) Has(fd protoreflect.FieldDescriptor) bool {
+func (x *fastReflection_PocCount) Has(fd protoreflect.FieldDescriptor) bool {
 	switch fd.FullName() {
-	case "inference.inference.TreeRootCommit.creator":
+	case "inference.inference.PocCount.creator":
 		return x.Creator != ""
-	case "inference.inference.TreeRootCommit.poc_stage_start_block_height":
+	case "inference.inference.PocCount.poc_stage_start_block_height":
 		return x.PocStageStartBlockHeight != int64(0)
-	case "inference.inference.TreeRootCommit.tree_index":
-		return x.TreeIndex != int32(0)
-	case "inference.inference.TreeRootCommit.entries":
+	case "inference.inference.PocCount.entries":
 		return len(x.Entries) != 0
-	case "inference.inference.TreeRootCommit.block_height":
+	case "inference.inference.PocCount.block_height":
 		return x.BlockHeight != int64(0)
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommit"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocCount"))
 		}
-		panic(fmt.Errorf("message inference.inference.TreeRootCommit does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.PocCount does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -3906,23 +3896,21 @@ func (x *fastReflection_TreeRootCommit) Has(fd protoreflect.FieldDescriptor) boo
 // associated with the given field number.
 //
 // Clear is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_TreeRootCommit) Clear(fd protoreflect.FieldDescriptor) {
+func (x *fastReflection_PocCount) Clear(fd protoreflect.FieldDescriptor) {
 	switch fd.FullName() {
-	case "inference.inference.TreeRootCommit.creator":
+	case "inference.inference.PocCount.creator":
 		x.Creator = ""
-	case "inference.inference.TreeRootCommit.poc_stage_start_block_height":
+	case "inference.inference.PocCount.poc_stage_start_block_height":
 		x.PocStageStartBlockHeight = int64(0)
-	case "inference.inference.TreeRootCommit.tree_index":
-		x.TreeIndex = int32(0)
-	case "inference.inference.TreeRootCommit.entries":
+	case "inference.inference.PocCount.entries":
 		x.Entries = nil
-	case "inference.inference.TreeRootCommit.block_height":
+	case "inference.inference.PocCount.block_height":
 		x.BlockHeight = int64(0)
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommit"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocCount"))
 		}
-		panic(fmt.Errorf("message inference.inference.TreeRootCommit does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.PocCount does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -3932,31 +3920,28 @@ func (x *fastReflection_TreeRootCommit) Clear(fd protoreflect.FieldDescriptor) {
 // the default value of a bytes scalar is guaranteed to be a copy.
 // For unpopulated composite types, it returns an empty, read-only view
 // of the value; to obtain a mutable reference, use Mutable.
-func (x *fastReflection_TreeRootCommit) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+func (x *fastReflection_PocCount) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
 	switch descriptor.FullName() {
-	case "inference.inference.TreeRootCommit.creator":
+	case "inference.inference.PocCount.creator":
 		value := x.Creator
 		return protoreflect.ValueOfString(value)
-	case "inference.inference.TreeRootCommit.poc_stage_start_block_height":
+	case "inference.inference.PocCount.poc_stage_start_block_height":
 		value := x.PocStageStartBlockHeight
 		return protoreflect.ValueOfInt64(value)
-	case "inference.inference.TreeRootCommit.tree_index":
-		value := x.TreeIndex
-		return protoreflect.ValueOfInt32(value)
-	case "inference.inference.TreeRootCommit.entries":
+	case "inference.inference.PocCount.entries":
 		if len(x.Entries) == 0 {
-			return protoreflect.ValueOfList(&_TreeRootCommit_4_list{})
+			return protoreflect.ValueOfList(&_PocCount_3_list{})
 		}
-		listValue := &_TreeRootCommit_4_list{list: &x.Entries}
+		listValue := &_PocCount_3_list{list: &x.Entries}
 		return protoreflect.ValueOfList(listValue)
-	case "inference.inference.TreeRootCommit.block_height":
+	case "inference.inference.PocCount.block_height":
 		value := x.BlockHeight
 		return protoreflect.ValueOfInt64(value)
 	default:
 		if descriptor.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommit"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocCount"))
 		}
-		panic(fmt.Errorf("message inference.inference.TreeRootCommit does not contain field %s", descriptor.FullName()))
+		panic(fmt.Errorf("message inference.inference.PocCount does not contain field %s", descriptor.FullName()))
 	}
 }
 
@@ -3970,25 +3955,23 @@ func (x *fastReflection_TreeRootCommit) Get(descriptor protoreflect.FieldDescrip
 // empty, read-only value, then it panics.
 //
 // Set is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_TreeRootCommit) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+func (x *fastReflection_PocCount) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
 	switch fd.FullName() {
-	case "inference.inference.TreeRootCommit.creator":
+	case "inference.inference.PocCount.creator":
 		x.Creator = value.Interface().(string)
-	case "inference.inference.TreeRootCommit.poc_stage_start_block_height":
+	case "inference.inference.PocCount.poc_stage_start_block_height":
 		x.PocStageStartBlockHeight = value.Int()
-	case "inference.inference.TreeRootCommit.tree_index":
-		x.TreeIndex = int32(value.Int())
-	case "inference.inference.TreeRootCommit.entries":
+	case "inference.inference.PocCount.entries":
 		lv := value.List()
-		clv := lv.(*_TreeRootCommit_4_list)
+		clv := lv.(*_PocCount_3_list)
 		x.Entries = *clv.list
-	case "inference.inference.TreeRootCommit.block_height":
+	case "inference.inference.PocCount.block_height":
 		x.BlockHeight = value.Int()
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommit"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocCount"))
 		}
-		panic(fmt.Errorf("message inference.inference.TreeRootCommit does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.PocCount does not contain field %s", fd.FullName()))
 	}
 }
 
@@ -4002,61 +3985,57 @@ func (x *fastReflection_TreeRootCommit) Set(fd protoreflect.FieldDescriptor, val
 // It panics if the field does not contain a composite type.
 //
 // Mutable is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_TreeRootCommit) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+func (x *fastReflection_PocCount) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "inference.inference.TreeRootCommit.entries":
+	case "inference.inference.PocCount.entries":
 		if x.Entries == nil {
-			x.Entries = []*TreeRootCommitEntry{}
+			x.Entries = []*PocCountEntry{}
 		}
-		value := &_TreeRootCommit_4_list{list: &x.Entries}
+		value := &_PocCount_3_list{list: &x.Entries}
 		return protoreflect.ValueOfList(value)
-	case "inference.inference.TreeRootCommit.creator":
-		panic(fmt.Errorf("field creator of message inference.inference.TreeRootCommit is not mutable"))
-	case "inference.inference.TreeRootCommit.poc_stage_start_block_height":
-		panic(fmt.Errorf("field poc_stage_start_block_height of message inference.inference.TreeRootCommit is not mutable"))
-	case "inference.inference.TreeRootCommit.tree_index":
-		panic(fmt.Errorf("field tree_index of message inference.inference.TreeRootCommit is not mutable"))
-	case "inference.inference.TreeRootCommit.block_height":
-		panic(fmt.Errorf("field block_height of message inference.inference.TreeRootCommit is not mutable"))
+	case "inference.inference.PocCount.creator":
+		panic(fmt.Errorf("field creator of message inference.inference.PocCount is not mutable"))
+	case "inference.inference.PocCount.poc_stage_start_block_height":
+		panic(fmt.Errorf("field poc_stage_start_block_height of message inference.inference.PocCount is not mutable"))
+	case "inference.inference.PocCount.block_height":
+		panic(fmt.Errorf("field block_height of message inference.inference.PocCount is not mutable"))
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommit"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocCount"))
 		}
-		panic(fmt.Errorf("message inference.inference.TreeRootCommit does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.PocCount does not contain field %s", fd.FullName()))
 	}
 }
 
 // NewField returns a new value that is assignable to the field
 // for the given descriptor. For scalars, this returns the default value.
 // For lists, maps, and messages, this returns a new, empty, mutable value.
-func (x *fastReflection_TreeRootCommit) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+func (x *fastReflection_PocCount) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
 	switch fd.FullName() {
-	case "inference.inference.TreeRootCommit.creator":
+	case "inference.inference.PocCount.creator":
 		return protoreflect.ValueOfString("")
-	case "inference.inference.TreeRootCommit.poc_stage_start_block_height":
+	case "inference.inference.PocCount.poc_stage_start_block_height":
 		return protoreflect.ValueOfInt64(int64(0))
-	case "inference.inference.TreeRootCommit.tree_index":
-		return protoreflect.ValueOfInt32(int32(0))
-	case "inference.inference.TreeRootCommit.entries":
-		list := []*TreeRootCommitEntry{}
-		return protoreflect.ValueOfList(&_TreeRootCommit_4_list{list: &list})
-	case "inference.inference.TreeRootCommit.block_height":
+	case "inference.inference.PocCount.entries":
+		list := []*PocCountEntry{}
+		return protoreflect.ValueOfList(&_PocCount_3_list{list: &list})
+	case "inference.inference.PocCount.block_height":
 		return protoreflect.ValueOfInt64(int64(0))
 	default:
 		if fd.IsExtension() {
-			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.TreeRootCommit"))
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocCount"))
 		}
-		panic(fmt.Errorf("message inference.inference.TreeRootCommit does not contain field %s", fd.FullName()))
+		panic(fmt.Errorf("message inference.inference.PocCount does not contain field %s", fd.FullName()))
 	}
 }
 
 // WhichOneof reports which field within the oneof is populated,
 // returning nil if none are populated.
 // It panics if the oneof descriptor does not belong to this message.
-func (x *fastReflection_TreeRootCommit) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+func (x *fastReflection_PocCount) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
 	switch d.FullName() {
 	default:
-		panic(fmt.Errorf("%s is not a oneof field in inference.inference.TreeRootCommit", d.FullName()))
+		panic(fmt.Errorf("%s is not a oneof field in inference.inference.PocCount", d.FullName()))
 	}
 	panic("unreachable")
 }
@@ -4064,7 +4043,7 @@ func (x *fastReflection_TreeRootCommit) WhichOneof(d protoreflect.OneofDescripto
 // GetUnknown retrieves the entire list of unknown fields.
 // The caller may only mutate the contents of the RawFields
 // if the mutated bytes are stored back into the message with SetUnknown.
-func (x *fastReflection_TreeRootCommit) GetUnknown() protoreflect.RawFields {
+func (x *fastReflection_PocCount) GetUnknown() protoreflect.RawFields {
 	return x.unknownFields
 }
 
@@ -4075,7 +4054,7 @@ func (x *fastReflection_TreeRootCommit) GetUnknown() protoreflect.RawFields {
 // An empty RawFields may be passed to clear the fields.
 //
 // SetUnknown is a mutating operation and unsafe for concurrent use.
-func (x *fastReflection_TreeRootCommit) SetUnknown(fields protoreflect.RawFields) {
+func (x *fastReflection_PocCount) SetUnknown(fields protoreflect.RawFields) {
 	x.unknownFields = fields
 }
 
@@ -4087,7 +4066,7 @@ func (x *fastReflection_TreeRootCommit) SetUnknown(fields protoreflect.RawFields
 // message type, but the details are implementation dependent.
 // Validity is not part of the protobuf data model, and may not
 // be preserved in marshaling or other operations.
-func (x *fastReflection_TreeRootCommit) IsValid() bool {
+func (x *fastReflection_PocCount) IsValid() bool {
 	return x != nil
 }
 
@@ -4097,9 +4076,9 @@ func (x *fastReflection_TreeRootCommit) IsValid() bool {
 // The returned methods type is identical to
 // "google.golang.org/protobuf/runtime/protoiface".Methods.
 // Consult the protoiface package documentation for details.
-func (x *fastReflection_TreeRootCommit) ProtoMethods() *protoiface.Methods {
+func (x *fastReflection_PocCount) ProtoMethods() *protoiface.Methods {
 	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
-		x := input.Message.Interface().(*TreeRootCommit)
+		x := input.Message.Interface().(*PocCount)
 		if x == nil {
 			return protoiface.SizeOutput{
 				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -4117,9 +4096,6 @@ func (x *fastReflection_TreeRootCommit) ProtoMethods() *protoiface.Methods {
 		}
 		if x.PocStageStartBlockHeight != 0 {
 			n += 1 + runtime.Sov(uint64(x.PocStageStartBlockHeight))
-		}
-		if x.TreeIndex != 0 {
-			n += 1 + runtime.Sov(uint64(x.TreeIndex))
 		}
 		if len(x.Entries) > 0 {
 			for _, e := range x.Entries {
@@ -4140,7 +4116,7 @@ func (x *fastReflection_TreeRootCommit) ProtoMethods() *protoiface.Methods {
 	}
 
 	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
-		x := input.Message.Interface().(*TreeRootCommit)
+		x := input.Message.Interface().(*PocCount)
 		if x == nil {
 			return protoiface.MarshalOutput{
 				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -4162,7 +4138,7 @@ func (x *fastReflection_TreeRootCommit) ProtoMethods() *protoiface.Methods {
 		if x.BlockHeight != 0 {
 			i = runtime.EncodeVarint(dAtA, i, uint64(x.BlockHeight))
 			i--
-			dAtA[i] = 0x28
+			dAtA[i] = 0x20
 		}
 		if len(x.Entries) > 0 {
 			for iNdEx := len(x.Entries) - 1; iNdEx >= 0; iNdEx-- {
@@ -4177,13 +4153,8 @@ func (x *fastReflection_TreeRootCommit) ProtoMethods() *protoiface.Methods {
 				copy(dAtA[i:], encoded)
 				i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
 				i--
-				dAtA[i] = 0x22
+				dAtA[i] = 0x1a
 			}
-		}
-		if x.TreeIndex != 0 {
-			i = runtime.EncodeVarint(dAtA, i, uint64(x.TreeIndex))
-			i--
-			dAtA[i] = 0x18
 		}
 		if x.PocStageStartBlockHeight != 0 {
 			i = runtime.EncodeVarint(dAtA, i, uint64(x.PocStageStartBlockHeight))
@@ -4208,7 +4179,7 @@ func (x *fastReflection_TreeRootCommit) ProtoMethods() *protoiface.Methods {
 		}, nil
 	}
 	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
-		x := input.Message.Interface().(*TreeRootCommit)
+		x := input.Message.Interface().(*PocCount)
 		if x == nil {
 			return protoiface.UnmarshalOutput{
 				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
@@ -4240,10 +4211,725 @@ func (x *fastReflection_TreeRootCommit) ProtoMethods() *protoiface.Methods {
 			fieldNum := int32(wire >> 3)
 			wireType := int(wire & 0x7)
 			if wireType == 4 {
-				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: TreeRootCommit: wiretype end group for non-group")
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: PocCount: wiretype end group for non-group")
 			}
 			if fieldNum <= 0 {
-				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: TreeRootCommit: illegal tag %d (wire type %d)", fieldNum, wire)
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: PocCount: illegal tag %d (wire type %d)", fieldNum, wire)
+			}
+			switch fieldNum {
+			case 1:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Creator", wireType)
+				}
+				var stringLen uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					stringLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.Creator = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
+			case 2:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field PocStageStartBlockHeight", wireType)
+				}
+				x.PocStageStartBlockHeight = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.PocStageStartBlockHeight |= int64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+			case 3:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Entries", wireType)
+				}
+				var msglen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					msglen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if msglen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + msglen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.Entries = append(x.Entries, &PocCountEntry{})
+				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Entries[len(x.Entries)-1]); err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				iNdEx = postIndex
+			case 4:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field BlockHeight", wireType)
+				}
+				x.BlockHeight = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.BlockHeight |= int64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+			default:
+				iNdEx = preIndex
+				skippy, err := runtime.Skip(dAtA[iNdEx:])
+				if err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				if (skippy < 0) || (iNdEx+skippy) < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if (iNdEx + skippy) > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if !options.DiscardUnknown {
+					x.unknownFields = append(x.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+				}
+				iNdEx += skippy
+			}
+		}
+
+		if iNdEx > l {
+			return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+		}
+		return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, nil
+	}
+	return &protoiface.Methods{
+		NoUnkeyedLiterals: struct{}{},
+		Flags:             protoiface.SupportMarshalDeterministic | protoiface.SupportUnmarshalDiscardUnknown,
+		Size:              size,
+		Marshal:           marshal,
+		Unmarshal:         unmarshal,
+		Merge:             nil,
+		CheckInitialized:  nil,
+	}
+}
+
+var _ protoreflect.List = (*_PocWeightCommit_5_list)(nil)
+
+type _PocWeightCommit_5_list struct {
+	list *[]*MLNodeWeight
+}
+
+func (x *_PocWeightCommit_5_list) Len() int {
+	if x.list == nil {
+		return 0
+	}
+	return len(*x.list)
+}
+
+func (x *_PocWeightCommit_5_list) Get(i int) protoreflect.Value {
+	return protoreflect.ValueOfMessage((*x.list)[i].ProtoReflect())
+}
+
+func (x *_PocWeightCommit_5_list) Set(i int, value protoreflect.Value) {
+	valueUnwrapped := value.Message()
+	concreteValue := valueUnwrapped.Interface().(*MLNodeWeight)
+	(*x.list)[i] = concreteValue
+}
+
+func (x *_PocWeightCommit_5_list) Append(value protoreflect.Value) {
+	valueUnwrapped := value.Message()
+	concreteValue := valueUnwrapped.Interface().(*MLNodeWeight)
+	*x.list = append(*x.list, concreteValue)
+}
+
+func (x *_PocWeightCommit_5_list) AppendMutable() protoreflect.Value {
+	v := new(MLNodeWeight)
+	*x.list = append(*x.list, v)
+	return protoreflect.ValueOfMessage(v.ProtoReflect())
+}
+
+func (x *_PocWeightCommit_5_list) Truncate(n int) {
+	for i := n; i < len(*x.list); i++ {
+		(*x.list)[i] = nil
+	}
+	*x.list = (*x.list)[:n]
+}
+
+func (x *_PocWeightCommit_5_list) NewElement() protoreflect.Value {
+	v := new(MLNodeWeight)
+	return protoreflect.ValueOfMessage(v.ProtoReflect())
+}
+
+func (x *_PocWeightCommit_5_list) IsValid() bool {
+	return x.list != nil
+}
+
+var (
+	md_PocWeightCommit                              protoreflect.MessageDescriptor
+	fd_PocWeightCommit_creator                      protoreflect.FieldDescriptor
+	fd_PocWeightCommit_poc_stage_start_block_height protoreflect.FieldDescriptor
+	fd_PocWeightCommit_count                        protoreflect.FieldDescriptor
+	fd_PocWeightCommit_root_hash                    protoreflect.FieldDescriptor
+	fd_PocWeightCommit_weights                      protoreflect.FieldDescriptor
+	fd_PocWeightCommit_block_height                 protoreflect.FieldDescriptor
+)
+
+func init() {
+	file_inference_inference_poc_v2_proto_init()
+	md_PocWeightCommit = File_inference_inference_poc_v2_proto.Messages().ByName("PocWeightCommit")
+	fd_PocWeightCommit_creator = md_PocWeightCommit.Fields().ByName("creator")
+	fd_PocWeightCommit_poc_stage_start_block_height = md_PocWeightCommit.Fields().ByName("poc_stage_start_block_height")
+	fd_PocWeightCommit_count = md_PocWeightCommit.Fields().ByName("count")
+	fd_PocWeightCommit_root_hash = md_PocWeightCommit.Fields().ByName("root_hash")
+	fd_PocWeightCommit_weights = md_PocWeightCommit.Fields().ByName("weights")
+	fd_PocWeightCommit_block_height = md_PocWeightCommit.Fields().ByName("block_height")
+}
+
+var _ protoreflect.Message = (*fastReflection_PocWeightCommit)(nil)
+
+type fastReflection_PocWeightCommit PocWeightCommit
+
+func (x *PocWeightCommit) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_PocWeightCommit)(x)
+}
+
+func (x *PocWeightCommit) slowProtoReflect() protoreflect.Message {
+	mi := &file_inference_inference_poc_v2_proto_msgTypes[8]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+var _fastReflection_PocWeightCommit_messageType fastReflection_PocWeightCommit_messageType
+var _ protoreflect.MessageType = fastReflection_PocWeightCommit_messageType{}
+
+type fastReflection_PocWeightCommit_messageType struct{}
+
+func (x fastReflection_PocWeightCommit_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_PocWeightCommit)(nil)
+}
+func (x fastReflection_PocWeightCommit_messageType) New() protoreflect.Message {
+	return new(fastReflection_PocWeightCommit)
+}
+func (x fastReflection_PocWeightCommit_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_PocWeightCommit
+}
+
+// Descriptor returns message descriptor, which contains only the protobuf
+// type information for the message.
+func (x *fastReflection_PocWeightCommit) Descriptor() protoreflect.MessageDescriptor {
+	return md_PocWeightCommit
+}
+
+// Type returns the message type, which encapsulates both Go and protobuf
+// type information. If the Go type information is not needed,
+// it is recommended that the message descriptor be used instead.
+func (x *fastReflection_PocWeightCommit) Type() protoreflect.MessageType {
+	return _fastReflection_PocWeightCommit_messageType
+}
+
+// New returns a newly allocated and mutable empty message.
+func (x *fastReflection_PocWeightCommit) New() protoreflect.Message {
+	return new(fastReflection_PocWeightCommit)
+}
+
+// Interface unwraps the message reflection interface and
+// returns the underlying ProtoMessage interface.
+func (x *fastReflection_PocWeightCommit) Interface() protoreflect.ProtoMessage {
+	return (*PocWeightCommit)(x)
+}
+
+// Range iterates over every populated field in an undefined order,
+// calling f for each field descriptor and value encountered.
+// Range returns immediately if f returns false.
+// While iterating, mutating operations may only be performed
+// on the current field descriptor.
+func (x *fastReflection_PocWeightCommit) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+	if x.Creator != "" {
+		value := protoreflect.ValueOfString(x.Creator)
+		if !f(fd_PocWeightCommit_creator, value) {
+			return
+		}
+	}
+	if x.PocStageStartBlockHeight != int64(0) {
+		value := protoreflect.ValueOfInt64(x.PocStageStartBlockHeight)
+		if !f(fd_PocWeightCommit_poc_stage_start_block_height, value) {
+			return
+		}
+	}
+	if x.Count != uint32(0) {
+		value := protoreflect.ValueOfUint32(x.Count)
+		if !f(fd_PocWeightCommit_count, value) {
+			return
+		}
+	}
+	if len(x.RootHash) != 0 {
+		value := protoreflect.ValueOfBytes(x.RootHash)
+		if !f(fd_PocWeightCommit_root_hash, value) {
+			return
+		}
+	}
+	if len(x.Weights) != 0 {
+		value := protoreflect.ValueOfList(&_PocWeightCommit_5_list{list: &x.Weights})
+		if !f(fd_PocWeightCommit_weights, value) {
+			return
+		}
+	}
+	if x.BlockHeight != int64(0) {
+		value := protoreflect.ValueOfInt64(x.BlockHeight)
+		if !f(fd_PocWeightCommit_block_height, value) {
+			return
+		}
+	}
+}
+
+// Has reports whether a field is populated.
+//
+// Some fields have the property of nullability where it is possible to
+// distinguish between the default value of a field and whether the field
+// was explicitly populated with the default value. Singular message fields,
+// member fields of a oneof, and proto2 scalar fields are nullable. Such
+// fields are populated only if explicitly set.
+//
+// In other cases (aside from the nullable cases above),
+// a proto3 scalar field is populated if it contains a non-zero value, and
+// a repeated field is populated if it is non-empty.
+func (x *fastReflection_PocWeightCommit) Has(fd protoreflect.FieldDescriptor) bool {
+	switch fd.FullName() {
+	case "inference.inference.PocWeightCommit.creator":
+		return x.Creator != ""
+	case "inference.inference.PocWeightCommit.poc_stage_start_block_height":
+		return x.PocStageStartBlockHeight != int64(0)
+	case "inference.inference.PocWeightCommit.count":
+		return x.Count != uint32(0)
+	case "inference.inference.PocWeightCommit.root_hash":
+		return len(x.RootHash) != 0
+	case "inference.inference.PocWeightCommit.weights":
+		return len(x.Weights) != 0
+	case "inference.inference.PocWeightCommit.block_height":
+		return x.BlockHeight != int64(0)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocWeightCommit"))
+		}
+		panic(fmt.Errorf("message inference.inference.PocWeightCommit does not contain field %s", fd.FullName()))
+	}
+}
+
+// Clear clears the field such that a subsequent Has call reports false.
+//
+// Clearing an extension field clears both the extension type and value
+// associated with the given field number.
+//
+// Clear is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_PocWeightCommit) Clear(fd protoreflect.FieldDescriptor) {
+	switch fd.FullName() {
+	case "inference.inference.PocWeightCommit.creator":
+		x.Creator = ""
+	case "inference.inference.PocWeightCommit.poc_stage_start_block_height":
+		x.PocStageStartBlockHeight = int64(0)
+	case "inference.inference.PocWeightCommit.count":
+		x.Count = uint32(0)
+	case "inference.inference.PocWeightCommit.root_hash":
+		x.RootHash = nil
+	case "inference.inference.PocWeightCommit.weights":
+		x.Weights = nil
+	case "inference.inference.PocWeightCommit.block_height":
+		x.BlockHeight = int64(0)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocWeightCommit"))
+		}
+		panic(fmt.Errorf("message inference.inference.PocWeightCommit does not contain field %s", fd.FullName()))
+	}
+}
+
+// Get retrieves the value for a field.
+//
+// For unpopulated scalars, it returns the default value, where
+// the default value of a bytes scalar is guaranteed to be a copy.
+// For unpopulated composite types, it returns an empty, read-only view
+// of the value; to obtain a mutable reference, use Mutable.
+func (x *fastReflection_PocWeightCommit) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+	switch descriptor.FullName() {
+	case "inference.inference.PocWeightCommit.creator":
+		value := x.Creator
+		return protoreflect.ValueOfString(value)
+	case "inference.inference.PocWeightCommit.poc_stage_start_block_height":
+		value := x.PocStageStartBlockHeight
+		return protoreflect.ValueOfInt64(value)
+	case "inference.inference.PocWeightCommit.count":
+		value := x.Count
+		return protoreflect.ValueOfUint32(value)
+	case "inference.inference.PocWeightCommit.root_hash":
+		value := x.RootHash
+		return protoreflect.ValueOfBytes(value)
+	case "inference.inference.PocWeightCommit.weights":
+		if len(x.Weights) == 0 {
+			return protoreflect.ValueOfList(&_PocWeightCommit_5_list{})
+		}
+		listValue := &_PocWeightCommit_5_list{list: &x.Weights}
+		return protoreflect.ValueOfList(listValue)
+	case "inference.inference.PocWeightCommit.block_height":
+		value := x.BlockHeight
+		return protoreflect.ValueOfInt64(value)
+	default:
+		if descriptor.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocWeightCommit"))
+		}
+		panic(fmt.Errorf("message inference.inference.PocWeightCommit does not contain field %s", descriptor.FullName()))
+	}
+}
+
+// Set stores the value for a field.
+//
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType.
+// When setting a composite type, it is unspecified whether the stored value
+// aliases the source's memory in any way. If the composite value is an
+// empty, read-only value, then it panics.
+//
+// Set is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_PocWeightCommit) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+	switch fd.FullName() {
+	case "inference.inference.PocWeightCommit.creator":
+		x.Creator = value.Interface().(string)
+	case "inference.inference.PocWeightCommit.poc_stage_start_block_height":
+		x.PocStageStartBlockHeight = value.Int()
+	case "inference.inference.PocWeightCommit.count":
+		x.Count = uint32(value.Uint())
+	case "inference.inference.PocWeightCommit.root_hash":
+		x.RootHash = value.Bytes()
+	case "inference.inference.PocWeightCommit.weights":
+		lv := value.List()
+		clv := lv.(*_PocWeightCommit_5_list)
+		x.Weights = *clv.list
+	case "inference.inference.PocWeightCommit.block_height":
+		x.BlockHeight = value.Int()
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocWeightCommit"))
+		}
+		panic(fmt.Errorf("message inference.inference.PocWeightCommit does not contain field %s", fd.FullName()))
+	}
+}
+
+// Mutable returns a mutable reference to a composite type.
+//
+// If the field is unpopulated, it may allocate a composite value.
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType
+// if not already stored.
+// It panics if the field does not contain a composite type.
+//
+// Mutable is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_PocWeightCommit) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "inference.inference.PocWeightCommit.weights":
+		if x.Weights == nil {
+			x.Weights = []*MLNodeWeight{}
+		}
+		value := &_PocWeightCommit_5_list{list: &x.Weights}
+		return protoreflect.ValueOfList(value)
+	case "inference.inference.PocWeightCommit.creator":
+		panic(fmt.Errorf("field creator of message inference.inference.PocWeightCommit is not mutable"))
+	case "inference.inference.PocWeightCommit.poc_stage_start_block_height":
+		panic(fmt.Errorf("field poc_stage_start_block_height of message inference.inference.PocWeightCommit is not mutable"))
+	case "inference.inference.PocWeightCommit.count":
+		panic(fmt.Errorf("field count of message inference.inference.PocWeightCommit is not mutable"))
+	case "inference.inference.PocWeightCommit.root_hash":
+		panic(fmt.Errorf("field root_hash of message inference.inference.PocWeightCommit is not mutable"))
+	case "inference.inference.PocWeightCommit.block_height":
+		panic(fmt.Errorf("field block_height of message inference.inference.PocWeightCommit is not mutable"))
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocWeightCommit"))
+		}
+		panic(fmt.Errorf("message inference.inference.PocWeightCommit does not contain field %s", fd.FullName()))
+	}
+}
+
+// NewField returns a new value that is assignable to the field
+// for the given descriptor. For scalars, this returns the default value.
+// For lists, maps, and messages, this returns a new, empty, mutable value.
+func (x *fastReflection_PocWeightCommit) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "inference.inference.PocWeightCommit.creator":
+		return protoreflect.ValueOfString("")
+	case "inference.inference.PocWeightCommit.poc_stage_start_block_height":
+		return protoreflect.ValueOfInt64(int64(0))
+	case "inference.inference.PocWeightCommit.count":
+		return protoreflect.ValueOfUint32(uint32(0))
+	case "inference.inference.PocWeightCommit.root_hash":
+		return protoreflect.ValueOfBytes(nil)
+	case "inference.inference.PocWeightCommit.weights":
+		list := []*MLNodeWeight{}
+		return protoreflect.ValueOfList(&_PocWeightCommit_5_list{list: &list})
+	case "inference.inference.PocWeightCommit.block_height":
+		return protoreflect.ValueOfInt64(int64(0))
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocWeightCommit"))
+		}
+		panic(fmt.Errorf("message inference.inference.PocWeightCommit does not contain field %s", fd.FullName()))
+	}
+}
+
+// WhichOneof reports which field within the oneof is populated,
+// returning nil if none are populated.
+// It panics if the oneof descriptor does not belong to this message.
+func (x *fastReflection_PocWeightCommit) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+	switch d.FullName() {
+	default:
+		panic(fmt.Errorf("%s is not a oneof field in inference.inference.PocWeightCommit", d.FullName()))
+	}
+	panic("unreachable")
+}
+
+// GetUnknown retrieves the entire list of unknown fields.
+// The caller may only mutate the contents of the RawFields
+// if the mutated bytes are stored back into the message with SetUnknown.
+func (x *fastReflection_PocWeightCommit) GetUnknown() protoreflect.RawFields {
+	return x.unknownFields
+}
+
+// SetUnknown stores an entire list of unknown fields.
+// The raw fields must be syntactically valid according to the wire format.
+// An implementation may panic if this is not the case.
+// Once stored, the caller must not mutate the content of the RawFields.
+// An empty RawFields may be passed to clear the fields.
+//
+// SetUnknown is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_PocWeightCommit) SetUnknown(fields protoreflect.RawFields) {
+	x.unknownFields = fields
+}
+
+// IsValid reports whether the message is valid.
+//
+// An invalid message is an empty, read-only value.
+//
+// An invalid message often corresponds to a nil pointer of the concrete
+// message type, but the details are implementation dependent.
+// Validity is not part of the protobuf data model, and may not
+// be preserved in marshaling or other operations.
+func (x *fastReflection_PocWeightCommit) IsValid() bool {
+	return x != nil
+}
+
+// ProtoMethods returns optional fastReflectionFeature-path implementations of various operations.
+// This method may return nil.
+//
+// The returned methods type is identical to
+// "google.golang.org/protobuf/runtime/protoiface".Methods.
+// Consult the protoiface package documentation for details.
+func (x *fastReflection_PocWeightCommit) ProtoMethods() *protoiface.Methods {
+	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
+		x := input.Message.Interface().(*PocWeightCommit)
+		if x == nil {
+			return protoiface.SizeOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Size:              0,
+			}
+		}
+		options := runtime.SizeInputToOptions(input)
+		_ = options
+		var n int
+		var l int
+		_ = l
+		l = len(x.Creator)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		if x.PocStageStartBlockHeight != 0 {
+			n += 1 + runtime.Sov(uint64(x.PocStageStartBlockHeight))
+		}
+		if x.Count != 0 {
+			n += 1 + runtime.Sov(uint64(x.Count))
+		}
+		l = len(x.RootHash)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		if len(x.Weights) > 0 {
+			for _, e := range x.Weights {
+				l = options.Size(e)
+				n += 1 + l + runtime.Sov(uint64(l))
+			}
+		}
+		if x.BlockHeight != 0 {
+			n += 1 + runtime.Sov(uint64(x.BlockHeight))
+		}
+		if x.unknownFields != nil {
+			n += len(x.unknownFields)
+		}
+		return protoiface.SizeOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Size:              n,
+		}
+	}
+
+	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
+		x := input.Message.Interface().(*PocWeightCommit)
+		if x == nil {
+			return protoiface.MarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Buf:               input.Buf,
+			}, nil
+		}
+		options := runtime.MarshalInputToOptions(input)
+		_ = options
+		size := options.Size(x)
+		dAtA := make([]byte, size)
+		i := len(dAtA)
+		_ = i
+		var l int
+		_ = l
+		if x.unknownFields != nil {
+			i -= len(x.unknownFields)
+			copy(dAtA[i:], x.unknownFields)
+		}
+		if x.BlockHeight != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.BlockHeight))
+			i--
+			dAtA[i] = 0x30
+		}
+		if len(x.Weights) > 0 {
+			for iNdEx := len(x.Weights) - 1; iNdEx >= 0; iNdEx-- {
+				encoded, err := options.Marshal(x.Weights[iNdEx])
+				if err != nil {
+					return protoiface.MarshalOutput{
+						NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+						Buf:               input.Buf,
+					}, err
+				}
+				i -= len(encoded)
+				copy(dAtA[i:], encoded)
+				i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
+				i--
+				dAtA[i] = 0x2a
+			}
+		}
+		if len(x.RootHash) > 0 {
+			i -= len(x.RootHash)
+			copy(dAtA[i:], x.RootHash)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.RootHash)))
+			i--
+			dAtA[i] = 0x22
+		}
+		if x.Count != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.Count))
+			i--
+			dAtA[i] = 0x18
+		}
+		if x.PocStageStartBlockHeight != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.PocStageStartBlockHeight))
+			i--
+			dAtA[i] = 0x10
+		}
+		if len(x.Creator) > 0 {
+			i -= len(x.Creator)
+			copy(dAtA[i:], x.Creator)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.Creator)))
+			i--
+			dAtA[i] = 0xa
+		}
+		if input.Buf != nil {
+			input.Buf = append(input.Buf, dAtA...)
+		} else {
+			input.Buf = dAtA
+		}
+		return protoiface.MarshalOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Buf:               input.Buf,
+		}, nil
+	}
+	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
+		x := input.Message.Interface().(*PocWeightCommit)
+		if x == nil {
+			return protoiface.UnmarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Flags:             input.Flags,
+			}, nil
+		}
+		options := runtime.UnmarshalInputToOptions(input)
+		_ = options
+		dAtA := input.Buf
+		l := len(dAtA)
+		iNdEx := 0
+		for iNdEx < l {
+			preIndex := iNdEx
+			var wire uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				wire |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			fieldNum := int32(wire >> 3)
+			wireType := int(wire & 0x7)
+			if wireType == 4 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: PocWeightCommit: wiretype end group for non-group")
+			}
+			if fieldNum <= 0 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: PocWeightCommit: illegal tag %d (wire type %d)", fieldNum, wire)
 			}
 			switch fieldNum {
 			case 1:
@@ -4299,9 +4985,9 @@ func (x *fastReflection_TreeRootCommit) ProtoMethods() *protoiface.Methods {
 				}
 			case 3:
 				if wireType != 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field TreeIndex", wireType)
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Count", wireType)
 				}
-				x.TreeIndex = 0
+				x.Count = 0
 				for shift := uint(0); ; shift += 7 {
 					if shift >= 64 {
 						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
@@ -4311,14 +4997,48 @@ func (x *fastReflection_TreeRootCommit) ProtoMethods() *protoiface.Methods {
 					}
 					b := dAtA[iNdEx]
 					iNdEx++
-					x.TreeIndex |= int32(b&0x7F) << shift
+					x.Count |= uint32(b&0x7F) << shift
 					if b < 0x80 {
 						break
 					}
 				}
 			case 4:
 				if wireType != 2 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Entries", wireType)
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field RootHash", wireType)
+				}
+				var byteLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					byteLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if byteLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + byteLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.RootHash = append(x.RootHash[:0], dAtA[iNdEx:postIndex]...)
+				if x.RootHash == nil {
+					x.RootHash = []byte{}
+				}
+				iNdEx = postIndex
+			case 5:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Weights", wireType)
 				}
 				var msglen int
 				for shift := uint(0); ; shift += 7 {
@@ -4345,12 +5065,12 @@ func (x *fastReflection_TreeRootCommit) ProtoMethods() *protoiface.Methods {
 				if postIndex > l {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
 				}
-				x.Entries = append(x.Entries, &TreeRootCommitEntry{})
-				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Entries[len(x.Entries)-1]); err != nil {
+				x.Weights = append(x.Weights, &MLNodeWeight{})
+				if err := options.Unmarshal(dAtA[iNdEx:postIndex], x.Weights[len(x.Weights)-1]); err != nil {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
 				iNdEx = postIndex
-			case 5:
+			case 6:
 				if wireType != 0 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field BlockHeight", wireType)
 				}
@@ -4365,6 +5085,570 @@ func (x *fastReflection_TreeRootCommit) ProtoMethods() *protoiface.Methods {
 					b := dAtA[iNdEx]
 					iNdEx++
 					x.BlockHeight |= int64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+			default:
+				iNdEx = preIndex
+				skippy, err := runtime.Skip(dAtA[iNdEx:])
+				if err != nil {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
+				}
+				if (skippy < 0) || (iNdEx+skippy) < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if (iNdEx + skippy) > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				if !options.DiscardUnknown {
+					x.unknownFields = append(x.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
+				}
+				iNdEx += skippy
+			}
+		}
+
+		if iNdEx > l {
+			return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+		}
+		return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, nil
+	}
+	return &protoiface.Methods{
+		NoUnkeyedLiterals: struct{}{},
+		Flags:             protoiface.SupportMarshalDeterministic | protoiface.SupportUnmarshalDiscardUnknown,
+		Size:              size,
+		Marshal:           marshal,
+		Unmarshal:         unmarshal,
+		Merge:             nil,
+		CheckInitialized:  nil,
+	}
+}
+
+var (
+	md_AgreedCount                  protoreflect.MessageDescriptor
+	fd_AgreedCount_participant      protoreflect.FieldDescriptor
+	fd_AgreedCount_agreed_count     protoreflect.FieldDescriptor
+	fd_AgreedCount_total_validators protoreflect.FieldDescriptor
+	fd_AgreedCount_agreeing_count   protoreflect.FieldDescriptor
+)
+
+func init() {
+	file_inference_inference_poc_v2_proto_init()
+	md_AgreedCount = File_inference_inference_poc_v2_proto.Messages().ByName("AgreedCount")
+	fd_AgreedCount_participant = md_AgreedCount.Fields().ByName("participant")
+	fd_AgreedCount_agreed_count = md_AgreedCount.Fields().ByName("agreed_count")
+	fd_AgreedCount_total_validators = md_AgreedCount.Fields().ByName("total_validators")
+	fd_AgreedCount_agreeing_count = md_AgreedCount.Fields().ByName("agreeing_count")
+}
+
+var _ protoreflect.Message = (*fastReflection_AgreedCount)(nil)
+
+type fastReflection_AgreedCount AgreedCount
+
+func (x *AgreedCount) ProtoReflect() protoreflect.Message {
+	return (*fastReflection_AgreedCount)(x)
+}
+
+func (x *AgreedCount) slowProtoReflect() protoreflect.Message {
+	mi := &file_inference_inference_poc_v2_proto_msgTypes[9]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+var _fastReflection_AgreedCount_messageType fastReflection_AgreedCount_messageType
+var _ protoreflect.MessageType = fastReflection_AgreedCount_messageType{}
+
+type fastReflection_AgreedCount_messageType struct{}
+
+func (x fastReflection_AgreedCount_messageType) Zero() protoreflect.Message {
+	return (*fastReflection_AgreedCount)(nil)
+}
+func (x fastReflection_AgreedCount_messageType) New() protoreflect.Message {
+	return new(fastReflection_AgreedCount)
+}
+func (x fastReflection_AgreedCount_messageType) Descriptor() protoreflect.MessageDescriptor {
+	return md_AgreedCount
+}
+
+// Descriptor returns message descriptor, which contains only the protobuf
+// type information for the message.
+func (x *fastReflection_AgreedCount) Descriptor() protoreflect.MessageDescriptor {
+	return md_AgreedCount
+}
+
+// Type returns the message type, which encapsulates both Go and protobuf
+// type information. If the Go type information is not needed,
+// it is recommended that the message descriptor be used instead.
+func (x *fastReflection_AgreedCount) Type() protoreflect.MessageType {
+	return _fastReflection_AgreedCount_messageType
+}
+
+// New returns a newly allocated and mutable empty message.
+func (x *fastReflection_AgreedCount) New() protoreflect.Message {
+	return new(fastReflection_AgreedCount)
+}
+
+// Interface unwraps the message reflection interface and
+// returns the underlying ProtoMessage interface.
+func (x *fastReflection_AgreedCount) Interface() protoreflect.ProtoMessage {
+	return (*AgreedCount)(x)
+}
+
+// Range iterates over every populated field in an undefined order,
+// calling f for each field descriptor and value encountered.
+// Range returns immediately if f returns false.
+// While iterating, mutating operations may only be performed
+// on the current field descriptor.
+func (x *fastReflection_AgreedCount) Range(f func(protoreflect.FieldDescriptor, protoreflect.Value) bool) {
+	if x.Participant != "" {
+		value := protoreflect.ValueOfString(x.Participant)
+		if !f(fd_AgreedCount_participant, value) {
+			return
+		}
+	}
+	if x.AgreedCount != uint32(0) {
+		value := protoreflect.ValueOfUint32(x.AgreedCount)
+		if !f(fd_AgreedCount_agreed_count, value) {
+			return
+		}
+	}
+	if x.TotalValidators != int32(0) {
+		value := protoreflect.ValueOfInt32(x.TotalValidators)
+		if !f(fd_AgreedCount_total_validators, value) {
+			return
+		}
+	}
+	if x.AgreeingCount != int32(0) {
+		value := protoreflect.ValueOfInt32(x.AgreeingCount)
+		if !f(fd_AgreedCount_agreeing_count, value) {
+			return
+		}
+	}
+}
+
+// Has reports whether a field is populated.
+//
+// Some fields have the property of nullability where it is possible to
+// distinguish between the default value of a field and whether the field
+// was explicitly populated with the default value. Singular message fields,
+// member fields of a oneof, and proto2 scalar fields are nullable. Such
+// fields are populated only if explicitly set.
+//
+// In other cases (aside from the nullable cases above),
+// a proto3 scalar field is populated if it contains a non-zero value, and
+// a repeated field is populated if it is non-empty.
+func (x *fastReflection_AgreedCount) Has(fd protoreflect.FieldDescriptor) bool {
+	switch fd.FullName() {
+	case "inference.inference.AgreedCount.participant":
+		return x.Participant != ""
+	case "inference.inference.AgreedCount.agreed_count":
+		return x.AgreedCount != uint32(0)
+	case "inference.inference.AgreedCount.total_validators":
+		return x.TotalValidators != int32(0)
+	case "inference.inference.AgreedCount.agreeing_count":
+		return x.AgreeingCount != int32(0)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.AgreedCount"))
+		}
+		panic(fmt.Errorf("message inference.inference.AgreedCount does not contain field %s", fd.FullName()))
+	}
+}
+
+// Clear clears the field such that a subsequent Has call reports false.
+//
+// Clearing an extension field clears both the extension type and value
+// associated with the given field number.
+//
+// Clear is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_AgreedCount) Clear(fd protoreflect.FieldDescriptor) {
+	switch fd.FullName() {
+	case "inference.inference.AgreedCount.participant":
+		x.Participant = ""
+	case "inference.inference.AgreedCount.agreed_count":
+		x.AgreedCount = uint32(0)
+	case "inference.inference.AgreedCount.total_validators":
+		x.TotalValidators = int32(0)
+	case "inference.inference.AgreedCount.agreeing_count":
+		x.AgreeingCount = int32(0)
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.AgreedCount"))
+		}
+		panic(fmt.Errorf("message inference.inference.AgreedCount does not contain field %s", fd.FullName()))
+	}
+}
+
+// Get retrieves the value for a field.
+//
+// For unpopulated scalars, it returns the default value, where
+// the default value of a bytes scalar is guaranteed to be a copy.
+// For unpopulated composite types, it returns an empty, read-only view
+// of the value; to obtain a mutable reference, use Mutable.
+func (x *fastReflection_AgreedCount) Get(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
+	switch descriptor.FullName() {
+	case "inference.inference.AgreedCount.participant":
+		value := x.Participant
+		return protoreflect.ValueOfString(value)
+	case "inference.inference.AgreedCount.agreed_count":
+		value := x.AgreedCount
+		return protoreflect.ValueOfUint32(value)
+	case "inference.inference.AgreedCount.total_validators":
+		value := x.TotalValidators
+		return protoreflect.ValueOfInt32(value)
+	case "inference.inference.AgreedCount.agreeing_count":
+		value := x.AgreeingCount
+		return protoreflect.ValueOfInt32(value)
+	default:
+		if descriptor.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.AgreedCount"))
+		}
+		panic(fmt.Errorf("message inference.inference.AgreedCount does not contain field %s", descriptor.FullName()))
+	}
+}
+
+// Set stores the value for a field.
+//
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType.
+// When setting a composite type, it is unspecified whether the stored value
+// aliases the source's memory in any way. If the composite value is an
+// empty, read-only value, then it panics.
+//
+// Set is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_AgreedCount) Set(fd protoreflect.FieldDescriptor, value protoreflect.Value) {
+	switch fd.FullName() {
+	case "inference.inference.AgreedCount.participant":
+		x.Participant = value.Interface().(string)
+	case "inference.inference.AgreedCount.agreed_count":
+		x.AgreedCount = uint32(value.Uint())
+	case "inference.inference.AgreedCount.total_validators":
+		x.TotalValidators = int32(value.Int())
+	case "inference.inference.AgreedCount.agreeing_count":
+		x.AgreeingCount = int32(value.Int())
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.AgreedCount"))
+		}
+		panic(fmt.Errorf("message inference.inference.AgreedCount does not contain field %s", fd.FullName()))
+	}
+}
+
+// Mutable returns a mutable reference to a composite type.
+//
+// If the field is unpopulated, it may allocate a composite value.
+// For a field belonging to a oneof, it implicitly clears any other field
+// that may be currently set within the same oneof.
+// For extension fields, it implicitly stores the provided ExtensionType
+// if not already stored.
+// It panics if the field does not contain a composite type.
+//
+// Mutable is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_AgreedCount) Mutable(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "inference.inference.AgreedCount.participant":
+		panic(fmt.Errorf("field participant of message inference.inference.AgreedCount is not mutable"))
+	case "inference.inference.AgreedCount.agreed_count":
+		panic(fmt.Errorf("field agreed_count of message inference.inference.AgreedCount is not mutable"))
+	case "inference.inference.AgreedCount.total_validators":
+		panic(fmt.Errorf("field total_validators of message inference.inference.AgreedCount is not mutable"))
+	case "inference.inference.AgreedCount.agreeing_count":
+		panic(fmt.Errorf("field agreeing_count of message inference.inference.AgreedCount is not mutable"))
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.AgreedCount"))
+		}
+		panic(fmt.Errorf("message inference.inference.AgreedCount does not contain field %s", fd.FullName()))
+	}
+}
+
+// NewField returns a new value that is assignable to the field
+// for the given descriptor. For scalars, this returns the default value.
+// For lists, maps, and messages, this returns a new, empty, mutable value.
+func (x *fastReflection_AgreedCount) NewField(fd protoreflect.FieldDescriptor) protoreflect.Value {
+	switch fd.FullName() {
+	case "inference.inference.AgreedCount.participant":
+		return protoreflect.ValueOfString("")
+	case "inference.inference.AgreedCount.agreed_count":
+		return protoreflect.ValueOfUint32(uint32(0))
+	case "inference.inference.AgreedCount.total_validators":
+		return protoreflect.ValueOfInt32(int32(0))
+	case "inference.inference.AgreedCount.agreeing_count":
+		return protoreflect.ValueOfInt32(int32(0))
+	default:
+		if fd.IsExtension() {
+			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.AgreedCount"))
+		}
+		panic(fmt.Errorf("message inference.inference.AgreedCount does not contain field %s", fd.FullName()))
+	}
+}
+
+// WhichOneof reports which field within the oneof is populated,
+// returning nil if none are populated.
+// It panics if the oneof descriptor does not belong to this message.
+func (x *fastReflection_AgreedCount) WhichOneof(d protoreflect.OneofDescriptor) protoreflect.FieldDescriptor {
+	switch d.FullName() {
+	default:
+		panic(fmt.Errorf("%s is not a oneof field in inference.inference.AgreedCount", d.FullName()))
+	}
+	panic("unreachable")
+}
+
+// GetUnknown retrieves the entire list of unknown fields.
+// The caller may only mutate the contents of the RawFields
+// if the mutated bytes are stored back into the message with SetUnknown.
+func (x *fastReflection_AgreedCount) GetUnknown() protoreflect.RawFields {
+	return x.unknownFields
+}
+
+// SetUnknown stores an entire list of unknown fields.
+// The raw fields must be syntactically valid according to the wire format.
+// An implementation may panic if this is not the case.
+// Once stored, the caller must not mutate the content of the RawFields.
+// An empty RawFields may be passed to clear the fields.
+//
+// SetUnknown is a mutating operation and unsafe for concurrent use.
+func (x *fastReflection_AgreedCount) SetUnknown(fields protoreflect.RawFields) {
+	x.unknownFields = fields
+}
+
+// IsValid reports whether the message is valid.
+//
+// An invalid message is an empty, read-only value.
+//
+// An invalid message often corresponds to a nil pointer of the concrete
+// message type, but the details are implementation dependent.
+// Validity is not part of the protobuf data model, and may not
+// be preserved in marshaling or other operations.
+func (x *fastReflection_AgreedCount) IsValid() bool {
+	return x != nil
+}
+
+// ProtoMethods returns optional fastReflectionFeature-path implementations of various operations.
+// This method may return nil.
+//
+// The returned methods type is identical to
+// "google.golang.org/protobuf/runtime/protoiface".Methods.
+// Consult the protoiface package documentation for details.
+func (x *fastReflection_AgreedCount) ProtoMethods() *protoiface.Methods {
+	size := func(input protoiface.SizeInput) protoiface.SizeOutput {
+		x := input.Message.Interface().(*AgreedCount)
+		if x == nil {
+			return protoiface.SizeOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Size:              0,
+			}
+		}
+		options := runtime.SizeInputToOptions(input)
+		_ = options
+		var n int
+		var l int
+		_ = l
+		l = len(x.Participant)
+		if l > 0 {
+			n += 1 + l + runtime.Sov(uint64(l))
+		}
+		if x.AgreedCount != 0 {
+			n += 1 + runtime.Sov(uint64(x.AgreedCount))
+		}
+		if x.TotalValidators != 0 {
+			n += 1 + runtime.Sov(uint64(x.TotalValidators))
+		}
+		if x.AgreeingCount != 0 {
+			n += 1 + runtime.Sov(uint64(x.AgreeingCount))
+		}
+		if x.unknownFields != nil {
+			n += len(x.unknownFields)
+		}
+		return protoiface.SizeOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Size:              n,
+		}
+	}
+
+	marshal := func(input protoiface.MarshalInput) (protoiface.MarshalOutput, error) {
+		x := input.Message.Interface().(*AgreedCount)
+		if x == nil {
+			return protoiface.MarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Buf:               input.Buf,
+			}, nil
+		}
+		options := runtime.MarshalInputToOptions(input)
+		_ = options
+		size := options.Size(x)
+		dAtA := make([]byte, size)
+		i := len(dAtA)
+		_ = i
+		var l int
+		_ = l
+		if x.unknownFields != nil {
+			i -= len(x.unknownFields)
+			copy(dAtA[i:], x.unknownFields)
+		}
+		if x.AgreeingCount != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.AgreeingCount))
+			i--
+			dAtA[i] = 0x20
+		}
+		if x.TotalValidators != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.TotalValidators))
+			i--
+			dAtA[i] = 0x18
+		}
+		if x.AgreedCount != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.AgreedCount))
+			i--
+			dAtA[i] = 0x10
+		}
+		if len(x.Participant) > 0 {
+			i -= len(x.Participant)
+			copy(dAtA[i:], x.Participant)
+			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.Participant)))
+			i--
+			dAtA[i] = 0xa
+		}
+		if input.Buf != nil {
+			input.Buf = append(input.Buf, dAtA...)
+		} else {
+			input.Buf = dAtA
+		}
+		return protoiface.MarshalOutput{
+			NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+			Buf:               input.Buf,
+		}, nil
+	}
+	unmarshal := func(input protoiface.UnmarshalInput) (protoiface.UnmarshalOutput, error) {
+		x := input.Message.Interface().(*AgreedCount)
+		if x == nil {
+			return protoiface.UnmarshalOutput{
+				NoUnkeyedLiterals: input.NoUnkeyedLiterals,
+				Flags:             input.Flags,
+			}, nil
+		}
+		options := runtime.UnmarshalInputToOptions(input)
+		_ = options
+		dAtA := input.Buf
+		l := len(dAtA)
+		iNdEx := 0
+		for iNdEx < l {
+			preIndex := iNdEx
+			var wire uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				wire |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			fieldNum := int32(wire >> 3)
+			wireType := int(wire & 0x7)
+			if wireType == 4 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: AgreedCount: wiretype end group for non-group")
+			}
+			if fieldNum <= 0 {
+				return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: AgreedCount: illegal tag %d (wire type %d)", fieldNum, wire)
+			}
+			switch fieldNum {
+			case 1:
+				if wireType != 2 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Participant", wireType)
+				}
+				var stringLen uint64
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					stringLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				intStringLen := int(stringLen)
+				if intStringLen < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				postIndex := iNdEx + intStringLen
+				if postIndex < 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrInvalidLength
+				}
+				if postIndex > l {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+				}
+				x.Participant = string(dAtA[iNdEx:postIndex])
+				iNdEx = postIndex
+			case 2:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field AgreedCount", wireType)
+				}
+				x.AgreedCount = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.AgreedCount |= uint32(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+			case 3:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field TotalValidators", wireType)
+				}
+				x.TotalValidators = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.TotalValidators |= int32(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+			case 4:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field AgreeingCount", wireType)
+				}
+				x.AgreeingCount = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.AgreeingCount |= int32(b&0x7F) << shift
 					if b < 0x80 {
 						break
 					}
@@ -4732,7 +6016,7 @@ func (x *MLNodeWeightDistribution) GetWeights() []*MLNodeWeight {
 	return nil
 }
 
-type TreeRootCommitEntry struct {
+type PocCountEntry struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
@@ -4741,8 +6025,8 @@ type TreeRootCommitEntry struct {
 	Count       uint32 `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
 }
 
-func (x *TreeRootCommitEntry) Reset() {
-	*x = TreeRootCommitEntry{}
+func (x *PocCountEntry) Reset() {
+	*x = PocCountEntry{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_inference_inference_poc_v2_proto_msgTypes[6]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -4750,45 +6034,44 @@ func (x *TreeRootCommitEntry) Reset() {
 	}
 }
 
-func (x *TreeRootCommitEntry) String() string {
+func (x *PocCountEntry) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*TreeRootCommitEntry) ProtoMessage() {}
+func (*PocCountEntry) ProtoMessage() {}
 
-// Deprecated: Use TreeRootCommitEntry.ProtoReflect.Descriptor instead.
-func (*TreeRootCommitEntry) Descriptor() ([]byte, []int) {
+// Deprecated: Use PocCountEntry.ProtoReflect.Descriptor instead.
+func (*PocCountEntry) Descriptor() ([]byte, []int) {
 	return file_inference_inference_poc_v2_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *TreeRootCommitEntry) GetParticipant() string {
+func (x *PocCountEntry) GetParticipant() string {
 	if x != nil {
 		return x.Participant
 	}
 	return ""
 }
 
-func (x *TreeRootCommitEntry) GetCount() uint32 {
+func (x *PocCountEntry) GetCount() uint32 {
 	if x != nil {
 		return x.Count
 	}
 	return 0
 }
 
-type TreeRootCommit struct {
+type PocCount struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Creator                  string                 `protobuf:"bytes,1,opt,name=creator,proto3" json:"creator,omitempty"`
-	PocStageStartBlockHeight int64                  `protobuf:"varint,2,opt,name=poc_stage_start_block_height,json=pocStageStartBlockHeight,proto3" json:"poc_stage_start_block_height,omitempty"`
-	TreeIndex                int32                  `protobuf:"varint,3,opt,name=tree_index,json=treeIndex,proto3" json:"tree_index,omitempty"`
-	Entries                  []*TreeRootCommitEntry `protobuf:"bytes,4,rep,name=entries,proto3" json:"entries,omitempty"`
-	BlockHeight              int64                  `protobuf:"varint,5,opt,name=block_height,json=blockHeight,proto3" json:"block_height,omitempty"`
+	Creator                  string           `protobuf:"bytes,1,opt,name=creator,proto3" json:"creator,omitempty"`
+	PocStageStartBlockHeight int64            `protobuf:"varint,2,opt,name=poc_stage_start_block_height,json=pocStageStartBlockHeight,proto3" json:"poc_stage_start_block_height,omitempty"`
+	Entries                  []*PocCountEntry `protobuf:"bytes,3,rep,name=entries,proto3" json:"entries,omitempty"`
+	BlockHeight              int64            `protobuf:"varint,4,opt,name=block_height,json=blockHeight,proto3" json:"block_height,omitempty"`
 }
 
-func (x *TreeRootCommit) Reset() {
-	*x = TreeRootCommit{}
+func (x *PocCount) Reset() {
+	*x = PocCount{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_inference_inference_poc_v2_proto_msgTypes[7]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -4796,48 +6079,175 @@ func (x *TreeRootCommit) Reset() {
 	}
 }
 
-func (x *TreeRootCommit) String() string {
+func (x *PocCount) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*TreeRootCommit) ProtoMessage() {}
+func (*PocCount) ProtoMessage() {}
 
-// Deprecated: Use TreeRootCommit.ProtoReflect.Descriptor instead.
-func (*TreeRootCommit) Descriptor() ([]byte, []int) {
+// Deprecated: Use PocCount.ProtoReflect.Descriptor instead.
+func (*PocCount) Descriptor() ([]byte, []int) {
 	return file_inference_inference_poc_v2_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *TreeRootCommit) GetCreator() string {
+func (x *PocCount) GetCreator() string {
 	if x != nil {
 		return x.Creator
 	}
 	return ""
 }
 
-func (x *TreeRootCommit) GetPocStageStartBlockHeight() int64 {
+func (x *PocCount) GetPocStageStartBlockHeight() int64 {
 	if x != nil {
 		return x.PocStageStartBlockHeight
 	}
 	return 0
 }
 
-func (x *TreeRootCommit) GetTreeIndex() int32 {
-	if x != nil {
-		return x.TreeIndex
-	}
-	return 0
-}
-
-func (x *TreeRootCommit) GetEntries() []*TreeRootCommitEntry {
+func (x *PocCount) GetEntries() []*PocCountEntry {
 	if x != nil {
 		return x.Entries
 	}
 	return nil
 }
 
-func (x *TreeRootCommit) GetBlockHeight() int64 {
+func (x *PocCount) GetBlockHeight() int64 {
 	if x != nil {
 		return x.BlockHeight
+	}
+	return 0
+}
+
+type PocWeightCommit struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Creator                  string          `protobuf:"bytes,1,opt,name=creator,proto3" json:"creator,omitempty"`
+	PocStageStartBlockHeight int64           `protobuf:"varint,2,opt,name=poc_stage_start_block_height,json=pocStageStartBlockHeight,proto3" json:"poc_stage_start_block_height,omitempty"`
+	Count                    uint32          `protobuf:"varint,3,opt,name=count,proto3" json:"count,omitempty"`
+	RootHash                 []byte          `protobuf:"bytes,4,opt,name=root_hash,json=rootHash,proto3" json:"root_hash,omitempty"`
+	Weights                  []*MLNodeWeight `protobuf:"bytes,5,rep,name=weights,proto3" json:"weights,omitempty"`
+	BlockHeight              int64           `protobuf:"varint,6,opt,name=block_height,json=blockHeight,proto3" json:"block_height,omitempty"`
+}
+
+func (x *PocWeightCommit) Reset() {
+	*x = PocWeightCommit{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_inference_inference_poc_v2_proto_msgTypes[8]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *PocWeightCommit) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PocWeightCommit) ProtoMessage() {}
+
+// Deprecated: Use PocWeightCommit.ProtoReflect.Descriptor instead.
+func (*PocWeightCommit) Descriptor() ([]byte, []int) {
+	return file_inference_inference_poc_v2_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *PocWeightCommit) GetCreator() string {
+	if x != nil {
+		return x.Creator
+	}
+	return ""
+}
+
+func (x *PocWeightCommit) GetPocStageStartBlockHeight() int64 {
+	if x != nil {
+		return x.PocStageStartBlockHeight
+	}
+	return 0
+}
+
+func (x *PocWeightCommit) GetCount() uint32 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+func (x *PocWeightCommit) GetRootHash() []byte {
+	if x != nil {
+		return x.RootHash
+	}
+	return nil
+}
+
+func (x *PocWeightCommit) GetWeights() []*MLNodeWeight {
+	if x != nil {
+		return x.Weights
+	}
+	return nil
+}
+
+func (x *PocWeightCommit) GetBlockHeight() int64 {
+	if x != nil {
+		return x.BlockHeight
+	}
+	return 0
+}
+
+type AgreedCount struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Participant     string `protobuf:"bytes,1,opt,name=participant,proto3" json:"participant,omitempty"`
+	AgreedCount     uint32 `protobuf:"varint,2,opt,name=agreed_count,json=agreedCount,proto3" json:"agreed_count,omitempty"`
+	TotalValidators int32  `protobuf:"varint,3,opt,name=total_validators,json=totalValidators,proto3" json:"total_validators,omitempty"`
+	AgreeingCount   int32  `protobuf:"varint,4,opt,name=agreeing_count,json=agreeingCount,proto3" json:"agreeing_count,omitempty"`
+}
+
+func (x *AgreedCount) Reset() {
+	*x = AgreedCount{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_inference_inference_poc_v2_proto_msgTypes[9]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *AgreedCount) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AgreedCount) ProtoMessage() {}
+
+// Deprecated: Use AgreedCount.ProtoReflect.Descriptor instead.
+func (*AgreedCount) Descriptor() ([]byte, []int) {
+	return file_inference_inference_poc_v2_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *AgreedCount) GetParticipant() string {
+	if x != nil {
+		return x.Participant
+	}
+	return ""
+}
+
+func (x *AgreedCount) GetAgreedCount() uint32 {
+	if x != nil {
+		return x.AgreedCount
+	}
+	return 0
+}
+
+func (x *AgreedCount) GetTotalValidators() int32 {
+	if x != nil {
+		return x.TotalValidators
+	}
+	return 0
+}
+
+func (x *AgreedCount) GetAgreeingCount() int32 {
+	if x != nil {
+		return x.AgreeingCount
 	}
 	return 0
 }
@@ -4906,39 +6316,63 @@ var file_inference_inference_poc_v2_proto_rawDesc = []byte{
 	0x68, 0x74, 0x73, 0x18, 0x03, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x21, 0x2e, 0x69, 0x6e, 0x66, 0x65,
 	0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e,
 	0x4d, 0x4c, 0x4e, 0x6f, 0x64, 0x65, 0x57, 0x65, 0x69, 0x67, 0x68, 0x74, 0x52, 0x07, 0x77, 0x65,
-	0x69, 0x67, 0x68, 0x74, 0x73, 0x22, 0x4d, 0x0a, 0x13, 0x54, 0x72, 0x65, 0x65, 0x52, 0x6f, 0x6f,
-	0x74, 0x43, 0x6f, 0x6d, 0x6d, 0x69, 0x74, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x12, 0x20, 0x0a, 0x0b,
-	0x70, 0x61, 0x72, 0x74, 0x69, 0x63, 0x69, 0x70, 0x61, 0x6e, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28,
-	0x09, 0x52, 0x0b, 0x70, 0x61, 0x72, 0x74, 0x69, 0x63, 0x69, 0x70, 0x61, 0x6e, 0x74, 0x12, 0x14,
-	0x0a, 0x05, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x05, 0x63,
-	0x6f, 0x75, 0x6e, 0x74, 0x22, 0xf0, 0x01, 0x0a, 0x0e, 0x54, 0x72, 0x65, 0x65, 0x52, 0x6f, 0x6f,
-	0x74, 0x43, 0x6f, 0x6d, 0x6d, 0x69, 0x74, 0x12, 0x18, 0x0a, 0x07, 0x63, 0x72, 0x65, 0x61, 0x74,
-	0x6f, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x63, 0x72, 0x65, 0x61, 0x74, 0x6f,
-	0x72, 0x12, 0x3e, 0x0a, 0x1c, 0x70, 0x6f, 0x63, 0x5f, 0x73, 0x74, 0x61, 0x67, 0x65, 0x5f, 0x73,
-	0x74, 0x61, 0x72, 0x74, 0x5f, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x5f, 0x68, 0x65, 0x69, 0x67, 0x68,
-	0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x03, 0x52, 0x18, 0x70, 0x6f, 0x63, 0x53, 0x74, 0x61, 0x67,
-	0x65, 0x53, 0x74, 0x61, 0x72, 0x74, 0x42, 0x6c, 0x6f, 0x63, 0x6b, 0x48, 0x65, 0x69, 0x67, 0x68,
-	0x74, 0x12, 0x1d, 0x0a, 0x0a, 0x74, 0x72, 0x65, 0x65, 0x5f, 0x69, 0x6e, 0x64, 0x65, 0x78, 0x18,
-	0x03, 0x20, 0x01, 0x28, 0x05, 0x52, 0x09, 0x74, 0x72, 0x65, 0x65, 0x49, 0x6e, 0x64, 0x65, 0x78,
-	0x12, 0x42, 0x0a, 0x07, 0x65, 0x6e, 0x74, 0x72, 0x69, 0x65, 0x73, 0x18, 0x04, 0x20, 0x03, 0x28,
-	0x0b, 0x32, 0x28, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e,
-	0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x54, 0x72, 0x65, 0x65, 0x52, 0x6f, 0x6f, 0x74,
-	0x43, 0x6f, 0x6d, 0x6d, 0x69, 0x74, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x52, 0x07, 0x65, 0x6e, 0x74,
-	0x72, 0x69, 0x65, 0x73, 0x12, 0x21, 0x0a, 0x0c, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x5f, 0x68, 0x65,
-	0x69, 0x67, 0x68, 0x74, 0x18, 0x05, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0b, 0x62, 0x6c, 0x6f, 0x63,
-	0x6b, 0x48, 0x65, 0x69, 0x67, 0x68, 0x74, 0x42, 0xb8, 0x01, 0x0a, 0x17, 0x63, 0x6f, 0x6d, 0x2e,
-	0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65,
-	0x6e, 0x63, 0x65, 0x42, 0x0a, 0x50, 0x6f, 0x63, 0x56, 0x32, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50,
-	0x01, 0x5a, 0x24, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x73, 0x64, 0x6b, 0x2e, 0x69, 0x6f, 0x2f,
-	0x61, 0x70, 0x69, 0x2f, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2f, 0x69, 0x6e,
-	0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0xa2, 0x02, 0x03, 0x49, 0x49, 0x58, 0xaa, 0x02, 0x13,
-	0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65,
-	0x6e, 0x63, 0x65, 0xca, 0x02, 0x13, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c,
-	0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0xe2, 0x02, 0x1f, 0x49, 0x6e, 0x66, 0x65,
-	0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c,
-	0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x14, 0x49, 0x6e,
-	0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x3a, 0x3a, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e,
-	0x63, 0x65, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x69, 0x67, 0x68, 0x74, 0x73, 0x22, 0x47, 0x0a, 0x0d, 0x50, 0x6f, 0x63, 0x43, 0x6f, 0x75, 0x6e,
+	0x74, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x12, 0x20, 0x0a, 0x0b, 0x70, 0x61, 0x72, 0x74, 0x69, 0x63,
+	0x69, 0x70, 0x61, 0x6e, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0b, 0x70, 0x61, 0x72,
+	0x74, 0x69, 0x63, 0x69, 0x70, 0x61, 0x6e, 0x74, 0x12, 0x14, 0x0a, 0x05, 0x63, 0x6f, 0x75, 0x6e,
+	0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x05, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x22, 0xc5,
+	0x01, 0x0a, 0x08, 0x50, 0x6f, 0x63, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x12, 0x18, 0x0a, 0x07, 0x63,
+	0x72, 0x65, 0x61, 0x74, 0x6f, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x63, 0x72,
+	0x65, 0x61, 0x74, 0x6f, 0x72, 0x12, 0x3e, 0x0a, 0x1c, 0x70, 0x6f, 0x63, 0x5f, 0x73, 0x74, 0x61,
+	0x67, 0x65, 0x5f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x5f, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x5f, 0x68,
+	0x65, 0x69, 0x67, 0x68, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x03, 0x52, 0x18, 0x70, 0x6f, 0x63,
+	0x53, 0x74, 0x61, 0x67, 0x65, 0x53, 0x74, 0x61, 0x72, 0x74, 0x42, 0x6c, 0x6f, 0x63, 0x6b, 0x48,
+	0x65, 0x69, 0x67, 0x68, 0x74, 0x12, 0x3c, 0x0a, 0x07, 0x65, 0x6e, 0x74, 0x72, 0x69, 0x65, 0x73,
+	0x18, 0x03, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x22, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e,
+	0x63, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x50, 0x6f, 0x63,
+	0x43, 0x6f, 0x75, 0x6e, 0x74, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x52, 0x07, 0x65, 0x6e, 0x74, 0x72,
+	0x69, 0x65, 0x73, 0x12, 0x21, 0x0a, 0x0c, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x5f, 0x68, 0x65, 0x69,
+	0x67, 0x68, 0x74, 0x18, 0x04, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0b, 0x62, 0x6c, 0x6f, 0x63, 0x6b,
+	0x48, 0x65, 0x69, 0x67, 0x68, 0x74, 0x22, 0xfe, 0x01, 0x0a, 0x0f, 0x50, 0x6f, 0x63, 0x57, 0x65,
+	0x69, 0x67, 0x68, 0x74, 0x43, 0x6f, 0x6d, 0x6d, 0x69, 0x74, 0x12, 0x18, 0x0a, 0x07, 0x63, 0x72,
+	0x65, 0x61, 0x74, 0x6f, 0x72, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x63, 0x72, 0x65,
+	0x61, 0x74, 0x6f, 0x72, 0x12, 0x3e, 0x0a, 0x1c, 0x70, 0x6f, 0x63, 0x5f, 0x73, 0x74, 0x61, 0x67,
+	0x65, 0x5f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x5f, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x5f, 0x68, 0x65,
+	0x69, 0x67, 0x68, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x03, 0x52, 0x18, 0x70, 0x6f, 0x63, 0x53,
+	0x74, 0x61, 0x67, 0x65, 0x53, 0x74, 0x61, 0x72, 0x74, 0x42, 0x6c, 0x6f, 0x63, 0x6b, 0x48, 0x65,
+	0x69, 0x67, 0x68, 0x74, 0x12, 0x14, 0x0a, 0x05, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x03, 0x20,
+	0x01, 0x28, 0x0d, 0x52, 0x05, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x12, 0x1b, 0x0a, 0x09, 0x72, 0x6f,
+	0x6f, 0x74, 0x5f, 0x68, 0x61, 0x73, 0x68, 0x18, 0x04, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x08, 0x72,
+	0x6f, 0x6f, 0x74, 0x48, 0x61, 0x73, 0x68, 0x12, 0x3b, 0x0a, 0x07, 0x77, 0x65, 0x69, 0x67, 0x68,
+	0x74, 0x73, 0x18, 0x05, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x21, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72,
+	0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x4d,
+	0x4c, 0x4e, 0x6f, 0x64, 0x65, 0x57, 0x65, 0x69, 0x67, 0x68, 0x74, 0x52, 0x07, 0x77, 0x65, 0x69,
+	0x67, 0x68, 0x74, 0x73, 0x12, 0x21, 0x0a, 0x0c, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x5f, 0x68, 0x65,
+	0x69, 0x67, 0x68, 0x74, 0x18, 0x06, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0b, 0x62, 0x6c, 0x6f, 0x63,
+	0x6b, 0x48, 0x65, 0x69, 0x67, 0x68, 0x74, 0x22, 0xa4, 0x01, 0x0a, 0x0b, 0x41, 0x67, 0x72, 0x65,
+	0x65, 0x64, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x12, 0x20, 0x0a, 0x0b, 0x70, 0x61, 0x72, 0x74, 0x69,
+	0x63, 0x69, 0x70, 0x61, 0x6e, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0b, 0x70, 0x61,
+	0x72, 0x74, 0x69, 0x63, 0x69, 0x70, 0x61, 0x6e, 0x74, 0x12, 0x21, 0x0a, 0x0c, 0x61, 0x67, 0x72,
+	0x65, 0x65, 0x64, 0x5f, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0d, 0x52,
+	0x0b, 0x61, 0x67, 0x72, 0x65, 0x65, 0x64, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x12, 0x29, 0x0a, 0x10,
+	0x74, 0x6f, 0x74, 0x61, 0x6c, 0x5f, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x6f, 0x72, 0x73,
+	0x18, 0x03, 0x20, 0x01, 0x28, 0x05, 0x52, 0x0f, 0x74, 0x6f, 0x74, 0x61, 0x6c, 0x56, 0x61, 0x6c,
+	0x69, 0x64, 0x61, 0x74, 0x6f, 0x72, 0x73, 0x12, 0x25, 0x0a, 0x0e, 0x61, 0x67, 0x72, 0x65, 0x65,
+	0x69, 0x6e, 0x67, 0x5f, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x04, 0x20, 0x01, 0x28, 0x05, 0x52,
+	0x0d, 0x61, 0x67, 0x72, 0x65, 0x65, 0x69, 0x6e, 0x67, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x42, 0xb8,
+	0x01, 0x0a, 0x17, 0x63, 0x6f, 0x6d, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65,
+	0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x42, 0x0a, 0x50, 0x6f, 0x63, 0x56,
+	0x32, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x24, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73,
+	0x73, 0x64, 0x6b, 0x2e, 0x69, 0x6f, 0x2f, 0x61, 0x70, 0x69, 0x2f, 0x69, 0x6e, 0x66, 0x65, 0x72,
+	0x65, 0x6e, 0x63, 0x65, 0x2f, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0xa2, 0x02,
+	0x03, 0x49, 0x49, 0x58, 0xaa, 0x02, 0x13, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65,
+	0x2e, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0xca, 0x02, 0x13, 0x49, 0x6e, 0x66,
+	0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65,
+	0xe2, 0x02, 0x1f, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c, 0x49, 0x6e, 0x66,
+	0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c, 0x47, 0x50, 0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61,
+	0x74, 0x61, 0xea, 0x02, 0x14, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x3a, 0x3a,
+	0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f,
+	0x33,
 }
 
 var (
@@ -4953,7 +6387,7 @@ func file_inference_inference_poc_v2_proto_rawDescGZIP() []byte {
 	return file_inference_inference_poc_v2_proto_rawDescData
 }
 
-var file_inference_inference_poc_v2_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_inference_inference_poc_v2_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_inference_inference_poc_v2_proto_goTypes = []interface{}{
 	(*PoCArtifactV2)(nil),            // 0: inference.inference.PoCArtifactV2
 	(*PoCValidationV2)(nil),          // 1: inference.inference.PoCValidationV2
@@ -4961,17 +6395,20 @@ var file_inference_inference_poc_v2_proto_goTypes = []interface{}{
 	(*MLNodeWeight)(nil),             // 3: inference.inference.MLNodeWeight
 	(*PoCV2StoreCommit)(nil),         // 4: inference.inference.PoCV2StoreCommit
 	(*MLNodeWeightDistribution)(nil), // 5: inference.inference.MLNodeWeightDistribution
-	(*TreeRootCommitEntry)(nil),      // 6: inference.inference.TreeRootCommitEntry
-	(*TreeRootCommit)(nil),           // 7: inference.inference.TreeRootCommit
+	(*PocCountEntry)(nil),            // 6: inference.inference.PocCountEntry
+	(*PocCount)(nil),                 // 7: inference.inference.PocCount
+	(*PocWeightCommit)(nil),          // 8: inference.inference.PocWeightCommit
+	(*AgreedCount)(nil),              // 9: inference.inference.AgreedCount
 }
 var file_inference_inference_poc_v2_proto_depIdxs = []int32{
 	3, // 0: inference.inference.MLNodeWeightDistribution.weights:type_name -> inference.inference.MLNodeWeight
-	6, // 1: inference.inference.TreeRootCommit.entries:type_name -> inference.inference.TreeRootCommitEntry
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	6, // 1: inference.inference.PocCount.entries:type_name -> inference.inference.PocCountEntry
+	3, // 2: inference.inference.PocWeightCommit.weights:type_name -> inference.inference.MLNodeWeight
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_inference_inference_poc_v2_proto_init() }
@@ -5053,7 +6490,7 @@ func file_inference_inference_poc_v2_proto_init() {
 			}
 		}
 		file_inference_inference_poc_v2_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*TreeRootCommitEntry); i {
+			switch v := v.(*PocCountEntry); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -5065,7 +6502,31 @@ func file_inference_inference_poc_v2_proto_init() {
 			}
 		}
 		file_inference_inference_poc_v2_proto_msgTypes[7].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*TreeRootCommit); i {
+			switch v := v.(*PocCount); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_inference_inference_poc_v2_proto_msgTypes[8].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*PocWeightCommit); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_inference_inference_poc_v2_proto_msgTypes[9].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*AgreedCount); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -5083,7 +6544,7 @@ func file_inference_inference_poc_v2_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_inference_inference_poc_v2_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

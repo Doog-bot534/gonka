@@ -672,24 +672,60 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 		return nil
 	}
 
-	// Get off-chain store commits (replaces on-chain batches)
-	allStoreCommits, err := am.keeper.GetAllPoCV2StoreCommitsForStage(ctx, epochStartBlockHeight)
+	var allStoreCommits map[string]types.PoCV2StoreCommit
+	var allWeightDistributions map[string]types.MLNodeWeightDistribution
+
+	hasAgreedCounts, err := am.keeper.HasAgreedCountsForStage(ctx, epochStartBlockHeight)
 	if err != nil {
-		am.LogError("ComputeNewWeights: Error getting store commits by PoC stage", types.PoC,
-			"upcomingEpoch.Index", upcomingEpoch.Index,
-			"upcomingEpoch.PocStartBlockHeight", upcomingEpoch.PocStartBlockHeight,
-			"error", err)
-		return nil
+		am.LogError("ComputeNewWeights: Error checking agreed counts", types.PoC, "error", err)
 	}
 
-	// Get weight distributions for per-node weights
-	allWeightDistributions, err := am.keeper.GetAllMLNodeWeightDistributionsForStage(ctx, epochStartBlockHeight)
-	if err != nil {
-		am.LogError("ComputeNewWeights: Error getting weight distributions by PoC stage", types.PoC,
-			"upcomingEpoch.Index", upcomingEpoch.Index,
-			"upcomingEpoch.PocStartBlockHeight", upcomingEpoch.PocStartBlockHeight,
-			"error", err)
-		// Continue without distributions - will use single "unknown" node
+	if hasAgreedCounts {
+		pocWeightCommits, err := am.keeper.GetAllPocWeightCommitsForStage(ctx, epochStartBlockHeight)
+		if err != nil {
+			am.LogError("ComputeNewWeights: Error getting poc weight commits", types.PoC, "error", err)
+			return nil
+		}
+
+		allStoreCommits = make(map[string]types.PoCV2StoreCommit, len(pocWeightCommits))
+		allWeightDistributions = make(map[string]types.MLNodeWeightDistribution, len(pocWeightCommits))
+		for addr, wc := range pocWeightCommits {
+			allStoreCommits[addr] = types.PoCV2StoreCommit{
+				ParticipantAddress:       addr,
+				PocStageStartBlockHeight: wc.PocStageStartBlockHeight,
+				Count:                    wc.Count,
+				RootHash:                 wc.RootHash,
+				CommitBlockHeight:        wc.BlockHeight,
+			}
+			allWeightDistributions[addr] = types.MLNodeWeightDistribution{
+				ParticipantAddress:       addr,
+				PocStageStartBlockHeight: wc.PocStageStartBlockHeight,
+				Weights:                  wc.Weights,
+			}
+		}
+
+		am.LogInfo("ComputeNewWeights: Using PocWeightCommits path (trees enabled)", types.PoC,
+			"commits", len(pocWeightCommits))
+	} else {
+		allStoreCommits, err = am.keeper.GetAllPoCV2StoreCommitsForStage(ctx, epochStartBlockHeight)
+		if err != nil {
+			am.LogError("ComputeNewWeights: Error getting store commits by PoC stage", types.PoC,
+				"upcomingEpoch.Index", upcomingEpoch.Index,
+				"upcomingEpoch.PocStartBlockHeight", upcomingEpoch.PocStartBlockHeight,
+				"error", err)
+			return nil
+		}
+
+		allWeightDistributions, err = am.keeper.GetAllMLNodeWeightDistributionsForStage(ctx, epochStartBlockHeight)
+		if err != nil {
+			am.LogError("ComputeNewWeights: Error getting weight distributions by PoC stage", types.PoC,
+				"upcomingEpoch.Index", upcomingEpoch.Index,
+				"upcomingEpoch.PocStartBlockHeight", upcomingEpoch.PocStartBlockHeight,
+				"error", err)
+		}
+
+		am.LogInfo("ComputeNewWeights: Using fallback path (original on-chain)", types.PoC,
+			"commits", len(allStoreCommits))
 	}
 
 	// Build inference-serving node IDs for filtering

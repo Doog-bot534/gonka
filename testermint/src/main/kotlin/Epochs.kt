@@ -7,6 +7,7 @@ enum class EpochStage {
     START_OF_POC,
     END_OF_POC,
     POC_EXCHANGE_DEADLINE,
+    POC_COUNT_DEADLINE,
     START_OF_POC_VALIDATION,
     END_OF_POC_VALIDATION,
     SET_NEW_VALIDATORS,
@@ -18,6 +19,7 @@ fun EpochResponse.getNextStage(stage: EpochStage): Long {
         EpochStage.START_OF_POC -> resolveUpcomingStage(epochStages.pocStart, nextEpochStages.pocStart)
         EpochStage.END_OF_POC -> resolveUpcomingStage(epochStages.pocGenerationEnd, nextEpochStages.pocGenerationEnd)
         EpochStage.POC_EXCHANGE_DEADLINE -> resolveUpcomingStage(epochStages.pocExchangeWindow.end, nextEpochStages.pocExchangeWindow.end)
+        EpochStage.POC_COUNT_DEADLINE -> resolveUpcomingStage(epochStages.pocCountDeadline, nextEpochStages.pocCountDeadline)
         EpochStage.START_OF_POC_VALIDATION -> resolveUpcomingStage(epochStages.pocValidationStart, nextEpochStages.pocValidationStart)
         EpochStage.END_OF_POC_VALIDATION -> resolveUpcomingStage(epochStages.pocValidationEnd, nextEpochStages.pocValidationEnd)
         EpochStage.SET_NEW_VALIDATORS -> resolveUpcomingStage(epochStages.setNewValidators, nextEpochStages.setNewValidators)
@@ -39,6 +41,7 @@ fun EpochParams.getStage(stage: EpochStage): Long = when (stage) {
     EpochStage.START_OF_POC -> 0L
     EpochStage.END_OF_POC -> getStage(EpochStage.START_OF_POC) + pocValidationDuration * epochMultiplier
     EpochStage.POC_EXCHANGE_DEADLINE -> getStage(EpochStage.END_OF_POC) + pocExchangeDuration * epochMultiplier
+    EpochStage.POC_COUNT_DEADLINE -> getStage(EpochStage.START_OF_POC_VALIDATION) - 1
     EpochStage.START_OF_POC_VALIDATION -> getStage(EpochStage.END_OF_POC) + pocValidationDelay * epochMultiplier
     EpochStage.END_OF_POC_VALIDATION -> getStage(EpochStage.START_OF_POC_VALIDATION) + pocValidationDuration * epochMultiplier
     EpochStage.SET_NEW_VALIDATORS -> getStage(EpochStage.END_OF_POC_VALIDATION) + 1 * epochMultiplier

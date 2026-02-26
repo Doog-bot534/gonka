@@ -39,8 +39,7 @@ const (
 	Query_MLNodeWeightDistribution_FullMethodName                  = "/inference.inference.Query/MLNodeWeightDistribution"
 	Query_AllPoCV2StoreCommitsForStage_FullMethodName              = "/inference.inference.Query/AllPoCV2StoreCommitsForStage"
 	Query_AllMLNodeWeightDistributionsForStage_FullMethodName      = "/inference.inference.Query/AllMLNodeWeightDistributionsForStage"
-	Query_PoCConsensus_FullMethodName                              = "/inference.inference.Query/PoCConsensus"
-	Query_TreeRootCommitsForStage_FullMethodName                   = "/inference.inference.Query/TreeRootCommitsForStage"
+	Query_AgreedCount_FullMethodName                               = "/inference.inference.Query/AgreedCount"
 	Query_GetCurrentEpoch_FullMethodName                           = "/inference.inference.Query/GetCurrentEpoch"
 	Query_TokenomicsData_FullMethodName                            = "/inference.inference.Query/TokenomicsData"
 	Query_GetUnitOfComputePriceProposal_FullMethodName             = "/inference.inference.Query/GetUnitOfComputePriceProposal"
@@ -141,8 +140,7 @@ type QueryClient interface {
 	MLNodeWeightDistribution(ctx context.Context, in *QueryMLNodeWeightDistributionRequest, opts ...grpc.CallOption) (*QueryMLNodeWeightDistributionResponse, error)
 	AllPoCV2StoreCommitsForStage(ctx context.Context, in *QueryAllPoCV2StoreCommitsForStageRequest, opts ...grpc.CallOption) (*QueryAllPoCV2StoreCommitsForStageResponse, error)
 	AllMLNodeWeightDistributionsForStage(ctx context.Context, in *QueryAllMLNodeWeightDistributionsForStageRequest, opts ...grpc.CallOption) (*QueryAllMLNodeWeightDistributionsForStageResponse, error)
-	PoCConsensus(ctx context.Context, in *QueryPoCConsensusRequest, opts ...grpc.CallOption) (*QueryPoCConsensusResponse, error)
-	TreeRootCommitsForStage(ctx context.Context, in *QueryTreeRootCommitsForStageRequest, opts ...grpc.CallOption) (*QueryTreeRootCommitsForStageResponse, error)
+	AgreedCount(ctx context.Context, in *QueryAgreedCountRequest, opts ...grpc.CallOption) (*QueryAgreedCountResponse, error)
 	// Queries a list of GetCurrentEpoch items.
 	GetCurrentEpoch(ctx context.Context, in *QueryGetCurrentEpochRequest, opts ...grpc.CallOption) (*QueryGetCurrentEpochResponse, error)
 	// Queries a TokenomicsData by index.
@@ -458,20 +456,10 @@ func (c *queryClient) AllMLNodeWeightDistributionsForStage(ctx context.Context, 
 	return out, nil
 }
 
-func (c *queryClient) PoCConsensus(ctx context.Context, in *QueryPoCConsensusRequest, opts ...grpc.CallOption) (*QueryPoCConsensusResponse, error) {
+func (c *queryClient) AgreedCount(ctx context.Context, in *QueryAgreedCountRequest, opts ...grpc.CallOption) (*QueryAgreedCountResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QueryPoCConsensusResponse)
-	err := c.cc.Invoke(ctx, Query_PoCConsensus_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *queryClient) TreeRootCommitsForStage(ctx context.Context, in *QueryTreeRootCommitsForStageRequest, opts ...grpc.CallOption) (*QueryTreeRootCommitsForStageResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(QueryTreeRootCommitsForStageResponse)
-	err := c.cc.Invoke(ctx, Query_TreeRootCommitsForStage_FullMethodName, in, out, cOpts...)
+	out := new(QueryAgreedCountResponse)
+	err := c.cc.Invoke(ctx, Query_AgreedCount_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1116,8 +1104,7 @@ type QueryServer interface {
 	MLNodeWeightDistribution(context.Context, *QueryMLNodeWeightDistributionRequest) (*QueryMLNodeWeightDistributionResponse, error)
 	AllPoCV2StoreCommitsForStage(context.Context, *QueryAllPoCV2StoreCommitsForStageRequest) (*QueryAllPoCV2StoreCommitsForStageResponse, error)
 	AllMLNodeWeightDistributionsForStage(context.Context, *QueryAllMLNodeWeightDistributionsForStageRequest) (*QueryAllMLNodeWeightDistributionsForStageResponse, error)
-	PoCConsensus(context.Context, *QueryPoCConsensusRequest) (*QueryPoCConsensusResponse, error)
-	TreeRootCommitsForStage(context.Context, *QueryTreeRootCommitsForStageRequest) (*QueryTreeRootCommitsForStageResponse, error)
+	AgreedCount(context.Context, *QueryAgreedCountRequest) (*QueryAgreedCountResponse, error)
 	// Queries a list of GetCurrentEpoch items.
 	GetCurrentEpoch(context.Context, *QueryGetCurrentEpochRequest) (*QueryGetCurrentEpochResponse, error)
 	// Queries a TokenomicsData by index.
@@ -1293,11 +1280,8 @@ func (UnimplementedQueryServer) AllPoCV2StoreCommitsForStage(context.Context, *Q
 func (UnimplementedQueryServer) AllMLNodeWeightDistributionsForStage(context.Context, *QueryAllMLNodeWeightDistributionsForStageRequest) (*QueryAllMLNodeWeightDistributionsForStageResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AllMLNodeWeightDistributionsForStage not implemented")
 }
-func (UnimplementedQueryServer) PoCConsensus(context.Context, *QueryPoCConsensusRequest) (*QueryPoCConsensusResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method PoCConsensus not implemented")
-}
-func (UnimplementedQueryServer) TreeRootCommitsForStage(context.Context, *QueryTreeRootCommitsForStageRequest) (*QueryTreeRootCommitsForStageResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method TreeRootCommitsForStage not implemented")
+func (UnimplementedQueryServer) AgreedCount(context.Context, *QueryAgreedCountRequest) (*QueryAgreedCountResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AgreedCount not implemented")
 }
 func (UnimplementedQueryServer) GetCurrentEpoch(context.Context, *QueryGetCurrentEpochRequest) (*QueryGetCurrentEpochResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetCurrentEpoch not implemented")
@@ -1860,38 +1844,20 @@ func _Query_AllMLNodeWeightDistributionsForStage_Handler(srv interface{}, ctx co
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Query_PoCConsensus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(QueryPoCConsensusRequest)
+func _Query_AgreedCount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryAgreedCountRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(QueryServer).PoCConsensus(ctx, in)
+		return srv.(QueryServer).AgreedCount(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Query_PoCConsensus_FullMethodName,
+		FullMethod: Query_AgreedCount_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(QueryServer).PoCConsensus(ctx, req.(*QueryPoCConsensusRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _Query_TreeRootCommitsForStage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(QueryTreeRootCommitsForStageRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(QueryServer).TreeRootCommitsForStage(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Query_TreeRootCommitsForStage_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(QueryServer).TreeRootCommitsForStage(ctx, req.(*QueryTreeRootCommitsForStageRequest))
+		return srv.(QueryServer).AgreedCount(ctx, req.(*QueryAgreedCountRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3064,12 +3030,8 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Query_AllMLNodeWeightDistributionsForStage_Handler,
 		},
 		{
-			MethodName: "PoCConsensus",
-			Handler:    _Query_PoCConsensus_Handler,
-		},
-		{
-			MethodName: "TreeRootCommitsForStage",
-			Handler:    _Query_TreeRootCommitsForStage_Handler,
+			MethodName: "AgreedCount",
+			Handler:    _Query_AgreedCount_Handler,
 		},
 		{
 			MethodName: "GetCurrentEpoch",

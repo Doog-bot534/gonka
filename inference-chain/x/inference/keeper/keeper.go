@@ -43,7 +43,9 @@ type (
 		PoCValidationsV2          collections.Map[collections.Triple[int64, sdk.AccAddress, sdk.AccAddress], types.PoCValidationV2]
 		PoCV2StoreCommits         collections.Map[collections.Pair[int64, sdk.AccAddress], types.PoCV2StoreCommit]
 		MLNodeWeightDistributions collections.Map[collections.Pair[int64, sdk.AccAddress], types.MLNodeWeightDistribution]
-		TreeRootCommits           collections.Map[collections.Pair[int64, int32], types.TreeRootCommit]
+		PocCounts                 collections.Map[collections.Pair[int64, string], types.PocCount]
+		AgreedCounts              collections.Map[collections.Pair[int64, string], types.AgreedCount]
+		PocWeightCommits          collections.Map[collections.Pair[int64, sdk.AccAddress], types.PocWeightCommit]
 		// Dynamic pricing collections
 		ModelCurrentPriceMap collections.Map[string, uint64]
 		ModelCapacityMap     collections.Map[string, uint64]
@@ -179,12 +181,26 @@ func NewKeeper(
 			collections.PairKeyCodec(collections.Int64Key, sdk.AccAddressKey),
 			codec.CollValue[types.MLNodeWeightDistribution](cdc),
 		),
-		TreeRootCommits: collections.NewMap(
+		PocCounts: collections.NewMap(
 			sb,
-			types.TreeRootCommitsPrefix,
-			"tree_root_commits",
-			collections.PairKeyCodec(collections.Int64Key, collections.Int32Key),
-			codec.CollValue[types.TreeRootCommit](cdc),
+			types.PocCountsPrefix,
+			"poc_counts",
+			collections.PairKeyCodec(collections.Int64Key, collections.StringKey),
+			codec.CollValue[types.PocCount](cdc),
+		),
+		AgreedCounts: collections.NewMap(
+			sb,
+			types.AgreedCountsPrefix,
+			"agreed_counts",
+			collections.PairKeyCodec(collections.Int64Key, collections.StringKey),
+			codec.CollValue[types.AgreedCount](cdc),
+		),
+		PocWeightCommits: collections.NewMap(
+			sb,
+			types.PocWeightCommitsPrefix,
+			"poc_weight_commits",
+			collections.PairKeyCodec(collections.Int64Key, sdk.AccAddressKey),
+			codec.CollValue[types.PocWeightCommit](cdc),
 		),
 		// dynamic pricing collections
 		ModelCurrentPriceMap: collections.NewMap(

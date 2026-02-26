@@ -391,23 +391,23 @@ func (m *MLNodeWeightDistribution) GetWeights() []*MLNodeWeight {
 	return nil
 }
 
-type TreeRootCommitEntry struct {
+type PocCountEntry struct {
 	Participant string `protobuf:"bytes,1,opt,name=participant,proto3" json:"participant,omitempty"`
 	Count       uint32 `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
 }
 
-func (m *TreeRootCommitEntry) Reset()         { *m = TreeRootCommitEntry{} }
-func (m *TreeRootCommitEntry) String() string { return proto.CompactTextString(m) }
-func (*TreeRootCommitEntry) ProtoMessage()    {}
-func (*TreeRootCommitEntry) Descriptor() ([]byte, []int) {
+func (m *PocCountEntry) Reset()         { *m = PocCountEntry{} }
+func (m *PocCountEntry) String() string { return proto.CompactTextString(m) }
+func (*PocCountEntry) ProtoMessage()    {}
+func (*PocCountEntry) Descriptor() ([]byte, []int) {
 	return fileDescriptor_02f1658865fe708f, []int{6}
 }
-func (m *TreeRootCommitEntry) XXX_Unmarshal(b []byte) error {
+func (m *PocCountEntry) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *TreeRootCommitEntry) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *PocCountEntry) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_TreeRootCommitEntry.Marshal(b, m, deterministic)
+		return xxx_messageInfo_PocCountEntry.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -417,52 +417,51 @@ func (m *TreeRootCommitEntry) XXX_Marshal(b []byte, deterministic bool) ([]byte,
 		return b[:n], nil
 	}
 }
-func (m *TreeRootCommitEntry) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_TreeRootCommitEntry.Merge(m, src)
+func (m *PocCountEntry) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PocCountEntry.Merge(m, src)
 }
-func (m *TreeRootCommitEntry) XXX_Size() int {
+func (m *PocCountEntry) XXX_Size() int {
 	return m.Size()
 }
-func (m *TreeRootCommitEntry) XXX_DiscardUnknown() {
-	xxx_messageInfo_TreeRootCommitEntry.DiscardUnknown(m)
+func (m *PocCountEntry) XXX_DiscardUnknown() {
+	xxx_messageInfo_PocCountEntry.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_TreeRootCommitEntry proto.InternalMessageInfo
+var xxx_messageInfo_PocCountEntry proto.InternalMessageInfo
 
-func (m *TreeRootCommitEntry) GetParticipant() string {
+func (m *PocCountEntry) GetParticipant() string {
 	if m != nil {
 		return m.Participant
 	}
 	return ""
 }
 
-func (m *TreeRootCommitEntry) GetCount() uint32 {
+func (m *PocCountEntry) GetCount() uint32 {
 	if m != nil {
 		return m.Count
 	}
 	return 0
 }
 
-type TreeRootCommit struct {
-	Creator                  string                 `protobuf:"bytes,1,opt,name=creator,proto3" json:"creator,omitempty"`
-	PocStageStartBlockHeight int64                  `protobuf:"varint,2,opt,name=poc_stage_start_block_height,json=pocStageStartBlockHeight,proto3" json:"poc_stage_start_block_height,omitempty"`
-	TreeIndex                int32                  `protobuf:"varint,3,opt,name=tree_index,json=treeIndex,proto3" json:"tree_index,omitempty"`
-	Entries                  []*TreeRootCommitEntry `protobuf:"bytes,4,rep,name=entries,proto3" json:"entries,omitempty"`
-	BlockHeight              int64                  `protobuf:"varint,5,opt,name=block_height,json=blockHeight,proto3" json:"block_height,omitempty"`
+type PocCount struct {
+	Creator                  string           `protobuf:"bytes,1,opt,name=creator,proto3" json:"creator,omitempty"`
+	PocStageStartBlockHeight int64            `protobuf:"varint,2,opt,name=poc_stage_start_block_height,json=pocStageStartBlockHeight,proto3" json:"poc_stage_start_block_height,omitempty"`
+	Entries                  []*PocCountEntry `protobuf:"bytes,3,rep,name=entries,proto3" json:"entries,omitempty"`
+	BlockHeight              int64            `protobuf:"varint,4,opt,name=block_height,json=blockHeight,proto3" json:"block_height,omitempty"`
 }
 
-func (m *TreeRootCommit) Reset()         { *m = TreeRootCommit{} }
-func (m *TreeRootCommit) String() string { return proto.CompactTextString(m) }
-func (*TreeRootCommit) ProtoMessage()    {}
-func (*TreeRootCommit) Descriptor() ([]byte, []int) {
+func (m *PocCount) Reset()         { *m = PocCount{} }
+func (m *PocCount) String() string { return proto.CompactTextString(m) }
+func (*PocCount) ProtoMessage()    {}
+func (*PocCount) Descriptor() ([]byte, []int) {
 	return fileDescriptor_02f1658865fe708f, []int{7}
 }
-func (m *TreeRootCommit) XXX_Unmarshal(b []byte) error {
+func (m *PocCount) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *TreeRootCommit) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *PocCount) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_TreeRootCommit.Marshal(b, m, deterministic)
+		return xxx_messageInfo_PocCount.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -472,49 +471,194 @@ func (m *TreeRootCommit) XXX_Marshal(b []byte, deterministic bool) ([]byte, erro
 		return b[:n], nil
 	}
 }
-func (m *TreeRootCommit) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_TreeRootCommit.Merge(m, src)
+func (m *PocCount) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PocCount.Merge(m, src)
 }
-func (m *TreeRootCommit) XXX_Size() int {
+func (m *PocCount) XXX_Size() int {
 	return m.Size()
 }
-func (m *TreeRootCommit) XXX_DiscardUnknown() {
-	xxx_messageInfo_TreeRootCommit.DiscardUnknown(m)
+func (m *PocCount) XXX_DiscardUnknown() {
+	xxx_messageInfo_PocCount.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_TreeRootCommit proto.InternalMessageInfo
+var xxx_messageInfo_PocCount proto.InternalMessageInfo
 
-func (m *TreeRootCommit) GetCreator() string {
+func (m *PocCount) GetCreator() string {
 	if m != nil {
 		return m.Creator
 	}
 	return ""
 }
 
-func (m *TreeRootCommit) GetPocStageStartBlockHeight() int64 {
+func (m *PocCount) GetPocStageStartBlockHeight() int64 {
 	if m != nil {
 		return m.PocStageStartBlockHeight
 	}
 	return 0
 }
 
-func (m *TreeRootCommit) GetTreeIndex() int32 {
-	if m != nil {
-		return m.TreeIndex
-	}
-	return 0
-}
-
-func (m *TreeRootCommit) GetEntries() []*TreeRootCommitEntry {
+func (m *PocCount) GetEntries() []*PocCountEntry {
 	if m != nil {
 		return m.Entries
 	}
 	return nil
 }
 
-func (m *TreeRootCommit) GetBlockHeight() int64 {
+func (m *PocCount) GetBlockHeight() int64 {
 	if m != nil {
 		return m.BlockHeight
+	}
+	return 0
+}
+
+type PocWeightCommit struct {
+	Creator                  string          `protobuf:"bytes,1,opt,name=creator,proto3" json:"creator,omitempty"`
+	PocStageStartBlockHeight int64           `protobuf:"varint,2,opt,name=poc_stage_start_block_height,json=pocStageStartBlockHeight,proto3" json:"poc_stage_start_block_height,omitempty"`
+	Count                    uint32          `protobuf:"varint,3,opt,name=count,proto3" json:"count,omitempty"`
+	RootHash                 []byte          `protobuf:"bytes,4,opt,name=root_hash,json=rootHash,proto3" json:"root_hash,omitempty"`
+	Weights                  []*MLNodeWeight `protobuf:"bytes,5,rep,name=weights,proto3" json:"weights,omitempty"`
+	BlockHeight              int64           `protobuf:"varint,6,opt,name=block_height,json=blockHeight,proto3" json:"block_height,omitempty"`
+}
+
+func (m *PocWeightCommit) Reset()         { *m = PocWeightCommit{} }
+func (m *PocWeightCommit) String() string { return proto.CompactTextString(m) }
+func (*PocWeightCommit) ProtoMessage()    {}
+func (*PocWeightCommit) Descriptor() ([]byte, []int) {
+	return fileDescriptor_02f1658865fe708f, []int{8}
+}
+func (m *PocWeightCommit) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *PocWeightCommit) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_PocWeightCommit.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *PocWeightCommit) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PocWeightCommit.Merge(m, src)
+}
+func (m *PocWeightCommit) XXX_Size() int {
+	return m.Size()
+}
+func (m *PocWeightCommit) XXX_DiscardUnknown() {
+	xxx_messageInfo_PocWeightCommit.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PocWeightCommit proto.InternalMessageInfo
+
+func (m *PocWeightCommit) GetCreator() string {
+	if m != nil {
+		return m.Creator
+	}
+	return ""
+}
+
+func (m *PocWeightCommit) GetPocStageStartBlockHeight() int64 {
+	if m != nil {
+		return m.PocStageStartBlockHeight
+	}
+	return 0
+}
+
+func (m *PocWeightCommit) GetCount() uint32 {
+	if m != nil {
+		return m.Count
+	}
+	return 0
+}
+
+func (m *PocWeightCommit) GetRootHash() []byte {
+	if m != nil {
+		return m.RootHash
+	}
+	return nil
+}
+
+func (m *PocWeightCommit) GetWeights() []*MLNodeWeight {
+	if m != nil {
+		return m.Weights
+	}
+	return nil
+}
+
+func (m *PocWeightCommit) GetBlockHeight() int64 {
+	if m != nil {
+		return m.BlockHeight
+	}
+	return 0
+}
+
+type AgreedCount struct {
+	Participant     string `protobuf:"bytes,1,opt,name=participant,proto3" json:"participant,omitempty"`
+	AgreedCount     uint32 `protobuf:"varint,2,opt,name=agreed_count,json=agreedCount,proto3" json:"agreed_count,omitempty"`
+	TotalValidators int32  `protobuf:"varint,3,opt,name=total_validators,json=totalValidators,proto3" json:"total_validators,omitempty"`
+	AgreeingCount   int32  `protobuf:"varint,4,opt,name=agreeing_count,json=agreeingCount,proto3" json:"agreeing_count,omitempty"`
+}
+
+func (m *AgreedCount) Reset()         { *m = AgreedCount{} }
+func (m *AgreedCount) String() string { return proto.CompactTextString(m) }
+func (*AgreedCount) ProtoMessage()    {}
+func (*AgreedCount) Descriptor() ([]byte, []int) {
+	return fileDescriptor_02f1658865fe708f, []int{9}
+}
+func (m *AgreedCount) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *AgreedCount) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_AgreedCount.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *AgreedCount) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_AgreedCount.Merge(m, src)
+}
+func (m *AgreedCount) XXX_Size() int {
+	return m.Size()
+}
+func (m *AgreedCount) XXX_DiscardUnknown() {
+	xxx_messageInfo_AgreedCount.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_AgreedCount proto.InternalMessageInfo
+
+func (m *AgreedCount) GetParticipant() string {
+	if m != nil {
+		return m.Participant
+	}
+	return ""
+}
+
+func (m *AgreedCount) GetAgreedCount() uint32 {
+	if m != nil {
+		return m.AgreedCount
+	}
+	return 0
+}
+
+func (m *AgreedCount) GetTotalValidators() int32 {
+	if m != nil {
+		return m.TotalValidators
+	}
+	return 0
+}
+
+func (m *AgreedCount) GetAgreeingCount() int32 {
+	if m != nil {
+		return m.AgreeingCount
 	}
 	return 0
 }
@@ -526,51 +670,57 @@ func init() {
 	proto.RegisterType((*MLNodeWeight)(nil), "inference.inference.MLNodeWeight")
 	proto.RegisterType((*PoCV2StoreCommit)(nil), "inference.inference.PoCV2StoreCommit")
 	proto.RegisterType((*MLNodeWeightDistribution)(nil), "inference.inference.MLNodeWeightDistribution")
-	proto.RegisterType((*TreeRootCommitEntry)(nil), "inference.inference.TreeRootCommitEntry")
-	proto.RegisterType((*TreeRootCommit)(nil), "inference.inference.TreeRootCommit")
+	proto.RegisterType((*PocCountEntry)(nil), "inference.inference.PocCountEntry")
+	proto.RegisterType((*PocCount)(nil), "inference.inference.PocCount")
+	proto.RegisterType((*PocWeightCommit)(nil), "inference.inference.PocWeightCommit")
+	proto.RegisterType((*AgreedCount)(nil), "inference.inference.AgreedCount")
 }
 
 func init() { proto.RegisterFile("inference/inference/poc_v2.proto", fileDescriptor_02f1658865fe708f) }
 
 var fileDescriptor_02f1658865fe708f = []byte{
-	// 586 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xbc, 0x54, 0xcf, 0x6e, 0xd3, 0x4e,
-	0x10, 0xae, 0x93, 0xa6, 0xf9, 0x75, 0x9a, 0xfe, 0x5a, 0x36, 0x55, 0xb1, 0x54, 0x6a, 0xb9, 0x3e,
-	0x85, 0x8b, 0x2b, 0x05, 0x71, 0x42, 0x80, 0x9a, 0x80, 0xd4, 0x4a, 0x14, 0x22, 0x07, 0x05, 0x89,
-	0x8b, 0xe5, 0xac, 0xb7, 0xf1, 0x8a, 0xc4, 0x63, 0xad, 0x37, 0xa1, 0x79, 0x0b, 0x1e, 0xab, 0xc7,
-	0x1e, 0x39, 0xa2, 0x44, 0xe2, 0x0c, 0x6f, 0x80, 0xd6, 0x76, 0x12, 0x07, 0x2c, 0x55, 0x80, 0xc4,
-	0xc5, 0xda, 0xf9, 0xf7, 0xcd, 0x37, 0xdf, 0x78, 0x17, 0x4c, 0x1e, 0x5e, 0x31, 0xc1, 0x42, 0xca,
-	0x4e, 0x57, 0xa7, 0x08, 0xa9, 0x3b, 0x69, 0xda, 0x91, 0x40, 0x89, 0xa4, 0xbe, 0xf4, 0xdb, 0xcb,
-	0x93, 0xf5, 0x14, 0x76, 0x3b, 0xd8, 0x3e, 0x13, 0x92, 0x5f, 0x79, 0x54, 0xf6, 0x9a, 0xe4, 0x00,
-	0x2a, 0x21, 0x86, 0x94, 0xe9, 0x9a, 0xa9, 0x35, 0x2a, 0x4e, 0x6a, 0x90, 0x43, 0xd8, 0x9a, 0x30,
-	0x2a, 0x51, 0xe8, 0x25, 0x53, 0x6b, 0xd4, 0x9c, 0xcc, 0xb2, 0xbe, 0x6b, 0xb0, 0xd7, 0xc1, 0x76,
-	0xcf, 0x1b, 0x72, 0xdf, 0x93, 0x1c, 0xc3, 0x5e, 0x93, 0x9c, 0x42, 0x3d, 0xf2, 0x84, 0xe4, 0x94,
-	0x47, 0x5e, 0x28, 0x5d, 0xcf, 0xf7, 0x05, 0x8b, 0xe3, 0x04, 0x6f, 0xdb, 0x21, 0xb9, 0xd0, 0x59,
-	0x1a, 0x21, 0x2d, 0x38, 0x9e, 0xa4, 0x00, 0x28, 0xdc, 0xa2, 0xd2, 0x52, 0x52, 0x7a, 0xb4, 0x4c,
-	0xea, 0xfc, 0x8a, 0xf1, 0x0c, 0x1e, 0xa8, 0x61, 0x63, 0xe9, 0x0d, 0x98, 0xfa, 0x0a, 0xe9, 0xf6,
-	0x87, 0x48, 0x3f, 0xb8, 0x01, 0xe3, 0x83, 0x40, 0xea, 0x65, 0x53, 0x6b, 0x94, 0x1d, 0x3d, 0x42,
-	0xda, 0x55, 0x29, 0x5d, 0x95, 0xd1, 0x52, 0x09, 0xe7, 0x49, 0x9c, 0x3c, 0x84, 0xfd, 0x0c, 0x9e,
-	0xf9, 0xee, 0xc7, 0xb4, 0x66, 0x33, 0xa9, 0xd9, 0x5b, 0xfa, 0xdf, 0x25, 0x6e, 0x4b, 0xc2, 0xe1,
-	0xda, 0xc8, 0x1d, 0x6f, 0x3a, 0x44, 0xcf, 0xff, 0x93, 0xc9, 0x8b, 0xba, 0x96, 0x8a, 0xbb, 0x3e,
-	0x87, 0xda, 0xe5, 0xab, 0xd7, 0xe8, 0xb3, 0xd4, 0x26, 0xf7, 0xa1, 0x1a, 0xa2, 0xcf, 0x5c, 0xee,
-	0x67, 0xf8, 0x5b, 0xca, 0xbc, 0xf0, 0xd5, 0xaa, 0x72, 0x48, 0xbb, 0x4e, 0x66, 0x59, 0x5f, 0x35,
-	0xd8, 0x57, 0xbc, 0x9b, 0x5d, 0x89, 0x82, 0xb5, 0x71, 0x34, 0xe2, 0xf2, 0xf7, 0x19, 0xdf, 0xa5,
-	0x73, 0xe9, 0x0e, 0x9d, 0x0f, 0xa0, 0x42, 0x71, 0x1c, 0xa6, 0x0b, 0xd9, 0x75, 0x52, 0x83, 0x1c,
-	0xc1, 0xb6, 0x40, 0x94, 0x6e, 0xe0, 0xc5, 0x41, 0x22, 0x7b, 0xcd, 0xf9, 0x4f, 0x39, 0xce, 0xbd,
-	0x38, 0x20, 0x36, 0xd4, 0x69, 0xc2, 0x76, 0xbd, 0x53, 0x25, 0xe9, 0x74, 0x2f, 0x0d, 0xe5, 0x5a,
-	0x58, 0x37, 0x1a, 0xe8, 0x79, 0xa9, 0x5e, 0xf0, 0x58, 0x0a, 0xde, 0x1f, 0xab, 0x5d, 0xfd, 0xfb,
-	0x81, 0x9f, 0x40, 0x35, 0x5d, 0x40, 0xac, 0x97, 0xcd, 0x72, 0x63, 0xa7, 0x79, 0x62, 0x17, 0xdc,
-	0x43, 0x3b, 0x4f, 0xd8, 0x59, 0x54, 0x58, 0x97, 0x50, 0x7f, 0x2b, 0x18, 0x73, 0x10, 0x65, 0xba,
-	0xb0, 0x97, 0xa1, 0x14, 0x53, 0x62, 0xc2, 0x4e, 0x8e, 0x69, 0x46, 0x3e, 0xef, 0x5a, 0xc9, 0x5c,
-	0xca, 0xc9, 0x6c, 0x7d, 0xd3, 0xe0, 0xff, 0x75, 0x3c, 0xa2, 0x43, 0x95, 0x0a, 0xa6, 0x2e, 0x55,
-	0x06, 0xb3, 0x30, 0xff, 0x7a, 0xf0, 0x63, 0x00, 0x29, 0x18, 0x73, 0x79, 0xe8, 0xb3, 0xeb, 0x64,
-	0xdd, 0x15, 0x67, 0x5b, 0x79, 0x2e, 0x94, 0x83, 0xb4, 0xa0, 0xca, 0x42, 0x29, 0x38, 0x8b, 0xf5,
-	0xcd, 0x44, 0x97, 0x46, 0xa1, 0x2e, 0x05, 0xe3, 0x3b, 0x8b, 0x42, 0x72, 0x02, 0xb5, 0x82, 0x5f,
-	0x62, 0xa7, 0xbf, 0x62, 0xd1, 0x7a, 0x73, 0x33, 0x33, 0xb4, 0xdb, 0x99, 0xa1, 0x7d, 0x99, 0x19,
-	0xda, 0xa7, 0xb9, 0xb1, 0x71, 0x3b, 0x37, 0x36, 0x3e, 0xcf, 0x8d, 0x8d, 0xf7, 0x8f, 0x07, 0x5c,
-	0x06, 0xe3, 0xbe, 0x4d, 0x71, 0x74, 0x1a, 0x09, 0xf4, 0xc7, 0x54, 0xc6, 0x94, 0xff, 0xf4, 0x80,
-	0x5e, 0xe7, 0xce, 0x72, 0x1a, 0xb1, 0xb8, 0xbf, 0x95, 0x3c, 0xa6, 0x8f, 0x7e, 0x04, 0x00, 0x00,
-	0xff, 0xff, 0x3e, 0x42, 0x6e, 0xda, 0x70, 0x05, 0x00, 0x00,
+	// 654 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xbc, 0x55, 0xcf, 0x6a, 0x1b, 0x3f,
+	0x10, 0x8e, 0xec, 0xd8, 0x4e, 0xc6, 0xf6, 0x2f, 0xf9, 0x29, 0x21, 0x5d, 0x48, 0x6b, 0x9c, 0x85,
+	0x82, 0x73, 0x71, 0xc0, 0xa5, 0xa7, 0xfe, 0x23, 0x71, 0x4b, 0x53, 0xe8, 0x1f, 0xb3, 0x01, 0x17,
+	0x7a, 0x59, 0x64, 0xad, 0x62, 0x8b, 0x3a, 0xab, 0x45, 0x2b, 0xa7, 0xcd, 0x5b, 0xf4, 0x21, 0xfa,
+	0x2a, 0x85, 0x1c, 0x73, 0xec, 0xb1, 0x24, 0xd0, 0x7b, 0x5f, 0xa0, 0x14, 0x49, 0x6b, 0x47, 0x6e,
+	0x0c, 0x26, 0x29, 0xed, 0x65, 0xd1, 0x8c, 0x66, 0xbe, 0x99, 0xef, 0x1b, 0x69, 0x05, 0x75, 0x1e,
+	0x1f, 0x32, 0xc9, 0x62, 0xca, 0x76, 0x2e, 0x57, 0x89, 0xa0, 0xe1, 0x71, 0xab, 0x99, 0x48, 0xa1,
+	0x04, 0x5e, 0x9b, 0xf8, 0x9b, 0x93, 0x95, 0xff, 0x08, 0xaa, 0x1d, 0xd1, 0xde, 0x95, 0x8a, 0x1f,
+	0x12, 0xaa, 0xba, 0x2d, 0xbc, 0x0e, 0x85, 0x58, 0xc4, 0x94, 0x79, 0xa8, 0x8e, 0x1a, 0x85, 0xc0,
+	0x1a, 0x78, 0x03, 0x8a, 0xc7, 0x8c, 0x2a, 0x21, 0xbd, 0x5c, 0x1d, 0x35, 0x2a, 0x41, 0x66, 0xf9,
+	0x3f, 0x10, 0xac, 0x74, 0x44, 0xbb, 0x4b, 0x86, 0x3c, 0x22, 0x8a, 0x8b, 0xb8, 0xdb, 0xc2, 0x3b,
+	0xb0, 0x96, 0x10, 0xa9, 0x38, 0xe5, 0x09, 0x89, 0x55, 0x48, 0xa2, 0x48, 0xb2, 0x34, 0x35, 0x78,
+	0xcb, 0x01, 0x76, 0xb6, 0x76, 0xed, 0x0e, 0xde, 0x83, 0x3b, 0xc7, 0x16, 0x40, 0xc8, 0x70, 0x56,
+	0x6a, 0xce, 0xa4, 0x6e, 0x4e, 0x82, 0x3a, 0x57, 0x31, 0x1e, 0xc3, 0x6d, 0x4d, 0x36, 0x55, 0xa4,
+	0xcf, 0xf4, 0x57, 0xaa, 0xb0, 0x37, 0x14, 0xf4, 0x7d, 0x38, 0x60, 0xbc, 0x3f, 0x50, 0x5e, 0xbe,
+	0x8e, 0x1a, 0xf9, 0xc0, 0x4b, 0x04, 0x3d, 0xd0, 0x21, 0x07, 0x3a, 0x62, 0x4f, 0x07, 0xec, 0x9b,
+	0x7d, 0xbc, 0x0d, 0xab, 0x19, 0x3c, 0x8b, 0xc2, 0x0f, 0x36, 0x67, 0xd1, 0xe4, 0xac, 0x4c, 0xfc,
+	0x6f, 0x8d, 0xdb, 0x57, 0xb0, 0x31, 0x45, 0xb9, 0x43, 0x4e, 0x86, 0x82, 0x44, 0x37, 0x61, 0x3e,
+	0xab, 0x6a, 0x6e, 0x76, 0xd5, 0x27, 0x50, 0x79, 0xf5, 0xf2, 0xb5, 0x88, 0x98, 0xb5, 0xf1, 0x2d,
+	0x28, 0xc5, 0x22, 0x62, 0x21, 0x8f, 0x32, 0xfc, 0xa2, 0x36, 0x5f, 0x44, 0x7a, 0x54, 0x0e, 0x52,
+	0x35, 0xc8, 0x2c, 0xff, 0x3b, 0x82, 0x55, 0xdd, 0x77, 0xeb, 0x40, 0x09, 0xc9, 0xda, 0xe2, 0xe8,
+	0x88, 0xab, 0xeb, 0x77, 0x3c, 0x4f, 0xe7, 0xdc, 0x1c, 0x9d, 0xd7, 0xa1, 0x40, 0xc5, 0x28, 0xb6,
+	0x03, 0xa9, 0x06, 0xd6, 0xc0, 0x9b, 0xb0, 0x2c, 0x85, 0x50, 0xe1, 0x80, 0xa4, 0x03, 0x23, 0x7b,
+	0x25, 0x58, 0xd2, 0x8e, 0x7d, 0x92, 0x0e, 0x70, 0x13, 0xd6, 0xa8, 0xe9, 0x76, 0xba, 0x52, 0xc1,
+	0x54, 0xfa, 0xdf, 0x6e, 0x39, 0x25, 0xfc, 0x53, 0x04, 0x9e, 0x2b, 0xd5, 0x53, 0x9e, 0x2a, 0xc9,
+	0x7b, 0x23, 0x3d, 0xab, 0x7f, 0x4f, 0xf8, 0x01, 0x94, 0xec, 0x00, 0x52, 0x2f, 0x5f, 0xcf, 0x37,
+	0xca, 0xad, 0xad, 0xe6, 0x8c, 0x7b, 0xd8, 0x74, 0x1b, 0x0e, 0xc6, 0x19, 0xfe, 0x73, 0x7d, 0x3b,
+	0x69, 0x5b, 0x6b, 0xf4, 0x2c, 0x56, 0xf2, 0x04, 0xd7, 0xa1, 0xec, 0xf4, 0x98, 0xb5, 0xed, 0xba,
+	0x2e, 0x05, 0xce, 0x39, 0x02, 0xfb, 0x5f, 0x10, 0x2c, 0x8d, 0x91, 0xb0, 0x07, 0x25, 0x2a, 0x99,
+	0xbe, 0x48, 0x19, 0xc0, 0xd8, 0xfc, 0x63, 0xb2, 0x0f, 0xa1, 0xc4, 0x62, 0x25, 0x39, 0x1b, 0x93,
+	0xf5, 0x67, 0x92, 0x9d, 0xe2, 0x14, 0x8c, 0x53, 0xf0, 0x16, 0x54, 0xa6, 0xaa, 0xd9, 0xfb, 0x57,
+	0xee, 0x39, 0xb3, 0xfd, 0x69, 0xfe, 0x37, 0xd4, 0xea, 0x94, 0x9d, 0xe1, 0xbf, 0x47, 0xe7, 0x06,
+	0x87, 0xd5, 0x19, 0x77, 0xe1, 0xba, 0xe3, 0xbe, 0x22, 0x40, 0xf1, 0xaa, 0x00, 0x9f, 0x11, 0x94,
+	0x77, 0xfb, 0x92, 0xb1, 0xc8, 0xce, 0x72, 0xfe, 0x81, 0xd8, 0x82, 0x0a, 0x31, 0x09, 0xa1, 0x7b,
+	0x2e, 0xca, 0xc4, 0x01, 0xd9, 0x86, 0x55, 0x25, 0x14, 0x19, 0x86, 0x93, 0x3f, 0x6c, 0x6a, 0x28,
+	0x17, 0x82, 0x15, 0xe3, 0xef, 0x4e, 0xdc, 0xf8, 0x2e, 0xfc, 0x67, 0x32, 0x79, 0xdc, 0xcf, 0xf0,
+	0x16, 0x4d, 0x60, 0x75, 0xec, 0x35, 0x88, 0x7b, 0x6f, 0x4e, 0xcf, 0x6b, 0xe8, 0xec, 0xbc, 0x86,
+	0xbe, 0x9d, 0xd7, 0xd0, 0xa7, 0x8b, 0xda, 0xc2, 0xd9, 0x45, 0x6d, 0xe1, 0xeb, 0x45, 0x6d, 0xe1,
+	0xdd, 0xfd, 0x3e, 0x57, 0x83, 0x51, 0xaf, 0x49, 0xc5, 0xd1, 0x4e, 0x22, 0x45, 0x34, 0xa2, 0x2a,
+	0xa5, 0xfc, 0xb7, 0x77, 0xeb, 0xa3, 0xb3, 0x56, 0x27, 0x09, 0x4b, 0x7b, 0x45, 0xf3, 0x86, 0xdd,
+	0xfb, 0x15, 0x00, 0x00, 0xff, 0xff, 0xc7, 0x69, 0x6d, 0xd7, 0xe7, 0x06, 0x00, 0x00,
 }
 
 func (m *PoCArtifactV2) Marshal() (dAtA []byte, err error) {
@@ -826,7 +976,7 @@ func (m *MLNodeWeightDistribution) MarshalToSizedBuffer(dAtA []byte) (int, error
 	return len(dAtA) - i, nil
 }
 
-func (m *TreeRootCommitEntry) Marshal() (dAtA []byte, err error) {
+func (m *PocCountEntry) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -836,12 +986,12 @@ func (m *TreeRootCommitEntry) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *TreeRootCommitEntry) MarshalTo(dAtA []byte) (int, error) {
+func (m *PocCountEntry) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *TreeRootCommitEntry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *PocCountEntry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -861,7 +1011,7 @@ func (m *TreeRootCommitEntry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *TreeRootCommit) Marshal() (dAtA []byte, err error) {
+func (m *PocCount) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -871,12 +1021,12 @@ func (m *TreeRootCommit) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *TreeRootCommit) MarshalTo(dAtA []byte) (int, error) {
+func (m *PocCount) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *TreeRootCommit) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *PocCount) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -884,7 +1034,7 @@ func (m *TreeRootCommit) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if m.BlockHeight != 0 {
 		i = encodeVarintPocV2(dAtA, i, uint64(m.BlockHeight))
 		i--
-		dAtA[i] = 0x28
+		dAtA[i] = 0x20
 	}
 	if len(m.Entries) > 0 {
 		for iNdEx := len(m.Entries) - 1; iNdEx >= 0; iNdEx-- {
@@ -897,11 +1047,72 @@ func (m *TreeRootCommit) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 				i = encodeVarintPocV2(dAtA, i, uint64(size))
 			}
 			i--
-			dAtA[i] = 0x22
+			dAtA[i] = 0x1a
 		}
 	}
-	if m.TreeIndex != 0 {
-		i = encodeVarintPocV2(dAtA, i, uint64(m.TreeIndex))
+	if m.PocStageStartBlockHeight != 0 {
+		i = encodeVarintPocV2(dAtA, i, uint64(m.PocStageStartBlockHeight))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.Creator) > 0 {
+		i -= len(m.Creator)
+		copy(dAtA[i:], m.Creator)
+		i = encodeVarintPocV2(dAtA, i, uint64(len(m.Creator)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *PocWeightCommit) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PocWeightCommit) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PocWeightCommit) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.BlockHeight != 0 {
+		i = encodeVarintPocV2(dAtA, i, uint64(m.BlockHeight))
+		i--
+		dAtA[i] = 0x30
+	}
+	if len(m.Weights) > 0 {
+		for iNdEx := len(m.Weights) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Weights[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintPocV2(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x2a
+		}
+	}
+	if len(m.RootHash) > 0 {
+		i -= len(m.RootHash)
+		copy(dAtA[i:], m.RootHash)
+		i = encodeVarintPocV2(dAtA, i, uint64(len(m.RootHash)))
+		i--
+		dAtA[i] = 0x22
+	}
+	if m.Count != 0 {
+		i = encodeVarintPocV2(dAtA, i, uint64(m.Count))
 		i--
 		dAtA[i] = 0x18
 	}
@@ -914,6 +1125,51 @@ func (m *TreeRootCommit) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i -= len(m.Creator)
 		copy(dAtA[i:], m.Creator)
 		i = encodeVarintPocV2(dAtA, i, uint64(len(m.Creator)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *AgreedCount) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *AgreedCount) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *AgreedCount) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.AgreeingCount != 0 {
+		i = encodeVarintPocV2(dAtA, i, uint64(m.AgreeingCount))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.TotalValidators != 0 {
+		i = encodeVarintPocV2(dAtA, i, uint64(m.TotalValidators))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.AgreedCount != 0 {
+		i = encodeVarintPocV2(dAtA, i, uint64(m.AgreedCount))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.Participant) > 0 {
+		i -= len(m.Participant)
+		copy(dAtA[i:], m.Participant)
+		i = encodeVarintPocV2(dAtA, i, uint64(len(m.Participant)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -1050,7 +1306,7 @@ func (m *MLNodeWeightDistribution) Size() (n int) {
 	return n
 }
 
-func (m *TreeRootCommitEntry) Size() (n int) {
+func (m *PocCountEntry) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1066,7 +1322,7 @@ func (m *TreeRootCommitEntry) Size() (n int) {
 	return n
 }
 
-func (m *TreeRootCommit) Size() (n int) {
+func (m *PocCount) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1079,9 +1335,6 @@ func (m *TreeRootCommit) Size() (n int) {
 	if m.PocStageStartBlockHeight != 0 {
 		n += 1 + sovPocV2(uint64(m.PocStageStartBlockHeight))
 	}
-	if m.TreeIndex != 0 {
-		n += 1 + sovPocV2(uint64(m.TreeIndex))
-	}
 	if len(m.Entries) > 0 {
 		for _, e := range m.Entries {
 			l = e.Size()
@@ -1090,6 +1343,60 @@ func (m *TreeRootCommit) Size() (n int) {
 	}
 	if m.BlockHeight != 0 {
 		n += 1 + sovPocV2(uint64(m.BlockHeight))
+	}
+	return n
+}
+
+func (m *PocWeightCommit) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Creator)
+	if l > 0 {
+		n += 1 + l + sovPocV2(uint64(l))
+	}
+	if m.PocStageStartBlockHeight != 0 {
+		n += 1 + sovPocV2(uint64(m.PocStageStartBlockHeight))
+	}
+	if m.Count != 0 {
+		n += 1 + sovPocV2(uint64(m.Count))
+	}
+	l = len(m.RootHash)
+	if l > 0 {
+		n += 1 + l + sovPocV2(uint64(l))
+	}
+	if len(m.Weights) > 0 {
+		for _, e := range m.Weights {
+			l = e.Size()
+			n += 1 + l + sovPocV2(uint64(l))
+		}
+	}
+	if m.BlockHeight != 0 {
+		n += 1 + sovPocV2(uint64(m.BlockHeight))
+	}
+	return n
+}
+
+func (m *AgreedCount) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Participant)
+	if l > 0 {
+		n += 1 + l + sovPocV2(uint64(l))
+	}
+	if m.AgreedCount != 0 {
+		n += 1 + sovPocV2(uint64(m.AgreedCount))
+	}
+	if m.TotalValidators != 0 {
+		n += 1 + sovPocV2(uint64(m.TotalValidators))
+	}
+	if m.AgreeingCount != 0 {
+		n += 1 + sovPocV2(uint64(m.AgreeingCount))
 	}
 	return n
 }
@@ -1865,7 +2172,7 @@ func (m *MLNodeWeightDistribution) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *TreeRootCommitEntry) Unmarshal(dAtA []byte) error {
+func (m *PocCountEntry) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1888,10 +2195,10 @@ func (m *TreeRootCommitEntry) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: TreeRootCommitEntry: wiretype end group for non-group")
+			return fmt.Errorf("proto: PocCountEntry: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: TreeRootCommitEntry: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: PocCountEntry: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -1966,7 +2273,7 @@ func (m *TreeRootCommitEntry) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *TreeRootCommit) Unmarshal(dAtA []byte) error {
+func (m *PocCount) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1989,10 +2296,164 @@ func (m *TreeRootCommit) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: TreeRootCommit: wiretype end group for non-group")
+			return fmt.Errorf("proto: PocCount: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: TreeRootCommit: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: PocCount: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Creator", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPocV2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthPocV2
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPocV2
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Creator = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PocStageStartBlockHeight", wireType)
+			}
+			m.PocStageStartBlockHeight = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPocV2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.PocStageStartBlockHeight |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Entries", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPocV2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPocV2
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPocV2
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Entries = append(m.Entries, &PocCountEntry{})
+			if err := m.Entries[len(m.Entries)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BlockHeight", wireType)
+			}
+			m.BlockHeight = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPocV2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.BlockHeight |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipPocV2(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthPocV2
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *PocWeightCommit) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowPocV2
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: PocWeightCommit: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: PocWeightCommit: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -2048,9 +2509,9 @@ func (m *TreeRootCommit) Unmarshal(dAtA []byte) error {
 			}
 		case 3:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TreeIndex", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Count", wireType)
 			}
-			m.TreeIndex = 0
+			m.Count = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowPocV2
@@ -2060,14 +2521,48 @@ func (m *TreeRootCommit) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.TreeIndex |= int32(b&0x7F) << shift
+				m.Count |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 4:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Entries", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field RootHash", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPocV2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthPocV2
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPocV2
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RootHash = append(m.RootHash[:0], dAtA[iNdEx:postIndex]...)
+			if m.RootHash == nil {
+				m.RootHash = []byte{}
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Weights", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -2094,12 +2589,12 @@ func (m *TreeRootCommit) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Entries = append(m.Entries, &TreeRootCommitEntry{})
-			if err := m.Entries[len(m.Entries)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			m.Weights = append(m.Weights, &MLNodeWeight{})
+			if err := m.Weights[len(m.Weights)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
-		case 5:
+		case 6:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field BlockHeight", wireType)
 			}
@@ -2114,6 +2609,145 @@ func (m *TreeRootCommit) Unmarshal(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.BlockHeight |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipPocV2(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthPocV2
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *AgreedCount) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowPocV2
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: AgreedCount: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: AgreedCount: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Participant", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPocV2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthPocV2
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPocV2
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Participant = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AgreedCount", wireType)
+			}
+			m.AgreedCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPocV2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.AgreedCount |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TotalValidators", wireType)
+			}
+			m.TotalValidators = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPocV2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.TotalValidators |= int32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AgreeingCount", wireType)
+			}
+			m.AgreeingCount = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPocV2
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.AgreeingCount |= int32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

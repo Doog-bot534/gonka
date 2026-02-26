@@ -33,7 +33,8 @@ const (
 	Msg_SubmitPocValidationsV2_FullMethodName           = "/inference.inference.Msg/SubmitPocValidationsV2"
 	Msg_PoCV2StoreCommit_FullMethodName                 = "/inference.inference.Msg/PoCV2StoreCommit"
 	Msg_MLNodeWeightDistribution_FullMethodName         = "/inference.inference.Msg/MLNodeWeightDistribution"
-	Msg_TreeRootCommit_FullMethodName                   = "/inference.inference.Msg/TreeRootCommit"
+	Msg_PocCount_FullMethodName                         = "/inference.inference.Msg/PocCount"
+	Msg_PocWeightCommit_FullMethodName                  = "/inference.inference.Msg/PocWeightCommit"
 	Msg_SubmitSeed_FullMethodName                       = "/inference.inference.Msg/SubmitSeed"
 	Msg_SubmitUnitOfComputePriceProposal_FullMethodName = "/inference.inference.Msg/SubmitUnitOfComputePriceProposal"
 	Msg_RegisterModel_FullMethodName                    = "/inference.inference.Msg/RegisterModel"
@@ -88,7 +89,8 @@ type MsgClient interface {
 	// PoC v2 off-chain commit messages
 	PoCV2StoreCommit(ctx context.Context, in *MsgPoCV2StoreCommit, opts ...grpc.CallOption) (*MsgPoCV2StoreCommitResponse, error)
 	MLNodeWeightDistribution(ctx context.Context, in *MsgMLNodeWeightDistribution, opts ...grpc.CallOption) (*MsgMLNodeWeightDistributionResponse, error)
-	TreeRootCommit(ctx context.Context, in *MsgTreeRootCommit, opts ...grpc.CallOption) (*MsgTreeRootCommitResponse, error)
+	PocCount(ctx context.Context, in *MsgPocCount, opts ...grpc.CallOption) (*MsgPocCountResponse, error)
+	PocWeightCommit(ctx context.Context, in *MsgPocWeightCommit, opts ...grpc.CallOption) (*MsgPocWeightCommitResponse, error)
 	SubmitSeed(ctx context.Context, in *MsgSubmitSeed, opts ...grpc.CallOption) (*MsgSubmitSeedResponse, error)
 	SubmitUnitOfComputePriceProposal(ctx context.Context, in *MsgSubmitUnitOfComputePriceProposal, opts ...grpc.CallOption) (*MsgSubmitUnitOfComputePriceProposalResponse, error)
 	RegisterModel(ctx context.Context, in *MsgRegisterModel, opts ...grpc.CallOption) (*MsgRegisterModelResponse, error)
@@ -267,10 +269,20 @@ func (c *msgClient) MLNodeWeightDistribution(ctx context.Context, in *MsgMLNodeW
 	return out, nil
 }
 
-func (c *msgClient) TreeRootCommit(ctx context.Context, in *MsgTreeRootCommit, opts ...grpc.CallOption) (*MsgTreeRootCommitResponse, error) {
+func (c *msgClient) PocCount(ctx context.Context, in *MsgPocCount, opts ...grpc.CallOption) (*MsgPocCountResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(MsgTreeRootCommitResponse)
-	err := c.cc.Invoke(ctx, Msg_TreeRootCommit_FullMethodName, in, out, cOpts...)
+	out := new(MsgPocCountResponse)
+	err := c.cc.Invoke(ctx, Msg_PocCount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) PocWeightCommit(ctx context.Context, in *MsgPocWeightCommit, opts ...grpc.CallOption) (*MsgPocWeightCommitResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MsgPocWeightCommitResponse)
+	err := c.cc.Invoke(ctx, Msg_PocWeightCommit_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -581,7 +593,8 @@ type MsgServer interface {
 	// PoC v2 off-chain commit messages
 	PoCV2StoreCommit(context.Context, *MsgPoCV2StoreCommit) (*MsgPoCV2StoreCommitResponse, error)
 	MLNodeWeightDistribution(context.Context, *MsgMLNodeWeightDistribution) (*MsgMLNodeWeightDistributionResponse, error)
-	TreeRootCommit(context.Context, *MsgTreeRootCommit) (*MsgTreeRootCommitResponse, error)
+	PocCount(context.Context, *MsgPocCount) (*MsgPocCountResponse, error)
+	PocWeightCommit(context.Context, *MsgPocWeightCommit) (*MsgPocWeightCommitResponse, error)
 	SubmitSeed(context.Context, *MsgSubmitSeed) (*MsgSubmitSeedResponse, error)
 	SubmitUnitOfComputePriceProposal(context.Context, *MsgSubmitUnitOfComputePriceProposal) (*MsgSubmitUnitOfComputePriceProposalResponse, error)
 	RegisterModel(context.Context, *MsgRegisterModel) (*MsgRegisterModelResponse, error)
@@ -662,8 +675,11 @@ func (UnimplementedMsgServer) PoCV2StoreCommit(context.Context, *MsgPoCV2StoreCo
 func (UnimplementedMsgServer) MLNodeWeightDistribution(context.Context, *MsgMLNodeWeightDistribution) (*MsgMLNodeWeightDistributionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method MLNodeWeightDistribution not implemented")
 }
-func (UnimplementedMsgServer) TreeRootCommit(context.Context, *MsgTreeRootCommit) (*MsgTreeRootCommitResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method TreeRootCommit not implemented")
+func (UnimplementedMsgServer) PocCount(context.Context, *MsgPocCount) (*MsgPocCountResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PocCount not implemented")
+}
+func (UnimplementedMsgServer) PocWeightCommit(context.Context, *MsgPocWeightCommit) (*MsgPocWeightCommitResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PocWeightCommit not implemented")
 }
 func (UnimplementedMsgServer) SubmitSeed(context.Context, *MsgSubmitSeed) (*MsgSubmitSeedResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SubmitSeed not implemented")
@@ -1022,20 +1038,38 @@ func _Msg_MLNodeWeightDistribution_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Msg_TreeRootCommit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(MsgTreeRootCommit)
+func _Msg_PocCount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgPocCount)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(MsgServer).TreeRootCommit(ctx, in)
+		return srv.(MsgServer).PocCount(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Msg_TreeRootCommit_FullMethodName,
+		FullMethod: Msg_PocCount_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MsgServer).TreeRootCommit(ctx, req.(*MsgTreeRootCommit))
+		return srv.(MsgServer).PocCount(ctx, req.(*MsgPocCount))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_PocWeightCommit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgPocWeightCommit)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).PocWeightCommit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_PocWeightCommit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).PocWeightCommit(ctx, req.(*MsgPocWeightCommit))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1608,8 +1642,12 @@ var Msg_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Msg_MLNodeWeightDistribution_Handler,
 		},
 		{
-			MethodName: "TreeRootCommit",
-			Handler:    _Msg_TreeRootCommit_Handler,
+			MethodName: "PocCount",
+			Handler:    _Msg_PocCount_Handler,
+		},
+		{
+			MethodName: "PocWeightCommit",
+			Handler:    _Msg_PocWeightCommit_Handler,
 		},
 		{
 			MethodName: "SubmitSeed",

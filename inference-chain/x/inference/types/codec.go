@@ -114,7 +114,10 @@ func RegisterInterfaces(registry cdctypes.InterfaceRegistry) {
 		&MsgRemoveParticipantsFromAllowList{},
 	)
 	registry.RegisterImplementations((*sdk.Msg)(nil),
-		&MsgTreeRootCommit{},
+		&MsgPocCount{},
+	)
+	registry.RegisterImplementations((*sdk.Msg)(nil),
+		&MsgPocWeightCommit{},
 	)
 	// this line is used by starport scaffolding # 3
 
