@@ -44,6 +44,15 @@ func (k msgServer) PocCount(goCtx context.Context, msg *types.MsgPocCount) (*typ
 		return nil, sdkerrors.Wrap(types.ErrPocTooLate, "PoC count window closed")
 	}
 
+	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
+	if err != nil {
+		return nil, sdkerrors.Wrap(types.ErrInvalidAddress, fmt.Sprintf("invalid creator address: %v", err))
+	}
+	_, err = k.Participants.Get(ctx, creatorAddr)
+	if err != nil {
+		return nil, sdkerrors.Wrap(types.ErrParticipantNotFound, fmt.Sprintf("creator %s is not a registered participant", msg.Creator))
+	}
+
 	pk := collections.Join(startBlockHeight, msg.Creator)
 
 	_, err = k.PocCounts.Get(ctx, pk)

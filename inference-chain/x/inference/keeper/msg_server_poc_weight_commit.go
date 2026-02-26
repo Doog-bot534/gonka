@@ -52,9 +52,18 @@ func (k msgServer) PocWeightCommit(goCtx context.Context, msg *types.MsgPocWeigh
 		return nil, sdkerrors.Wrap(types.ErrPocTooLate, "PoC validation exchange window closed")
 	}
 
+	addr, err := sdk.AccAddressFromBech32(msg.Creator)
+	if err != nil {
+		return nil, sdkerrors.Wrap(types.ErrInvalidAddress, fmt.Sprintf("invalid creator address: %v", err))
+	}
+	_, err = k.Participants.Get(ctx, addr)
+	if err != nil {
+		return nil, sdkerrors.Wrap(types.ErrParticipantNotFound, fmt.Sprintf("creator %s is not a registered participant", msg.Creator))
+	}
+
 	agreedCountPK := collections.Join(startBlockHeight, msg.Creator)
-	agreedEntry, err := k.AgreedCounts.Get(ctx, agreedCountPK)
-	if err == nil {
+	agreedEntry, agreedErr := k.AgreedCounts.Get(ctx, agreedCountPK)
+	if agreedErr == nil {
 		if msg.Count != agreedEntry.AgreedCount {
 			return nil, sdkerrors.Wrap(types.ErrIllegalState,
 				fmt.Sprintf("count %d does not match agreed count %d", msg.Count, agreedEntry.AgreedCount))
@@ -68,11 +77,6 @@ func (k msgServer) PocWeightCommit(goCtx context.Context, msg *types.MsgPocWeigh
 	if weightSum != msg.Count {
 		return nil, sdkerrors.Wrap(types.ErrIllegalState,
 			fmt.Sprintf("weight sum %d does not match count %d", weightSum, msg.Count))
-	}
-
-	addr, err := sdk.AccAddressFromBech32(msg.Creator)
-	if err != nil {
-		return nil, sdkerrors.Wrap(types.ErrInvalidAddress, fmt.Sprintf("invalid creator address: %v", err))
 	}
 
 	pk := collections.Join(startBlockHeight, addr)

@@ -675,18 +675,12 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 	var allStoreCommits map[string]types.PoCV2StoreCommit
 	var allWeightDistributions map[string]types.MLNodeWeightDistribution
 
-	hasAgreedCounts, err := am.keeper.HasAgreedCountsForStage(ctx, epochStartBlockHeight)
-	if err != nil {
-		am.LogError("ComputeNewWeights: Error checking agreed counts", types.PoC, "error", err)
+	pocWeightCommits, wcErr := am.keeper.GetAllPocWeightCommitsForStage(ctx, epochStartBlockHeight)
+	if wcErr != nil {
+		am.LogError("ComputeNewWeights: Error getting poc weight commits", types.PoC, "error", wcErr)
 	}
 
-	if hasAgreedCounts {
-		pocWeightCommits, err := am.keeper.GetAllPocWeightCommitsForStage(ctx, epochStartBlockHeight)
-		if err != nil {
-			am.LogError("ComputeNewWeights: Error getting poc weight commits", types.PoC, "error", err)
-			return nil
-		}
-
+	if wcErr == nil && len(pocWeightCommits) > 0 {
 		allStoreCommits = make(map[string]types.PoCV2StoreCommit, len(pocWeightCommits))
 		allWeightDistributions = make(map[string]types.MLNodeWeightDistribution, len(pocWeightCommits))
 		for addr, wc := range pocWeightCommits {
@@ -704,7 +698,7 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 			}
 		}
 
-		am.LogInfo("ComputeNewWeights: Using PocWeightCommits path (trees enabled)", types.PoC,
+		am.LogInfo("ComputeNewWeights: Using PocWeightCommits path", types.PoC,
 			"commits", len(pocWeightCommits))
 	} else {
 		allStoreCommits, err = am.keeper.GetAllPoCV2StoreCommitsForStage(ctx, epochStartBlockHeight)
