@@ -2,6 +2,7 @@ package v0_2_11
 
 import (
 	"context"
+	"errors"
 
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
@@ -42,7 +43,7 @@ func setSafetyWindow(ctx context.Context, k keeper.Keeper) error {
 
 	if params.EpochParams == nil {
 		k.LogError("epoch params not initialized", types.Upgrades)
-		return err
+		return errors.New("EpochParams are nil")
 	}
 
 	params.EpochParams.SafetyWindow = 50
