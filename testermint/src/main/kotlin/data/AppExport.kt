@@ -144,7 +144,7 @@ data class EpochParams(
     val pocPruningMax: Long,
     @SerializedName("poc_slot_allocation")
     val pocSlotAllocation: Decimal?,
-    val safetyWindow: Long,
+    val confirmationPocSafetyWindow: Long,
 )
 
 data class Decimal(

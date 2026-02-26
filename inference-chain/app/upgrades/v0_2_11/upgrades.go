@@ -46,13 +46,13 @@ func setSafetyWindow(ctx context.Context, k keeper.Keeper) error {
 		return errors.New("EpochParams are nil")
 	}
 
-	params.EpochParams.SafetyWindow = 50
+	params.EpochParams.ConfirmationPocSafetyWindow = 50
 
 	if err := k.SetParams(ctx, params); err != nil {
 		k.LogError("failed to set params with safety window", types.Upgrades, "error", err)
 		return err
 	}
 
-	k.LogInfo("set safety window", types.Upgrades, "safety_window", params.EpochParams.SafetyWindow)
+	k.LogInfo("set safety window", types.Upgrades, "safety_window", params.EpochParams.ConfirmationPocSafetyWindow)
 	return nil
 }

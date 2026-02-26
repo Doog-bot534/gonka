@@ -136,7 +136,7 @@ func (am AppModule) checkConfirmationPoCTrigger(
 		epochParams.PocValidationDelay +
 		epochParams.PocValidationDuration +
 		epochParams.SetNewValidatorsDelay +
-		epochParams.SafetyWindow
+		epochParams.ConfirmationPocSafetyWindow
 	triggerWindowEnd := nextPoCStart - epochParams.InferenceValidationCutoff - confirmationWindowDuration
 
 	if blockHeight < setNewValidatorsHeight || blockHeight > triggerWindowEnd {

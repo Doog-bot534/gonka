@@ -3564,7 +3564,7 @@ var (
 	fd_EpochParams_inference_pruning_max             protoreflect.FieldDescriptor
 	fd_EpochParams_poc_pruning_max                   protoreflect.FieldDescriptor
 	fd_EpochParams_poc_slot_allocation               protoreflect.FieldDescriptor
-	fd_EpochParams_safety_window                     protoreflect.FieldDescriptor
+	fd_EpochParams_confirmation_poc_safety_window    protoreflect.FieldDescriptor
 )
 
 func init() {
@@ -3584,7 +3584,7 @@ func init() {
 	fd_EpochParams_inference_pruning_max = md_EpochParams.Fields().ByName("inference_pruning_max")
 	fd_EpochParams_poc_pruning_max = md_EpochParams.Fields().ByName("poc_pruning_max")
 	fd_EpochParams_poc_slot_allocation = md_EpochParams.Fields().ByName("poc_slot_allocation")
-	fd_EpochParams_safety_window = md_EpochParams.Fields().ByName("safety_window")
+	fd_EpochParams_confirmation_poc_safety_window = md_EpochParams.Fields().ByName("confirmation_poc_safety_window")
 }
 
 var _ protoreflect.Message = (*fastReflection_EpochParams)(nil)
@@ -3736,9 +3736,9 @@ func (x *fastReflection_EpochParams) Range(f func(protoreflect.FieldDescriptor, 
 			return
 		}
 	}
-	if x.SafetyWindow != int64(0) {
-		value := protoreflect.ValueOfInt64(x.SafetyWindow)
-		if !f(fd_EpochParams_safety_window, value) {
+	if x.ConfirmationPocSafetyWindow != int64(0) {
+		value := protoreflect.ValueOfInt64(x.ConfirmationPocSafetyWindow)
+		if !f(fd_EpochParams_confirmation_poc_safety_window, value) {
 			return
 		}
 	}
@@ -3785,8 +3785,8 @@ func (x *fastReflection_EpochParams) Has(fd protoreflect.FieldDescriptor) bool {
 		return x.PocPruningMax != int64(0)
 	case "inference.inference.EpochParams.poc_slot_allocation":
 		return x.PocSlotAllocation != nil
-	case "inference.inference.EpochParams.safety_window":
-		return x.SafetyWindow != int64(0)
+	case "inference.inference.EpochParams.confirmation_poc_safety_window":
+		return x.ConfirmationPocSafetyWindow != int64(0)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.EpochParams"))
@@ -3831,8 +3831,8 @@ func (x *fastReflection_EpochParams) Clear(fd protoreflect.FieldDescriptor) {
 		x.PocPruningMax = int64(0)
 	case "inference.inference.EpochParams.poc_slot_allocation":
 		x.PocSlotAllocation = nil
-	case "inference.inference.EpochParams.safety_window":
-		x.SafetyWindow = int64(0)
+	case "inference.inference.EpochParams.confirmation_poc_safety_window":
+		x.ConfirmationPocSafetyWindow = int64(0)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.EpochParams"))
@@ -3891,8 +3891,8 @@ func (x *fastReflection_EpochParams) Get(descriptor protoreflect.FieldDescriptor
 	case "inference.inference.EpochParams.poc_slot_allocation":
 		value := x.PocSlotAllocation
 		return protoreflect.ValueOfMessage(value.ProtoReflect())
-	case "inference.inference.EpochParams.safety_window":
-		value := x.SafetyWindow
+	case "inference.inference.EpochParams.confirmation_poc_safety_window":
+		value := x.ConfirmationPocSafetyWindow
 		return protoreflect.ValueOfInt64(value)
 	default:
 		if descriptor.IsExtension() {
@@ -3942,8 +3942,8 @@ func (x *fastReflection_EpochParams) Set(fd protoreflect.FieldDescriptor, value 
 		x.PocPruningMax = value.Int()
 	case "inference.inference.EpochParams.poc_slot_allocation":
 		x.PocSlotAllocation = value.Message().Interface().(*Decimal)
-	case "inference.inference.EpochParams.safety_window":
-		x.SafetyWindow = value.Int()
+	case "inference.inference.EpochParams.confirmation_poc_safety_window":
+		x.ConfirmationPocSafetyWindow = value.Int()
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.EpochParams"))
@@ -3995,8 +3995,8 @@ func (x *fastReflection_EpochParams) Mutable(fd protoreflect.FieldDescriptor) pr
 		panic(fmt.Errorf("field inference_pruning_max of message inference.inference.EpochParams is not mutable"))
 	case "inference.inference.EpochParams.poc_pruning_max":
 		panic(fmt.Errorf("field poc_pruning_max of message inference.inference.EpochParams is not mutable"))
-	case "inference.inference.EpochParams.safety_window":
-		panic(fmt.Errorf("field safety_window of message inference.inference.EpochParams is not mutable"))
+	case "inference.inference.EpochParams.confirmation_poc_safety_window":
+		panic(fmt.Errorf("field confirmation_poc_safety_window of message inference.inference.EpochParams is not mutable"))
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.EpochParams"))
@@ -4039,7 +4039,7 @@ func (x *fastReflection_EpochParams) NewField(fd protoreflect.FieldDescriptor) p
 	case "inference.inference.EpochParams.poc_slot_allocation":
 		m := new(Decimal)
 		return protoreflect.ValueOfMessage(m.ProtoReflect())
-	case "inference.inference.EpochParams.safety_window":
+	case "inference.inference.EpochParams.confirmation_poc_safety_window":
 		return protoreflect.ValueOfInt64(int64(0))
 	default:
 		if fd.IsExtension() {
@@ -4153,8 +4153,8 @@ func (x *fastReflection_EpochParams) ProtoMethods() *protoiface.Methods {
 			l = options.Size(x.PocSlotAllocation)
 			n += 1 + l + runtime.Sov(uint64(l))
 		}
-		if x.SafetyWindow != 0 {
-			n += 1 + runtime.Sov(uint64(x.SafetyWindow))
+		if x.ConfirmationPocSafetyWindow != 0 {
+			n += 1 + runtime.Sov(uint64(x.ConfirmationPocSafetyWindow))
 		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
@@ -4185,8 +4185,8 @@ func (x *fastReflection_EpochParams) ProtoMethods() *protoiface.Methods {
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
 		}
-		if x.SafetyWindow != 0 {
-			i = runtime.EncodeVarint(dAtA, i, uint64(x.SafetyWindow))
+		if x.ConfirmationPocSafetyWindow != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.ConfirmationPocSafetyWindow))
 			i--
 			dAtA[i] = 0x78
 		}
@@ -4603,9 +4603,9 @@ func (x *fastReflection_EpochParams) ProtoMethods() *protoiface.Methods {
 				iNdEx = postIndex
 			case 15:
 				if wireType != 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field SafetyWindow", wireType)
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field ConfirmationPocSafetyWindow", wireType)
 				}
-				x.SafetyWindow = 0
+				x.ConfirmationPocSafetyWindow = 0
 				for shift := uint(0); ; shift += 7 {
 					if shift >= 64 {
 						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
@@ -4615,7 +4615,7 @@ func (x *fastReflection_EpochParams) ProtoMethods() *protoiface.Methods {
 					}
 					b := dAtA[iNdEx]
 					iNdEx++
-					x.SafetyWindow |= int64(b&0x7F) << shift
+					x.ConfirmationPocSafetyWindow |= int64(b&0x7F) << shift
 					if b < 0x80 {
 						break
 					}
@@ -16303,7 +16303,7 @@ type EpochParams struct {
 	InferencePruningMax            int64    `protobuf:"varint,12,opt,name=inference_pruning_max,json=inferencePruningMax,proto3" json:"inference_pruning_max,omitempty"`
 	PocPruningMax                  int64    `protobuf:"varint,13,opt,name=poc_pruning_max,json=pocPruningMax,proto3" json:"poc_pruning_max,omitempty"`
 	PocSlotAllocation              *Decimal `protobuf:"bytes,14,opt,name=poc_slot_allocation,json=pocSlotAllocation,proto3" json:"poc_slot_allocation,omitempty"` // Fraction of slots allocated to PoC (0.0 to 1.0, default 0.5)
-	SafetyWindow                   int64    `protobuf:"varint,15,opt,name=safety_window,json=safetyWindow,proto3" json:"safety_window,omitempty"`
+	ConfirmationPocSafetyWindow    int64    `protobuf:"varint,15,opt,name=confirmation_poc_safety_window,json=confirmationPocSafetyWindow,proto3" json:"confirmation_poc_safety_window,omitempty"`
 }
 
 func (x *EpochParams) Reset() {
@@ -16425,9 +16425,9 @@ func (x *EpochParams) GetPocSlotAllocation() *Decimal {
 	return nil
 }
 
-func (x *EpochParams) GetSafetyWindow() int64 {
+func (x *EpochParams) GetConfirmationPocSafetyWindow() int64 {
 	if x != nil {
-		return x.SafetyWindow
+		return x.ConfirmationPocSafetyWindow
 	}
 	return 0
 }
@@ -17831,7 +17831,7 @@ var file_inference_inference_params_proto_rawDesc = []byte{
 	0x18, 0x74, 0x6f, 0x70, 0x5f, 0x6d, 0x69, 0x6e, 0x65, 0x72, 0x5f, 0x76, 0x65, 0x73, 0x74, 0x69,
 	0x6e, 0x67, 0x5f, 0x70, 0x65, 0x72, 0x69, 0x6f, 0x64, 0x18, 0x08, 0x20, 0x01, 0x28, 0x04, 0x52,
 	0x15, 0x74, 0x6f, 0x70, 0x4d, 0x69, 0x6e, 0x65, 0x72, 0x56, 0x65, 0x73, 0x74, 0x69, 0x6e, 0x67,
-	0x50, 0x65, 0x72, 0x69, 0x6f, 0x64, 0x3a, 0x04, 0xe8, 0xa0, 0x1f, 0x01, 0x22, 0xa7, 0x06, 0x0a,
+	0x50, 0x65, 0x72, 0x69, 0x6f, 0x64, 0x3a, 0x04, 0xe8, 0xa0, 0x1f, 0x01, 0x22, 0xc7, 0x06, 0x0a,
 	0x0b, 0x45, 0x70, 0x6f, 0x63, 0x68, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x21, 0x0a, 0x0c,
 	0x65, 0x70, 0x6f, 0x63, 0x68, 0x5f, 0x6c, 0x65, 0x6e, 0x67, 0x74, 0x68, 0x18, 0x01, 0x20, 0x01,
 	0x28, 0x03, 0x52, 0x0b, 0x65, 0x70, 0x6f, 0x63, 0x68, 0x4c, 0x65, 0x6e, 0x67, 0x74, 0x68, 0x12,
@@ -17879,9 +17879,11 @@ var file_inference_inference_params_proto_rawDesc = []byte{
 	0x74, 0x69, 0x6f, 0x6e, 0x18, 0x0e, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1c, 0x2e, 0x69, 0x6e, 0x66,
 	0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65,
 	0x2e, 0x44, 0x65, 0x63, 0x69, 0x6d, 0x61, 0x6c, 0x52, 0x11, 0x70, 0x6f, 0x63, 0x53, 0x6c, 0x6f,
-	0x74, 0x41, 0x6c, 0x6c, 0x6f, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x23, 0x0a, 0x0d, 0x73,
-	0x61, 0x66, 0x65, 0x74, 0x79, 0x5f, 0x77, 0x69, 0x6e, 0x64, 0x6f, 0x77, 0x18, 0x0f, 0x20, 0x01,
-	0x28, 0x03, 0x52, 0x0c, 0x73, 0x61, 0x66, 0x65, 0x74, 0x79, 0x57, 0x69, 0x6e, 0x64, 0x6f, 0x77,
+	0x74, 0x41, 0x6c, 0x6c, 0x6f, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x43, 0x0a, 0x1e, 0x63,
+	0x6f, 0x6e, 0x66, 0x69, 0x72, 0x6d, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x70, 0x6f, 0x63, 0x5f,
+	0x73, 0x61, 0x66, 0x65, 0x74, 0x79, 0x5f, 0x77, 0x69, 0x6e, 0x64, 0x6f, 0x77, 0x18, 0x0f, 0x20,
+	0x01, 0x28, 0x03, 0x52, 0x1b, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x72, 0x6d, 0x61, 0x74, 0x69, 0x6f,
+	0x6e, 0x50, 0x6f, 0x63, 0x53, 0x61, 0x66, 0x65, 0x74, 0x79, 0x57, 0x69, 0x6e, 0x64, 0x6f, 0x77,
 	0x3a, 0x04, 0xe8, 0xa0, 0x1f, 0x01, 0x22, 0x8e, 0x0e, 0x0a, 0x10, 0x56, 0x61, 0x6c, 0x69, 0x64,
 	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x50, 0x61, 0x72, 0x61, 0x6d, 0x73, 0x12, 0x4c, 0x0a, 0x13, 0x66,
 	0x61, 0x6c, 0x73, 0x65, 0x5f, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x69, 0x76, 0x65, 0x5f, 0x72, 0x61,
