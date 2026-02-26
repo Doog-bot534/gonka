@@ -69,13 +69,13 @@ func TestEndBlock_ProcessesPendingInferenceValidationQueue(t *testing.T) {
 	require.NoError(t, k.PruningState.Set(ctx, types.PruningState{}))
 
 	ctx = ctx.WithBlockHeight(123)
-	require.NoError(t, k.SetPendingInferenceValidation(ctx, ctx.BlockHeight(), inferenceID))
-	require.NoError(t, k.SetPendingInferenceValidation(ctx, ctx.BlockHeight(), "missing-inference"))
+	require.NoError(t, k.EnqueueFinishedInference(ctx, ctx.BlockHeight(), inferenceID))
+	require.NoError(t, k.EnqueueFinishedInference(ctx, ctx.BlockHeight(), "missing-inference"))
 
 	am := inference.NewAppModule(nil, k, nil, nil, nil, nil)
 	require.NoError(t, am.EndBlock(ctx))
 
-	require.Empty(t, k.GetFinishedInferenceIDsForHeight(ctx, ctx.BlockHeight()))
+	require.Empty(t, k.ListFinishedInferenceIDsForHeight(ctx, ctx.BlockHeight()))
 
 	details, found := k.GetInferenceValidationDetails(ctx, effectiveEpoch.Index, inferenceID)
 	require.True(t, found)

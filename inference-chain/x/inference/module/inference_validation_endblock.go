@@ -19,7 +19,7 @@ func (am AppModule) processFinishedInferencesInBlock(
 	currentEpochGroup *epochgroup.EpochGroup,
 	params *types.Params,
 ) {
-	pendingInferenceIDs := am.keeper.GetFinishedInferenceIDsForHeight(ctx, blockHeight)
+	pendingInferenceIDs := am.keeper.ListFinishedInferenceIDsForHeight(ctx, blockHeight)
 	modelBlockLoads := make(map[string]uint64)
 	modelBlockInferenceCounts := make(map[string]uint64)
 	if len(pendingInferenceIDs) == 0 {
@@ -47,7 +47,7 @@ func (am AppModule) processFinishedInferencesInBlock(
 
 	for _, inferenceID := range pendingInferenceIDs {
 		// Always remove queue keys as we iterate to avoid reprocessing on later blocks.
-		am.keeper.RemovePendingInferenceValidation(ctx, blockHeight, inferenceID)
+		am.keeper.DequeueFinishedInference(ctx, blockHeight, inferenceID)
 
 		inference, found := am.keeper.GetInference(ctx, inferenceID)
 		if !found {

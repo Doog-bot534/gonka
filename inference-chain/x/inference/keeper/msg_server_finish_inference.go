@@ -111,9 +111,8 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 	if err != nil {
 		return failedFinish(ctx, err, msg), nil
 	}
-	var completionErr error
 	if finalInference.IsCompleted() {
-		completionErr = k.handleInferenceCompleted(ctx, finalInference, &executor)
+		k.handleInferenceCompleted(ctx, finalInference, &executor)
 	}
 	if shouldPersistParticipant(finalInference, payments, &executor) {
 		if err := k.SetParticipant(ctx, executor); err != nil {
@@ -123,10 +122,6 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 	err = k.SetInference(ctx, *finalInference)
 	if err != nil {
 		return failedFinish(ctx, err, msg), nil
-	}
-	if completionErr != nil {
-		// Preserve inference/participant state even when completion side effects fail.
-		return failedFinish(ctx, completionErr, msg), nil
 	}
 
 	return &types.MsgFinishInferenceResponse{InferenceIndex: msg.InferenceId}, nil
@@ -230,31 +225,32 @@ func getFinishTASignatureComponents(msg *types.MsgFinishInference) calculations.
 	}
 }
 
-func (k msgServer) handleInferenceCompleted(ctx sdk.Context, inference *types.Inference, executor *types.Participant) error {
+func (k msgServer) handleInferenceCompleted(ctx sdk.Context, inference *types.Inference, executor *types.Participant) {
 	if executor == nil {
-		return sdkerrors.Wrap(types.ErrParticipantNotFound, inference.ExecutedBy)
+		k.LogWarn("handleInferenceCompleted: executor not loaded, skipping participant updates", types.Inferences, "executed_by", inference.ExecutedBy)
+	} else {
+		ensureParticipantEpochStats(executor)
+		executor.CurrentEpochStats.InferenceCount++
+		executor.LastInferenceTime = inference.EndBlockTimestamp
 	}
-
-	ensureParticipantEpochStats(executor)
-	executor.CurrentEpochStats.InferenceCount++
-	executor.LastInferenceTime = inference.EndBlockTimestamp
 
 	effectiveEpoch, found := k.GetEffectiveEpoch(ctx)
 	if !found {
-		k.LogError("Effective Epoch Index not found", types.EpochGroup)
-		return types.ErrEffectiveEpochNotFound.Wrapf("handleInferenceCompleted: Effective Epoch Index not found")
+		k.LogWarn("handleInferenceCompleted: effective epoch not found, defaulting epoch fields to zero", types.EpochGroup)
+		inference.EpochPocStartBlockHeight = 0
+		inference.EpochId = 0
+	} else {
+		inference.EpochPocStartBlockHeight = uint64(effectiveEpoch.PocStartBlockHeight)
+		inference.EpochId = effectiveEpoch.Index
 	}
-
-	inference.EpochPocStartBlockHeight = uint64(effectiveEpoch.PocStartBlockHeight)
-	inference.EpochId = effectiveEpoch.Index
 	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		"inference_finished",
 		buildInferenceFinishedEventAttributes(inference)...,
 	))
 
-	if err := k.SetPendingInferenceValidation(ctx, ctx.BlockHeight(), inference.InferenceId); err != nil {
+	if err := k.EnqueueFinishedInference(ctx, ctx.BlockHeight(), inference.InferenceId); err != nil {
 		k.LogError("Unable to enqueue pending inference validation", types.Validation, "inference_id", inference.InferenceId, "block_height", ctx.BlockHeight(), "err", err)
-		return err
+		return
 	}
 
 	k.LogDebug("Queued inference for deferred validation details processing", types.Validation,
@@ -262,7 +258,6 @@ func (k msgServer) handleInferenceCompleted(ctx sdk.Context, inference *types.In
 		"epoch_id", inference.EpochId,
 		"block_height", ctx.BlockHeight(),
 	)
-	return nil
 }
 
 // buildInferenceFinishedEventAttributes emits only fields required for dev-stats off-chain migration.

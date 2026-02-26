@@ -100,13 +100,8 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 		return failedStart(ctx, err, msg), nil
 	}
 
-	var completionErr error
 	if finalInference.IsCompleted() {
-		if executor == nil {
-			k.LogError("StartInference: executor not found when completing inference", types.Inferences, "executed_by", finalInference.ExecutedBy, "inference_id", finalInference.InferenceId)
-			return failedStart(ctx, sdkerrors.Wrap(types.ErrParticipantNotFound, finalInference.ExecutedBy), msg), nil
-		}
-		completionErr = k.handleInferenceCompleted(ctx, finalInference, executor)
+		k.handleInferenceCompleted(ctx, finalInference, executor)
 	}
 	if shouldPersistParticipant(finalInference, payments, executor) {
 		if err := k.SetParticipant(ctx, *executor); err != nil {
@@ -116,10 +111,6 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 	err = k.SetInference(ctx, *finalInference)
 	if err != nil {
 		return failedStart(ctx, err, msg), nil
-	}
-	if completionErr != nil {
-		// Preserve inference/participant state even when completion side effects fail.
-		return failedStart(ctx, completionErr, msg), nil
 	}
 	k.addTimeout(ctx, finalInference)
 
