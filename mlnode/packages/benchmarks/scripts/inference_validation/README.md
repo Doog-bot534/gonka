@@ -77,7 +77,7 @@ Run from repository root (or adjust paths).
 ```bash
 python3 mlnode/packages/benchmarks/scripts/inference_validation/inference.py \
   --exp-name my_exp \
-  --url http://HOST:8000
+  --url http://86.38.238.108:8000
 ```
 
 Optional useful flags:
@@ -97,7 +97,7 @@ Optional useful flags:
 ```bash
 python3 mlnode/packages/benchmarks/scripts/inference_validation/validation.py \
   --inference-artifact mlnode/packages/benchmarks/data/inference_validation/my_exp__YYYY-MM-DD_HHMMSS/inference_results.jsonl \
-  --validation-url http://HOST:8000
+  --validation-url http://86.38.238.108:8000
 ```
 
 Optional useful flags:

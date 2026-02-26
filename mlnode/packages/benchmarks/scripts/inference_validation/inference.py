@@ -1,22 +1,4 @@
 #!/usr/bin/env python3
-"""
-Inference-only runner for OpenAI-compatible vLLM endpoints.
-
-Multilingual mixed run template (uses script defaults for sampling/retry/workers):
-    python scripts/inference_validation/inference.py \
-      --exp-name <experiment_name> \
-      --url <vllm_base_url> \
-      --model <served_model_id> \
-      --n-prompts 1000 \
-      --multilingual \
-      --langs en ch hi ar sp
-
-Notes:
-- Keep `--multilingual --langs ...` to force mixed-language prompts.
-- Keep `--n-prompts` as desired total (for 5 langs and 1000 prompts => 200/lang).
-- Do not pass sampling flags (`--temperature`, `--top-p`, `--top-k`,
-  `--repetition-penalty`) if you want pure script defaults.
-"""
 from __future__ import annotations
 
 import argparse
@@ -45,12 +27,7 @@ def _add_repo_paths() -> None:
 _add_repo_paths()
 
 from validation.data import ModelInfo, RequestParams, Result  # noqa: E402
-from validation.prompts import (  # noqa: E402
-    get_squad_data_questions,
-    preload_all_language_prompts,
-    slice_mixed_language_prompts_with_langs,
-    DATASET_HANDLES,
-)
+from validation.prompts import get_squad_data_questions  # noqa: E402
 from validation.utils import _extract_logprobs, inference  # noqa: E402
 
 
@@ -149,13 +126,7 @@ def _make_exp_dir(out_base: Path, exp_name: str) -> Path:
     return exp_dir
 
 
-def _load_prompts(
-    prompts_file: Optional[Path],
-    n_prompts: int,
-    multilingual: bool = False,
-    langs: Optional[List[str]] = None,
-) -> tuple:
-    """Return (prompts, languages) where languages is a list of lang codes per prompt."""
+def _load_prompts(prompts_file: Optional[Path], n_prompts: int) -> List[str]:
     if prompts_file:
         prompts: List[str] = []
         for line in prompts_file.read_text(encoding="utf-8").splitlines():
@@ -164,20 +135,8 @@ def _load_prompts(
                 prompts.append(t)
         if not prompts:
             raise RuntimeError(f"No prompts found in file: {prompts_file}")
-        prompts = prompts[:n_prompts]
-        return prompts, ["en"] * len(prompts)
-
-    if multilingual:
-        lang_tuple = tuple(langs) if langs else ("en", "ch", "hi", "ar")
-        n_per_lang = max(1, n_prompts // len(lang_tuple))
-        all_prompts_by_lang = preload_all_language_prompts(lang_tuple)
-        prompts, languages = slice_mixed_language_prompts_with_langs(
-            all_prompts_by_lang, per_language_n=n_per_lang, langs=lang_tuple
-        )
-        return prompts[:n_prompts], languages[:n_prompts]
-
-    prompts = get_squad_data_questions()[:n_prompts]
-    return prompts, ["en"] * len(prompts)
+        return prompts[:n_prompts]
+    return get_squad_data_questions()[:n_prompts]
 
 
 def _run_with_retries(fn, max_attempts: int, backoff_start_s: float, backoff_mult: float):
@@ -202,14 +161,11 @@ def main() -> None:
         )
     )
     parser.add_argument("--exp-name", required=True, help="Experiment name (required).")
-    parser.add_argument("--url", required=True, help="vLLM base URL, e.g. http://HOST:8000")
+    parser.add_argument("--url", required=True, help="vLLM base URL, e.g. http://86.38.238.108:8000")
     parser.add_argument("--model", default="", help="Model id to use; default: first served id from /v1/models.")
     parser.add_argument("--n-prompts", type=int, default=1000, help="Number of prompts to run.")
     parser.add_argument("--prompts-file", type=Path, default=None, help="Optional text file with one prompt per line.")
-    parser.add_argument("--language", default="en", help="Language tag to store in artifact rows (single-language mode).")
-    parser.add_argument("--multilingual", action="store_true", help="Use multilingual Alpaca prompts (en, ch, hi, ar by default).")
-    parser.add_argument("--langs", type=str, nargs="*", default=None,
-                        help=f"Languages to include with --multilingual. Available: {list(DATASET_HANDLES.keys())}")
+    parser.add_argument("--language", default="en", help="Language tag to store in artifact rows.")
     parser.add_argument("--max-workers", type=int, default=64, help="Concurrent workers.")
     parser.add_argument("--wait-timeout-s", type=int, default=120, help="Seconds to wait for /v1/models readiness.")
     parser.add_argument("--max-attempts", type=int, default=3, help="Retry attempts per prompt.")
@@ -219,9 +175,6 @@ def main() -> None:
     parser.add_argument("--temperature", type=float, default=0.99)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--top-logprobs", type=int, default=5)
-    parser.add_argument("--top-p", type=float, default=None, help="Nucleus sampling top-p (omitted from payload when None).")
-    parser.add_argument("--top-k", type=int, default=None, help="Top-k sampling (omitted from payload when None).")
-    parser.add_argument("--repetition-penalty", type=float, default=None, help="Repetition penalty (omitted from payload when None).")
     args = parser.parse_args()
 
     benchmarks_dir = Path(__file__).resolve().parents[2]
@@ -243,18 +196,10 @@ def main() -> None:
         temperature=float(args.temperature),
         seed=int(args.seed),
         top_logprobs=int(args.top_logprobs),
-        top_p=args.top_p,
-        top_k=args.top_k,
-        repetition_penalty=args.repetition_penalty,
         additional_params={},
     )
 
-    prompts, languages = _load_prompts(
-        args.prompts_file,
-        n_prompts=int(args.n_prompts),
-        multilingual=args.multilingual,
-        langs=args.langs,
-    )
+    prompts = _load_prompts(args.prompts_file, n_prompts=int(args.n_prompts))
 
     cfg = {
         "exp_name": str(args.exp_name),
@@ -262,8 +207,7 @@ def main() -> None:
         "artifact_dir": str(exp_dir),
         "inference_artifact": str(inference_artifact_path),
         "n_prompts": len(prompts),
-        "multilingual": args.multilingual,
-        "languages_used": sorted(set(languages)),
+        "language": str(args.language),
         "model_info": model_info.model_dump(),
         "request_params": request_params.model_dump(),
         "vllm_runtime_probe": asdict(probe),
@@ -281,66 +225,40 @@ def main() -> None:
             "temperature": args.temperature,
             "seed": args.seed,
             "top_logprobs": args.top_logprobs,
-            "top_p": args.top_p,
-            "top_k": args.top_k,
-            "repetition_penalty": args.repetition_penalty,
         },
     }
     inference_cfg_path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    def _work(prompt: str, lang: str) -> tuple:
+    def _work(prompt: str) -> str:
         def _call():
             return inference(model_info, request_params, prompt)
 
-        t0 = time.monotonic()
         resp = _run_with_retries(
             _call,
             max_attempts=max(1, int(args.max_attempts)),
             backoff_start_s=float(args.retry_backoff_start_s),
             backoff_mult=float(args.retry_backoff_mult),
         )
-        prompt_elapsed = time.monotonic() - t0
         inference_result = _extract_logprobs(resp)
-        n_tokens = len(inference_result.results)
         row = InferenceArtifactItem(
             prompt=prompt,
-            language=lang,
+            language=str(args.language),
             inference_result=inference_result,
             inference_model=model_info,
             request_params=request_params,
             metadata={},
         )
-        return row.model_dump_json() + "\n", n_tokens, prompt_elapsed
-
-    total_output_tokens = 0
-    prompt_times: List[float] = []
-    run_start = time.monotonic()
+        return row.model_dump_json() + "\n"
 
     with inference_artifact_path.open("w", encoding="utf-8") as f, ThreadPoolExecutor(
         max_workers=int(args.max_workers)
     ) as ex:
-        futures = [ex.submit(_work, prompt, lang) for prompt, lang in zip(prompts, languages)]
+        futures = [ex.submit(_work, prompt) for prompt in prompts]
         for fut in tqdm(as_completed(futures), total=len(futures), desc="Inference", smoothing=0):
-            line, n_tok, elapsed = fut.result()
-            f.write(line)
-            total_output_tokens += n_tok
-            prompt_times.append(elapsed)
-
-    run_elapsed = time.monotonic() - run_start
-
-    performance = {
-        "total_time_seconds": round(run_elapsed, 3),
-        "n_prompts": len(prompts),
-        "total_output_tokens": total_output_tokens,
-        "output_tokens_per_second": round(total_output_tokens / run_elapsed, 2) if run_elapsed > 0 else 0,
-        "average_time_per_prompt_seconds": round(run_elapsed / len(prompts), 3) if prompts else 0,
-    }
-    cfg["performance"] = performance
-    inference_cfg_path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            f.write(fut.result())
 
     print(f"done: wrote {len(prompts)} inference rows -> {inference_artifact_path}")
     print(f"config -> {inference_cfg_path}")
-    print(f"performance: {json.dumps(performance, indent=2)}")
 
 
 if __name__ == "__main__":
