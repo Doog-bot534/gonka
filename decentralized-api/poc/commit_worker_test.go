@@ -115,7 +115,7 @@ func TestCommitWorker_StartAndStop(t *testing.T) {
 	mockRecorder := &cosmosclient.MockCosmosMessageClient{}
 	tracker := chainphase.NewChainPhaseTracker()
 
-	worker := NewCommitWorker(store, mockRecorder, tracker, "participant_addr", "test_pubkey", 100*time.Millisecond, false, nil, nil, nil, false)
+	worker := NewCommitWorker(store, mockRecorder, tracker, "participant_addr", "test_pubkey", 100*time.Millisecond, false, nil, nil, false)
 
 	// Worker should start
 	assert.NotNil(t, worker)
