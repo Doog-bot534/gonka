@@ -90,34 +90,25 @@ func (k Keeper) ComputeAgreedCounts(ctx context.Context, pocHeight int64) error 
 	}
 
 	for participant, counts := range countsByParticipant {
-		uniqueCounts := make(map[uint32]bool)
-		for _, c := range counts {
-			uniqueCounts[c] = true
-		}
-		sortedCounts := make([]uint32, 0, len(uniqueCounts))
-		for c := range uniqueCounts {
-			sortedCounts = append(sortedCounts, c)
-		}
-		sort.Slice(sortedCounts, func(i, j int) bool {
-			return sortedCounts[i] < sortedCounts[j]
+		sort.Slice(counts, func(i, j int) bool {
+			return counts[i] > counts[j]
 		})
 
 		var agreedCount uint32
 		var agreeingCount int32
 
-		for _, targetCount := range sortedCounts {
-			validatorsAgreeing := int32(0)
-			for _, pc := range allCounts {
-				for _, entry := range pc.Entries {
-					if entry.Participant == participant && entry.Count >= targetCount {
-						validatorsAgreeing++
-						break
-					}
-				}
+		for i, c := range counts {
+			if int32(i+1) >= requiredAgreement {
+				agreedCount = c
+				break
 			}
-			if validatorsAgreeing >= requiredAgreement {
-				agreedCount = targetCount
-				agreeingCount = validatorsAgreeing
+		}
+
+		if agreedCount > 0 {
+			for _, c := range counts {
+				if c >= agreedCount {
+					agreeingCount++
+				}
 			}
 		}
 
