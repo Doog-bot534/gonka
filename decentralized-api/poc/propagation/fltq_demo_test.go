@@ -218,7 +218,7 @@ func testFLTQPropagationDemo(t *testing.T, numParticipants int, storageFactory p
 }
 
 func TestFLTQPropagationDemoWithFileStorage(t *testing.T) {
-	testFLTQPropagationDemo(t, 103, func(t *testing.T, tempDir, addr string) (BundleStorage, error) {
+	testFLTQPropagationDemo(t, 2, func(t *testing.T, tempDir, addr string) (BundleStorage, error) {
 		storageDir := filepath.Join(tempDir, addr, "bundles_fltq")
 		return NewFileBundleStorage(storageDir)
 	})

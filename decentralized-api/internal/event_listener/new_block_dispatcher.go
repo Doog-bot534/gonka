@@ -64,6 +64,7 @@ type ParticipantURLSetter interface {
 
 type ParticipantQuerier interface {
 	Participant(ctx context.Context, req *types.QueryGetParticipantRequest, opts ...grpc.CallOption) (*types.QueryGetParticipantResponse, error)
+	ParticipantAll(ctx context.Context, req *types.QueryAllParticipantRequest, opts ...grpc.CallOption) (*types.QueryAllParticipantResponse, error)
 }
 
 // OnNewBlockDispatcher orchestrates processing of new block events
@@ -398,20 +399,41 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 					prevEpoch = 0
 				}
 
-				epochData, err := d.epochGroupDataCache.GetEpochGroupData(ctx, prevEpoch)
-				if err != nil {
-					logging.Error("Failed to get epoch group data for FLTQ", types.PoC,
-						"epoch", prevEpoch, "error", err)
-				} else if epochData != nil && len(epochData.ValidationWeights) > 0 {
-					// Convert ValidationWeights to WeightedParticipants
-					participants := make([]propagation.WeightedParticipant, 0, len(epochData.ValidationWeights))
-					for _, vw := range epochData.ValidationWeights {
+				participants := make([]propagation.WeightedParticipant, 0)
+				seen := make(map[string]bool)
+
+				prevEpochData, prevErr := d.epochGroupDataCache.GetEpochGroupData(ctx, prevEpoch)
+				if prevErr != nil {
+					logging.Warn("Failed to get prev epoch data for FLTQ", types.PoC,
+						"epoch", prevEpoch, "error", prevErr)
+				} else if prevEpochData != nil {
+					for _, vw := range prevEpochData.ValidationWeights {
 						participants = append(participants, propagation.WeightedParticipant{
 							Address: vw.MemberAddress,
 							Weight:  uint64(vw.Weight),
 						})
+						seen[vw.MemberAddress] = true
 					}
+				}
 
+				if d.participantQuerier != nil {
+					allResp, allErr := d.participantQuerier.ParticipantAll(ctx, &types.QueryAllParticipantRequest{})
+					if allErr != nil {
+						logging.Warn("Failed to query all participants for FLTQ bootstrapping", types.PoC, "error", allErr)
+					} else if allResp != nil {
+						for _, p := range allResp.Participant {
+							if !seen[p.Index] {
+								participants = append(participants, propagation.WeightedParticipant{
+									Address: p.Index,
+									Weight:  0,
+								})
+								seen[p.Index] = true
+							}
+						}
+					}
+				}
+
+				if len(participants) > 0 {
 					cube := propagation.BuildFLTQWithWeights(participants, blockHashBytes)
 
 					// Clear processed state from previous epoch

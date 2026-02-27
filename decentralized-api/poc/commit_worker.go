@@ -133,7 +133,7 @@ func (w *CommitWorker) tick() {
 		w.weightCommitSubmitted = make(map[int64]bool)
 	}
 
-	treesEnabled := w.propagationEnabled && w.bundler != nil
+	propagationEnabled := w.propagationEnabled && w.bundler != nil
 
 	if pocHeight > 0 {
 		isPoCPhase := epochState.CurrentPhase == types.PoCGeneratePhase ||
@@ -149,11 +149,11 @@ func (w *CommitWorker) tick() {
 			"phase", epochState.CurrentPhase,
 			"pocHeight", pocHeight,
 			"isPoCPhase", isPoCPhase,
-			"treesEnabled", treesEnabled,
+			"propagationEnabled", propagationEnabled,
 			"isCountPhase", isCountPhase,
 			"isValidatePhase", isValidatePhase)
 
-		if treesEnabled {
+		if propagationEnabled {
 			if isPoCPhase {
 				w.maybePublishHeaders(pocHeight)
 			}
@@ -174,7 +174,7 @@ func (w *CommitWorker) tick() {
 		}
 	}
 
-	if !treesEnabled && ShouldHaveDistributedWeights(epochState) && pocHeight > 0 {
+	if !propagationEnabled && ShouldHaveDistributedWeights(epochState) && pocHeight > 0 {
 		shouldRetry := w.lastDistributionAttempt.IsZero() ||
 			time.Since(w.lastDistributionAttempt) > distributionRetryInterval
 		onChain := w.isDistributionOnChain(pocHeight)

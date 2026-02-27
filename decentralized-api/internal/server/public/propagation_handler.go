@@ -109,8 +109,58 @@ func (h *PropagationHandlers) HandleGetFirstArrivals(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
+func (h *PropagationHandlers) HandleHeaderBatch(c echo.Context) error {
+	body, err := io.ReadAll(c.Request().Body)
+	if err != nil {
+		logging.Warn("PropagationHandlers: failed to read batch body", types.PoC, "error", err)
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request")
+	}
+
+	if h.receiver == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "No receiver registered")
+	}
+
+	if len(body) < 4 {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid batch")
+	}
+
+	count := uint32(body[0])<<24 | uint32(body[1])<<16 | uint32(body[2])<<8 | uint32(body[3])
+	pos := 4
+
+	for i := uint32(0); i < count; i++ {
+		if pos+4 > len(body) {
+			break
+		}
+		msgLen := int(uint32(body[pos])<<24 | uint32(body[pos+1])<<16 | uint32(body[pos+2])<<8 | uint32(body[pos+3]))
+		pos += 4
+
+		if pos+msgLen > len(body) {
+			break
+		}
+
+		var pbHeader propagationpb.PropagationHeader
+		if err := proto.Unmarshal(body[pos:pos+msgLen], &pbHeader); err != nil {
+			pos += msgLen
+			continue
+		}
+		pos += msgLen
+
+		header, err := propagation.ProtoToHeader(&pbHeader)
+		if err != nil {
+			continue
+		}
+
+		if err := h.receiver.OnHeader(header, header.Participant); err != nil {
+			logging.Warn("PropagationHandlers: batch header handler failed", types.PoC, "error", err)
+		}
+	}
+
+	return c.NoContent(http.StatusOK)
+}
+
 func (h *PropagationHandlers) RegisterRoutes(e *echo.Group) {
 	e.POST("propagation/header", h.HandleHeader)
+	e.POST("propagation/headers", h.HandleHeaderBatch)
 	e.GET("propagation/cache/:poc_height", h.HandleGetCache)
 	e.GET("propagation/first-arrivals/:poc_height", h.HandleGetFirstArrivals)
 }

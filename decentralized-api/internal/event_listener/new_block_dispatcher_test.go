@@ -150,6 +150,14 @@ func (m *mockParticipantQuerier) Participant(_ context.Context, req *types.Query
 	return &types.QueryGetParticipantResponse{Participant: p}, nil
 }
 
+func (m *mockParticipantQuerier) ParticipantAll(_ context.Context, _ *types.QueryAllParticipantRequest, _ ...grpc.CallOption) (*types.QueryAllParticipantResponse, error) {
+	all := make([]types.Participant, 0, len(m.participants))
+	for _, p := range m.participants {
+		all = append(all, p)
+	}
+	return &types.QueryAllParticipantResponse{Participant: all}, nil
+}
+
 func TestPopulateParticipantURLs(t *testing.T) {
 	querier := &mockParticipantQuerier{
 		participants: map[string]types.Participant{

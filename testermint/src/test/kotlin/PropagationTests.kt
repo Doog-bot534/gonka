@@ -345,6 +345,7 @@ class PropagationTests : TestermintTest() {
                 this[InferenceParams::epochParams] = spec<EpochParams> {
                     this[EpochParams::pocStageDuration] = 3L
                     this[EpochParams::pocValidationDuration] = 4L
+                    this[EpochParams::pocValidationDelay] = 4L
                 }
                 this[InferenceParams::pocParams] = spec<PocParams> {
                     this[PocParams::pocV2Enabled] = true
