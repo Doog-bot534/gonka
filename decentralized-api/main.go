@@ -315,6 +315,7 @@ func main() {
 		participantInfo.GetPubKey(),
 		commitInterval,
 		propConfig.Enabled,
+		nodeBroker,
 		fltqBundler,
 		propagationCache,
 	)

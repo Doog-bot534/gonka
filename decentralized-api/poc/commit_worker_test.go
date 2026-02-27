@@ -115,7 +115,7 @@ func TestCommitWorker_StartAndStop(t *testing.T) {
 	mockRecorder := &cosmosclient.MockCosmosMessageClient{}
 	tracker := chainphase.NewChainPhaseTracker()
 
-	worker := NewCommitWorker(store, mockRecorder, tracker, "participant_addr", "test_pubkey", 100*time.Millisecond, false, nil, nil)
+	worker := NewCommitWorker(store, mockRecorder, tracker, "participant_addr", "test_pubkey", 100*time.Millisecond, false, nil, nil, nil)
 
 	// Worker should start
 	assert.NotNil(t, worker)
@@ -439,11 +439,11 @@ func TestSubmitWeightDistribution_UsesExactDistributionAtCount(t *testing.T) {
 	mockRecorder := &cosmosclient.MockCosmosMessageClient{}
 
 	worker := &CommitWorker{
-		store:                store,
-		recorder:             mockRecorder,
-		participantAddress:   "test_addr",
-		lastCommitted:        make(map[int64]commitState),
-		propagationEnabled:   true,
+		store:              store,
+		recorder:           mockRecorder,
+		participantAddress: "test_addr",
+		lastCommitted:      make(map[int64]commitState),
+		propagationEnabled: true,
 	}
 
 	pocHeight := int64(100)
