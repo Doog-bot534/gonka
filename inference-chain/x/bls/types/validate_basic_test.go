@@ -184,6 +184,12 @@ func TestMsgSubmitVerificationVector_ValidateBasic(t *testing.T) {
 		msg := &MsgSubmitVerificationVector{Creator: creator, EpochId: 1, DealerValidity: nil}
 		require.Error(t, msg.ValidateBasic())
 	})
+
+	t.Run("too many dealer_validity entries", func(t *testing.T) {
+		tooMany := make([]bool, maxVerificationDealerValidityEntries+1)
+		msg := &MsgSubmitVerificationVector{Creator: creator, EpochId: 1, DealerValidity: tooMany}
+		require.Error(t, msg.ValidateBasic())
+	})
 }
 
 func TestMsgSubmitGroupKeyValidationSignature_ValidateBasic(t *testing.T) {
@@ -287,30 +293,97 @@ func TestMsgSubmitGroupKeyValidationSignature_ValidateBasic(t *testing.T) {
 
 func TestMsgSubmitPartialSignature_ValidateBasic(t *testing.T) {
 	creator := mkAddr(t)
+	validPartialSignature := make([]byte, partialSignatureChunkLen*2)
+	validPartialSignature[0] = 1
+	validPartialSignature[partialSignatureChunkLen] = 1
 
 	t.Run("valid", func(t *testing.T) {
-		msg := &MsgSubmitPartialSignature{Creator: creator, SlotIndices: []uint32{1, 2}}
+		msg := &MsgSubmitPartialSignature{
+			Creator:          creator,
+			SlotIndices:      []uint32{1, 2},
+			PartialSignature: validPartialSignature,
+		}
 		require.NoError(t, msg.ValidateBasic())
 	})
 
 	t.Run("invalid creator", func(t *testing.T) {
-		msg := &MsgSubmitPartialSignature{Creator: "bad", SlotIndices: []uint32{1}}
+		msg := &MsgSubmitPartialSignature{
+			Creator:          "bad",
+			SlotIndices:      []uint32{1},
+			PartialSignature: []byte{1},
+		}
 		err := msg.ValidateBasic()
 		require.Error(t, err)
 		require.True(t, errorsmod.IsOf(err, sdkerrors.ErrInvalidAddress))
 	})
 
 	t.Run("empty slot indices", func(t *testing.T) {
-		msg := &MsgSubmitPartialSignature{Creator: creator, SlotIndices: nil}
+		msg := &MsgSubmitPartialSignature{
+			Creator:          creator,
+			SlotIndices:      nil,
+			PartialSignature: []byte{1},
+		}
 		require.Error(t, msg.ValidateBasic())
 	})
 
 	t.Run("duplicate slot indices", func(t *testing.T) {
-		msg := &MsgSubmitPartialSignature{Creator: creator, SlotIndices: []uint32{1, 2, 1}}
+		msg := &MsgSubmitPartialSignature{
+			Creator:          creator,
+			SlotIndices:      []uint32{1, 2, 1},
+			PartialSignature: []byte{1, 2, 3},
+		}
 		err := msg.ValidateBasic()
 		require.Error(t, err)
 		require.True(t, errorsmod.IsOf(err, sdkerrors.ErrInvalidRequest))
 		require.Contains(t, err.Error(), "contains duplicates")
+	})
+
+	t.Run("empty partial signature", func(t *testing.T) {
+		msg := &MsgSubmitPartialSignature{
+			Creator:          creator,
+			SlotIndices:      []uint32{1},
+			PartialSignature: nil,
+		}
+		require.Error(t, msg.ValidateBasic())
+	})
+
+	t.Run("partial signature length not multiple of 48", func(t *testing.T) {
+		msg := &MsgSubmitPartialSignature{
+			Creator:          creator,
+			SlotIndices:      []uint32{1},
+			PartialSignature: make([]byte, partialSignatureChunkLen-1),
+		}
+		require.Error(t, msg.ValidateBasic())
+	})
+
+	t.Run("partial signature count mismatch", func(t *testing.T) {
+		msg := &MsgSubmitPartialSignature{
+			Creator:          creator,
+			SlotIndices:      []uint32{1, 2},
+			PartialSignature: make([]byte, partialSignatureChunkLen),
+		}
+		require.Error(t, msg.ValidateBasic())
+	})
+
+	t.Run("all-zero signature chunk", func(t *testing.T) {
+		msg := &MsgSubmitPartialSignature{
+			Creator:          creator,
+			SlotIndices:      []uint32{1},
+			PartialSignature: make([]byte, partialSignatureChunkLen),
+		}
+		require.Error(t, msg.ValidateBasic())
+	})
+
+	t.Run("too many slot indices", func(t *testing.T) {
+		tooManySlots := make([]uint32, maxPartialSignatureSlotIndices+1)
+		tooManySignature := make([]byte, len(tooManySlots)*partialSignatureChunkLen)
+		tooManySignature[0] = 1
+		msg := &MsgSubmitPartialSignature{
+			Creator:          creator,
+			SlotIndices:      tooManySlots,
+			PartialSignature: tooManySignature,
+		}
+		require.Error(t, msg.ValidateBasic())
 	})
 }
 
