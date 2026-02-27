@@ -61,8 +61,8 @@ func TestMsgUpdateParams_ValidateBasic(t *testing.T) {
 func TestMsgSubmitDealerPart_ValidateBasic(t *testing.T) {
 	creator := mkAddr(t)
 
-	validCommitment := []byte{1} // any non-zero content is acceptable
-
+	validCommitment := make([]byte, commitmentCompressedG2Len)
+	validCommitment[0] = 0x01
 	validShare := []byte{0x01, 0x02}
 
 	t.Run("valid", func(t *testing.T) {
@@ -96,6 +96,66 @@ func TestMsgSubmitDealerPart_ValidateBasic(t *testing.T) {
 
 	t.Run("empty encrypted shares list", func(t *testing.T) {
 		msg := &MsgSubmitDealerPart{Creator: creator, EpochId: 1, Commitments: [][]byte{validCommitment}, EncryptedSharesForParticipants: nil}
+		require.Error(t, msg.ValidateBasic())
+	})
+
+	t.Run("invalid commitment length", func(t *testing.T) {
+		msg := &MsgSubmitDealerPart{
+			Creator:     creator,
+			EpochId:     1,
+			Commitments: [][]byte{make([]byte, commitmentCompressedG2Len-1)},
+			EncryptedSharesForParticipants: []EncryptedSharesForParticipant{{
+				EncryptedShares: [][]byte{validShare},
+			}},
+		}
+		require.Error(t, msg.ValidateBasic())
+	})
+
+	t.Run("all-zero commitment", func(t *testing.T) {
+		msg := &MsgSubmitDealerPart{
+			Creator:     creator,
+			EpochId:     1,
+			Commitments: [][]byte{make([]byte, commitmentCompressedG2Len)},
+			EncryptedSharesForParticipants: []EncryptedSharesForParticipant{{
+				EncryptedShares: [][]byte{validShare},
+			}},
+		}
+		require.Error(t, msg.ValidateBasic())
+	})
+
+	t.Run("empty encrypted shares for participant", func(t *testing.T) {
+		msg := &MsgSubmitDealerPart{
+			Creator:     creator,
+			EpochId:     1,
+			Commitments: [][]byte{validCommitment},
+			EncryptedSharesForParticipants: []EncryptedSharesForParticipant{{
+				EncryptedShares: nil,
+			}},
+		}
+		require.Error(t, msg.ValidateBasic())
+	})
+
+	t.Run("empty encrypted share ciphertext", func(t *testing.T) {
+		msg := &MsgSubmitDealerPart{
+			Creator:     creator,
+			EpochId:     1,
+			Commitments: [][]byte{validCommitment},
+			EncryptedSharesForParticipants: []EncryptedSharesForParticipant{{
+				EncryptedShares: [][]byte{{}},
+			}},
+		}
+		require.Error(t, msg.ValidateBasic())
+	})
+
+	t.Run("oversized encrypted share ciphertext", func(t *testing.T) {
+		msg := &MsgSubmitDealerPart{
+			Creator:     creator,
+			EpochId:     1,
+			Commitments: [][]byte{validCommitment},
+			EncryptedSharesForParticipants: []EncryptedSharesForParticipant{{
+				EncryptedShares: [][]byte{make([]byte, maxEncryptedShareCiphertextLen+1)},
+			}},
+		}
 		require.Error(t, msg.ValidateBasic())
 	})
 }
