@@ -79,22 +79,6 @@ func (p *chainPubKeyProvider) GetPubKey(participantAddr string) (string, error) 
 	return resp.Participant.WorkerPublicKey, nil
 }
 
-func isNodeValidator(chainNodeUrl string) bool {
-	client, err := cosmosclient.NewRpcClient(chainNodeUrl)
-	if err != nil {
-		logging.Error("Failed to create RPC client for validator check", types.PoC, "error", err)
-		return false
-	}
-
-	result, err := client.Status(context.Background())
-	if err != nil {
-		logging.Error("Failed to query node status for validator check", types.PoC, "error", err)
-		return false
-	}
-
-	return result.ValidatorInfo.VotingPower > 0
-}
-
 func main() {
 	if len(os.Args) >= 2 && os.Args[1] == "status" {
 		logging.WithNoopLogger(func() (interface{}, error) {
@@ -323,9 +307,6 @@ func main() {
 	batchingCfg := config.GetTxBatchingConfig()
 	commitInterval := time.Duration(batchingCfg.PocCommitIntervalSeconds) * time.Second
 
-	isValidator := isNodeValidator(config.GetChainNodeConfig().Url)
-	logging.Info("Validator status determined", types.PoC, "isValidator", isValidator)
-
 	commitWorker := poc.NewCommitWorker(
 		artifactStore,
 		recorder,
@@ -337,7 +318,6 @@ func main() {
 		nodeBroker,
 		fltqBundler,
 		propagationCache,
-		isValidator,
 	)
 	defer commitWorker.Close()
 
