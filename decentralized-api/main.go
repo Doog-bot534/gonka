@@ -38,6 +38,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/productscience/inference/x/inference/types"
@@ -254,6 +255,7 @@ func main() {
 		"address", participantInfo.GetAddress(),
 		"pubkey", participantInfo.GetPubKey())
 
+	workerKeyToAddress := &sync.Map{}
 	pocOrchestrator := poc.NewOrchestrator(
 		participantInfo.GetPubKey(),
 		nodeBroker,
@@ -262,6 +264,7 @@ func main() {
 		recorder,
 		chainPhaseTracker,
 		propagationCache,
+		workerKeyToAddress,
 	)
 	logging.Info("PoC orchestrator initialized", types.PoC)
 
@@ -314,7 +317,6 @@ func main() {
 		propConfig.Enabled,
 		fltqBundler,
 		propagationCache,
-		propConfig.Enabled,
 	)
 	defer commitWorker.Close()
 
@@ -329,7 +331,7 @@ func main() {
 
 	addr = fmt.Sprintf(":%v", config.GetApiConfig().MLServerPort)
 	logging.Info("start ml server on addr", types.Server, "addr", addr)
-	mlServer := mlserver.NewServer(recorder, nodeBroker, mlserver.WithArtifactStore(artifactStore))
+	mlServer := mlserver.NewServer(recorder, nodeBroker, mlserver.WithArtifactStore(artifactStore), mlserver.WithWorkerKeyToAddress(workerKeyToAddress))
 	mlServer.Start(addr)
 
 	addr = fmt.Sprintf(":%v", config.GetApiConfig().AdminServerPort)

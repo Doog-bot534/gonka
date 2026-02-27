@@ -33,6 +33,8 @@ type OffChainValidator struct {
 	config ValidationConfig
 
 	propagationCache *propagation.Cache
+
+	workerKeyToAddress *sync.Map
 }
 
 // ValidationConfig contains configuration for off-chain validation.
@@ -83,16 +85,18 @@ func NewOffChainValidator(
 	chainNodeUrl string,
 	config ValidationConfig,
 	propagationCache *propagation.Cache,
+	workerKeyToAddress *sync.Map,
 ) *OffChainValidator {
 	return &OffChainValidator{
-		recorder:         recorder,
-		nodeBroker:       nodeBroker,
-		phaseTracker:     phaseTracker,
-		callbackUrl:      callbackUrl,
-		pubKey:           pubKey,
-		chainNodeUrl:     chainNodeUrl,
-		config:           config,
-		propagationCache: propagationCache,
+		recorder:           recorder,
+		nodeBroker:         nodeBroker,
+		phaseTracker:       phaseTracker,
+		callbackUrl:        callbackUrl,
+		pubKey:             pubKey,
+		chainNodeUrl:       chainNodeUrl,
+		config:             config,
+		propagationCache:   propagationCache,
+		workerKeyToAddress: workerKeyToAddress,
 	}
 }
 
@@ -186,6 +190,9 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 					count:    header.Count,
 					rootHash: header.RootHash[:],
 				})
+				if v.workerKeyToAddress != nil {
+					v.workerKeyToAddress.Store(participantResp.Participant.WorkerPublicKey, header.Participant)
+				}
 			}
 		}
 	}
@@ -242,6 +249,9 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 				count:    commit.Count,
 				rootHash: commit.RootHash,
 			})
+			if v.workerKeyToAddress != nil {
+				v.workerKeyToAddress.Store(commit.HexPubKey, commit.ParticipantAddress)
+			}
 		}
 	}
 

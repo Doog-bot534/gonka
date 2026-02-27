@@ -63,11 +63,13 @@ func (k msgServer) PocWeightCommit(goCtx context.Context, msg *types.MsgPocWeigh
 
 	agreedCountPK := collections.Join(startBlockHeight, msg.Creator)
 	agreedEntry, agreedErr := k.AgreedCounts.Get(ctx, agreedCountPK)
-	if agreedErr == nil {
-		if msg.Count != agreedEntry.AgreedCount {
-			return nil, sdkerrors.Wrap(types.ErrIllegalState,
-				fmt.Sprintf("count %d does not match agreed count %d", msg.Count, agreedEntry.AgreedCount))
-		}
+	if agreedErr != nil {
+		return nil, sdkerrors.Wrap(types.ErrIllegalState,
+			"no agreed count found; PoCCount phase may not have completed yet")
+	}
+	if msg.Count != agreedEntry.AgreedCount {
+		return nil, sdkerrors.Wrap(types.ErrIllegalState,
+			fmt.Sprintf("count %d does not match agreed count %d", msg.Count, agreedEntry.AgreedCount))
 	}
 
 	var weightSum uint32

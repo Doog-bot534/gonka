@@ -1,6 +1,8 @@
 package mlnode
 
 import (
+	"sync"
+
 	"decentralized-api/broker"
 	cosmos_client "decentralized-api/cosmosclient"
 	"decentralized-api/internal/server/middleware"
@@ -10,10 +12,11 @@ import (
 )
 
 type Server struct {
-	e             *echo.Echo
-	recorder      cosmos_client.CosmosMessageClient
-	broker        *broker.Broker
-	artifactStore *artifacts.ManagedArtifactStore
+	e                  *echo.Echo
+	recorder           cosmos_client.CosmosMessageClient
+	broker             *broker.Broker
+	artifactStore      *artifacts.ManagedArtifactStore
+	workerKeyToAddress *sync.Map
 }
 
 // ServerOption configures optional Server dependencies.
@@ -23,6 +26,14 @@ type ServerOption func(*Server)
 func WithArtifactStore(store *artifacts.ManagedArtifactStore) ServerOption {
 	return func(s *Server) {
 		s.artifactStore = store
+	}
+}
+
+// WithWorkerKeyToAddress provides a shared map from worker public key to participant address.
+// Used by postValidatedArtifactsV2 to resolve the correct cosmos address from the ML node worker key.
+func WithWorkerKeyToAddress(m *sync.Map) ServerOption {
+	return func(s *Server) {
+		s.workerKeyToAddress = m
 	}
 }
 

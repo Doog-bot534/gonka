@@ -123,16 +123,23 @@ func (s *Server) postValidatedArtifactsV2(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "not in PoC validate phase")
 	}
 
-	// Convert public key to bech32 address
-	// PoC validation provides base64-encoded public keys
-	address, err := cosmos_client.PubKeyBase64ToAddress(body.PublicKey)
-	if err != nil {
-		logging.Error("ValidatedArtifactsV2-callback. Failed to convert public key to address", types.PoC,
-			"publicKey", body.PublicKey,
-			"nTotal", body.NTotal,
-			"fraudDetected", body.FraudDetected,
-			"error", err)
-		return err
+	var address string
+	if s.workerKeyToAddress != nil {
+		if val, ok := s.workerKeyToAddress.Load(body.PublicKey); ok {
+			address = val.(string)
+		}
+	}
+	if address == "" {
+		var err error
+		address, err = cosmos_client.PubKeyToAddress(body.PublicKey)
+		if err != nil {
+			logging.Error("ValidatedArtifactsV2-callback. Failed to convert public key to address", types.PoC,
+				"publicKey", body.PublicKey,
+				"nTotal", body.NTotal,
+				"fraudDetected", body.FraudDetected,
+				"error", err)
+			return err
+		}
 	}
 
 	// Convert fraud_detected + n_total to validated_weight

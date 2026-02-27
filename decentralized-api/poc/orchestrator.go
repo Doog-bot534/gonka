@@ -1,6 +1,8 @@
 package poc
 
 import (
+	"sync"
+
 	"decentralized-api/broker"
 	"decentralized-api/chainphase"
 	cosmosclient "decentralized-api/cosmosclient"
@@ -28,6 +30,7 @@ func NewOrchestrator(
 	cosmosClient cosmosclient.CosmosMessageClient,
 	phaseTracker *chainphase.ChainPhaseTracker,
 	propagationCache *propagation.Cache,
+	workerKeyToAddress *sync.Map,
 ) Orchestrator {
 	config := DefaultValidationConfig()
 
@@ -40,6 +43,7 @@ func NewOrchestrator(
 		chainNodeUrl,
 		config,
 		propagationCache,
+		workerKeyToAddress,
 	)
 
 	validatorV1 := NewOnChainValidator(

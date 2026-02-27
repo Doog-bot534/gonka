@@ -473,12 +473,22 @@ func (d *OnNewBlockDispatcher) handlePhaseTransitions(epochState chainphase.Epoc
 		logging.Info("DapiStage:IsStartOfPoCValidationStage", types.Stages, "blockHeight", blockHeight, "blockHash", blockHash, "pocStartBlockHeight", epochContext.PocStartBlockHeight)
 		pocStartBlockHeight := epochContext.PocStartBlockHeight
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logging.Error("PANIC in ValidateReceivedArtifacts goroutine", types.PoC,
+						"pocStartBlockHeight", pocStartBlockHeight, "panic", fmt.Sprintf("%v", r))
+				}
+			}()
+			logging.Info("ValidateReceivedArtifacts goroutine started", types.PoC,
+				"pocStartBlockHeight", pocStartBlockHeight)
 			pocStartBlockHash, err := d.nodeBroker.GetChainBridge().GetBlockHash(pocStartBlockHeight)
 			if err != nil {
 				logging.Error("Failed to get PoC start block hash", types.PoC,
 					"pocStartBlockHeight", pocStartBlockHeight, "error", err)
 				return
 			}
+			logging.Info("ValidateReceivedArtifacts calling orchestrator", types.PoC,
+				"pocStartBlockHeight", pocStartBlockHeight, "pocStartBlockHash", pocStartBlockHash)
 			d.pocOrchestrator.ValidateReceivedArtifacts(pocStartBlockHeight, pocStartBlockHash)
 		}()
 	}

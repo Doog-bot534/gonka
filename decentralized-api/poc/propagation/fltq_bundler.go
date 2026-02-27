@@ -131,6 +131,20 @@ func (b *FLTQBundler) StoreOwnArrival(pocHeight int64, participant string, count
 	return b.cache.StoreFirstArrival(participant, pocHeight, time.Now().UnixMilli(), count)
 }
 
+func (b *FLTQBundler) HasPeers() bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	if b.cube == nil || b.cube.Size == 0 {
+		return false
+	}
+	node := b.cube.GetNode(b.myAddr)
+	if node == nil {
+		return false
+	}
+	return len(node.Neighbors) > 0
+}
+
 func (b *FLTQBundler) SetFLTQCube(cube *FLTQCube) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
