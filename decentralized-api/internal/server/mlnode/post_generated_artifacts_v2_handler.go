@@ -126,7 +126,9 @@ func (s *Server) postValidatedArtifactsV2(ctx echo.Context) error {
 	var address string
 	if s.workerKeyToAddress != nil {
 		if val, ok := s.workerKeyToAddress.Load(body.PublicKey); ok {
-			address = val.(string)
+			if addr, ok := val.(string); ok {
+				address = addr
+			}
 		}
 	}
 	if address == "" {
