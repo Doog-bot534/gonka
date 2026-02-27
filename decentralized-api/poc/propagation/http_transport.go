@@ -157,7 +157,7 @@ func (t *HTTPTransport) sendBatch(url string, headers []BundleHeader) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url+"/v1/propagation/headers", &buf)
+	req, err := http.NewRequestWithContext(ctx, "POST", url+"/v1/propagation/header", &buf)
 	if err != nil {
 		return fmt.Errorf("create batch request: %w", err)
 	}
