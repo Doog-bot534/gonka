@@ -303,8 +303,7 @@ func (bm *BlsManager) performVerificationAndReconstruction(verificationResult *V
 
 		logging.Debug(verifierLogTag+"Completed slot share reconstruction", inferenceTypes.BLS,
 			"slotIndex", slotIndex,
-			"slotOffset", slotOffset,
-			"finalShare", aggregatedShare.String())
+			"slotOffset", slotOffset)
 	}
 
 	logging.Info(verifierLogTag+"Completed verification and reconstruction", inferenceTypes.BLS,
