@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/cosmos/cosmos-sdk/runtime"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/productscience/inference/x/inference/types"
 )
 
@@ -12,6 +13,8 @@ const defaultGenesisGuardianNetworkMaturityMinHeight int64 = 0
 
 const defaultDeveloperAccessUntilBlockHeight int64 = 0
 const defaultNewParticipantRegistrationStartHeight int64 = 0
+
+type paramsKey struct{}
 
 func (k Keeper) getParamsFromStore(ctx context.Context) (params types.Params, err error) {
 	store := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
@@ -27,10 +30,19 @@ func (k Keeper) getParamsFromStore(ctx context.Context) (params types.Params, er
 
 // GetParams get all parameters as types.Params
 func (k Keeper) GetParams(ctx context.Context) (params types.Params, err error) {
-	if k.txParamsCache != nil {
-		return *k.txParamsCache, nil
+	if cached, ok := ctx.Value(paramsKey{}).(*types.Params); ok && cached != nil {
+		return *cached, nil
 	}
 	return k.getParamsFromStore(ctx)
+}
+
+// InjectParamsIntoContext returns a new context with the params cached.
+func (k Keeper) InjectParamsIntoContext(ctx sdk.Context) (sdk.Context, error) {
+	params, err := k.getParamsFromStore(ctx)
+	if err != nil {
+		return sdk.Context{}, err
+	}
+	return ctx.WithValue(paramsKey{}, &params), nil
 }
 
 // SetParams set the params
@@ -57,23 +69,6 @@ func (k Keeper) SetParams(ctx context.Context, params types.Params) error {
 	}
 
 	return nil
-}
-
-// CacheParamsForTx preloads params into a tx-scoped in-memory cache.
-// Callers should clear this cache with ClearParamsCacheForTx via defer.
-func (k *Keeper) CacheParamsForTx(ctx context.Context) error {
-	params, err := k.getParamsFromStore(ctx)
-	if err != nil {
-		return err
-	}
-	cached := params
-	k.txParamsCache = &cached
-	return nil
-}
-
-// ClearParamsCacheForTx clears the tx-scoped params cache.
-func (k *Keeper) ClearParamsCacheForTx() {
-	k.txParamsCache = nil
 }
 
 func (k Keeper) GetV1Params(ctx context.Context) (params types.ParamsV1, err error) {

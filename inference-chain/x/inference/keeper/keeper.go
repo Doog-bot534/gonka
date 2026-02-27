@@ -33,9 +33,6 @@ type (
 
 		collateralKeeper    types.CollateralKeeper
 		streamvestingKeeper types.StreamVestingKeeper
-		// txParamsCache is an optional tx-scoped params cache used by hot paths
-		// (e.g. Start/Finish inference) to avoid repeated params KV reads.
-		txParamsCache *types.Params
 		// Collections schema and stores
 		Schema         collections.Schema
 		Participants   collections.Map[sdk.AccAddress, types.Participant]

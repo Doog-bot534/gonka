@@ -16,11 +16,14 @@ const (
 )
 
 func (k msgServer) Validation(goCtx context.Context, msg *types.MsgValidation) (*types.MsgValidationResponse, error) {
+	ctx, err := k.Keeper.InjectParamsIntoContext(sdk.UnwrapSDKContext(goCtx))
+	if err != nil {
+		k.LogWarn("Validation: failed to inject params", types.Validation, "error", err)
+	}
+
 	k.LogInfo("Received MsgValidation", types.Validation,
 		"msg.Creator", msg.Creator,
 		"inferenceId", msg.InferenceId)
-
-	ctx := sdk.UnwrapSDKContext(goCtx)
 
 	if msg.ResponsePayload != "" {
 		return nil, types.ErrValidationPayloadDeprecated
@@ -236,7 +239,10 @@ func (k msgServer) MaximumInvalidationsReached(ctx sdk.Context, creator sdk.AccA
 		k.LogError("No participant for model", types.Validation, "model", data.ModelId, "error", err)
 		return true
 	}
-	participantWeightPercent := decimal.NewFromInt(participant.Weight).Div(decimal.NewFromInt(data.TotalWeight))
+	var participantWeightPercent = decimal.Zero
+	if data.TotalWeight != 0 {
+		participantWeightPercent = decimal.NewFromInt(participant.Weight).Div(decimal.NewFromInt(data.TotalWeight))
+	}
 	maxValidations := calculations.CalculateInvalidations(
 		inferencesForModel,
 		participantWeightPercent,

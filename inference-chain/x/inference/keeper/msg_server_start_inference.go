@@ -13,14 +13,12 @@ import (
 )
 
 func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInference) (*types.MsgStartInferenceResponse, error) {
-	var ctx sdk.Context = sdk.UnwrapSDKContext(goCtx)
-	k.LogInfo("StartInference", types.Inferences, "inferenceId", msg.InferenceId, "creator", msg.Creator, "requestedBy", msg.RequestedBy, "model", msg.Model)
-
-	if err := k.Keeper.CacheParamsForTx(ctx); err != nil {
-		k.LogError("StartInference: failed to get params", types.Inferences, "error", err)
-		return failedStart(ctx, err, msg), nil
+	ctx, err := k.Keeper.InjectParamsIntoContext(sdk.UnwrapSDKContext(goCtx))
+	if err != nil {
+		k.LogWarn("StartInference: failed to inject params", types.Inferences, "error", err)
 	}
-	defer k.Keeper.ClearParamsCacheForTx()
+
+	k.LogInfo("StartInference", types.Inferences, "inferenceId", msg.InferenceId, "creator", msg.Creator, "requestedBy", msg.RequestedBy, "model", msg.Model)
 
 	// Developer access gating: before the cutoff height, only allowlisted developers may request inferences.
 	if k.IsDeveloperAccessRestricted(ctx, ctx.BlockHeight()) && !k.IsAllowedDeveloper(ctx, msg.RequestedBy) {
@@ -55,7 +53,7 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 	k.LogInfo("DevPubKey", types.Inferences, "DevPubKey", dev.WorkerPublicKey, "DevAddress", dev.Address)
 	k.LogInfo("TransferAgentPubKey", types.Inferences, "TransferAgentPubKey", transferAgent.WorkerPublicKey, "TransferAgentAddress", transferAgent.Address)
 
-	err := k.verifyKeys(ctx, msg, transferAgent, dev)
+	err = k.verifyKeys(ctx, msg, transferAgent, dev)
 	if err != nil {
 		k.LogError("StartInference: verifyKeys failed", types.Inferences, "error", err)
 		return failedStart(ctx, sdkerrors.Wrap(types.ErrInvalidSignature, err.Error()), msg), nil

@@ -11,15 +11,13 @@ import (
 )
 
 func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishInference) (*types.MsgFinishInferenceResponse, error) {
-	ctx := sdk.UnwrapSDKContext(goCtx)
+	// Inject cache once at the entry point
+	ctx, err := k.Keeper.InjectParamsIntoContext(sdk.UnwrapSDKContext(goCtx))
+	if err != nil {
+		k.LogWarn("FinishInference: failed to inject params", types.Inferences, "error", err)
+	}
 
 	k.LogInfo("FinishInference", types.Inferences, "inference_id", msg.InferenceId, "executed_by", msg.ExecutedBy, "created_by", msg.Creator)
-
-	if err := k.Keeper.CacheParamsForTx(ctx); err != nil {
-		k.LogError("FinishInference: failed to get params", types.Inferences, "error", err)
-		return failedFinish(ctx, err, msg), nil
-	}
-	defer k.Keeper.ClearParamsCacheForTx()
 
 	if msg.PromptTokenCount > types.MaxAllowedTokens {
 		return failedFinish(ctx, sdkerrors.Wrapf(types.ErrTokenCountOutOfRange, "prompt_token_count exceeds limit (%d > %d)", msg.PromptTokenCount, types.MaxAllowedTokens), msg), nil
@@ -60,7 +58,7 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 		return failedFinish(ctx, sdkerrors.Wrap(types.ErrParticipantNotFound, msg.TransferredBy), msg), nil
 	}
 
-	err := k.verifyFinishKeys(ctx, msg, &transferAgent, &requestor, &executor)
+	err = k.verifyFinishKeys(ctx, msg, &transferAgent, &requestor, &executor)
 	if err != nil {
 		k.LogError("FinishInference: verifyKeys failed", types.Inferences, "error", err)
 		return failedFinish(ctx, sdkerrors.Wrap(types.ErrInvalidSignature, err.Error()), msg), nil
