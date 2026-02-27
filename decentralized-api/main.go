@@ -314,7 +314,6 @@ func main() {
 		propConfig.Enabled,
 		fltqBundler,
 		propagationCache,
-		propConfig.Enabled,
 	)
 	defer commitWorker.Close()
 

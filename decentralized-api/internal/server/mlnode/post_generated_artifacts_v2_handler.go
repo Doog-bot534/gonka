@@ -123,9 +123,7 @@ func (s *Server) postValidatedArtifactsV2(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "not in PoC validate phase")
 	}
 
-	// Convert public key to bech32 address
-	// PoC validation provides hex-encoded public keys
-	address, err := cosmos_client.PubKeyHexToAddress(body.PublicKey)
+	address, err := cosmos_client.PubKeyToAddress(body.PublicKey)
 	if err != nil {
 		logging.Error("ValidatedArtifactsV2-callback. Failed to convert public key to address", types.PoC,
 			"publicKey", body.PublicKey,

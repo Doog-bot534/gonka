@@ -33,7 +33,6 @@ type CommitWorker struct {
 	tracker            *chainphase.ChainPhaseTracker
 	participantAddress string
 	pubKey             string
-	isValidator        bool
 
 	interval time.Duration
 	stop     chan struct{}
@@ -61,7 +60,6 @@ func NewCommitWorker(
 	propagationEnabled bool,
 	bundler *propagation.FLTQBundler,
 	propagationCache *propagation.Cache,
-	isValidator bool,
 ) *CommitWorker {
 	w := &CommitWorker{
 		store:                 store,
@@ -69,7 +67,6 @@ func NewCommitWorker(
 		tracker:               tracker,
 		participantAddress:    participantAddress,
 		pubKey:                pubKey,
-		isValidator:           isValidator,
 		interval:              interval,
 		stop:                  make(chan struct{}),
 		done:                  make(chan struct{}),
@@ -158,7 +155,7 @@ func (w *CommitWorker) tick() {
 				w.maybePublishHeaders(pocHeight)
 			}
 
-			if isCountPhase && w.isValidator {
+			if isCountPhase {
 				w.maybeSubmitPocCount(pocHeight)
 			}
 
