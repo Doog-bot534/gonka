@@ -40,7 +40,7 @@ func (k Keeper) GetParams(ctx context.Context) (params types.Params, err error) 
 func (k Keeper) InjectParamsIntoContext(ctx sdk.Context) (sdk.Context, error) {
 	params, err := k.getParamsFromStore(ctx)
 	if err != nil {
-		return sdk.Context{}, err
+		return ctx, err
 	}
 	return ctx.WithValue(paramsKey{}, &params), nil
 }
