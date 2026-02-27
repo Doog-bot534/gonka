@@ -188,26 +188,99 @@ func TestMsgSubmitVerificationVector_ValidateBasic(t *testing.T) {
 
 func TestMsgSubmitGroupKeyValidationSignature_ValidateBasic(t *testing.T) {
 	creator := mkAddr(t)
+	validPartialSignature := make([]byte, groupValidationSignatureChunkLen*2)
+	validPartialSignature[0] = 1
+	validPartialSignature[groupValidationSignatureChunkLen] = 1
 
 	t.Run("valid", func(t *testing.T) {
-		msg := &MsgSubmitGroupKeyValidationSignature{Creator: creator, NewEpochId: 1, SlotIndices: []uint32{0, 2}}
+		msg := &MsgSubmitGroupKeyValidationSignature{
+			Creator:          creator,
+			NewEpochId:       1,
+			SlotIndices:      []uint32{0, 2},
+			PartialSignature: validPartialSignature,
+		}
 		require.NoError(t, msg.ValidateBasic())
 	})
 
 	t.Run("invalid creator", func(t *testing.T) {
-		msg := &MsgSubmitGroupKeyValidationSignature{Creator: "bad", NewEpochId: 1, SlotIndices: []uint32{0}}
+		msg := &MsgSubmitGroupKeyValidationSignature{
+			Creator:          "bad",
+			NewEpochId:       1,
+			SlotIndices:      []uint32{0},
+			PartialSignature: []byte{1, 2, 3},
+		}
 		err := msg.ValidateBasic()
 		require.Error(t, err)
 		require.True(t, errorsmod.IsOf(err, sdkerrors.ErrInvalidAddress))
 	})
 
 	t.Run("epoch zero", func(t *testing.T) {
-		msg := &MsgSubmitGroupKeyValidationSignature{Creator: creator, NewEpochId: 0, SlotIndices: []uint32{0}}
+		msg := &MsgSubmitGroupKeyValidationSignature{
+			Creator:          creator,
+			NewEpochId:       0,
+			SlotIndices:      []uint32{0},
+			PartialSignature: []byte{1, 2, 3},
+		}
 		require.Error(t, msg.ValidateBasic())
 	})
 
 	t.Run("empty slot indices", func(t *testing.T) {
-		msg := &MsgSubmitGroupKeyValidationSignature{Creator: creator, NewEpochId: 1, SlotIndices: nil}
+		msg := &MsgSubmitGroupKeyValidationSignature{
+			Creator:          creator,
+			NewEpochId:       1,
+			SlotIndices:      nil,
+			PartialSignature: []byte{1, 2, 3},
+		}
+		require.Error(t, msg.ValidateBasic())
+	})
+
+	t.Run("duplicate slot indices", func(t *testing.T) {
+		msg := &MsgSubmitGroupKeyValidationSignature{
+			Creator:          creator,
+			NewEpochId:       1,
+			SlotIndices:      []uint32{0, 0},
+			PartialSignature: validPartialSignature,
+		}
+		require.Error(t, msg.ValidateBasic())
+	})
+
+	t.Run("empty partial signature", func(t *testing.T) {
+		msg := &MsgSubmitGroupKeyValidationSignature{
+			Creator:          creator,
+			NewEpochId:       1,
+			SlotIndices:      []uint32{0},
+			PartialSignature: nil,
+		}
+		require.Error(t, msg.ValidateBasic())
+	})
+
+	t.Run("partial signature length not multiple of 48", func(t *testing.T) {
+		msg := &MsgSubmitGroupKeyValidationSignature{
+			Creator:          creator,
+			NewEpochId:       1,
+			SlotIndices:      []uint32{0},
+			PartialSignature: make([]byte, groupValidationSignatureChunkLen-1),
+		}
+		require.Error(t, msg.ValidateBasic())
+	})
+
+	t.Run("partial signature count mismatch", func(t *testing.T) {
+		msg := &MsgSubmitGroupKeyValidationSignature{
+			Creator:          creator,
+			NewEpochId:       1,
+			SlotIndices:      []uint32{0, 1},
+			PartialSignature: make([]byte, groupValidationSignatureChunkLen),
+		}
+		require.Error(t, msg.ValidateBasic())
+	})
+
+	t.Run("all-zero signature chunk", func(t *testing.T) {
+		msg := &MsgSubmitGroupKeyValidationSignature{
+			Creator:          creator,
+			NewEpochId:       1,
+			SlotIndices:      []uint32{0},
+			PartialSignature: make([]byte, groupValidationSignatureChunkLen),
+		}
 		require.Error(t, msg.ValidateBasic())
 	})
 }
