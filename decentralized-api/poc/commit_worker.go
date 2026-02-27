@@ -133,7 +133,7 @@ func (w *CommitWorker) tick() {
 		w.weightCommitSubmitted = make(map[int64]bool)
 	}
 
-	treesEnabled := w.propagationEnabled && w.bundler != nil
+	treesEnabled := w.propagationEnabled && w.bundler != nil && w.bundler.HasPeers()
 
 	if pocHeight > 0 {
 		isPoCPhase := epochState.CurrentPhase == types.PoCGeneratePhase ||
