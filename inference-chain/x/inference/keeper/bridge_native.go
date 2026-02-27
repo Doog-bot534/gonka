@@ -35,21 +35,21 @@ func (k Keeper) ReleaseFromEscrow(ctx sdk.Context, toAddr sdk.AccAddress, amount
 	return k.BankKeeper.SendCoinsFromModuleToAccount(ctx, types.BridgeEscrowAccName, toAddr, amount, "bridge_release")
 }
 
-// IsBridgeContractAddress checks if the given contract address matches any registered bridge addresses
-func (k Keeper) IsBridgeContractAddress(ctx context.Context, contractAddress string) (bool, string) {
-	// Get all registered bridge contract addresses
-	allBridgeAddresses := k.GetAllBridgeContractAddresses(ctx)
+// IsBridgeContractAddress checks if the given contract address matches any registered bridge addresses for the specific chain
+func (k Keeper) IsBridgeContractAddress(ctx context.Context, chainId, contractAddress string) bool {
+	// Get all registered bridge contract addresses for the specific chain
+	bridgeAddresses := k.GetBridgeContractAddressesByChain(ctx, chainId)
 
 	// Normalize the input address for comparison
 	normalizedInput := strings.ToLower(contractAddress)
 
-	for _, bridgeAddr := range allBridgeAddresses {
+	for _, bridgeAddr := range bridgeAddresses {
 		if strings.ToLower(bridgeAddr.Address) == normalizedInput {
-			return true, bridgeAddr.ChainId
+			return true
 		}
 	}
 
-	return false, ""
+	return false
 }
 
 // HandleNativeTokenRelease handles the release of native tokens when WGNK is burned on Ethereum
