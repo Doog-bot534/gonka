@@ -15,5 +15,12 @@ func (m *MsgSubmitPartialSignature) ValidateBasic() error {
 	if len(m.SlotIndices) == 0 {
 		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "slot_indices must be non-empty")
 	}
+	seen := make(map[uint32]struct{}, len(m.SlotIndices))
+	for _, slot := range m.SlotIndices {
+		if _, exists := seen[slot]; exists {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "slot_indices contains duplicates")
+		}
+		seen[slot] = struct{}{}
+	}
 	return nil
 }

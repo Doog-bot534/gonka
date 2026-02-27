@@ -171,6 +171,14 @@ func TestMsgSubmitPartialSignature_ValidateBasic(t *testing.T) {
 		msg := &MsgSubmitPartialSignature{Creator: creator, SlotIndices: nil}
 		require.Error(t, msg.ValidateBasic())
 	})
+
+	t.Run("duplicate slot indices", func(t *testing.T) {
+		msg := &MsgSubmitPartialSignature{Creator: creator, SlotIndices: []uint32{1, 2, 1}}
+		err := msg.ValidateBasic()
+		require.Error(t, err)
+		require.True(t, errorsmod.IsOf(err, sdkerrors.ErrInvalidRequest))
+		require.Contains(t, err.Error(), "contains duplicates")
+	})
 }
 
 func TestMsgRequestThresholdSignature_ValidateBasic(t *testing.T) {
