@@ -14,8 +14,12 @@ func (k Keeper) EnqueueFinishedInference(ctx context.Context, blockHeight int64,
 }
 
 // DequeueFinishedInference removes a queued finished-inference entry for a specific block.
-func (k Keeper) DequeueFinishedInference(ctx context.Context, blockHeight int64, inferenceID string) {
-	_ = k.FinishedInferenceQueue.Remove(ctx, collections.Join(blockHeight, inferenceID))
+func (k Keeper) DequeueFinishedInference(ctx context.Context, blockHeight int64, inferenceID string) error {
+	return k.FinishedInferenceQueue.Remove(ctx, collections.Join(blockHeight, inferenceID))
+}
+
+func (k Keeper) DequeueFinishedInferenceForHeight(ctx context.Context, blockHeight int64) error {
+	return k.FinishedInferenceQueue.Clear(ctx, collections.NewPrefixedPairRange[int64, string](blockHeight))
 }
 
 // ListFinishedInferenceIDsForHeight lists all queued finished inference IDs for a specific block height.

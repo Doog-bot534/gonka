@@ -46,9 +46,6 @@ func (am AppModule) processFinishedInferencesInBlock(
 	processedCount := 0
 
 	for _, inferenceID := range pendingInferenceIDs {
-		// Always remove queue keys as we iterate to avoid reprocessing on later blocks.
-		am.keeper.DequeueFinishedInference(ctx, blockHeight, inferenceID)
-
 		inference, found := am.keeper.GetInference(ctx, inferenceID)
 		if !found {
 			am.LogWarn("Pending inference validation skipped: inference not found", types.Validation,
@@ -115,6 +112,11 @@ func (am AppModule) processFinishedInferencesInBlock(
 		)
 		am.keeper.SetInferenceValidationDetails(ctx, inferenceDetails)
 		processedCount++
+	}
+	// Dequeue in a group at the end, better performance
+	err := am.keeper.DequeueFinishedInferenceForHeight(ctx, blockHeight)
+	if err != nil {
+		am.LogError("Failed to dequeue finished inferences for height", types.Validation, "blockHeight", blockHeight, "error", err)
 	}
 
 	if processedCount > 0 {
