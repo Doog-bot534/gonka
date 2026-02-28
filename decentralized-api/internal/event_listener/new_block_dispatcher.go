@@ -290,6 +290,7 @@ func (d *OnNewBlockDispatcher) ProcessNewBlock(ctx context.Context, blockInfo ch
 	// TODO: log block that came from event vs block returned by query
 	// TODO: can we add the state to the block event? As a future optimization?
 	d.phaseTracker.Update(blockInfo, &networkInfo.LatestEpoch, &networkInfo.EpochParams, networkInfo.IsSynced, networkInfo.ActiveConfirmationPoCEvent)
+	d.phaseTracker.UpdateIsValidator(networkInfo.IsValidator)
 	epochState := d.phaseTracker.GetCurrentEpochState()
 	if epochState == nil {
 		logging.Error("[ILLEGAL_STATE]: Epoch state is nil right after an update call to phase tracker. "+
@@ -332,6 +333,7 @@ func (d *OnNewBlockDispatcher) ProcessNewBlock(ctx context.Context, blockInfo ch
 type NetworkInfo struct {
 	EpochParams                types.EpochParams
 	IsSynced                   bool
+	IsValidator                bool
 	LatestEpoch                types.Epoch
 	BlockHeight                int64
 	ActiveConfirmationPoCEvent *types.ConfirmationPoCEvent
@@ -345,6 +347,7 @@ func (d *OnNewBlockDispatcher) queryNetworkInfo(ctx context.Context) (NetworkInf
 		return NetworkInfo{}, err
 	}
 	isSynced := !status.SyncInfo.CatchingUp
+	isValidator := status.ValidatorInfo.VotingPower > 0
 
 	epochInfo, err := d.queryClient.EpochInfo(ctx, &types.QueryEpochInfoRequest{})
 	if err != nil || epochInfo == nil {
@@ -352,7 +355,6 @@ func (d *OnNewBlockDispatcher) queryNetworkInfo(ctx context.Context) (NetworkInf
 		return NetworkInfo{}, err
 	}
 
-	// Extract confirmation PoC event if active
 	var confirmationEvent *types.ConfirmationPoCEvent
 	if epochInfo.IsConfirmationPocActive && epochInfo.ActiveConfirmationPocEvent != nil {
 		confirmationEvent = epochInfo.ActiveConfirmationPocEvent
@@ -361,6 +363,7 @@ func (d *OnNewBlockDispatcher) queryNetworkInfo(ctx context.Context) (NetworkInf
 	return NetworkInfo{
 		EpochParams:                *epochInfo.Params.EpochParams,
 		IsSynced:                   isSynced,
+		IsValidator:                isValidator,
 		LatestEpoch:                epochInfo.LatestEpoch,
 		BlockHeight:                epochInfo.BlockHeight,
 		ActiveConfirmationPoCEvent: confirmationEvent,

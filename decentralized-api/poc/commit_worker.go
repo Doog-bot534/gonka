@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"decentralized-api/broker"
 	"decentralized-api/chainphase"
 	"decentralized-api/cosmosclient"
 	"decentralized-api/logging"
@@ -44,9 +43,8 @@ type CommitWorker struct {
 	lastDistributionAttempt time.Time
 	lastCommitted           map[int64]commitState
 
-	propagationEnabled    bool
-	nodeBroker            *broker.Broker
-	bundler               *propagation.FLTQBundler
+	propagationEnabled bool
+	bundler            *propagation.FLTQBundler
 	propagationCache      *propagation.Cache
 	pocCountSubmitted     map[int64]bool
 	weightCommitSubmitted map[int64]bool
@@ -60,7 +58,6 @@ func NewCommitWorker(
 	pubKey string,
 	interval time.Duration,
 	propagationEnabled bool,
-	nodeBroker *broker.Broker,
 	bundler *propagation.FLTQBundler,
 	propagationCache *propagation.Cache,
 ) *CommitWorker {
@@ -75,7 +72,6 @@ func NewCommitWorker(
 		done:                  make(chan struct{}),
 		lastCommitted:         make(map[int64]commitState),
 		propagationEnabled:    propagationEnabled,
-		nodeBroker:            nodeBroker,
 		bundler:               bundler,
 		propagationCache:      propagationCache,
 		pocCountSubmitted:     make(map[int64]bool),
@@ -159,7 +155,7 @@ func (w *CommitWorker) tick() {
 				w.maybePublishHeaders(pocHeight)
 			}
 
-			if isCountPhase && w.hasAvailableOffChainValidationNodes() {
+			if isCountPhase && epochState.IsValidator {
 				w.maybeSubmitPocCount(pocHeight)
 			}
 
@@ -232,20 +228,6 @@ func (w *CommitWorker) maybePublishHeaders(pocHeight int64) {
 		}
 	}
 	w.lastCommitted[pocHeight] = commitState{count, rootHash}
-}
-
-func (w *CommitWorker) hasAvailableOffChainValidationNodes() bool {
-	if w.nodeBroker == nil {
-		return false
-	}
-
-	nodes, err := w.nodeBroker.GetNodes()
-	if err != nil {
-		logging.Warn("CommitWorker: failed to get nodes for off-chain-validator check", types.PoC, "error", err)
-		return false
-	}
-
-	return len(filterNodesForValidation(nodes)) > 0
 }
 
 func (w *CommitWorker) maybeSubmitPocCount(pocHeight int64) {

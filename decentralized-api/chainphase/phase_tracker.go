@@ -21,6 +21,7 @@ type ChainPhaseTracker struct {
 	activeConfirmationPoCEvent *types.ConfirmationPoCEvent
 	pocV2Enabled               bool // cached from PocParams.PocV2Enabled, default false (set from chain)
 	confirmationPocV2Enabled   bool // cached from PocParams.ConfirmationPocV2Enabled, default true
+	isValidator                bool
 }
 
 type BlockInfo struct {
@@ -57,6 +58,7 @@ type EpochState struct {
 	ActiveConfirmationPoCEvent *types.ConfirmationPoCEvent
 	PocV2Enabled               bool // true = V2 (off-chain), false = V1 (on-chain batches)
 	ConfirmationPocV2Enabled   bool // true = Confirmation PoC uses V2, enables migration mode
+	IsValidator                bool
 }
 
 func (es *EpochState) IsNilOrNotSynced() bool {
@@ -83,6 +85,7 @@ func (t *ChainPhaseTracker) GetCurrentEpochState() *EpochState {
 		ActiveConfirmationPoCEvent: t.activeConfirmationPoCEvent,
 		PocV2Enabled:               t.pocV2Enabled,
 		ConfirmationPocV2Enabled:   t.confirmationPocV2Enabled,
+		IsValidator:                t.isValidator,
 	}
 }
 
@@ -133,4 +136,11 @@ func (t *ChainPhaseTracker) IsConfirmationPoCv2Enabled() bool {
 	defer t.mu.RUnlock()
 
 	return t.confirmationPocV2Enabled
+}
+
+func (t *ChainPhaseTracker) UpdateIsValidator(isValidator bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.isValidator = isValidator
 }

@@ -463,7 +463,7 @@ fun createSpec(epochLength: Long = 15L, epochShift: Int = 0): Spec<AppState> = s
                 this[EpochParams::epochLength] = epochLength
                 this[EpochParams::pocStageDuration] = 2L
                 this[EpochParams::pocExchangeDuration] = 1L
-                this[EpochParams::pocValidationDelay] = 1L
+                this[EpochParams::pocValidationDelay] = 4L
                 this[EpochParams::pocValidationDuration] = 2L
                 this[EpochParams::setNewValidatorsDelay] = 1L
                 this[EpochParams::epochShift] = epochShift
