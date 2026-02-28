@@ -124,6 +124,7 @@ func DefaultEpochParams() *EpochParams {
 		SetNewValidatorsDelay:          1,
 		InferenceValidationCutoff:      0,
 		InferencePruningEpochThreshold: 2, // Number of epochs after which inferences can be pruned
+		ConfirmationPocSafetyWindow:    50,
 		PocSlotAllocation: &Decimal{ // Default 0.5 (50%) fraction of nodes allocated to PoC slots
 			Value:    5,
 			Exponent: -1,
@@ -342,6 +343,9 @@ func (p *EpochParams) Validate() error {
 	}
 	if p.InferencePruningEpochThreshold < 1 {
 		return fmt.Errorf("inference pruning epoch threshold must be at least 1")
+	}
+	if p.ConfirmationPocSafetyWindow < 0 {
+		return fmt.Errorf("safety window cannot be negative")
 	}
 	return nil
 }
