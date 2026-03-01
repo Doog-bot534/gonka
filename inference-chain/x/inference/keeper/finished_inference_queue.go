@@ -2,36 +2,80 @@ package keeper
 
 import (
 	"context"
+	"encoding/binary"
 
-	"cosmossdk.io/collections"
+	corestore "cosmossdk.io/core/store"
+	storetypes "cosmossdk.io/store/types"
 )
 
-// FinishedInferenceQueue stores completed inference IDs by block height.
+var (
+	finishedInferenceQueueEntryPrefix = []byte{0x01}
+	finishedInferenceQueueNextSeqKey  = []byte{0x02}
+)
+
+// FinishedInferenceQueue stores completed inference IDs in FIFO order.
 // We intentionally process this queue in EndBlock to keep Start/Finish tx execution lightweight
 // and defer expensive epoch/model reads used for InferenceValidationDetails construction.
-func (k Keeper) EnqueueFinishedInference(ctx context.Context, blockHeight int64, inferenceID string) error {
-	return k.FinishedInferenceQueue.Set(ctx, collections.Join(blockHeight, inferenceID), inferenceID)
+func (k Keeper) EnqueueFinishedInference(ctx context.Context, inferenceID string) error {
+	transientStore := k.transientStoreService.OpenTransientStore(ctx)
+	nextSeq, err := k.getAndIncrementFinishedInferenceQueueSeq(transientStore)
+	if err != nil {
+		return err
+	}
+	return transientStore.Set(finishedInferenceQueueEntryKey(nextSeq), []byte(inferenceID))
 }
 
-// DequeueFinishedInference removes a queued finished-inference entry for a specific block.
-func (k Keeper) DequeueFinishedInference(ctx context.Context, blockHeight int64, inferenceID string) error {
-	return k.FinishedInferenceQueue.Remove(ctx, collections.Join(blockHeight, inferenceID))
-}
+// ListFinishedInferenceIDs lists all queued finished inference IDs in FIFO order.
+func (k Keeper) ListFinishedInferenceIDs(ctx context.Context) []string {
+	transientStore := k.transientStoreService.OpenTransientStore(ctx)
 
-func (k Keeper) DequeueFinishedInferenceForHeight(ctx context.Context, blockHeight int64) error {
-	return k.FinishedInferenceQueue.Clear(ctx, collections.NewPrefixedPairRange[int64, string](blockHeight))
-}
+	// Preallocate the slice by fetching the current sequence length
+	var capacity uint64
+	if nextSeqBz, err := transientStore.Get(finishedInferenceQueueNextSeqKey); err == nil && len(nextSeqBz) == 8 {
+		capacity = binary.BigEndian.Uint64(nextSeqBz)
+	}
 
-// ListFinishedInferenceIDsForHeight lists all queued finished inference IDs for a specific block height.
-func (k Keeper) ListFinishedInferenceIDsForHeight(ctx context.Context, blockHeight int64) []string {
-	it, err := k.FinishedInferenceQueue.Iterate(ctx, collections.NewPrefixedPairRange[int64, string](blockHeight))
+	it, err := transientStore.Iterator(
+		finishedInferenceQueueEntryPrefix,
+		storetypes.PrefixEndBytes(finishedInferenceQueueEntryPrefix),
+	)
 	if err != nil {
 		return nil
 	}
 	defer it.Close()
-	vals, err := it.Values()
-	if err != nil {
+
+	finishedInferenceIDs := make([]string, 0, capacity)
+	for ; it.Valid(); it.Next() {
+		finishedInferenceIDs = append(finishedInferenceIDs, string(it.Value()))
+	}
+	if err := it.Error(); err != nil {
 		return nil
 	}
-	return vals
+	return finishedInferenceIDs
+}
+
+func (k Keeper) getAndIncrementFinishedInferenceQueueSeq(transientStore corestore.KVStore) (uint64, error) {
+	nextSeqBz, err := transientStore.Get(finishedInferenceQueueNextSeqKey)
+	if err != nil {
+		return 0, err
+	}
+
+	var nextSeq uint64
+	if len(nextSeqBz) == 8 {
+		nextSeq = binary.BigEndian.Uint64(nextSeqBz)
+	}
+
+	var updatedNextSeqBz [8]byte
+	binary.BigEndian.PutUint64(updatedNextSeqBz[:], nextSeq+1)
+	if err := transientStore.Set(finishedInferenceQueueNextSeqKey, updatedNextSeqBz[:]); err != nil {
+		return 0, err
+	}
+	return nextSeq, nil
+}
+
+func finishedInferenceQueueEntryKey(seq uint64) []byte {
+	var key [9]byte
+	key[0] = finishedInferenceQueueEntryPrefix[0]
+	binary.BigEndian.PutUint64(key[1:], seq)
+	return key[:]
 }

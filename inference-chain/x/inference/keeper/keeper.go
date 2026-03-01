@@ -14,16 +14,17 @@ import (
 
 type (
 	Keeper struct {
-		cdc           codec.BinaryCodec
-		storeService  store.KVStoreService
-		logger        log.Logger
-		BankKeeper    types.BookkeepingBankKeeper
-		BankView      types.BankKeeper
-		validatorSet  types.ValidatorSet
-		group         types.GroupMessageKeeper
-		Staking       types.StakingKeeper
-		BlsKeeper     types.BlsKeeper
-		UpgradeKeeper types.UpgradeKeeper
+		cdc                   codec.BinaryCodec
+		storeService          store.KVStoreService
+		transientStoreService store.TransientStoreService
+		logger                log.Logger
+		BankKeeper            types.BookkeepingBankKeeper
+		BankView              types.BankKeeper
+		validatorSet          types.ValidatorSet
+		group                 types.GroupMessageKeeper
+		Staking               types.StakingKeeper
+		BlsKeeper             types.BlsKeeper
+		UpgradeKeeper         types.UpgradeKeeper
 		// the address capable of executing a MsgUpdateParams message. Typically, this
 		// should be the x/gov module account.
 		authority     string
@@ -88,14 +89,13 @@ type (
 		PoCValidationSnapshots collections.Map[int64, types.PoCValidationSnapshot]
 		// Punishment grace epochs for upgrade protection
 		PunishmentGraceEpochs collections.Map[uint64, types.GraceEpochParams]
-		// Finished inference queue keyed by (block_height, inference_id)
-		FinishedInferenceQueue collections.Map[collections.Pair[int64, string], string]
 	}
 )
 
 func NewKeeper(
 	cdc codec.BinaryCodec,
 	storeService store.KVStoreService,
+	transientStoreService store.TransientStoreService,
 	logger log.Logger,
 	authority string,
 	bank types.BookkeepingBankKeeper,
@@ -119,22 +119,23 @@ func NewKeeper(
 	sb := collections.NewSchemaBuilder(storeService)
 
 	k := Keeper{
-		cdc:                 cdc,
-		storeService:        storeService,
-		authority:           authority,
-		logger:              logger,
-		BankKeeper:          bank,
-		BankView:            bankView,
-		group:               group,
-		validatorSet:        validatorSet,
-		Staking:             staking,
-		AccountKeeper:       accountKeeper,
-		AuthzKeeper:         authzKeeper,
-		BlsKeeper:           blsKeeper,
-		collateralKeeper:    collateralKeeper,
-		streamvestingKeeper: streamvestingKeeper,
-		getWasmKeeper:       getWasmKeeper,
-		UpgradeKeeper:       upgradeKeeper,
+		cdc:                   cdc,
+		storeService:          storeService,
+		transientStoreService: transientStoreService,
+		authority:             authority,
+		logger:                logger,
+		BankKeeper:            bank,
+		BankView:              bankView,
+		group:                 group,
+		validatorSet:          validatorSet,
+		Staking:               staking,
+		AccountKeeper:         accountKeeper,
+		AuthzKeeper:           authzKeeper,
+		BlsKeeper:             blsKeeper,
+		collateralKeeper:      collateralKeeper,
+		streamvestingKeeper:   streamvestingKeeper,
+		getWasmKeeper:         getWasmKeeper,
+		UpgradeKeeper:         upgradeKeeper,
 		// collection init
 		Participants: collections.NewMap(
 			sb,
@@ -445,13 +446,6 @@ func NewKeeper(
 			"punishment_grace_epochs",
 			collections.Uint64Key,
 			codec.CollValue[types.GraceEpochParams](cdc),
-		),
-		FinishedInferenceQueue: collections.NewMap(
-			sb,
-			types.FinishedInferenceQueuePrefix,
-			"finished_inference_queue",
-			collections.PairKeyCodec(collections.Int64Key, collections.StringKey),
-			collections.StringValue,
 		),
 	}
 	// Build the collections schema

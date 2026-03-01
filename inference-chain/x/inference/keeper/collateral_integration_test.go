@@ -40,11 +40,13 @@ func setupKeeperWithMocksForIntegration(t testing.TB) (keeper.Keeper, types.MsgS
 func setupRealKeepers(t testing.TB) (sdk.Context, keeper.Keeper, collateralKeeper.Keeper, types.MsgServer, collateralTypes.MsgServer, *keepertest.InferenceMocks) {
 	// --- Store and Codec Setup ---
 	inferenceStoreKey := storetypes.NewKVStoreKey(types.StoreKey)
+	transientStoreKey := storetypes.NewTransientStoreKey(types.TransientStoreKey)
 	collateralStoreKey := storetypes.NewKVStoreKey(collateralTypes.StoreKey)
 
 	db := dbm.NewMemDB()
 	stateStore := store.NewCommitMultiStore(db, log.NewNopLogger(), metrics.NewNoOpMetrics())
 	stateStore.MountStoreWithDB(inferenceStoreKey, storetypes.StoreTypeIAVL, db)
+	stateStore.MountStoreWithDB(transientStoreKey, storetypes.StoreTypeTransient, db)
 	stateStore.MountStoreWithDB(collateralStoreKey, storetypes.StoreTypeIAVL, db)
 	require.NoError(t, stateStore.LoadLatestVersion())
 
@@ -97,6 +99,7 @@ func setupRealKeepers(t testing.TB) (sdk.Context, keeper.Keeper, collateralKeepe
 	inferenceKeeper := keeper.NewKeeper(
 		cdc,
 		runtime.NewKVStoreService(inferenceStoreKey),
+		runtime.NewTransientStoreService(transientStoreKey),
 		keepertest.PrintlnLogger{},
 		authority.String(),
 		bookkepingBankMock,

@@ -19,7 +19,7 @@ func (am AppModule) processFinishedInferencesInBlock(
 	currentEpochGroup *epochgroup.EpochGroup,
 	params *types.Params,
 ) {
-	pendingInferenceIDs := am.keeper.ListFinishedInferenceIDsForHeight(ctx, blockHeight)
+	pendingInferenceIDs := am.keeper.ListFinishedInferenceIDs(ctx)
 	modelBlockLoads := make(map[string]uint64)
 	modelBlockInferenceCounts := make(map[string]uint64)
 	if len(pendingInferenceIDs) == 0 {
@@ -113,12 +113,6 @@ func (am AppModule) processFinishedInferencesInBlock(
 		am.keeper.SetInferenceValidationDetails(ctx, inferenceDetails)
 		processedCount++
 	}
-	// Dequeue in a group at the end, better performance
-	err := am.keeper.DequeueFinishedInferenceForHeight(ctx, blockHeight)
-	if err != nil {
-		am.LogError("Failed to dequeue finished inferences for height", types.Validation, "blockHeight", blockHeight, "error", err)
-	}
-
 	if processedCount > 0 {
 		am.keeper.SetEpochGroupData(ctx, *currentEpochGroup.GroupData)
 	}
