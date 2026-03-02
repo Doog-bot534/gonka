@@ -184,6 +184,8 @@ Each host response includes its unsettled mempool so the user always knows what'
 
 **Retry on refusal.** If a host refuses to sign because the user hasn't included pending transactions, the user retries the same nonce with the missing transactions appended. The diff at a given nonce is append-only: a retry must be a strict superset of the original attempt. The host stores the first attempt's tx list and rejects any retry that removes or replaces transactions from it. This prevents equivocation -- the user cannot create two conflicting versions of the same nonce. K rounds is generous (tens of requests across the full group), so a well-behaved user client includes all known pending transactions automatically and never hits refusal.
 
+  <GLEB> Do we really need that? Or "update state but not sign" is enough? 
+
 ### Scenarios
 
 #### Everyone is working correctly
@@ -219,6 +221,27 @@ The user is the sequencer: it decides at which nonce each transaction is placed.
 
 #### Host doesn't respond or doesn't finish inference
 
+  <GLEB> IDEA_1. What if we simplify this part with new assumption. USER incentivized to finish inference. E.g. once it recorded StartInference (with or without sign from host-executor). Then if host doesn't want to sign => USER must create MsgTimeoutInference(reason=refused) => the same pipeline where small subgroup try to get sign from host. Each of group expect to get request with the same hash from user and then record vote.
+  If host doesn't propose FinishInference, USER must submit MsgTimeoutInference(reason=execution)
+  If user doesn't do any of this => it's charged for prompt_length + max_tokens + constant fee (constant fee exist per each request)
+  Only user incentivized to finish this rounds, so it finishes it. 
+
+  The problem only in potential timing conflict of MsgFinishInference and MsgTimeoutInference. 
+  1. MsgTimeoutInference(reason=refused) => voting => can be resolved and inference status can be or invalid after voting or started after voting 
+  2. MsgTimeoutInference(reason=execution)
+    a) FinishInference already recorded in any state (finalized or not) => does nothing as finisjed (OR just rejected as user potentialy does smth weird)
+    b) FinishInference is not recorded and not in mempool => check expected timeout (if really expired), if ok => update state and sign, if not => update and not sign (if then 2/3 will be obtained from another hosts => we'll consider their state as finalized, it's mentioned somewhere)
+    b) FinishInference is not recorded but in mempool => update state but not sign UNTIL FinishInference is proposed and override timeout => sign state
+    d) if inference.status = execution_expired and sign by majority (finalized), then incoming FinishInference essentially no-op 
+    e) if inference.stats = execution_expired and NOT signed => override 
+
+  => we clearly need finalized and not finalized stated
+  => we clearly need list of blocker to sign and sign only if all resolved
+  => what if used has issue with local clocks and set to everyone expiration earlier and everyone is not signing? what is then? sounds like it can sign once again later and same contione would work 
+  => seems like in that approach FinishInference don't need timelimit for that it can recorded. from StartInference to whatever
+  => seems like MsgTimeoutInference(reason=execution) can be recorded after 20 minutes from StartInference in case FinishInference is not recorded and state will be finalized if not in mempool. 
+
+
 MsgStartInference(N) exists in the state but MsgFinishInference(N) never arrives. Possible causes:
 - Host genuinely down, didn't receive the request
 - Connection broke between user and host mid-request
@@ -228,8 +251,10 @@ MsgStartInference(N) exists in the state but MsgFinishInference(N) never arrives
 Attribution is hard. The user could attack a host by recording MsgStartInference but withholding prompt data. The host could attack by pretending not to have received it. Both look identical from the outside. Without a recovery mechanism, whoever is honest gets punished.
 
 **If host_i signed the state at nonce N:** host_i acknowledged receipt. The signature propagates through later diffs, so all hosts can verify host_i had the data. If MsgFinishInference(N) doesn't arrive by timeout, missed += 1 for host_i. No ambiguity.
+  <GLEB> IDEA_1. hosts doesn't have to verify using off-state data => simpler
 
 **If host_i never signed:** ambiguous. Recovery protocol applies.
+  <GLEB> IDEA_1. user would trigger investigation => don't needed 
 
 **Recovery protocol:**
 1. host_i detects via nonce propagation that a nonce assigned to it has passed without receiving data.
@@ -243,20 +268,25 @@ Attribution is hard. The user could attack a host by recording MsgStartInference
 If user doesn't provide prompt within R_prompt rounds (TBD), hosts refuse to sign further state updates. host_i not penalized.
 
 If host_i receives prompt via relay but still doesn't finish by timeout, missed += 1. Multiple hosts can attest the prompt was delivered.
+  <GLEB> IDEA_1. seems like recovery will be simplified? on each timeout user provide data to K another nodes, no? host doesn't have to initiate, 
 
 **Timeout.** Timestamp in MsgStartInference + T seconds. On mainnet, timeout was block-height-based (expirationHeight). In the subnet there are no blocks, so wall-clock time anchored to the StartInference timestamp is the replacement. T must account for the full recovery protocol (nonce propagation + MsgRequestPrompt + prompt relay + execution).
+  <GLEB> IDEA_1. user will track timeout. 
 
 **Incentives.** The recovery protocol removes both attack vectors:
 - User cannot selectively starve a host of data. The group detects the gap via nonce propagation and requests the prompt through intermediaries. If the user refuses within R_prompt rounds, hosts stop signing.
 - Host cannot pretend it didn't receive data. The group will deliver it via relay. If the host still doesn't compute, it's clearly at fault.
+  <GLEB> IDEA_1. same
 
 #### User creates StartInference but doesn't provide data to host_i
 
 Covered by the recovery protocol above. This is the "user withheld prompt data" cause. Nonce propagation detects the gap, MsgRequestPrompt forces the user to provide data or face hosts refusing to sign.
+  <GLEB> IDEA_1. same
 
 #### User sends request to host_i but doesn't record StartInference
 
 Not possible. host_i checks the diffs and rejects requests without a corresponding MsgStartInference. No StartInference = no payment authorization = no reason to compute.
+  <GLEB> IDEA_1. same, not possible 
 
 ### Inference Validation
 
@@ -273,6 +303,8 @@ Seed reveal happens during the mandatory finalizing round (see Settlement). Each
 > We considered deriving the seed from the host's state signature at each nonce (no commit-reveal, no finalizing round). This avoids the extra round but requires signatures to be part of state for compliance verification. Signatures are deliberately not in state because they arrive asynchronously and would break deterministic state hashing. The finalizing round with reveal is simpler overall and also removes the need for a Merkle tree in settlement.
 
 > Note: the finalizing round could potentially be eliminated if the validation process is redesigned to not require a commit-reveal scheme (e.g. seeds derived from data already in state). This would allow settlement at any point without waiting for a full group round, improving liveness. Requires further refinement of the validation protocol.
+
+  <GLEB> IDEA_1. same, gossuping of height is stilll there
 
 ## Settlement
 
