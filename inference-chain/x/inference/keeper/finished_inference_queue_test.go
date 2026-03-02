@@ -15,6 +15,7 @@ func TestPendingInferenceValidationQueue_ListFinishedInferenceIDs_FIFO(t *testin
 	require.NoError(t, keeper.EnqueueFinishedInference(ctx, "b"))
 	require.NoError(t, keeper.EnqueueFinishedInference(ctx, "other"))
 
-	got := keeper.ListFinishedInferenceIDs(ctx)
+	got, err := keeper.ListFinishedInferenceIDs(ctx)
+	require.NoError(t, err)
 	require.Equal(t, []string{"c", "a", "b", "other"}, got)
 }
