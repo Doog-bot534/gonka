@@ -19,10 +19,7 @@ Requests could be batched into a single transaction, but the computation and sta
 
 The bottleneck is better with longer requests (more compute per tx) and worse with smaller models (more RPS per GPU, more txs per GPU).
 
-> Note: in practice, the main limit is not the transaction count but the computation cost per block.
-> It becomes a problem above a few hundred such transactions per block.
-> Based on profiling it can be optimized 2-10x (or even 100x), but this limitation will hit before the tx count limit.
-> The current proposal still tries to address the whole problem.
+> Note: the per-block computation cost of inference state transitions is a separate bottleneck that hits before the raw tx count limit. Even a 100x optimization there only postpones the problem -- it does not remove the throughput ceiling. This proposal addresses both by moving all per-inference processing off-chain.
 
 
 ## Proposal
@@ -74,22 +71,14 @@ All inference requests happen directly with the assigned subnet group; mainnet n
 ## User Flow
 
 - [mainchain]: user creates `MsgCreateEscrow(100GNK)`
-- [subchain]: user interact with hosts in subgroup in pre-defined order
+- [subchain]: user interacts with hosts in subgroup in pre-defined order
 - [mainnet]: at the end of session, user creates `MsgSettleEscrow(state_root, nonce, signatures, usage, host_stats, ...)`
 
-Q1: Who decides host punishments, the subchain or mainnet?
+Q: Who decides host punishments, the subchain or mainnet?
+A: Mainnet. The subchain records raw per-session stats (missed/invalid counts) in MsgSettleEscrow. Subchain-level punishment would require shared persistent state per group, forcing fixed groups instead of dynamic ones.
 
-If the subchain decides: it needs to aggregate stats across users, which requires shared persistent state per group, which requires fixed groups rather than dynamic per-user ones.
-
-Current approach: mainnet decides. The subchain only records raw per-session stats (missed/invalid counts per host) inside `MsgSettleEscrow`. Mainnet aggregates across sessions and applies punishment. Can be revisited.
-
-Q2: Do hosts maintain per-group state or per-user state?
-
-If per-group: same consequence as Q1 option A, fixed groups required.
-
-Current approach: per-user, following from Q1. Each host tracks only what happened inside each user session. No shared state between users in the same group. This is what makes dynamic per-session groups possible. Can be revisited.
-
-The further proposal follows this architecture: "chain per user".
+Q: Do hosts maintain per-group state or per-user state?
+A: Per-user. Each host tracks only what happened inside each user session. No shared state between users in the same group. This is what makes dynamic per-session groups possible.
 
 
 ## Main Network Protocol
@@ -116,7 +105,7 @@ MsgSettleEscrow(
 )
 
 HostStats(
-  missed,                             # execution misses (started but never finished)
+  missed,                             # timeout count (refused + execution)
   invalid,                            # inferences invalidated by challenge voting
   cost,                               # total cost of inferences executed
   required_validations,               # inferences ShouldValidate selected for this host
@@ -124,10 +113,7 @@ HostStats(
 )
 ```
 
-Mainnet recomputes host_stats_hash from the submitted host_stats, verifies hash(host_stats_hash || rest_hash) == state_root, then checks 2/3+ slot-weighted signatures over (state_root, escrow_id, nonce). Settlement does not require individual inference records. The mandatory finalizing round ensures all seeds are revealed and validation compliance is computed before settlement.
-
-5. On the escrow settlement, mainnet verifies the Merkle proof and 2/3+ slot-weighted signatures.
-Once verified it settles escrow for the user: each host is paid from escrow according to host_stats[slot].cost, remaining balance (escrow_amount - sum of all host costs) is refunded to user, host_stats are recorded.
+Mainnet recomputes host_stats_hash from the submitted host_stats, verifies hash(host_stats_hash || rest_hash) == state_root, then checks 2/3+ slot-weighted signatures over (state_root, escrow_id, nonce). Settlement does not require individual inference records. The mandatory finalizing round ensures all seeds are revealed and validation compliance is computed before settlement. Once verified, each host is paid from escrow according to host_stats[slot].cost, remaining balance (escrow_amount - sum of all host costs) is refunded to user, host_stats are recorded.
 
 
 ## Subnet Protocol
@@ -161,7 +147,7 @@ Subnet transactions (7 txs, all off-chain):
 | MsgValidationVote | host | Vote during challenge |
 | MsgRevealSeed | host | Reveal validation seed during finalizing round |
 
-Only transactions change state. Signatures remain outside state -- they are metadata accumulated alongside diffs, never processed by the state machine.
+Only transactions change state. Host state signatures (over state_root at each nonce) remain outside state -- they are metadata accumulated alongside diffs, not processed by the state machine.
 
 ### Inference Lifecycle
 
@@ -197,7 +183,7 @@ Pipelining: the user does not block on receiving the receipt before sending the 
 
 ### Timeout Verification
 
-MsgTimeoutInference requires votes from other hosts as evidence. Proofs must be collected on time (hosts need to contact the executor and verify timestamps against their own clocks while the event is recent), but can be recorded into state later -- the user includes MsgTimeoutInference in any future diff alongside a MsgStartInference. The state machine verifies the votes deterministically.
+MsgTimeoutInference requires votes from other hosts as evidence. Proofs must be collected on time (hosts need to contact the executor and verify timestamps against their own clocks while the event is fresh), but can be recorded into state later via the normal propagation model. The state machine verifies the votes deterministically.
 
 > Currently proofs are collected from the full group. Later this can be optimized with a random subgroup.
 
@@ -210,7 +196,7 @@ Two reasons, each with different preconditions and verification:
 3. If executor responds and signs receipt -> vote: reject timeout (executor got the data, should compute)
 4. If executor unreachable -> vote: accept timeout
 5. User collects enough accept votes, includes MsgTimeoutInference(votes) in diff
-6. State machine verifies votes, applies timeout. host_stats[executor].missed += 1, balance += max_cost (refund)
+6. State machine verifies votes, applies timeout. host_stats[executor].missed += 1, reserved max_cost released back to escrow
 
 During verification, the prompt data is forwarded to the executor via other hosts. This serves as the recovery mechanism: even if the user's initial request didn't reach the executor, the verification phase propagates the data. If the executor receives it and responds with a receipt, the user should use MsgConfirmStart instead of timeout.
 
@@ -221,7 +207,7 @@ During verification, the prompt data is forwarded to the executor via other host
 3. If executor has result -> vote: reject timeout (MsgFinishInference should be included instead)
 4. If executor unreachable or no result + host's own clock confirms deadline passed -> vote: accept timeout
 5. User collects enough accept votes, includes MsgTimeoutInference(votes) in diff
-6. State machine verifies votes, applies timeout. host_stats[executor].missed += 1, balance += reserved_cost (refund)
+6. State machine verifies votes, applies timeout. host_stats[executor].missed += 1, reserved cost released back to escrow
 
 Timeout votes are signed statements: (escrow_id, inference_id, reason, result, host_timestamp). State machine verifies signatures and counts. Threshold: TBD (slot-weighted).
 
@@ -237,22 +223,22 @@ Timeout votes are signed statements: (escrow_id, inference_id, reason, result, h
 
 The only non-inference round is the finalizing round before settlement (see Settlement). During finalization, the user visits every host in order without MsgStartInference to reveal seeds and flush remaining txs.
 
-**Escrow accounting.** On each MsgStartInference, the subnet reserves max_cost from the user's escrow balance. Same as mainnet: `max_cost = (max_tokens + prompt_token_count) * per_token_price`. MsgFinishInference finalizes the cost based on actual token counts and refunds the difference. MsgTimeoutInference refunds the full reserved amount. Minimum escrow balance must be at least `subnet_size * max_inference_cost` at all times, ensuring enough to cover the worst case where every host in the group is processing a concurrent request.
+**Escrow accounting.** Each MsgStartInference reserves max_cost from the user's available escrow balance: `available_balance = escrow_amount - sum(active reservations)`. MsgStartInference is rejected if `available_balance < max_cost`. Same formula as mainnet: `max_cost = (max_tokens + prompt_token_count) * per_token_price`. MsgFinishInference finalizes cost based on actual token counts and releases the difference (max_cost - actual_cost). MsgTimeoutInference releases the full reserved amount. Users cannot overspend -- each inference is individually checked against available balance at creation time.
 
-**Nonce propagation.** After processing each user request, the receiving host gossips the current nonce to the group. Small constant-overhead message. Each host tracks the highest nonce seen. If host_i sees that nonce has advanced past its assigned position but was never contacted, it detects a gap. Nonce gossip also enables equivocation detection: if two hosts see different state_hashes for the same nonce, the user submitted conflicting diffs.
+**Finalized state.** A host considers state at nonce N finalized when it has collected 2/3+ slot-weighted signatures for that nonce. This is an operational concept tracked locally per host, not part of the state machine. Hosts use the latest finalized nonce as the safe settlement point (e.g., after equivocation or if the user disappears). Signatures arrive via nonce gossip and user-propagated diffs.
 
-**Host-proposed transactions.** Hosts produce transactions (MsgFinishInference, MsgValidation, etc.) that must be included in the state. The user is the sequencer, but cannot be trusted to include them. Propagation channels:
+**Nonce propagation.** After processing each user request, the receiving host gossips (nonce, state_hash, state_signature) to the group. Small constant-overhead message. Each host tracks the highest nonce seen. If host_i sees that nonce has advanced past its assigned position but was never contacted, it detects a gap. Equivocation detection: if two hosts see different state_hashes for the same nonce, the user submitted conflicting diffs. The included state_signature provides an additional signature collection path -- hosts accumulate signatures from each other directly, reducing dependency on the user as sole signature aggregator.
+
+**Host-proposed transactions.** Hosts produce transactions (MsgFinishInference, MsgValidation, etc.) that must be included in the state. The user is the sequencer, but cannot be trusted to include them. Each host maintains a mempool of unsettled transactions -- its own proposed txs plus txs received from other hosts via lazy gossip. Propagation channels:
 - Response body: host returns its proposed transactions to the user alongside the inference result.
-- Lazy gossip: host pushes proposed transactions to other hosts only if the user hasn't included them after K rounds. Zero overhead in the happy path.
+- Lazy gossip: host pushes proposed transactions to other hosts only if the user hasn't included them after K rounds. Zero overhead in the happy path. Once received, other hosts add them to their own mempool and can independently enforce inclusion.
 - Public endpoint: each host exposes its unsettled transactions per session. Fallback if lazy gossip fails.
 
-**Inclusion enforcement.** Two different rules depending on who proposed the transaction:
-- User-proposed (MsgStartInference): must appear in the very next round's diffs. The user has them at creation time, no reason for delay.
-- Host-proposed (MsgFinishInference, etc.): K rounds grace period (TBD). Accounts for async lag. After K rounds without inclusion, hosts trigger lazy gossip and refuse to sign.
+**Inclusion enforcement.** Hosts process every diff and update local state, but refuse to sign until all blocking conditions are resolved:
+- Host-proposed txs in mempool not included after K rounds grace period (accounts for async lag).
+- Equivocation detected (permanent -- host stops signing, any host can submit equivocation proof to mainnet, user loses full escrow).
 
-Each host response includes its unsettled mempool so the user always knows what's pending.
-
-**Retry on refusal.** If a host refuses to sign because the user hasn't included pending transactions, the user retries the same nonce with the missing transactions appended. The diff at a given nonce is append-only: a retry must be a strict superset of the original attempt. The host stores the first attempt's tx list and rejects any retry that removes or replaces transactions from it. This prevents equivocation -- the user cannot create two conflicting versions of the same nonce. K rounds is generous (tens of requests across the full group), so a well-behaved user client includes all known pending transactions automatically and never hits refusal.
+The user continues to future nonces normally. Once the missing txs are included, the host resumes signing. For settlement, only 2/3+ signatures on the final state are needed, so temporarily withheld signatures don't block progress. Each host response includes its mempool so the user always knows what's pending.
 
 
 ### Scenarios
@@ -395,10 +381,7 @@ Attack fails: the verification phase propagated the data to h1.
 ```
 
 
-#### User sends request without recording StartInference
-
-Not possible. The executor checks the diffs and rejects requests without a corresponding MsgStartInference. No StartInference = no payment authorization = no reason to compute.
-
+Sending a request without recording MsgStartInference is not possible -- the executor rejects requests without a corresponding MsgStartInference (no payment authorization = no reason to compute).
 
 #### Equivocation
 
@@ -416,9 +399,8 @@ h3 requests diffs from both h1 and h2.
 Two different user-signed diffs at nonce 5 = equivocation proof.
 h3 gossips evidence, stops signing.
 
-Session terminates. Hosts settle at last clean state (nonce 4).
-User cannot settle (no 2/3+ signatures after nonce 4).
-Hosts initiate settlement after timeout.
+Session terminates. Any host submits equivocation proof to mainnet
+(two user-signed diffs at the same nonce). User loses full escrow.
 ```
 
 
@@ -434,9 +416,7 @@ During the session, each host uses its seed to decide which finished inferences 
 
 Seed reveal happens during the mandatory finalizing round (see Settlement). Each host submits MsgRevealSeed(signature). Other hosts derive the seed from the signature, verify it against the known public key, re-run ShouldValidate for all finished inferences, and count misses. Compliance results go into host_stats before settlement.
 
-> We considered deriving the seed from the host's state signature at each nonce (no commit-reveal, no finalizing round). This avoids the extra round but requires signatures to be part of state for compliance verification. Signatures are deliberately not in state because they arrive asynchronously and would break deterministic state hashing. The finalizing round with reveal is simpler overall and also removes the need for a Merkle tree in settlement.
-
-> Note: the finalizing round could potentially be eliminated if the validation process is redesigned to not require a commit-reveal scheme (e.g. seeds derived from data already in state). This would allow settlement at any point without waiting for a full group round, improving liveness. Requires further refinement of the validation protocol.
+> We considered deriving the seed from the host's state signature at each nonce (no commit-reveal, no finalizing round). This avoids the extra round but requires signatures to be part of state for compliance verification. Signatures are deliberately not in state because they arrive asynchronously and would break deterministic state hashing. The finalizing round could potentially be eliminated if seeds are derived from data already in state, avoiding commit-reveal entirely. Requires further refinement of the validation protocol.
 
 
 ## Settlement
@@ -461,7 +441,7 @@ Settlement enters a dispute window of X blocks (TBD). During the window, any hos
 
 ## Example Requests
 
-Third request in the happy path (sent to h3). Carries accumulated diffs with receipts and host-proposed txs.
+Third request in the happy path (sent to h3):
 
 ```
 POST /chat/completions
@@ -482,7 +462,7 @@ Host: h3
 }
 ```
 
-For comparison, the first request (to h1) carries only one diff:
+First request (to h1):
 
 ```
 {
@@ -493,8 +473,6 @@ For comparison, the first request (to h1) carries only one diff:
   "state_hash": "<SHA256>"
 }
 ```
-
-Signatures for earlier nonces accumulate over time as hosts return them. By nonce 3, sig_h1 (returned with req1 response) and sig_h2 (returned with req2 response) are attached. Nonce 3 has no signatures yet: h3 will sign it and return sig_h3 in the response.
 
 
 ## Weights in Subnet
