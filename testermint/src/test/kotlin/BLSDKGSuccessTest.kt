@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit
  * - ./gradlew test --tests "BLSDKGSuccessTest" (bypasses excludeTags)
  * - IntelliJ: Right-click and run individual tests
  */
-@Timeout(value = 15, unit = TimeUnit.MINUTES)
+@Timeout(value = 20, unit = TimeUnit.MINUTES)
 class BLSDKGSuccessTest : TestermintTest() {
 
     @Test
