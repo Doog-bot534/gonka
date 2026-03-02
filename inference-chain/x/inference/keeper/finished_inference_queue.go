@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 
 	corestore "cosmossdk.io/core/store"
-	storetypes "cosmossdk.io/store/types"
 )
 
 var (
@@ -26,32 +25,35 @@ func (k Keeper) EnqueueFinishedInference(ctx context.Context, inferenceID string
 }
 
 // ListFinishedInferenceIDs lists all queued finished inference IDs in FIFO order.
-func (k Keeper) ListFinishedInferenceIDs(ctx context.Context) []string {
+//
+// NOTE: We do not use transient store iterators here because some production transient-store
+// implementations do not support Iterator reliably. We instead scan by sequence number.
+func (k Keeper) ListFinishedInferenceIDs(ctx context.Context) ([]string, error) {
 	transientStore := k.transientStoreService.OpenTransientStore(ctx)
 
-	// Preallocate the slice by fetching the current sequence length
-	var capacity uint64
-	if nextSeqBz, err := transientStore.Get(finishedInferenceQueueNextSeqKey); err == nil && len(nextSeqBz) == 8 {
-		capacity = binary.BigEndian.Uint64(nextSeqBz)
-	}
-
-	it, err := transientStore.Iterator(
-		finishedInferenceQueueEntryPrefix,
-		storetypes.PrefixEndBytes(finishedInferenceQueueEntryPrefix),
-	)
+	nextSeqBz, err := transientStore.Get(finishedInferenceQueueNextSeqKey)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	defer it.Close()
 
-	finishedInferenceIDs := make([]string, 0, capacity)
-	for ; it.Valid(); it.Next() {
-		finishedInferenceIDs = append(finishedInferenceIDs, string(it.Value()))
+	var nextSeq uint64
+	if len(nextSeqBz) == 8 {
+		nextSeq = binary.BigEndian.Uint64(nextSeqBz)
 	}
-	if err := it.Error(); err != nil {
-		return nil
+
+	finishedInferenceIDs := make([]string, 0, nextSeq)
+	for seq := uint64(0); seq < nextSeq; seq++ {
+		bz, err := transientStore.Get(finishedInferenceQueueEntryKey(seq))
+		if err != nil {
+			return nil, err
+		}
+		if len(bz) == 0 {
+			continue
+		}
+		finishedInferenceIDs = append(finishedInferenceIDs, string(bz))
 	}
-	return finishedInferenceIDs
+
+	return finishedInferenceIDs, nil
 }
 
 func (k Keeper) getAndIncrementFinishedInferenceQueueSeq(transientStore corestore.KVStore) (uint64, error) {

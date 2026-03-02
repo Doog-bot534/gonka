@@ -19,7 +19,10 @@ func (am AppModule) processFinishedInferencesInBlock(
 	currentEpochGroup *epochgroup.EpochGroup,
 	params *types.Params,
 ) {
-	pendingInferenceIDs := am.keeper.ListFinishedInferenceIDs(ctx)
+	pendingInferenceIDs, err := am.keeper.ListFinishedInferenceIDs(ctx)
+	if err != nil {
+		am.LogError("Failed to list finished inference IDs", types.Inferences, "error", err)
+	}
 	modelBlockLoads := make(map[string]uint64)
 	modelBlockInferenceCounts := make(map[string]uint64)
 	if len(pendingInferenceIDs) == 0 {
