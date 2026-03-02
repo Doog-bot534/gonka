@@ -187,7 +187,8 @@ class BLSDKGSuccessTest : TestermintTest() {
         blsDataList.forEach { (nodeName, blsData) ->
             assertThat(blsData).isNotNull()
             assertThat(blsData?.epochId).isEqualTo(referenceData?.epochId)
-            assertThat(blsData?.dkgPhase).isEqualTo(DKGPhase.COMPLETED)
+            // Allow SIGNED phase as well — DKG can advance past COMPLETED to SIGNED quickly
+            assertThat(blsData?.dkgPhase).isIn(DKGPhase.COMPLETED, DKGPhase.SIGNED)
             assertThat(blsData?.groupPublicKey).isEqualTo(referenceData?.groupPublicKey)
             Logger.info("Cross-node consistency validated for node: $nodeName")
         }
@@ -229,8 +230,9 @@ class BLSDKGSuccessTest : TestermintTest() {
             }
             
             assertThat(blsData?.groupPublicKey).isNotNull()
-            assertThat(blsData?.dkgPhase).isEqualTo(DKGPhase.COMPLETED)
-            
+            // Allow SIGNED phase as well — DKG can advance past COMPLETED to SIGNED quickly
+            assertThat(blsData?.dkgPhase).isIn(DKGPhase.COMPLETED, DKGPhase.SIGNED)
+
             Logger.info("Node ${pair.name} ready for threshold signing")
         }
         
