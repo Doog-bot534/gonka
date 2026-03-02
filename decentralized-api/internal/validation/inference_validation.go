@@ -940,7 +940,7 @@ func (s *InferenceValidator) validateWithPayloads(inference types.Inference, inf
 		}, nil
 	}
 
-	if isEmptySentinel {
+	if isEmptySentinel && resp.StatusCode == http.StatusOK {
 		logging.Warn("Executor returned error but validator successfully served the prompt", types.Validation,
 			"inferenceId", inference.InferenceId,
 			"validatorStatus", resp.StatusCode)
