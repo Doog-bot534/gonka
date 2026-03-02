@@ -879,14 +879,20 @@ func (s *InferenceValidator) validateWithPayloads(inference types.Inference, inf
 		return &InvalidInferenceResult{inference.InferenceId, "Failed to get enforced string.", err}, nil
 	}
 
-	if hasNonNumericTokens(enforcedTokens) {
+	isEmptySentinel := isEmptySentinelTokens(enforcedTokens)
+
+	if !isEmptySentinel && hasNonNumericTokens(enforcedTokens) {
 		logging.Warn("Executor response contains non-numeric token strings in logprobs instead of token IDs", types.Validation,
 			"inferenceId", inference.InferenceId)
 		return &InvalidInferenceResult{inference.InferenceId, "Logprobs contain decoded text instead of numeric token IDs.", nil}, nil
 	}
 
-	// From here on, errors are on the part of the validator, not the inference that was passed in
-	requestMap["enforced_tokens"] = enforcedTokens
+	if isEmptySentinel {
+		logging.Info("Detected empty sentinel response; replaying prompt without enforced tokens to verify executor failure", types.Validation,
+			"inferenceId", inference.InferenceId)
+	} else {
+		requestMap["enforced_tokens"] = enforcedTokens
+	}
 	requestMap["stream"] = false
 	requestMap["skip_special_tokens"] = false
 	delete(requestMap, "stream_options")
@@ -932,6 +938,13 @@ func (s *InferenceValidator) validateWithPayloads(inference types.Inference, inf
 			},
 			Value: 1.0,
 		}, nil
+	}
+
+	if isEmptySentinel {
+		logging.Warn("Executor returned error but validator successfully served the prompt", types.Validation,
+			"inferenceId", inference.InferenceId,
+			"validatorStatus", resp.StatusCode)
+		return &InvalidInferenceResult{inference.InferenceId, "Executor returned error but prompt is servable.", nil}, nil
 	}
 
 	logging.Debug("responseValidation", types.Validation, "validation", string(respBodyBytes))
@@ -1041,6 +1054,17 @@ func (r InvalidInferenceResult) GetInferenceId() string {
 
 func (r InvalidInferenceResult) GetValidationResponseBytes() []byte {
 	return []byte{}
+}
+
+const emptySentinelToken = "<EMPTY>"
+
+func isEmptySentinelTokens(et completionapi.EnforcedTokens) bool {
+	for _, t := range et.Tokens {
+		if t.Token == emptySentinelToken {
+			return true
+		}
+	}
+	return false
 }
 
 func hasNonNumericTokens(et completionapi.EnforcedTokens) bool {
