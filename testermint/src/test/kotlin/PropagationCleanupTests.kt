@@ -142,6 +142,7 @@ class PropagationCleanupTests : TestermintTest() {
                     this[EpochParams::epochLength] = 15L
                     this[EpochParams::pocStageDuration] = 3L
                     this[EpochParams::pocExchangeDuration] = 2L
+                    this[EpochParams::pocValidationDelay] = 5L
                     this[EpochParams::pocValidationDuration] = 3L
                 }
                 this[InferenceParams::pocParams] = spec<PocParams> {

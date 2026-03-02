@@ -528,6 +528,7 @@ class PoCMigrationTests : TestermintTest() {
                     this[EpochParams::pocStageDuration] = 5L
                     this[EpochParams::pocValidationDuration] = 4L
                     this[EpochParams::pocExchangeDuration] = 2L
+                    this[EpochParams::pocValidationDelay] = 5L
                 }
                 this[InferenceParams::pocParams] = spec<PocParams> {
                     this[PocParams::pocV2Enabled] = false
