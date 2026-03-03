@@ -86,7 +86,11 @@ func getInactiveStatus(newStats *types.CurrentEpochStats, oldStats types.Current
 		return Error
 	}
 
-	if precomputed.InactiveLogFail.IsZero() && precomputed.InactiveLogPass.IsZero() {
+	if precomputed.InactiveLogFail == nil || precomputed.InactiveLogPass == nil {
+		return Error
+	}
+
+	if precomputed.InactiveLogFail.ToDecimal().IsZero() && precomputed.InactiveLogPass.ToDecimal().IsZero() {
 		return Error
 	}
 
@@ -96,8 +100,8 @@ func getInactiveStatus(newStats *types.CurrentEpochStats, oldStats types.Current
 	inactiveSprt := SPRT{
 		H:       parameters.DowntimeHThreshold.ToDecimal(),
 		LLR:     newStats.InactiveLLR.ToDecimal(),
-		logFail: precomputed.InactiveLogFail,
-		logPass: precomputed.InactiveLogPass,
+		logFail: precomputed.InactiveLogFail.ToDecimal(),
+		logPass: precomputed.InactiveLogPass.ToDecimal(),
 	}
 
 	inactiveSprt = inactiveSprt.UpdateCounts(newMissedInferences, newInferences)
@@ -110,7 +114,11 @@ func getInvalidationStatus(newStats *types.CurrentEpochStats, oldStats types.Cur
 		return Error
 	}
 
-	if precomputed.InvalidationLogFail.IsZero() && precomputed.InvalidationLogPass.IsZero() {
+	if precomputed.InvalidationLogFail == nil || precomputed.InvalidationLogPass == nil {
+		return Error
+	}
+
+	if precomputed.InvalidationLogFail.ToDecimal().IsZero() && precomputed.InvalidationLogPass.ToDecimal().IsZero() {
 		return Error
 	}
 
@@ -120,8 +128,8 @@ func getInvalidationStatus(newStats *types.CurrentEpochStats, oldStats types.Cur
 	invalidationSprt := SPRT{
 		H:       parameters.InvalidationHThreshold.ToDecimal(),
 		LLR:     newStats.InvalidLLR.ToDecimal(),
-		logFail: precomputed.InvalidationLogFail,
-		logPass: precomputed.InvalidationLogPass,
+		logFail: precomputed.InvalidationLogFail.ToDecimal(),
+		logPass: precomputed.InvalidationLogPass.ToDecimal(),
 	}
 
 	invalidationSprt = invalidationSprt.UpdateCounts(newInvalidations, newValidations)

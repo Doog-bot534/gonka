@@ -101,10 +101,10 @@ func TestPrecomputeSPRTValues(t *testing.T) {
 	expectedInactiveLogFail := keeper.CalculateLogLLR(decimal.NewFromFloat(0.4), decimal.NewFromFloat(0.1), true)
 	expectedInactiveLogPass := keeper.CalculateLogLLR(decimal.NewFromFloat(0.4), decimal.NewFromFloat(0.1), false)
 
-	require.True(t, precomputed.InvalidationLogFail.Equal(expectedInvalidationLogFail))
-	require.True(t, precomputed.InvalidationLogPass.Equal(expectedInvalidationLogPass))
-	require.True(t, precomputed.InactiveLogFail.Equal(expectedInactiveLogFail))
-	require.True(t, precomputed.InactiveLogPass.Equal(expectedInactiveLogPass))
+	require.True(t, precomputed.InvalidationLogFail.ToDecimal().Equal(expectedInvalidationLogFail))
+	require.True(t, precomputed.InvalidationLogPass.ToDecimal().Equal(expectedInvalidationLogPass))
+	require.True(t, precomputed.InactiveLogFail.ToDecimal().Equal(expectedInactiveLogFail))
+	require.True(t, precomputed.InactiveLogPass.ToDecimal().Equal(expectedInactiveLogPass))
 }
 
 func TestGetPrecomputedSPRTValues_Empty(t *testing.T) {
@@ -112,5 +112,5 @@ func TestGetPrecomputedSPRTValues_Empty(t *testing.T) {
 
 	precomputed, found := k.GetPrecomputedSPRTValues(ctx)
 	require.False(t, found)
-	require.True(t, precomputed.InvalidationLogFail.IsZero())
+	require.True(t, precomputed.InvalidationLogFail == nil || precomputed.InvalidationLogFail.Value == 0)
 }

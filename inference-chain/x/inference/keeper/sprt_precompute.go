@@ -2,7 +2,6 @@ package keeper
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/productscience/inference/x/inference/types"
 	"github.com/shopspring/decimal"
@@ -21,14 +20,14 @@ func (k Keeper) PrecomputeSPRTValues(ctx context.Context) error {
 		vp = types.DefaultValidationParams()
 	}
 
-	precomputed := types.SPRTPrecomputedValues{
-		InvalidationLogFail: CalculateLogLLR(vp.BadParticipantInvalidationRate.ToDecimal(), vp.FalsePositiveRate.ToDecimal(), true),
-		InvalidationLogPass: CalculateLogLLR(vp.BadParticipantInvalidationRate.ToDecimal(), vp.FalsePositiveRate.ToDecimal(), false),
-		InactiveLogFail:     CalculateLogLLR(vp.DowntimeBadPercentage.ToDecimal(), vp.DowntimeGoodPercentage.ToDecimal(), true),
-		InactiveLogPass:     CalculateLogLLR(vp.DowntimeBadPercentage.ToDecimal(), vp.DowntimeGoodPercentage.ToDecimal(), false),
+	precomputed := &types.SPRTPrecomputedValues{
+		InvalidationLogFail: types.DecimalFromDecimal(CalculateLogLLR(vp.BadParticipantInvalidationRate.ToDecimal(), vp.FalsePositiveRate.ToDecimal(), true)),
+		InvalidationLogPass: types.DecimalFromDecimal(CalculateLogLLR(vp.BadParticipantInvalidationRate.ToDecimal(), vp.FalsePositiveRate.ToDecimal(), false)),
+		InactiveLogFail:     types.DecimalFromDecimal(CalculateLogLLR(vp.DowntimeBadPercentage.ToDecimal(), vp.DowntimeGoodPercentage.ToDecimal(), true)),
+		InactiveLogPass:     types.DecimalFromDecimal(CalculateLogLLR(vp.DowntimeBadPercentage.ToDecimal(), vp.DowntimeGoodPercentage.ToDecimal(), false)),
 	}
 
-	bz, err := json.Marshal(precomputed)
+	bz, err := precomputed.Marshal()
 	if err != nil {
 		return err
 	}
@@ -46,7 +45,7 @@ func (k Keeper) GetPrecomputedSPRTValues(ctx context.Context) (types.SPRTPrecomp
 	}
 
 	var precomputed types.SPRTPrecomputedValues
-	if err := json.Unmarshal(bz, &precomputed); err != nil {
+	if err := precomputed.Unmarshal(bz); err != nil {
 		return types.SPRTPrecomputedValues{}, false
 	}
 

@@ -15,10 +15,10 @@ var (
 	}
 
 	testPrecomputed = types.SPRTPrecomputedValues{
-		InvalidationLogFail: calculateLogLLR(decimal.NewFromFloat(0.1), decimal.NewFromFloat(0.05), true),
-		InvalidationLogPass: calculateLogLLR(decimal.NewFromFloat(0.1), decimal.NewFromFloat(0.05), false),
-		InactiveLogFail:     calculateLogLLR(decimal.NewFromFloat(0.2), decimal.NewFromFloat(0.1), true),
-		InactiveLogPass:     calculateLogLLR(decimal.NewFromFloat(0.2), decimal.NewFromFloat(0.1), false),
+		InvalidationLogFail: types.DecimalFromDecimal(calculateLogLLR(decimal.NewFromFloat(0.1), decimal.NewFromFloat(0.05), true)),
+		InvalidationLogPass: types.DecimalFromDecimal(calculateLogLLR(decimal.NewFromFloat(0.1), decimal.NewFromFloat(0.05), false)),
+		InactiveLogFail:     types.DecimalFromDecimal(calculateLogLLR(decimal.NewFromFloat(0.2), decimal.NewFromFloat(0.1), true)),
+		InactiveLogPass:     types.DecimalFromDecimal(calculateLogLLR(decimal.NewFromFloat(0.2), decimal.NewFromFloat(0.1), false)),
 	}
 )
 
