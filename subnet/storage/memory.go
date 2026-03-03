@@ -1,0 +1,145 @@
+package storage
+
+import (
+	"fmt"
+	"sync"
+
+	"subnet/types"
+)
+
+type sessionData struct {
+	escrowID string
+	group    []types.SlotAssignment
+	balance  uint64
+	diffs    []types.DiffRecord
+}
+
+// Memory is an in-memory storage implementation for testing.
+type Memory struct {
+	mu       sync.RWMutex
+	sessions map[string]*sessionData
+}
+
+func NewMemory() *Memory {
+	return &Memory{
+		sessions: make(map[string]*sessionData),
+	}
+}
+
+func (m *Memory) CreateSession(escrowID string, group []types.SlotAssignment, balance uint64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, exists := m.sessions[escrowID]; exists {
+		return fmt.Errorf("session %s already exists", escrowID)
+	}
+
+	groupCopy := make([]types.SlotAssignment, len(group))
+	copy(groupCopy, group)
+
+	m.sessions[escrowID] = &sessionData{
+		escrowID: escrowID,
+		group:    groupCopy,
+		balance:  balance,
+	}
+	return nil
+}
+
+func (m *Memory) AppendDiff(escrowID string, rec types.DiffRecord) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	s, ok := m.sessions[escrowID]
+	if !ok {
+		return fmt.Errorf("session %s not found", escrowID)
+	}
+
+	// Deep copy signatures map.
+	sigsCopy := make(map[uint32][]byte, len(rec.Signatures))
+	for k, v := range rec.Signatures {
+		vc := make([]byte, len(v))
+		copy(vc, v)
+		sigsCopy[k] = vc
+	}
+	rec.Signatures = sigsCopy
+
+	s.diffs = append(s.diffs, rec)
+	return nil
+}
+
+func (m *Memory) AddSignature(escrowID string, nonce uint64, slotID uint32, sig []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	s, ok := m.sessions[escrowID]
+	if !ok {
+		return fmt.Errorf("session %s not found", escrowID)
+	}
+
+	for i := range s.diffs {
+		if s.diffs[i].Nonce == nonce {
+			if s.diffs[i].Signatures == nil {
+				s.diffs[i].Signatures = make(map[uint32][]byte)
+			}
+			sc := make([]byte, len(sig))
+			copy(sc, sig)
+			s.diffs[i].Signatures[slotID] = sc
+			return nil
+		}
+	}
+
+	return fmt.Errorf("diff at nonce %d not found for session %s", nonce, escrowID)
+}
+
+func (m *Memory) GetState(escrowID string) (*types.EscrowState, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	s, ok := m.sessions[escrowID]
+	if !ok {
+		return nil, fmt.Errorf("session %s not found", escrowID)
+	}
+
+	groupCopy := make([]types.SlotAssignment, len(s.group))
+	copy(groupCopy, s.group)
+
+	state := &types.EscrowState{
+		EscrowID: s.escrowID,
+		Group:    groupCopy,
+		Balance:  s.balance,
+	}
+
+	if len(s.diffs) > 0 {
+		state.LatestNonce = s.diffs[len(s.diffs)-1].Nonce
+	}
+
+	return state, nil
+}
+
+func (m *Memory) GetDiffs(escrowID string, fromNonce, toNonce uint64) ([]types.DiffRecord, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	s, ok := m.sessions[escrowID]
+	if !ok {
+		return nil, fmt.Errorf("session %s not found", escrowID)
+	}
+
+	var result []types.DiffRecord
+	for _, d := range s.diffs {
+		if d.Nonce >= fromNonce && d.Nonce <= toNonce {
+			// Deep copy signatures.
+			sigsCopy := make(map[uint32][]byte, len(d.Signatures))
+			for k, v := range d.Signatures {
+				vc := make([]byte, len(v))
+				copy(vc, v)
+				sigsCopy[k] = vc
+			}
+			dc := d
+			dc.Signatures = sigsCopy
+			result = append(result, dc)
+		}
+	}
+
+	return result, nil
+}
