@@ -1,10 +1,11 @@
 package state
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-	"sort"
+	"slices"
 
 	"google.golang.org/protobuf/proto"
 
@@ -55,7 +56,7 @@ func computeHostStatsHash(hostStats map[uint32]*types.HostStats) ([]byte, error)
 	for id := range hostStats {
 		slotIDs = append(slotIDs, id)
 	}
-	sort.Slice(slotIDs, func(i, j int) bool { return slotIDs[i] < slotIDs[j] })
+	slices.SortFunc(slotIDs, func(a, b uint32) int { return cmp.Compare(a, b) })
 
 	entries := make([]*types.HostStatsProto, 0, len(slotIDs))
 	for _, id := range slotIDs {
@@ -100,7 +101,7 @@ func computeInferencesHash(inferences map[uint64]*types.InferenceRecord) ([]byte
 	for id := range inferences {
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	slices.SortFunc(ids, func(a, b uint64) int { return cmp.Compare(a, b) })
 
 	entries := make([]*types.InferenceRecordProto, 0, len(ids))
 	for _, id := range ids {

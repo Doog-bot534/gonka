@@ -15,7 +15,7 @@ func TestCreateSession_GetState(t *testing.T) {
 		{SlotID: 1, ValidatorAddress: "addr1", Weight: 1},
 	}
 
-	err := store.CreateSession("escrow-1", group, 1000)
+	err := store.CreateSession("escrow-1", types.SessionConfig{}, group, 1000)
 	require.NoError(t, err)
 
 	state, err := store.GetState("escrow-1")
@@ -29,7 +29,7 @@ func TestCreateSession_GetState(t *testing.T) {
 func TestAppendDiff_GetDiffs(t *testing.T) {
 	store := NewMemory()
 	group := []types.SlotAssignment{{SlotID: 0, ValidatorAddress: "addr0", Weight: 1}}
-	err := store.CreateSession("escrow-1", group, 1000)
+	err := store.CreateSession("escrow-1", types.SessionConfig{}, group, 1000)
 	require.NoError(t, err)
 
 	for i := uint64(1); i <= 5; i++ {
@@ -55,7 +55,7 @@ func TestAppendDiff_GetDiffs(t *testing.T) {
 func TestAddSignature(t *testing.T) {
 	store := NewMemory()
 	group := []types.SlotAssignment{{SlotID: 0, ValidatorAddress: "addr0", Weight: 1}}
-	err := store.CreateSession("escrow-1", group, 1000)
+	err := store.CreateSession("escrow-1", types.SessionConfig{}, group, 1000)
 	require.NoError(t, err)
 
 	err = store.AppendDiff("escrow-1", types.DiffRecord{

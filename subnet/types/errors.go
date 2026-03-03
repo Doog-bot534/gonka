@@ -22,4 +22,6 @@ var (
 	ErrEmptyTx               = errors.New("subnet tx has no message set")
 	ErrDuplicateInferenceID  = errors.New("duplicate inference ID")
 	ErrInvalidVoteSig        = errors.New("invalid vote signature")
+	ErrInvalidInferenceID    = errors.New("inference_id must equal diff nonce")
+	ErrSlotNotInGroup        = errors.New("slot not in group")
 )

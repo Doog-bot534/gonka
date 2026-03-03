@@ -9,6 +9,7 @@ import (
 
 type sessionData struct {
 	escrowID string
+	config   types.SessionConfig
 	group    []types.SlotAssignment
 	balance  uint64
 	diffs    []types.DiffRecord
@@ -26,7 +27,7 @@ func NewMemory() *Memory {
 	}
 }
 
-func (m *Memory) CreateSession(escrowID string, group []types.SlotAssignment, balance uint64) error {
+func (m *Memory) CreateSession(escrowID string, config types.SessionConfig, group []types.SlotAssignment, balance uint64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -35,10 +36,18 @@ func (m *Memory) CreateSession(escrowID string, group []types.SlotAssignment, ba
 	}
 
 	groupCopy := make([]types.SlotAssignment, len(group))
-	copy(groupCopy, group)
+	for i, sa := range group {
+		cp := sa
+		if sa.PublicKey != nil {
+			cp.PublicKey = make([]byte, len(sa.PublicKey))
+			copy(cp.PublicKey, sa.PublicKey)
+		}
+		groupCopy[i] = cp
+	}
 
 	m.sessions[escrowID] = &sessionData{
 		escrowID: escrowID,
+		config:   config,
 		group:    groupCopy,
 		balance:  balance,
 	}
@@ -101,10 +110,18 @@ func (m *Memory) GetState(escrowID string) (*types.EscrowState, error) {
 	}
 
 	groupCopy := make([]types.SlotAssignment, len(s.group))
-	copy(groupCopy, s.group)
+	for i, sa := range s.group {
+		cp := sa
+		if sa.PublicKey != nil {
+			cp.PublicKey = make([]byte, len(sa.PublicKey))
+			copy(cp.PublicKey, sa.PublicKey)
+		}
+		groupCopy[i] = cp
+	}
 
 	state := &types.EscrowState{
 		EscrowID: s.escrowID,
+		Config:   s.config,
 		Group:    groupCopy,
 		Balance:  s.balance,
 	}

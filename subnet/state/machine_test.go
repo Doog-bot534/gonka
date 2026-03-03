@@ -607,7 +607,7 @@ func TestApplyDiff_MultipleMsgStartInference(t *testing.T) {
 
 	txs := []*types.SubnetTx{
 		txStart(&types.MsgStartInference{InferenceId: 1, InputLength: 10, MaxTokens: 5}),
-		txStart(&types.MsgStartInference{InferenceId: 2, InputLength: 10, MaxTokens: 5}),
+		txStart(&types.MsgStartInference{InferenceId: 1, InputLength: 10, MaxTokens: 5}),
 	}
 	diff := signDiff(t, user, 1, txs)
 	_, err := sm.ApplyDiff(diff)
@@ -728,29 +728,26 @@ func TestApplyDiff_FullLifecycle(t *testing.T) {
 	sm, user := newTestSM(t, hosts, 100000)
 	nonce := uint64(0)
 
-	type infSpec struct {
-		id      uint64
-		outcome string
+	outcomes := []string{
+		"finished", "finished", "timed_out", "finished",
+		"validated", "invalidated", "finished", "timed_out",
+		"finished", "finished",
 	}
 
-	specs := []infSpec{
-		{1, "finished"}, {2, "finished"}, {3, "timed_out"}, {4, "finished"},
-		{5, "validated"}, {6, "invalidated"}, {7, "finished"}, {8, "timed_out"},
-		{9, "finished"}, {10, "finished"},
-	}
-
-	for _, spec := range specs {
-		executorSlotIdx := spec.id % uint64(len(hosts))
-
+	for _, outcome := range outcomes {
+		// inference_id == nonce of the start diff.
 		nonce++
+		infID := nonce
+		executorSlotIdx := infID % uint64(len(hosts))
+
 		diff := signDiff(t, user, nonce, []*types.SubnetTx{txStart(&types.MsgStartInference{
-			InferenceId: spec.id, PromptHash: []byte("prompt"), Model: "llama",
-			InputLength: 100, MaxTokens: 50, StartedAt: int64(spec.id) * 1000,
+			InferenceId: infID, PromptHash: []byte("prompt"), Model: "llama",
+			InputLength: 100, MaxTokens: 50, StartedAt: int64(infID) * 1000,
 		})})
 		_, err := sm.ApplyDiff(diff)
 		require.NoError(t, err)
 
-		if spec.outcome == "timed_out" {
+		if outcome == "timed_out" {
 			var votes []*types.TimeoutVote
 			for _, slot := range []uint32{0, 1, 2, 3, 4} {
 				if slot == uint32(executorSlotIdx) {
@@ -759,29 +756,29 @@ func TestApplyDiff_FullLifecycle(t *testing.T) {
 				if len(votes) >= 3 {
 					break
 				}
-				v := signTimeoutVote(t, hosts[slot], "escrow-1", spec.id, "refused", true)
+				v := signTimeoutVote(t, hosts[slot], "escrow-1", infID, "refused", true)
 				v.VoterSlot = slot
 				votes = append(votes, v)
 			}
 			nonce++
 			diff = signDiff(t, user, nonce, []*types.SubnetTx{txTimeout(&types.MsgTimeoutInference{
-				InferenceId: spec.id, Reason: "refused", Votes: votes,
+				InferenceId: infID, Reason: "refused", Votes: votes,
 			})})
 			_, err = sm.ApplyDiff(diff)
 			require.NoError(t, err)
 			continue
 		}
 
-		execSig := signExecutorReceipt(t, hosts[executorSlotIdx], spec.id, []byte("prompt"), "llama", 100, 50, int64(spec.id)*1000)
+		execSig := signExecutorReceipt(t, hosts[executorSlotIdx], infID, []byte("prompt"), "llama", 100, 50, int64(infID)*1000)
 		nonce++
 		diff = signDiff(t, user, nonce, []*types.SubnetTx{txConfirm(&types.MsgConfirmStart{
-			InferenceId: spec.id, ExecutorSig: execSig,
+			InferenceId: infID, ExecutorSig: execSig,
 		})})
 		_, err = sm.ApplyDiff(diff)
 		require.NoError(t, err)
 
 		finishMsg := &types.MsgFinishInference{
-			InferenceId: spec.id, ResponseHash: []byte("response"),
+			InferenceId: infID, ResponseHash: []byte("response"),
 			InputTokens: 80, OutputTokens: 40, ExecutorSlot: uint32(executorSlotIdx),
 		}
 		finishMsg.ProposerSig = signProposerTx(t, hosts[0], finishMsg)
@@ -790,13 +787,13 @@ func TestApplyDiff_FullLifecycle(t *testing.T) {
 		_, err = sm.ApplyDiff(diff)
 		require.NoError(t, err)
 
-		if spec.outcome == "finished" {
+		if outcome == "finished" {
 			continue
 		}
 
-		if spec.outcome == "validated" {
+		if outcome == "validated" {
 			validatorSlot := uint32((executorSlotIdx + 1) % uint64(len(hosts)))
-			valMsg := &types.MsgValidation{InferenceId: spec.id, ValidatorSlot: validatorSlot, Valid: true}
+			valMsg := &types.MsgValidation{InferenceId: infID, ValidatorSlot: validatorSlot, Valid: true}
 			valMsg.ProposerSig = signProposerTx(t, hosts[validatorSlot], valMsg)
 			nonce++
 			diff = signDiff(t, user, nonce, []*types.SubnetTx{txValidation(valMsg)})
@@ -805,9 +802,9 @@ func TestApplyDiff_FullLifecycle(t *testing.T) {
 			continue
 		}
 
-		if spec.outcome == "invalidated" {
+		if outcome == "invalidated" {
 			validatorSlot := uint32((executorSlotIdx + 1) % uint64(len(hosts)))
-			valMsg := &types.MsgValidation{InferenceId: spec.id, ValidatorSlot: validatorSlot, Valid: false}
+			valMsg := &types.MsgValidation{InferenceId: infID, ValidatorSlot: validatorSlot, Valid: false}
 			valMsg.ProposerSig = signProposerTx(t, hosts[validatorSlot], valMsg)
 			nonce++
 			diff = signDiff(t, user, nonce, []*types.SubnetTx{txValidation(valMsg)})
@@ -823,7 +820,7 @@ func TestApplyDiff_FullLifecycle(t *testing.T) {
 				if votedCount >= 3 {
 					break
 				}
-				voteMsg := &types.MsgValidationVote{InferenceId: spec.id, VoterSlot: slot, VoteValid: false}
+				voteMsg := &types.MsgValidationVote{InferenceId: infID, VoterSlot: slot, VoteValid: false}
 				voteMsg.ProposerSig = signProposerTx(t, hosts[slot], voteMsg)
 				voteTxs = append(voteTxs, txVote(voteMsg))
 				votedCount++
@@ -861,6 +858,19 @@ func TestApplyDiff_FullLifecycle(t *testing.T) {
 	require.Equal(t, uint64(100000)-totalCost, state.Balance)
 }
 
+func TestApplyDiff_InferenceIDMustMatchNonce(t *testing.T) {
+	hosts := []*signing.Secp256k1Signer{mustGenerateKey(t), mustGenerateKey(t), mustGenerateKey(t)}
+	sm, user := newTestSM(t, hosts, 10000)
+
+	// inference_id=42 at nonce=1 -> rejected.
+	diff := signDiff(t, user, 1, []*types.SubnetTx{txStart(&types.MsgStartInference{
+		InferenceId: 42, PromptHash: []byte("prompt"), Model: "llama",
+		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
+	})})
+	_, err := sm.ApplyDiff(diff)
+	require.ErrorIs(t, err, types.ErrInvalidInferenceID)
+}
+
 // --- 4 new tests ---
 
 func TestApplyDiff_DuplicateInferenceID(t *testing.T) {
@@ -875,13 +885,13 @@ func TestApplyDiff_DuplicateInferenceID(t *testing.T) {
 	_, err := sm.ApplyDiff(diff)
 	require.NoError(t, err)
 
-	// Second start with same ID rejected.
+	// Second start with same ID rejected (inference_id=1 != nonce=2).
 	diff = signDiff(t, user, 2, []*types.SubnetTx{txStart(&types.MsgStartInference{
 		InferenceId: 1, PromptHash: []byte("prompt2"), Model: "llama",
 		InputLength: 50, MaxTokens: 25, StartedAt: 2000,
 	})})
 	_, err = sm.ApplyDiff(diff)
-	require.ErrorIs(t, err, types.ErrDuplicateInferenceID)
+	require.ErrorIs(t, err, types.ErrInvalidInferenceID)
 }
 
 func TestApplyDiff_Timeout_DuplicateVoterSlot(t *testing.T) {

@@ -91,11 +91,14 @@ func (sm *StateMachine) ApplyDiff(diff types.Diff) ([]byte, error) {
 		return nil, fmt.Errorf("%w: expected %d, got %d", types.ErrInvalidNonce, expectedNonce, diff.Nonce)
 	}
 
-	// 3. Validate at most one MsgStartInference per diff.
+	// 3. Validate at most one MsgStartInference per diff, and inference_id == nonce.
 	startCount := 0
 	for _, tx := range diff.Txs {
-		if tx.GetStartInference() != nil {
+		if start := tx.GetStartInference(); start != nil {
 			startCount++
+			if start.InferenceId != diff.Nonce {
+				return nil, types.ErrInvalidInferenceID
+			}
 		}
 	}
 	if startCount > 1 {
@@ -352,6 +355,9 @@ func (sm *StateMachine) applyValidation(msg *types.MsgValidation) error {
 	if rec.Status != types.StatusFinished {
 		return fmt.Errorf("%w: expected finished, got %d", types.ErrInvalidTransition, rec.Status)
 	}
+	if _, ok := sm.slotToAddress[msg.ValidatorSlot]; !ok {
+		return fmt.Errorf("%w: slot %d", types.ErrSlotNotInGroup, msg.ValidatorSlot)
+	}
 	if msg.ValidatorSlot == rec.ExecutorSlot {
 		return types.ErrSelfValidation
 	}
@@ -376,6 +382,9 @@ func (sm *StateMachine) applyValidationVote(msg *types.MsgValidationVote) error 
 	rec, ok := sm.state.Inferences[msg.InferenceId]
 	if !ok {
 		return fmt.Errorf("%w: inference %d", types.ErrInferenceNotFound, msg.InferenceId)
+	}
+	if _, ok := sm.slotToAddress[msg.VoterSlot]; !ok {
+		return fmt.Errorf("%w: slot %d", types.ErrSlotNotInGroup, msg.VoterSlot)
 	}
 
 	// Skip already-resolved challenge votes (allows safe vote batching).
@@ -445,6 +454,11 @@ func (sm *StateMachine) applyTimeout(msg *types.MsgTimeoutInference) error {
 	acceptCount := uint32(0)
 	seenSlots := make(map[uint32]bool, len(msg.Votes))
 	for _, vote := range msg.Votes {
+		// Group membership check.
+		if _, ok := sm.slotToAddress[vote.VoterSlot]; !ok {
+			return fmt.Errorf("%w: slot %d", types.ErrSlotNotInGroup, vote.VoterSlot)
+		}
+
 		// Duplicate voter slot detection.
 		if seenSlots[vote.VoterSlot] {
 			return fmt.Errorf("%w: slot %d", types.ErrDuplicateVote, vote.VoterSlot)
