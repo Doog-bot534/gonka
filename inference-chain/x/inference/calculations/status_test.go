@@ -4,12 +4,32 @@ import (
 	"testing"
 
 	"github.com/productscience/inference/x/inference/types"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
-var zeroStats = types.CurrentEpochStats{
-	InvalidLLR:  types.DecimalFromFloat(0),
-	InactiveLLR: types.DecimalFromFloat(0),
+var (
+	zeroStats = types.CurrentEpochStats{
+		InvalidLLR:  types.DecimalFromFloat(0),
+		InactiveLLR: types.DecimalFromFloat(0),
+	}
+
+	testPrecomputed = types.SPRTPrecomputedValues{
+		InvalidationLogFail: calculateLogLLR(decimal.NewFromFloat(0.1), decimal.NewFromFloat(0.05), true),
+		InvalidationLogPass: calculateLogLLR(decimal.NewFromFloat(0.1), decimal.NewFromFloat(0.05), false),
+		InactiveLogFail:     calculateLogLLR(decimal.NewFromFloat(0.2), decimal.NewFromFloat(0.1), true),
+		InactiveLogPass:     calculateLogLLR(decimal.NewFromFloat(0.2), decimal.NewFromFloat(0.1), false),
+	}
+)
+
+func calculateLogLLR(p1, p0 decimal.Decimal, isFail bool) decimal.Decimal {
+	one := decimal.NewFromInt(1)
+	if isFail {
+		res, _ := p1.Div(p0).Ln(12)
+		return res
+	}
+	res, _ := one.Sub(p1).Div(one.Sub(p0)).Ln(12)
+	return res
 }
 
 func TestComputeStatus(t *testing.T) {
@@ -88,7 +108,7 @@ func TestComputeStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			status, reason, _ := ComputeStatus(tt.params, nil, tt.participant, zeroStats)
+			status, reason, _ := ComputeStatus(tt.params, nil, tt.participant, zeroStats, testPrecomputed)
 			require.Equal(t, tt.wantStatus, status)
 			require.Equal(t, tt.wantReason, reason)
 		})
@@ -115,7 +135,7 @@ func TestDowntimeTriggersInactive(t *testing.T) {
 		},
 	}
 
-	status, reason, _ := ComputeStatus(params, nil, participant, zeroStats)
+	status, reason, _ := ComputeStatus(params, nil, participant, zeroStats, testPrecomputed)
 	require.Equal(t, types.ParticipantStatus_INACTIVE, status)
 	require.Equal(t, Downtime, reason)
 }
@@ -141,7 +161,7 @@ func TestDowntimeParamsOutOfRangeReturnAlgorithmError(t *testing.T) {
 			QuickFailureThreshold:          types.DecimalFromFloat(0.000001),
 		}
 		participant := types.Participant{CurrentEpochStats: &types.CurrentEpochStats{}}
-		status, reason, _ := ComputeStatus(params, nil, participant, zeroStats)
+		status, reason, _ := ComputeStatus(params, nil, participant, zeroStats, types.SPRTPrecomputedValues{})
 		require.Equal(t, types.ParticipantStatus_ACTIVE, status)
 		require.Equal(t, AlgorithmError, reason)
 	}
@@ -177,7 +197,7 @@ func TestGetStats(t *testing.T) {
 	require.Equal(t, int64(0), result2.InactiveLLR.Value)
 }
 
-func TestComputeStatus_ParityWithColdAndWarmSPRTCache(t *testing.T) {
+func TestComputeStatus_Stability(t *testing.T) {
 	params := &types.ValidationParams{
 		FalsePositiveRate:              types.DecimalFromFloat(0.05),
 		BadParticipantInvalidationRate: types.DecimalFromFloat(0.1),
@@ -265,74 +285,23 @@ func TestComputeStatus_ParityWithColdAndWarmSPRTCache(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearSPRTLogCache()
-			expectedStatus, expectedReason, expectedStats := ComputeStatus(params, tt.confirmationParams, tt.participant, tt.oldStats)
+			actualStatus, actualReason, actualStats := ComputeStatus(params, tt.confirmationParams, tt.participant, tt.oldStats, testPrecomputed)
 
-			// Warm cache with a different key first to ensure key churn does not
-			// affect resulting decisions for the test params.
-			warmSPRTCacheForParity(t)
-			actualStatus, actualReason, actualStats := ComputeStatus(params, tt.confirmationParams, tt.participant, tt.oldStats)
-
-			require.Equal(t, expectedStatus, actualStatus)
-			require.Equal(t, expectedReason, actualReason)
-			require.Equal(t, expectedStats.InferenceCount, actualStats.InferenceCount)
-			require.Equal(t, expectedStats.MissedRequests, actualStats.MissedRequests)
-			require.Equal(t, expectedStats.ValidatedInferences, actualStats.ValidatedInferences)
-			require.Equal(t, expectedStats.InvalidatedInferences, actualStats.InvalidatedInferences)
-
-			require.NotNil(t, expectedStats.InvalidLLR)
 			require.NotNil(t, actualStats.InvalidLLR)
-			require.True(t, expectedStats.InvalidLLR.ToDecimal().Equal(actualStats.InvalidLLR.ToDecimal()))
-
-			require.NotNil(t, expectedStats.InactiveLLR)
 			require.NotNil(t, actualStats.InactiveLLR)
-			require.True(t, expectedStats.InactiveLLR.ToDecimal().Equal(actualStats.InactiveLLR.ToDecimal()))
+
+			shouldBeActive := tt.name == "active path remains stable"
+			if shouldBeActive {
+				require.Equal(t, types.ParticipantStatus_ACTIVE, actualStatus, "Expected status ACTIVE for %s", tt.name)
+			} else {
+				require.NotEqual(t, types.ParticipantStatus_ACTIVE, actualStatus, "Expected status NOT ACTIVE for %s", tt.name)
+			}
+			_ = actualReason
 		})
 	}
 }
 
-func warmSPRTCacheForParity(t *testing.T) {
-	_, err := NewSPRT(
-		types.DecimalFromFloat(0.03).ToDecimal(),
-		types.DecimalFromFloat(0.25).ToDecimal(),
-		types.DecimalFromFloat(4).ToDecimal(),
-		types.DecimalFromFloat(0).ToDecimal(),
-		LogPrecision,
-	)
-	require.NoError(t, err)
-}
-
-func BenchmarkComputeStatus_WarmSPRTCache(b *testing.B) {
-	clearSPRTLogCache()
-	params := &types.ValidationParams{
-		FalsePositiveRate:              types.DecimalFromFloat(0.05),
-		BadParticipantInvalidationRate: types.DecimalFromFloat(0.1),
-		InvalidationHThreshold:         types.DecimalFromFloat(4),
-		DowntimeGoodPercentage:         types.DecimalFromFloat(0.1),
-		DowntimeBadPercentage:          types.DecimalFromFloat(0.2),
-		DowntimeHThreshold:             types.DecimalFromFloat(4),
-		QuickFailureThreshold:          types.DecimalFromFloat(0.000001),
-	}
-	participant := types.Participant{
-		CurrentEpochStats: &types.CurrentEpochStats{
-			InferenceCount:        50,
-			MissedRequests:        60,
-			ValidatedInferences:   7,
-			InvalidatedInferences: 7,
-		},
-	}
-	old := zeroStats
-
-	// Warm once so the benchmark reflects steady-state behavior.
-	_, _, _ = ComputeStatus(params, nil, participant, old)
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _, _ = ComputeStatus(params, nil, participant, old)
-	}
-}
-
-func BenchmarkComputeStatus_ColdSPRTCache(b *testing.B) {
+func BenchmarkComputeStatus(b *testing.B) {
 	params := &types.ValidationParams{
 		FalsePositiveRate:              types.DecimalFromFloat(0.05),
 		BadParticipantInvalidationRate: types.DecimalFromFloat(0.1),
@@ -355,7 +324,6 @@ func BenchmarkComputeStatus_ColdSPRTCache(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		clearSPRTLogCache()
-		_, _, _ = ComputeStatus(params, nil, participant, old)
+		_, _, _ = ComputeStatus(params, nil, participant, old, testPrecomputed)
 	}
 }

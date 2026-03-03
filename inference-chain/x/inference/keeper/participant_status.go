@@ -32,12 +32,16 @@ func (k Keeper) UpdateParticipantStatus(ctx context.Context, participant *types.
 		k.LogError("UpdateParticipantStatus: failed to get params", types.Validation, "error", err)
 		return err
 	}
+
+	precomputed, _ := k.GetPrecomputedSPRTValues(ctx)
+
 	originalStatus := participant.Status
 	newStatus, reason, newStats := calculations.ComputeStatus(
 		params.ValidationParams,
 		params.ConfirmationPocParams,
 		*participant,
 		*oldParticipant.CurrentEpochStats,
+		precomputed,
 	)
 	participant.CurrentEpochStats = &newStats
 

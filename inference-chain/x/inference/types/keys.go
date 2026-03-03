@@ -85,4 +85,5 @@ const (
 var (
 	FinishedInferenceQueueEntryPrefix = collections.NewPrefix(1)
 	FinishedInferenceQueueNextSeqKey  = collections.NewPrefix(2)
+	TransientSPRTValuesKey            = collections.NewPrefix(3)
 )
