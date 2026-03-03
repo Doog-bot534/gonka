@@ -33,7 +33,7 @@ func (k Keeper) UpdateParticipantStatus(ctx context.Context, participant *types.
 		return err
 	}
 
-	precomputed, _ := k.GetPrecomputedSPRTValues(ctx)
+	precomputed := k.GetPrecomputedSPRTValues(ctx)
 
 	originalStatus := participant.Status
 	newStatus, reason, newStats := calculations.ComputeStatus(

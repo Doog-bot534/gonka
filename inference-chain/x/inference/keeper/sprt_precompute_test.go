@@ -11,66 +11,64 @@ import (
 )
 
 func TestCalculateLogLLR(t *testing.T) {
-	val1, _ := decimal.NewFromFloat(2).Ln(12)
-	val2, _ := decimal.NewFromFloat(0.8).Div(decimal.NewFromFloat(0.9)).Ln(12)
-
 	// Test cases for calculateLogLLR
 	tests := []struct {
 		name   string
 		p1     decimal.Decimal
 		p0     decimal.Decimal
 		isFail bool
-		want   decimal.Decimal
+		want   string
 	}{
 		{
 			name:   "fail: p1=0.2, p0=0.1",
 			p1:     decimal.NewFromFloat(0.2),
 			p0:     decimal.NewFromFloat(0.1),
 			isFail: true,
-			want:   val1, // ln(0.2/0.1) = ln(2)
+			want:   "0.69314718056", // ln(0.2/0.1) = ln(2)
 		},
 		{
 			name:   "pass: p1=0.2, p0=0.1",
 			p1:     decimal.NewFromFloat(0.2),
 			p0:     decimal.NewFromFloat(0.1),
 			isFail: false,
-			want:   val2, // ln(0.8/0.9)
+			want:   "-0.117783035656", // ln(0.8/0.9)
 		},
 		{
 			name:   "fail: p1=0, returns zero",
 			p1:     decimal.Zero,
 			p0:     decimal.NewFromFloat(0.1),
 			isFail: true,
-			want:   decimal.Zero,
+			want:   "0",
 		},
 		{
 			name:   "fail: p0=0, returns zero",
 			p1:     decimal.NewFromFloat(0.2),
 			p0:     decimal.Zero,
 			isFail: true,
-			want:   decimal.Zero,
+			want:   "0",
 		},
 		{
 			name:   "pass: p1=1, returns zero",
 			p1:     decimal.NewFromInt(1),
 			p0:     decimal.NewFromFloat(0.1),
 			isFail: false,
-			want:   decimal.Zero,
+			want:   "0",
 		},
 		{
 			name:   "pass: p0=1, returns zero",
 			p1:     decimal.NewFromFloat(0.2),
 			p0:     decimal.NewFromInt(1),
 			isFail: false,
-			want:   decimal.Zero,
+			want:   "0",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := keeper.CalculateLogLLR(tt.p1, tt.p0, tt.isFail)
-			if !got.Equal(tt.want) {
-				t.Errorf("CalculateLogLLR() = %v, want %v", got, tt.want)
+			want, _ := decimal.NewFromString(tt.want)
+			if !got.Equal(want) {
+				t.Errorf("CalculateLogLLR() = %v, want %v", got, want)
 			}
 		})
 	}
@@ -92,14 +90,18 @@ func TestPrecomputeSPRTValues(t *testing.T) {
 	err := k.PrecomputeSPRTValues(ctx)
 	require.NoError(t, err)
 
-	precomputed, found := k.GetPrecomputedSPRTValues(ctx)
-	require.True(t, found)
+	precomputed := k.GetPrecomputedSPRTValues(ctx)
 
-	// Expected values
-	expectedInvalidationLogFail := keeper.CalculateLogLLR(decimal.NewFromFloat(0.3), decimal.NewFromFloat(0.05), true)
-	expectedInvalidationLogPass := keeper.CalculateLogLLR(decimal.NewFromFloat(0.3), decimal.NewFromFloat(0.05), false)
-	expectedInactiveLogFail := keeper.CalculateLogLLR(decimal.NewFromFloat(0.4), decimal.NewFromFloat(0.1), true)
-	expectedInactiveLogPass := keeper.CalculateLogLLR(decimal.NewFromFloat(0.4), decimal.NewFromFloat(0.1), false)
+	// Expected values (manually calculated)
+	// ln(0.3/0.05) = 1.791759469228
+	// ln(0.7/0.95) = -0.305381649551
+	// ln(0.4/0.1) = 1.38629436112
+	// ln(0.6/0.9) = -0.405465108108
+
+	expectedInvalidationLogFail, _ := decimal.NewFromString("1.791759469228")
+	expectedInvalidationLogPass, _ := decimal.NewFromString("-0.305381649551")
+	expectedInactiveLogFail, _ := decimal.NewFromString("1.38629436112")
+	expectedInactiveLogPass, _ := decimal.NewFromString("-0.405465108108")
 
 	require.True(t, precomputed.InvalidationLogFail.ToDecimal().Equal(expectedInvalidationLogFail))
 	require.True(t, precomputed.InvalidationLogPass.ToDecimal().Equal(expectedInvalidationLogPass))
@@ -110,7 +112,6 @@ func TestPrecomputeSPRTValues(t *testing.T) {
 func TestGetPrecomputedSPRTValues_Empty(t *testing.T) {
 	k, ctx, _ := testkeeper.InferenceKeeperReturningMocks(t)
 
-	precomputed, found := k.GetPrecomputedSPRTValues(ctx)
-	require.False(t, found)
+	precomputed := k.GetPrecomputedSPRTValues(ctx)
 	require.True(t, precomputed.InvalidationLogFail == nil || precomputed.InvalidationLogFail.Value == 0)
 }

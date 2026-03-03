@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/productscience/inference/x/inference/types"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,22 +14,12 @@ var (
 	}
 
 	testPrecomputed = types.SPRTPrecomputedValues{
-		InvalidationLogFail: types.DecimalFromDecimal(calculateLogLLR(decimal.NewFromFloat(0.1), decimal.NewFromFloat(0.05), true)),
-		InvalidationLogPass: types.DecimalFromDecimal(calculateLogLLR(decimal.NewFromFloat(0.1), decimal.NewFromFloat(0.05), false)),
-		InactiveLogFail:     types.DecimalFromDecimal(calculateLogLLR(decimal.NewFromFloat(0.2), decimal.NewFromFloat(0.1), true)),
-		InactiveLogPass:     types.DecimalFromDecimal(calculateLogLLR(decimal.NewFromFloat(0.2), decimal.NewFromFloat(0.1), false)),
+		InvalidationLogFail: types.DecimalFromFloat(0.69314718056),   // ln(0.1/0.05)
+		InvalidationLogPass: types.DecimalFromFloat(-0.05406722127),  // ln(0.9/0.95)
+		InactiveLogFail:     types.DecimalFromFloat(0.69314718056),   // ln(0.2/0.1)
+		InactiveLogPass:     types.DecimalFromFloat(-0.117783035656), // ln(0.8/0.9)
 	}
 )
-
-func calculateLogLLR(p1, p0 decimal.Decimal, isFail bool) decimal.Decimal {
-	one := decimal.NewFromInt(1)
-	if isFail {
-		res, _ := p1.Div(p0).Ln(12)
-		return res
-	}
-	res, _ := one.Sub(p1).Div(one.Sub(p0)).Ln(12)
-	return res
-}
 
 func TestComputeStatus(t *testing.T) {
 	tests := []struct {

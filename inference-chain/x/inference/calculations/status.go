@@ -90,10 +90,6 @@ func getInactiveStatus(newStats *types.CurrentEpochStats, oldStats types.Current
 		return Error
 	}
 
-	if precomputed.InactiveLogFail.ToDecimal().IsZero() && precomputed.InactiveLogPass.ToDecimal().IsZero() {
-		return Error
-	}
-
 	newInferences := int64(newStats.InferenceCount) - int64(oldStats.InferenceCount)
 	newMissedInferences := int64(newStats.MissedRequests) - int64(oldStats.MissedRequests)
 
@@ -115,10 +111,6 @@ func getInvalidationStatus(newStats *types.CurrentEpochStats, oldStats types.Cur
 	}
 
 	if precomputed.InvalidationLogFail == nil || precomputed.InvalidationLogPass == nil {
-		return Error
-	}
-
-	if precomputed.InvalidationLogFail.ToDecimal().IsZero() && precomputed.InvalidationLogPass.ToDecimal().IsZero() {
 		return Error
 	}
 
