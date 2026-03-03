@@ -25,10 +25,10 @@ func (k Keeper) UpdateParticipantStatus(ctx context.Context, participant *types.
 	oldParticipant, found := k.GetParticipant(ctx, participant.Address)
 	if !found {
 		oldParticipant = *participant
-	}
-
-	if !calculations.StatsHaveChanged(oldParticipant.CurrentEpochStats, participant.CurrentEpochStats) {
-		return nil
+	} else {
+		if !calculations.StatsHaveChanged(oldParticipant.CurrentEpochStats, participant.CurrentEpochStats) {
+			return nil
+		}
 	}
 
 	params, err := k.GetParams(ctx)
