@@ -20,4 +20,6 @@ var (
 	ErrDuplicateVote         = errors.New("duplicate vote from slot")
 	ErrAlreadyFinalizing     = errors.New("session is already finalizing")
 	ErrEmptyTx               = errors.New("subnet tx has no message set")
+	ErrDuplicateInferenceID  = errors.New("duplicate inference ID")
+	ErrInvalidVoteSig        = errors.New("invalid vote signature")
 )

@@ -28,6 +28,7 @@ func TestFullSession_HappyPath(t *testing.T) {
 
 	group := makeGroup(hosts)
 	config := defaultConfig()
+	config.VoteThreshold = uint32(numHosts) / 2
 	escrowID := "escrow-integration"
 	initialBalance := uint64(100000)
 
@@ -95,7 +96,7 @@ func TestFullSession_HappyPath(t *testing.T) {
 
 		nonce++
 		diff := signDiff(t, user, nonce, txs)
-		stateRoot, err := sm.ApplyDiff(diff, user.Address())
+		stateRoot, err := sm.ApplyDiff(diff)
 		require.NoError(t, err, "diff %d", nonce)
 
 		// The host at position (nonce-1) % numHosts signs the state root.
@@ -105,7 +106,8 @@ func TestFullSession_HappyPath(t *testing.T) {
 			EscrowId:  escrowID,
 			Nonce:     nonce,
 		}
-		sigData, _ := proto.Marshal(stateSignContent)
+		sigData, err := proto.Marshal(stateSignContent)
+		require.NoError(t, err)
 		sig, err := hosts[signerIdx].Sign(sigData)
 		require.NoError(t, err)
 
@@ -150,7 +152,7 @@ func TestFullSession_HappyPath(t *testing.T) {
 
 	nonce++
 	diff := signDiff(t, user, nonce, finalTxs)
-	finalStateRoot, err := sm.ApplyDiff(diff, user.Address())
+	finalStateRoot, err := sm.ApplyDiff(diff)
 	require.NoError(t, err)
 
 	// Sign final state with all hosts.
@@ -161,7 +163,8 @@ func TestFullSession_HappyPath(t *testing.T) {
 			EscrowId:  escrowID,
 			Nonce:     nonce,
 		}
-		sigData, _ := proto.Marshal(stateSignContent)
+		sigData, err := proto.Marshal(stateSignContent)
+		require.NoError(t, err)
 		sig, err := host.Sign(sigData)
 		require.NoError(t, err)
 		finalSigs[uint32(i)] = sig
@@ -202,16 +205,20 @@ func TestFullSession_HappyPath(t *testing.T) {
 			EscrowId:  escrowID,
 			Nonce:     nonce,
 		}
-		sigData, _ := proto.Marshal(stateSignContent)
+		sigData, err := proto.Marshal(stateSignContent)
+		require.NoError(t, err)
 		recovered, err := verifier.RecoverAddress(sigData, sig)
 		require.NoError(t, err)
 		require.Equal(t, hosts[slot].Address(), recovered, "slot %d sig", slot)
 	}
 
 	// Verify Merkle structure.
-	hostStatsHash := ComputeHostStatsHash(state.HostStats)
-	restHash := ComputeRestHash(state.Balance, state.Inferences)
-	recomputedRoot := ComputeStateRoot(state.Balance, state.HostStats, state.Inferences)
+	hostStatsHash, err := ComputeHostStatsHash(state.HostStats)
+	require.NoError(t, err)
+	restHash, err := ComputeRestHash(state.Balance, state.Inferences)
+	require.NoError(t, err)
+	recomputedRoot, err := ComputeStateRoot(state.Balance, state.HostStats, state.Inferences)
+	require.NoError(t, err)
 	require.Equal(t, finalStateRoot, recomputedRoot)
 
 	// Settlement payload verification: mainnet would verify

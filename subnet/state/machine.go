@@ -6,14 +6,16 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	"subnet/logging"
 	"subnet/signing"
 	"subnet/types"
 )
 
 // StateMachine applies diffs and tracks session state.
 type StateMachine struct {
-	state    *types.EscrowState
-	verifier signing.Verifier
+	state       *types.EscrowState
+	verifier    signing.Verifier
+	userAddress string
 
 	// Lookup maps derived from group at construction time.
 	slotToAddress map[uint32]string
@@ -58,6 +60,7 @@ func NewStateMachine(
 			HostStats:  hostStats,
 		},
 		verifier:      verifier,
+		userAddress:   userAddress,
 		slotToAddress: slotToAddr,
 		slotToPubKey:  slotToPub,
 		addressToSlot: addrToSlot,
@@ -66,7 +69,7 @@ func NewStateMachine(
 }
 
 // ApplyDiff validates and applies a diff, returning the state root.
-func (sm *StateMachine) ApplyDiff(diff types.Diff, userAddress string) ([]byte, error) {
+func (sm *StateMachine) ApplyDiff(diff types.Diff) ([]byte, error) {
 	// 1. Verify user signature.
 	diffContent := sm.buildDiffContent(diff)
 	data, err := proto.Marshal(diffContent)
@@ -78,8 +81,8 @@ func (sm *StateMachine) ApplyDiff(diff types.Diff, userAddress string) ([]byte, 
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", types.ErrInvalidUserSig, err)
 	}
-	if recovered != userAddress {
-		return nil, fmt.Errorf("%w: expected %s, got %s", types.ErrInvalidUserSig, userAddress, recovered)
+	if recovered != sm.userAddress {
+		return nil, fmt.Errorf("%w: expected %s, got %s", types.ErrInvalidUserSig, sm.userAddress, recovered)
 	}
 
 	// 2. Validate nonce.
@@ -110,17 +113,63 @@ func (sm *StateMachine) ApplyDiff(diff types.Diff, userAddress string) ([]byte, 
 	sm.state.LatestNonce = diff.Nonce
 
 	// 6. Compute state root.
-	root := ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences)
+	root, err := ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences)
+	if err != nil {
+		return nil, fmt.Errorf("compute state root: %w", err)
+	}
+
+	logging.Debug("applied diff", "subsystem", "state", "nonce", diff.Nonce, "txs", len(diff.Txs))
 	return root, nil
 }
 
-// GetState returns the current escrow state (shallow copy).
+// GetState returns a deep copy of the current escrow state.
 func (sm *StateMachine) GetState() types.EscrowState {
-	return *sm.state
+	s := *sm.state
+
+	// Deep copy Group.
+	s.Group = make([]types.SlotAssignment, len(sm.state.Group))
+	for i, sa := range sm.state.Group {
+		cp := sa
+		if sa.PublicKey != nil {
+			cp.PublicKey = make([]byte, len(sa.PublicKey))
+			copy(cp.PublicKey, sa.PublicKey)
+		}
+		s.Group[i] = cp
+	}
+
+	// Deep copy HostStats.
+	s.HostStats = make(map[uint32]*types.HostStats, len(sm.state.HostStats))
+	for k, v := range sm.state.HostStats {
+		cp := *v
+		s.HostStats[k] = &cp
+	}
+
+	// Deep copy Inferences.
+	s.Inferences = make(map[uint64]*types.InferenceRecord, len(sm.state.Inferences))
+	for k, v := range sm.state.Inferences {
+		cp := *v
+		if v.PromptHash != nil {
+			cp.PromptHash = make([]byte, len(v.PromptHash))
+			copy(cp.PromptHash, v.PromptHash)
+		}
+		if v.ResponseHash != nil {
+			cp.ResponseHash = make([]byte, len(v.ResponseHash))
+			copy(cp.ResponseHash, v.ResponseHash)
+		}
+		if v.VotedSlots != nil {
+			cp.VotedSlots = make(map[uint32]bool, len(v.VotedSlots))
+			for sk, sv := range v.VotedSlots {
+				cp.VotedSlots[sk] = sv
+			}
+		}
+		s.Inferences[k] = &cp
+	}
+
+	return s
 }
 
 // ComputeStateRoot returns the current state root without modifying state.
-func (sm *StateMachine) ComputeStateRoot() []byte {
+func (sm *StateMachine) ComputeStateRoot() ([]byte, error) {
 	return ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences)
 }
 
@@ -151,6 +200,11 @@ func (sm *StateMachine) applyTx(tx *types.SubnetTx) error {
 func (sm *StateMachine) applyStartInference(msg *types.MsgStartInference) error {
 	if sm.state.Finalizing {
 		return types.ErrSessionFinalizing
+	}
+
+	// Duplicate inference ID guard.
+	if _, exists := sm.state.Inferences[msg.InferenceId]; exists {
+		return types.ErrDuplicateInferenceID
 	}
 
 	// Executor slot: group[inference_id % len(group)].SlotID
@@ -186,7 +240,10 @@ func (sm *StateMachine) applyStartInference(msg *types.MsgStartInference) error 
 			MaxTokens:   msg.MaxTokens,
 			StartedAt:   msg.StartedAt,
 		}
-		receiptData, _ := proto.Marshal(receiptContent)
+		receiptData, err := proto.Marshal(receiptContent)
+		if err != nil {
+			return fmt.Errorf("marshal executor receipt: %w", err)
+		}
 
 		recovered, err := sm.verifier.RecoverAddress(receiptData, msg.ExecutorSig)
 		if err != nil {
@@ -202,6 +259,7 @@ func (sm *StateMachine) applyStartInference(msg *types.MsgStartInference) error 
 	}
 
 	sm.state.Inferences[msg.InferenceId] = rec
+	logging.Debug("new inference", "subsystem", "state", "inference_id", msg.InferenceId, "executor_slot", executorSlot)
 	return nil
 }
 
@@ -223,7 +281,10 @@ func (sm *StateMachine) applyConfirmStart(msg *types.MsgConfirmStart) error {
 		MaxTokens:   rec.MaxTokens,
 		StartedAt:   rec.StartedAt,
 	}
-	receiptData, _ := proto.Marshal(receiptContent)
+	receiptData, err := proto.Marshal(receiptContent)
+	if err != nil {
+		return fmt.Errorf("marshal executor receipt: %w", err)
+	}
 
 	recovered, err := sm.verifier.RecoverAddress(receiptData, msg.ExecutorSig)
 	if err != nil {
@@ -316,6 +377,12 @@ func (sm *StateMachine) applyValidationVote(msg *types.MsgValidationVote) error 
 	if !ok {
 		return fmt.Errorf("%w: inference %d", types.ErrInferenceNotFound, msg.InferenceId)
 	}
+
+	// Skip already-resolved challenge votes (allows safe vote batching).
+	if rec.Status == types.StatusValidated || rec.Status == types.StatusInvalidated {
+		return nil
+	}
+
 	if rec.Status != types.StatusChallenged {
 		return fmt.Errorf("%w: expected challenged, got %d", types.ErrInvalidTransition, rec.Status)
 	}
@@ -339,8 +406,8 @@ func (sm *StateMachine) applyValidationVote(msg *types.MsgValidationVote) error 
 		rec.VotesInvalid++
 	}
 
-	// Check majority. Threshold: total_slots / 2
-	threshold := sm.totalSlots / 2
+	// Check majority using VoteThreshold from config.
+	threshold := sm.state.Config.VoteThreshold
 	if rec.VotesInvalid > threshold {
 		rec.Status = types.StatusInvalidated
 		// Refund cost.
@@ -376,24 +443,34 @@ func (sm *StateMachine) applyTimeout(msg *types.MsgTimeoutInference) error {
 
 	// Count accept votes and verify each signature.
 	acceptCount := uint32(0)
+	seenSlots := make(map[uint32]bool, len(msg.Votes))
 	for _, vote := range msg.Votes {
+		// Duplicate voter slot detection.
+		if seenSlots[vote.VoterSlot] {
+			return fmt.Errorf("%w: slot %d", types.ErrDuplicateVote, vote.VoterSlot)
+		}
+		seenSlots[vote.VoterSlot] = true
+
 		voteContent := &types.TimeoutVoteContent{
 			EscrowId:    sm.state.EscrowID,
 			InferenceId: msg.InferenceId,
 			Reason:      msg.Reason,
 			Accept:      vote.Accept,
 		}
-		voteData, _ := proto.Marshal(voteContent)
+		voteData, err := proto.Marshal(voteContent)
+		if err != nil {
+			return fmt.Errorf("marshal timeout vote: %w", err)
+		}
 
 		recovered, err := sm.verifier.RecoverAddress(voteData, vote.Signature)
 		if err != nil {
-			return fmt.Errorf("%w: vote from slot %d: %v", types.ErrInvalidExecutorSig, vote.VoterSlot, err)
+			return fmt.Errorf("%w: vote from slot %d: %v", types.ErrInvalidVoteSig, vote.VoterSlot, err)
 		}
 
 		expectedAddr := sm.slotToAddress[vote.VoterSlot]
 		if recovered != expectedAddr {
 			return fmt.Errorf("%w: vote from slot %d: expected %s, got %s",
-				types.ErrInvalidExecutorSig, vote.VoterSlot, expectedAddr, recovered)
+				types.ErrInvalidVoteSig, vote.VoterSlot, expectedAddr, recovered)
 		}
 
 		if vote.Accept {
@@ -401,8 +478,8 @@ func (sm *StateMachine) applyTimeout(msg *types.MsgTimeoutInference) error {
 		}
 	}
 
-	// Check threshold.
-	threshold := sm.totalSlots / 2
+	// Check threshold using VoteThreshold from config.
+	threshold := sm.state.Config.VoteThreshold
 	if acceptCount <= threshold {
 		return fmt.Errorf("%w: need >%d accept votes, got %d", types.ErrInsufficientVotes, threshold, acceptCount)
 	}

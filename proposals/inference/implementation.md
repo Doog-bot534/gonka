@@ -22,7 +22,7 @@ Test levels:
 | 9     |      |                    | x          |
 
 
-## Phase 1: Foundation and State Machine
+## Phase 1: Foundation and State Machine [COMMITTED]
 
 Goal: standalone `subnet/` Go module that can apply diffs, track state, compute hashes, and verify signatures. No networking, no mainnet integration, no gossip. Everything runs in-process, driven by Go tests.
 

@@ -19,8 +19,10 @@ func TestComputeStateRoot_Deterministic(t *testing.T) {
 		2: {Status: types.StatusFinished, ExecutorSlot: 1, ActualCost: 200},
 	}
 
-	root1 := ComputeStateRoot(500, hostStats, inferences)
-	root2 := ComputeStateRoot(500, hostStats, inferences)
+	root1, err := ComputeStateRoot(500, hostStats, inferences)
+	require.NoError(t, err)
+	root2, err := ComputeStateRoot(500, hostStats, inferences)
+	require.NoError(t, err)
 	require.Equal(t, root1, root2)
 }
 
@@ -32,8 +34,10 @@ func TestComputeStateRoot_DifferentState(t *testing.T) {
 		1: {Status: types.StatusFinished, ExecutorSlot: 0, ActualCost: 100},
 	}
 
-	root1 := ComputeStateRoot(500, hostStats, inferences)
-	root2 := ComputeStateRoot(600, hostStats, inferences)
+	root1, err := ComputeStateRoot(500, hostStats, inferences)
+	require.NoError(t, err)
+	root2, err := ComputeStateRoot(600, hostStats, inferences)
+	require.NoError(t, err)
 	require.NotEqual(t, root1, root2)
 }
 
@@ -47,11 +51,14 @@ func TestStateRoot_MerkleStructure(t *testing.T) {
 	}
 	balance := uint64(875)
 
-	root := ComputeStateRoot(balance, hostStats, inferences)
+	root, err := ComputeStateRoot(balance, hostStats, inferences)
+	require.NoError(t, err)
 
 	// Manually recompute and verify structure.
-	hostStatsHash := ComputeHostStatsHash(hostStats)
-	restHash := ComputeRestHash(balance, inferences)
+	hostStatsHash, err := ComputeHostStatsHash(hostStats)
+	require.NoError(t, err)
+	restHash, err := ComputeRestHash(balance, inferences)
+	require.NoError(t, err)
 
 	h := sha256.New()
 	h.Write(hostStatsHash)
@@ -77,7 +84,9 @@ func TestStateRoot_SortedKeys(t *testing.T) {
 
 	inferences := map[uint64]*types.InferenceRecord{}
 
-	root1 := ComputeStateRoot(1000, stats1, inferences)
-	root2 := ComputeStateRoot(1000, stats2, inferences)
+	root1, err := ComputeStateRoot(1000, stats1, inferences)
+	require.NoError(t, err)
+	root2, err := ComputeStateRoot(1000, stats2, inferences)
+	require.NoError(t, err)
 	require.Equal(t, root1, root2)
 }

@@ -3,6 +3,7 @@ package state
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"sort"
 
 	"google.golang.org/protobuf/proto"
@@ -20,29 +21,35 @@ import (
 // inferences_hash = sha256(proto(sorted inference records))
 // rest_hash       = sha256(balance_be || inferences_hash)
 // state_root      = sha256(host_stats_hash || rest_hash)
-func ComputeStateRoot(balance uint64, hostStats map[uint32]*types.HostStats, inferences map[uint64]*types.InferenceRecord) []byte {
-	hostStatsHash := computeHostStatsHash(hostStats)
-	restHash := computeRestHash(balance, inferences)
+func ComputeStateRoot(balance uint64, hostStats map[uint32]*types.HostStats, inferences map[uint64]*types.InferenceRecord) ([]byte, error) {
+	hostStatsHash, err := computeHostStatsHash(hostStats)
+	if err != nil {
+		return nil, err
+	}
+	restHash, err := computeRestHash(balance, inferences)
+	if err != nil {
+		return nil, err
+	}
 
 	h := sha256.New()
 	h.Write(hostStatsHash)
 	h.Write(restHash)
-	return h.Sum(nil)
+	return h.Sum(nil), nil
 }
 
 // ComputeHostStatsHash computes sha256(proto(sorted host stats)).
 // Exported for settlement verification on mainnet.
-func ComputeHostStatsHash(hostStats map[uint32]*types.HostStats) []byte {
+func ComputeHostStatsHash(hostStats map[uint32]*types.HostStats) ([]byte, error) {
 	return computeHostStatsHash(hostStats)
 }
 
 // ComputeRestHash computes sha256(balance_be || inferences_hash).
 // Exported for settlement verification on mainnet.
-func ComputeRestHash(balance uint64, inferences map[uint64]*types.InferenceRecord) []byte {
+func ComputeRestHash(balance uint64, inferences map[uint64]*types.InferenceRecord) ([]byte, error) {
 	return computeRestHash(balance, inferences)
 }
 
-func computeHostStatsHash(hostStats map[uint32]*types.HostStats) []byte {
+func computeHostStatsHash(hostStats map[uint32]*types.HostStats) ([]byte, error) {
 	// Sort slot IDs for determinism.
 	slotIDs := make([]uint32, 0, len(hostStats))
 	for id := range hostStats {
@@ -64,13 +71,19 @@ func computeHostStatsHash(hostStats map[uint32]*types.HostStats) []byte {
 	}
 
 	msg := &types.HostStatsMapProto{Entries: entries}
-	data, _ := proto.Marshal(msg)
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		return nil, fmt.Errorf("marshal host stats: %w", err)
+	}
 	hash := sha256.Sum256(data)
-	return hash[:]
+	return hash[:], nil
 }
 
-func computeRestHash(balance uint64, inferences map[uint64]*types.InferenceRecord) []byte {
-	infHash := computeInferencesHash(inferences)
+func computeRestHash(balance uint64, inferences map[uint64]*types.InferenceRecord) ([]byte, error) {
+	infHash, err := computeInferencesHash(inferences)
+	if err != nil {
+		return nil, err
+	}
 
 	balBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(balBytes, balance)
@@ -78,10 +91,10 @@ func computeRestHash(balance uint64, inferences map[uint64]*types.InferenceRecor
 	h := sha256.New()
 	h.Write(balBytes)
 	h.Write(infHash)
-	return h.Sum(nil)
+	return h.Sum(nil), nil
 }
 
-func computeInferencesHash(inferences map[uint64]*types.InferenceRecord) []byte {
+func computeInferencesHash(inferences map[uint64]*types.InferenceRecord) ([]byte, error) {
 	// Sort inference IDs for determinism.
 	ids := make([]uint64, 0, len(inferences))
 	for id := range inferences {
@@ -112,7 +125,10 @@ func computeInferencesHash(inferences map[uint64]*types.InferenceRecord) []byte 
 	}
 
 	msg := &types.InferencesMapProto{Entries: entries}
-	data, _ := proto.Marshal(msg)
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		return nil, fmt.Errorf("marshal inferences: %w", err)
+	}
 	hash := sha256.Sum256(data)
-	return hash[:]
+	return hash[:], nil
 }
