@@ -26,7 +26,7 @@ func PubKeyToAddress(pubKey string) (string, error) {
 }
 
 func (k msgServer) BridgeExchange(goCtx context.Context, msg *types.MsgBridgeExchange) (*types.MsgBridgeExchangeResponse, error) {
-	if err := k.CheckPermission(goCtx, msg, ActiveParticipantPermission); err != nil {
+	if err := k.CheckPermission(goCtx, msg, ActiveParticipantPermission, PreviousActiveParticipantPermission); err != nil {
 		return nil, err
 	}
 	ctx := sdk.UnwrapSDKContext(goCtx)

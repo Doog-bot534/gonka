@@ -96,7 +96,7 @@ var MessagePermissions = map[reflect.Type][]Permission{
 	reflect.TypeOf((*types.MsgRegisterTokenMetadata)(nil)):           {GovernancePermission},
 	reflect.TypeOf((*types.MsgRegisterWrappedTokenContract)(nil)):    {GovernancePermission},
 
-	reflect.TypeOf((*types.MsgBridgeExchange)(nil)):    {ActiveParticipantPermission},
+	reflect.TypeOf((*types.MsgBridgeExchange)(nil)):    {ActiveParticipantPermission, PreviousActiveParticipantPermission},
 	reflect.TypeOf((*types.MsgRequestBridgeMint)(nil)): {AccountPermission},
 
 	reflect.TypeOf((*types.MsgRequestBridgeWithdrawal)(nil)): {ContractPermission},

@@ -33,7 +33,7 @@ func TestBridgeExchange_DoubleVoteCaseBypass(t *testing.T) {
 
 	// Set active participants
 	k.SetActiveParticipants(ctx, types.ActiveParticipants{
-		EpochId:      100,
+		EpochId:      epochIndex,
 		Participants: []*types.ActiveParticipant{{Index: validatorLower}},
 	})
 
