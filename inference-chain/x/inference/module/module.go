@@ -174,9 +174,17 @@ func (AppModule) ConsensusVersion() uint64 { return 12 }
 
 // BeginBlock contains the logic that is automatically triggered at the beginning of each block.
 func (am AppModule) BeginBlock(ctx context.Context) error {
+	// Precompute SPRT values for the block
+	err := am.keeper.PrecomputeSPRTValues(ctx)
+	// We continue if there is something wrong with SPRT. Invalidation will effectively be turned off, but
+	// this will only happen if the governance values have been set wrong anyhow, so that's a rational choice
+	if err != nil {
+		am.LogError("Failed to precompute SPRT values", types.Validation, "error", err)
+	}
+
 	// Update dynamic pricing for all models at the start of each block
 	// This ensures consistent pricing for all inferences processed in this block
-	err := am.keeper.UpdateDynamicPricing(ctx)
+	err = am.keeper.UpdateDynamicPricing(ctx)
 	if err != nil {
 		am.LogError("Failed to update dynamic pricing", types.Pricing, "error", err)
 		// Don't return error - allow block processing to continue even if pricing update fails
