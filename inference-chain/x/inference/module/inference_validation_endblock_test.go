@@ -76,7 +76,9 @@ func TestEndBlock_ProcessesPendingInferenceValidationQueue(t *testing.T) {
 	require.NoError(t, am.EndBlock(ctx))
 
 	// This no longer applies, The TransientStore is used and is wiped at commit, not endblock
-	//require.Empty(t, k.ListFinishedInferenceIDs(ctx))
+	ds, err := k.ListFinishedInferenceIDs(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, ds)
 
 	details, found := k.GetInferenceValidationDetails(ctx, effectiveEpoch.Index, inferenceID)
 	require.True(t, found)

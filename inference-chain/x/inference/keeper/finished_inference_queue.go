@@ -5,11 +5,7 @@ import (
 	"encoding/binary"
 
 	corestore "cosmossdk.io/core/store"
-)
-
-var (
-	finishedInferenceQueueEntryPrefix = []byte{0x01}
-	finishedInferenceQueueNextSeqKey  = []byte{0x02}
+	"github.com/productscience/inference/x/inference/types"
 )
 
 // FinishedInferenceQueue stores completed inference IDs in FIFO order.
@@ -25,13 +21,12 @@ func (k Keeper) EnqueueFinishedInference(ctx context.Context, inferenceID string
 }
 
 // ListFinishedInferenceIDs lists all queued finished inference IDs in FIFO order.
-//
-// NOTE: We do not use transient store iterators here because some production transient-store
-// implementations do not support Iterator reliably. We instead scan by sequence number.
+// Production (not test) transient store does not support Iterator, so we iterate directly over
+// the bytes.
 func (k Keeper) ListFinishedInferenceIDs(ctx context.Context) ([]string, error) {
 	transientStore := k.transientStoreService.OpenTransientStore(ctx)
 
-	nextSeqBz, err := transientStore.Get(finishedInferenceQueueNextSeqKey)
+	nextSeqBz, err := transientStore.Get(types.FinishedInferenceQueueNextSeqKey)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +52,7 @@ func (k Keeper) ListFinishedInferenceIDs(ctx context.Context) ([]string, error) 
 }
 
 func (k Keeper) getAndIncrementFinishedInferenceQueueSeq(transientStore corestore.KVStore) (uint64, error) {
-	nextSeqBz, err := transientStore.Get(finishedInferenceQueueNextSeqKey)
+	nextSeqBz, err := transientStore.Get(types.FinishedInferenceQueueNextSeqKey)
 	if err != nil {
 		return 0, err
 	}
@@ -69,7 +64,7 @@ func (k Keeper) getAndIncrementFinishedInferenceQueueSeq(transientStore corestor
 
 	var updatedNextSeqBz [8]byte
 	binary.BigEndian.PutUint64(updatedNextSeqBz[:], nextSeq+1)
-	if err := transientStore.Set(finishedInferenceQueueNextSeqKey, updatedNextSeqBz[:]); err != nil {
+	if err := transientStore.Set(types.FinishedInferenceQueueNextSeqKey, updatedNextSeqBz[:]); err != nil {
 		return 0, err
 	}
 	return nextSeq, nil
@@ -77,7 +72,7 @@ func (k Keeper) getAndIncrementFinishedInferenceQueueSeq(transientStore corestor
 
 func finishedInferenceQueueEntryKey(seq uint64) []byte {
 	var key [9]byte
-	key[0] = finishedInferenceQueueEntryPrefix[0]
+	key[0] = types.FinishedInferenceQueueEntryPrefix[0]
 	binary.BigEndian.PutUint64(key[1:], seq)
 	return key[:]
 }

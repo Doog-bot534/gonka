@@ -80,3 +80,9 @@ const (
 	GenesisOnlyDataKey = "GenesisOnlyData/value/"
 	MLNodeVersionKey   = "MLNodeVersion/value/"
 )
+
+// TransientStore prefixes
+var (
+	FinishedInferenceQueueEntryPrefix = collections.NewPrefix(1)
+	FinishedInferenceQueueNextSeqKey  = collections.NewPrefix(2)
+)
