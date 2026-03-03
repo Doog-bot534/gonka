@@ -29,7 +29,7 @@ Goal: standalone `subnet/` Go module that can apply diffs, track state, compute 
 Deliverables:
 1. Project structure and Go module
 2. Proto definitions for all 7 subnet transaction types
-3. Domain types (SessionState, InferenceRecord, HostStats, Diff)
+3. Domain types (EscrowState, InferenceRecord, HostStats, Diff)
 4. State machine: apply diffs, verify nonces, update balances/stats
 5. State hashing (two-level Merkle)
 6. Signing: secp256k1 sign/verify via go-ethereum/crypto
@@ -48,7 +48,7 @@ subnet/
   proto/
     subnet/v1/
       tx.proto              # 7 subnet tx message definitions + TimeoutVote
-      state.proto           # SessionState, InferenceRecord, HostStats for deterministic serialization
+      state.proto           # EscrowState, InferenceRecord, HostStats for deterministic serialization
   types/
     generated.go            # generated proto types
     domain.go               # Diff, SlotAssignment, non-proto domain types
@@ -73,7 +73,7 @@ subnet/
 
 ### 1.2 Proto Definitions
 
-`proto/subnet/v1/tx.proto` -- all 7 subnet transaction types plus TimeoutVote:
+`proto/subnet/v1/tx.proto` -- all 8 subnet transaction types plus TimeoutVote:
 
 ```protobuf
 syntax = "proto3";
@@ -135,6 +135,10 @@ message MsgRevealSeed {
   bytes  signature = 2;          // sign(escrow_id_bytes) with host's key
   bytes  proposer_sig = 3;
 }
+
+message MsgFinalizeRound {
+  // no fields -- presence is the signal. user-proposed.
+}
 ```
 
 `proto/subnet/v1/state.proto` -- for deterministic serialization in hash computation:
@@ -160,21 +164,24 @@ message HostStatsMapProto {
   repeated HostStatsProto entries = 1;  // sorted by slot_id
 }
 
+// Field count can be smaller: raw token counts are recoverable from stored diffs.
+// Keeping all for debuggability.
 message InferenceRecordProto {
   uint64 inference_id = 1;
   uint32 status = 2;
   uint32 executor_slot = 3;
-  bytes  prompt_hash = 4;
-  bytes  response_hash = 5;
-  uint64 input_length = 6;          // chars, from MsgStartInference
-  uint64 max_tokens = 7;            // from MsgStartInference
-  uint64 input_tokens = 8;          // actual, from MsgFinishInference
-  uint64 output_tokens = 9;         // actual, from MsgFinishInference
-  uint64 reserved_cost = 10;        // computed at start from (input_length, max_tokens, config)
-  uint64 actual_cost = 11;          // computed at finish from (input_tokens, output_tokens, config)
-  int64  started_at = 12;
-  uint32 votes_valid = 13;
-  uint32 votes_invalid = 14;
+  string model = 4;
+  bytes  prompt_hash = 5;
+  bytes  response_hash = 6;
+  uint64 input_length = 7;          // chars, from MsgStartInference
+  uint64 max_tokens = 8;            // from MsgStartInference
+  uint64 input_tokens = 9;          // actual, from MsgFinishInference
+  uint64 output_tokens = 10;        // actual, from MsgFinishInference
+  uint64 reserved_cost = 11;        // computed at start from (input_length, max_tokens, config)
+  uint64 actual_cost = 12;          // computed at finish from (input_tokens, output_tokens, config)
+  int64  started_at = 13;
+  uint32 votes_valid = 14;
+  uint32 votes_invalid = 15;
 }
 
 message InferencesMapProto {
@@ -201,9 +208,13 @@ const (
   StatusTimedOut
 )
 
+// Field count can be smaller: raw token counts are recoverable from stored diffs.
+// reserved_cost and actual_cost are the only fields the state machine uses for accounting.
+// Keeping all fields for now for debuggability.
 type InferenceRecord struct {
   Status        InferenceStatus
   ExecutorSlot  uint32
+  Model         string
   PromptHash    []byte
   ResponseHash  []byte
   InputLength   uint64          // prompt length in chars (from MsgStartInference)
@@ -227,18 +238,21 @@ type HostStats struct {
 }
 
 type SessionConfig struct {
-  DeadlineDuration int64   // seconds: deadline = started_at + DeadlineDuration
-  TokenPrice       uint64  // price per token (input and output, same for now)
-  CharsPerToken    uint64  // input_length / CharsPerToken = estimated input tokens
-  VoteThreshold    uint32  // minimum slot-weighted accept votes for timeout
-  GroupSize        uint32  // number of slots in the group
+  RefusalTimeout   int64   // seconds before reason=refused timeout (test default: 60)
+  ExecutionTimeout int64   // seconds before reason=execution timeout (test default: 1200)
+  TokenPrice       uint64  // price per unit (test default: 1 = 1 ngonka)
+  VoteThreshold    uint32  // minimum slot-weighted accept votes for timeout (total_slots / 2)
 }
+// Q: How to have dynamic pricing? TokenPrice is flat per session.
+// Per-model pricing needs further design. Flat price sufficient for Phase 1.
 
-type SessionState struct {
+type EscrowState struct {
   EscrowID    string
   Config      SessionConfig
+  Group       []SlotAssignment              // slot assignments, immutable for the session
   Balance     uint64
-  Inferences  map[uint64]*InferenceRecord  // keyed by inference_id
+  Finalizing  bool                          // set by MsgFinalizeRound, irreversible
+  Inferences  map[uint64]*InferenceRecord   // keyed by inference_id (= nonce of MsgStartInference)
   HostStats   map[uint32]*HostStats         // keyed by slot_id
   LatestNonce uint64
 }
@@ -252,14 +266,22 @@ type SubnetTx struct {
   ValidationVote   *MsgValidationVote
   TimeoutInference *MsgTimeoutInference
   RevealSeed       *MsgRevealSeed
+  FinalizeRound    *MsgFinalizeRound
 }
 
+// Diff is the protocol primitive: what the user creates and signs.
+// UserSig covers hash(proto_serialize(Nonce, Txs)) -- nothing else.
 type Diff struct {
   Nonce      uint64
   Txs        []SubnetTx
-  UserSig    []byte               // user signature over hash(serialize(Diff))
+  UserSig    []byte
+}
+
+// DiffRecord is the storage representation: Diff + computed metadata.
+type DiffRecord struct {
+  Diff
+  StateHash  []byte               // state_root after applying this diff
   Signatures map[uint32][]byte    // slot_id -> state signature (accumulated over time)
-  StateHash  []byte               // computed after applying
   CreatedAt  int64
 }
 
@@ -276,33 +298,41 @@ type SlotAssignment struct {
 `state/interface.go`:
 
 ```go
+// NewStateMachine creates a state machine for a session.
+// group and balance come from mainnet escrow data.
+// verifier is used to check all signatures (user, executor, host-proposed txs).
+func NewStateMachine(escrowID string, config SessionConfig, group []SlotAssignment, balance uint64, verifier Verifier) StateMachine
+
 type StateMachine interface {
   // ApplyDiff validates and applies a diff at the next expected nonce.
+  // Verifies user signature. Diff may contain 0 or 1 MsgStartInference.
   // Returns the computed state root after application.
   ApplyDiff(diff Diff) (stateRoot []byte, err error)
 
-  // GetState returns a snapshot of the current session state.
-  GetState() SessionState
+  // GetState returns the current escrow state.
+  GetState() EscrowState
 
   // ComputeStateRoot returns the current state root without modifying state.
   ComputeStateRoot() []byte
 }
 ```
 
-Diff application follows design.md section "Diff Application":
-1. Validate nonce is sequential (latest_nonce + 1)
-2. For each tx in diff: validate well-formed, check preconditions, apply to SessionState
-3. Compute state_root (two-level Merkle)
-4. Return state_root
+Diff application:
+1. Verify user signature on the diff (`UserSig` over `hash(proto_serialize(Nonce, Txs))`)
+2. Validate nonce is sequential (latest_nonce + 1)
+3. Validate at most one MsgStartInference per diff. Reject MsgStartInference if state.Finalizing == true.
+4. For each tx: verify proposer_sig on host-proposed txs (MsgFinishInference, MsgValidation, MsgValidationVote, MsgRevealSeed), validate well-formed, check preconditions, apply to EscrowState
+5. Compute state_root (two-level Merkle)
+6. Return state_root
 
-State transitions follow design.md "Inference Lifecycle":
-- MsgStartInference: creates record status=pending (or started if executor_sig present). Computes reserved_cost from (input_length, max_tokens, config), reserves from balance. Deadline = started_at + config.DeadlineDuration (not stored in tx, derived).
-- MsgConfirmStart: verifies executor receipt signature, pending->started
-- MsgFinishInference: started->finished. Computes actual_cost from (input_tokens, output_tokens, config). Releases reserved_cost - actual_cost to balance. Updates host_stats[executor].cost += actual_cost.
-- MsgValidation(valid=true): finished->validated
-- MsgValidation(valid=false): finished->challenged
-- MsgValidationVote: increments vote counts, resolves to validated or invalidated on majority. On invalidation: host_stats[executor].cost -= actual_cost, actual_cost returned to balance.
-- MsgTimeoutInference: verifies vote signatures and slot-weighted threshold (config.VoteThreshold). pending/started->timed_out. host_stats[executor].missed += 1, reserved_cost released to balance.
+State transitions:
+- MsgStartInference: validates inference_id == diff.nonce. Derives executor_slot from `group[inference_id % len(group)].SlotID`. Creates record status=pending (or started if executor_sig present and verified). Computes `reserved_cost = (input_length + max_tokens) * config.TokenPrice` (caveat: input_length in chars overestimates for Latin scripts but may underestimate for CJK; acceptable for now). Reserves from balance. Rejects if balance < reserved_cost.
+- MsgConfirmStart: verifies executor receipt signature against executor's public key (from group). pending->started.
+- MsgFinishInference: verifies executor_slot matches the inference's assigned executor. started->finished. Computes `actual_cost = (input_tokens + output_tokens) * config.TokenPrice`. Rejects if actual_cost > reserved_cost. Releases reserved_cost - actual_cost to balance. Updates host_stats[executor].cost += actual_cost.
+- MsgValidation: verifies validator_slot != executor_slot. finished->validated (valid=true) or finished->challenged (valid=false). Q: how to verify no unauthorized validation? Deferred to Phase 4 (ShouldValidate). For Phase 1, any non-executor slot can validate.
+- MsgValidationVote: increments vote counts (slot-weighted: one slot = one vote). Resolves when votes exceed total_slots/2. On invalidation: host_stats[executor].invalid += 1, host_stats[executor].cost -= actual_cost, actual_cost returned to balance. No time-based expiry.
+- MsgTimeoutInference: verifies vote signatures and slot-weighted threshold (total_slots/2). reason=refused requires status=pending. reason=execution requires status=started. host_stats[executor].missed += 1, reserved_cost released to balance.
+- MsgFinalizeRound: sets state.Finalizing = true. Rejected if already finalizing. After this, MsgStartInference is rejected in all subsequent diffs.
 
 ### 1.5 State Hashing
 
@@ -348,15 +378,17 @@ Reuse interface from design.md:
 
 ```go
 type Storage interface {
-  CreateSession(escrowID string, group []SlotAssignment, balance uint64) error
-  AppendDiff(escrowID string, diff Diff) error
+  CreateSession(escrowID string, config SessionConfig, group []SlotAssignment, balance uint64) error
+  AppendDiff(escrowID string, rec DiffRecord) error
   AddSignature(escrowID string, nonce uint64, slotID uint32, sig []byte) error
   GetState(escrowID string) (*EscrowState, error)
-  GetDiffs(escrowID string, fromNonce, toNonce uint64) ([]Diff, error)
+  GetDiffs(escrowID string, fromNonce, toNonce uint64) ([]DiffRecord, error)
 }
 ```
 
-Phase 1 implementation: in-memory map protected by mutex.
+All writes are persistent immediately. `GetState` returns persisted state, not an in-memory cache. On restart, the state machine replays from stored diffs if needed.
+
+Phase 1 implementation: in-memory map protected by mutex (persistence semantics hold -- state is never stale within a process lifetime).
 
 ### 1.8 Test Plan
 
@@ -365,8 +397,12 @@ Tests are the primary deliverable. They define the contract and validate the sta
 **State machine tests** (`state/machine_test.go`):
 
 ```
+TestApplyDiff_UserSigVerification
+  - Diff with invalid UserSig, verify rejection
+  - Diff with valid UserSig, verify acceptance
+
 TestApplyDiff_StartInference
-  - Apply MsgStartInference, verify record created with status=pending, balance decremented by reserved_cost (derived from input_length + max_tokens + config)
+  - Apply MsgStartInference, verify record created with status=pending, balance decremented by reserved_cost
 
 TestApplyDiff_ConfirmStart
   - Apply Start then ConfirmStart with valid executor receipt, verify status=started
@@ -375,47 +411,69 @@ TestApplyDiff_ConfirmStart_InvalidReceipt
   - Apply Start then ConfirmStart with bad executor_sig, verify rejection
 
 TestApplyDiff_StartInference_FastPath
-  - Apply MsgStartInference with executor_sig present, verify status=started immediately (skips pending)
+  - MsgStartInference with executor_sig present, verify status=started immediately
 
 TestApplyDiff_FinishInference
   - Start -> ConfirmStart -> Finish, verify status=finished, balance += reserved_cost - actual_cost, host_stats.cost updated
 
+TestApplyDiff_FinishInference_WrongExecutorSlot
+  - MsgFinishInference with executor_slot != assigned executor, verify rejection
+
+TestApplyDiff_FinishInference_InvalidProposerSig
+  - MsgFinishInference with bad proposer_sig, verify rejection
+
 TestApplyDiff_Validation_Valid
   - Start -> ConfirmStart -> Finish -> Validation(valid=true), verify status=validated
 
+TestApplyDiff_Validation_SelfValidation
+  - MsgValidation where validator_slot == executor_slot, verify rejection
+
 TestApplyDiff_Validation_Invalid_ChallengeVoting
-  - Start -> ConfirmStart -> Finish -> Validation(valid=false), verify status=challenged
-  - Apply votes, verify transition to validated or invalidated based on majority
+  - Finish -> Validation(valid=false), verify status=challenged
+  - Apply votes, verify transition to validated or invalidated based on majority (total_slots/2)
   - Verify host_stats.invalid incremented on invalidation
   - Verify cost refunded on invalidation (host_stats.cost decremented, balance restored)
 
 TestApplyDiff_Timeout_Refused
   - Start (pending, no receipt) -> Timeout(reason=refused, with accept votes)
-  - Verify status=timed_out, host_stats.missed += 1, reserved_cost released to balance
+  - Verify status=timed_out, host_stats.missed += 1, reserved_cost released
 
 TestApplyDiff_Timeout_Execution
   - Start -> ConfirmStart (started) -> Timeout(reason=execution, with accept votes)
   - Verify status=timed_out, host_stats.missed += 1, reserved cost released
 
+TestApplyDiff_Timeout_WrongReason
+  - Timeout(reason=execution) on pending inference, verify rejection
+  - Timeout(reason=refused) on started inference, verify rejection
+
 TestApplyDiff_Timeout_InsufficientVotes
-  - Timeout with too few accept votes, verify rejection
+  - Timeout with fewer accept votes than total_slots/2, verify rejection
 
 TestApplyDiff_Timeout_AfterFinish
-  - Start -> ConfirmStart -> Finish -> Timeout, verify rejection (finished cannot transition to timed_out)
+  - Finish -> Timeout, verify rejection (finished cannot transition to timed_out)
 
 TestApplyDiff_NonceSequential
-  - Apply diff with wrong nonce, verify error
+  - Diff with wrong nonce, verify error
+
+TestApplyDiff_MultipleMsgStartInference
+  - Diff with 2 MsgStartInference, verify rejection
+
+TestApplyDiff_FinalizeRound
+  - MsgFinalizeRound sets state.Finalizing = true
+  - MsgStartInference after MsgFinalizeRound, verify rejection
+  - Second MsgFinalizeRound, verify rejection (already finalizing)
+  - Host-proposed txs (MsgFinishInference, MsgRevealSeed) still accepted after finalization
 
 TestApplyDiff_DuplicateTimeout
-  - Two timeouts for same inference_id, second is ignored (already timed_out)
+  - Two timeouts for same inference_id, second rejected (already timed_out)
 
 TestApplyDiff_FullLifecycle
-  - 10 inferences through various paths (some finished, some timed_out, some validated)
+  - 10 inferences through various paths (finished, timed_out, validated, invalidated)
   - Verify final host_stats match expectations
-  - Verify final balance = escrow_amount - sum(host_stats[*].cost)
+  - Verify final balance = initial_balance - sum(host_stats[*].cost)
 
 TestApplyDiff_EscrowBalanceCheck
-  - Start inference when balance too low (available < reserved_cost), verify rejection
+  - Start inference when balance < reserved_cost, verify rejection
 ```
 
 **State hash tests** (`state/hash_test.go`):
@@ -475,6 +533,15 @@ TestFullSession_HappyPath
 ```
 
 ### 1.9 Scope Boundaries
+
+Phase 1 INCLUDES:
+- User signature verification on diffs
+- Proposer signature verification on host-proposed txs
+- Executor receipt signature verification (MsgConfirmStart)
+- executor_slot match verification (MsgFinishInference)
+- validator_slot != executor_slot check (MsgValidation)
+- At most one MsgStartInference per diff enforcement
+- MsgFinalizeRound: sets Finalizing flag, blocks further MsgStartInference
 
 Phase 1 does NOT include:
 - Networking, HTTP handlers, gossip

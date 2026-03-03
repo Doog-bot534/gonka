@@ -24,7 +24,7 @@ Defined in `inference-chain/proto/` alongside existing 43 tx types.
 | MsgCreateEscrow | user | Lock funds, source of data for group sampling |
 | MsgSettleEscrow | user or host | Finalize session, initiate escrow distribution |
 
-### Subnet (7 txs)
+### Subnet (8 txs)
 
 Defined in the subnet package's own proto files. No shared types with mainnet protos.
 
@@ -37,12 +37,13 @@ Defined in the subnet package's own proto files. No shared types with mainnet pr
 | MsgValidation | host | Validation result. valid=false opens challenge voting |
 | MsgValidationVote | host | Vote during challenge |
 | MsgRevealSeed | host | Reveal validation seed during finalizing round |
+| MsgFinalizeRound | user | Enter finalization. Irreversible, blocks further MsgStartInference |
 
-9 total (2 mainnet + 7 subnet). No governance, staking, or other chain overhead in the subnet.
+10 total (2 mainnet + 8 subnet). No governance, staking, or other chain overhead in the subnet.
 
 No separate `MsgInvalidateInference`. Invalidation is the result of a challenge voting round: `MsgValidation(valid=false)` opens the vote, `MsgValidationVote` collects votes, majority decides.
 
-MsgTimeoutInference is user-proposed with votes from other hosts as evidence. The user collects votes out-of-band (hosts contact the executor to verify), then includes them in MsgTimeoutInference. The state machine verifies votes deterministically. Dedup: content-addressed by inference_id, first one wins.
+MsgTimeoutInference is user-proposed with votes from other hosts as evidence. The user collects votes out-of-band (hosts contact the executor to verify), then includes them in MsgTimeoutInference. The state machine verifies votes deterministically. If the inference is already in a terminal state (timed_out, finished, etc.), the diff is rejected as a protocol violation.
 
 
 ## Package Structure
@@ -101,25 +102,32 @@ First release: `decentralized-api` imports `subnet/` and mounts a new echo route
 Current state after applying all diffs up to latest_nonce. History lives in diffs (storage).
 
 ```
-SessionState:
+EscrowState:
   escrow_id            string
   balance              uint64                          # remaining escrow
+  finalizing           bool                            # set by MsgFinalizeRound, irreversible
   inferences           map[uint64]InferenceRecord      # keyed by inference_id
   host_stats           map[uint32]HostStats            # keyed by slot_id
   latest_nonce         uint64
 ```
 
 ```
+# Field count can be smaller: raw token counts are recoverable from stored diffs.
+# reserved_cost and actual_cost are the only fields the state machine uses for accounting.
+# Keeping all fields for now for debuggability.
 InferenceRecord:
   status               enum {pending, started, finished, challenged, validated, invalidated, timed_out}
   executor_slot        uint32
+  model                string
   prompt_hash          []byte
   response_hash        []byte              # set on MsgFinishInference
-  input_tokens         uint64              # set on MsgFinishInference
-  output_tokens        uint64              # set on MsgFinishInference
-  cost                 uint64              # reserved on start, finalized on finish
-  started_at           int64               # user's timestamp from MsgStartInference, used for both timeout reasons
-  deadline             int64               # started_at + T seconds
+  input_length         uint64              # chars, from MsgStartInference
+  max_tokens           uint64              # from MsgStartInference
+  input_tokens         uint64              # actual, set on MsgFinishInference
+  output_tokens        uint64              # actual, set on MsgFinishInference
+  reserved_cost        uint64              # computed at start: (input_length + max_tokens) * price
+  actual_cost          uint64              # computed at finish: (input_tokens + output_tokens) * price
+  started_at           int64               # user's timestamp from MsgStartInference
   votes_valid          uint32              # count during challenge
   votes_invalid        uint32              # count during challenge
   voted_slots          map[uint32]bool     # prevent double vote
@@ -134,7 +142,7 @@ HostStats:
   completed_validations uint32             # MsgValidation txs actually submitted
 ```
 
-Signatures are not part of SessionState. They are stored alongside diffs in storage.
+Signatures are not part of EscrowState. They are stored alongside diffs in storage.
 
 ### Inference Lifecycle
 
@@ -155,13 +163,13 @@ Validation is probabilistic. Most inferences follow `pending -> started -> finis
 
 Transitions and state updates:
 
-- MsgStartInference: creates record with status=pending, reserves max_cost from available balance. max_cost = (prompt_tokens + max_tokens) * per_token_price -- computable at request time (user estimates prompt length, e.g. chars/4; no tokenizer required). prompt_hash is verified by executor, validators, and hosts resolving timeouts.
-- MsgConfirmStart: verifies executor receipt, status=pending->started.
-- MsgFinishInference: status=started->finished, records response_hash and actual token counts, finalizes cost (releases max_cost - actual_cost). Updates host_stats[executor_slot].cost += actual cost.
-- MsgValidation(valid=true): status=validated. No change to host_stats.
-- MsgValidation(valid=false): status=challenged, opens voting window.
-- MsgValidationVote: increments votes_valid or votes_invalid. When votes_invalid > group_size/2: status=invalidated, host_stats[executor].invalid += 1, host_stats[executor].cost -= cost, reserved amount released to escrow (user refund). When votes_valid > group_size/2 or voting window expires: status=validated.
-- MsgTimeoutInference: requires slot-weighted votes as evidence (threshold: group_size/2). State machine verifies signatures and counts. status=timed_out, host_stats[executor].missed += 1, reserved cost released back to escrow. If votes reject the timeout (executor reachable, user sent invalid data), the inference stays in its current state -- no host penalty, user wastes reserved capacity.
+- MsgStartInference: creates record with status=pending, reserves max_cost from available balance. `max_cost = (input_length + max_tokens) * per_token_price` where input_length is prompt length in characters (caveat: overestimates for Latin, may underestimate for CJK; acceptable for now). inference_id must equal the diff's nonce. executor_slot is derived: `group[inference_id % len(group)].SlotID`. At most one MsgStartInference per diff. Rejected if state.finalizing == true.
+- MsgFinalizeRound: sets state.finalizing = true. Irreversible. After this, MsgStartInference is rejected. At most one per session. Diffs after this contain only cleanup txs (MsgRevealSeed, MsgFinishInference, MsgValidation, etc.).
+- MsgConfirmStart: verifies executor receipt signature against executor's public key, pending->started.
+- MsgFinishInference: verifies executor_slot matches inference's assigned executor. started->finished. `actual_cost = (input_tokens + output_tokens) * per_token_price`. Rejects if actual_cost > reserved_cost. Releases reserved_cost - actual_cost to balance. Updates host_stats[executor_slot].cost += actual_cost.
+- MsgValidation: verifies validator_slot != executor_slot. finished->validated (valid=true) or finished->challenged (valid=false). Q: how to verify no unauthorized validation? Deferred to ShouldValidate (Phase 4).
+- MsgValidationVote: increments votes_valid or votes_invalid. Votes are slot-weighted (one slot = one vote). When votes_invalid > total_slots/2: status=invalidated, host_stats[executor].invalid += 1, host_stats[executor].cost -= actual_cost, actual_cost released to escrow. When votes_valid > total_slots/2: status=validated. No time-based expiry.
+- MsgTimeoutInference: requires slot-weighted votes (threshold: total_slots/2). Vote signature covers `(escrow_id, inference_id, reason, accept)`. reason=refused requires pending. reason=execution requires started. host_stats[executor].missed += 1, reserved cost released to escrow.
 
 ### State Hash
 
@@ -175,7 +183,7 @@ The state is structured as a two-level hash:
 
 host_stats_hash = hash(serialize(host_stats)). rest_hash = hash(balance_bytes || inferences_hash), where inferences_hash = hash(serialize(inferences)). state_root = hash(host_stats_hash || rest_hash). Serialization is deterministic (protobuf with sorted map keys, fixed field order).
 
-This covers the full SessionState: host_stats on the left, balance and inferences on the right. escrow_id and latest_nonce are already bound by the signature (sign(state_root || escrow_id || nonce)) and don't need separate inclusion.
+This covers the full EscrowState: host_stats on the left, balance and inferences on the right. escrow_id and latest_nonce are already bound by the signature (sign(state_root || escrow_id || nonce)) and don't need separate inclusion.
 
 At settlement, mainnet receives host_stats and rest_hash (the sibling). It recomputes host_stats_hash, combines with rest_hash, and checks against the signed state_root. Mainnet doesn't need to interpret rest_hash.
 
@@ -183,11 +191,11 @@ Every host applying the same diffs to the same nonce produces the same state_roo
 
 ### What Gets Signed
 
-User signs each diff: `sign(hash(serialize(Diff)))`. Diff is protobuf (canonical serialization). The signature authenticates the diff as coming from the user and binds the tx content to the nonce. Required for non-repudiation and equivocation detection (see Sequencing Model).
+User signs the diff content: `sign(hash(serialize(nonce, txs)))`. Only nonce and txs are signed -- not host signatures or state hash (those arrive later). Serialization is protobuf (deterministic). The signature authenticates the diff as coming from the user and binds the tx content to the nonce. Required for non-repudiation and equivocation detection (see Sequencing Model).
 
 Host signs the state: `sign(state_root || escrow_id || nonce)`. escrow_id prevents cross-session replay, nonce prevents cross-nonce replay, state_root binds to a specific state. Signing happens before execution.
 
-Executor signs the receipt: `sign(inference_id || prompt_hash || model || cost_estimate || started_at)`. Attests to request content and timestamp. Delivered to other hosts via MsgConfirmStart.
+Executor signs the receipt: `sign(inference_id || prompt_hash || model || input_length || max_tokens || started_at)`. Attests to request content and timestamp. Delivered to other hosts via MsgConfirmStart.
 
 Host signs proposed txs: each host-proposed transaction (MsgFinishInference, MsgValidation, MsgValidationVote, MsgRevealSeed) carries the proposer's signature over the serialized tx content. The signature is not part of state -- it is verified before applying the tx and then discarded. Every participant (hosts and user) verifies it using the known public key for that slot from the group assignment. This prevents the user from forging host-proposed txs when including them in diffs.
 
@@ -198,7 +206,7 @@ When a host receives a request with diffs:
 1. For each diff from local_latest_nonce+1 to received_latest_nonce:
    a. Verify user signature on the diff
    b. Validate: nonce is sequential, txs are well-formed, proposer is authorized
-   c. Apply each tx to SessionState (update balance, inferences, host_stats, usage)
+   c. Apply each tx to EscrowState (update balance, inferences, host_stats, usage)
    d. Compute state_root, store diff + state_root
 2. Verify included host signatures against stored state_roots at their respective nonces
 3. Append new diff (current nonce) with the user's new txs
@@ -475,22 +483,30 @@ type WarmKeyInfo struct {
 
 ### Data Model
 
-Per-escrow state is a chain of diffs. Each diff is one nonce increment.
+Each escrow has a EscrowState -- the current balances, inference records, and host stats. EscrowState is a deterministic function of the ordered sequence of diffs applied from nonce 1 to latest_nonce. Each diff increments the nonce by one and contains transactions that modify state.
+
+Two types represent diffs:
+
+- Diff: protocol primitive, what the user creates and signs. Contains Nonce, Txs, UserSig. UserSig covers `hash(proto_serialize(Nonce, Txs))`.
+- DiffRecord: storage representation. Embeds Diff plus computed metadata: StateHash (state_root after applying), Signatures (host state signatures, accumulated over time), CreatedAt.
+
+Storage schema:
 
 ```
 escrow_state:
   escrow_id       string (PK)
-  group           []slot_assignment   # from mainnet at creation
+  group           []SlotAssignment    # from mainnet at creation
   balance         uint64              # available escrow: escrow_amount - sum(active reservations)
   latest_nonce    uint64
   settled         bool
 
-diff:
+diff_records:                         # one row per DiffRecord
   escrow_id       string (FK)
   nonce           uint64 (PK with escrow_id)
-  txs             []SubnetTx           # serialized proto
-  signatures      map[slot_id][]byte   # accumulated over time
-  state_hash      []byte               # cumulative hash at this nonce
+  txs             []SubnetTx          # serialized proto
+  user_sig        []byte
+  state_hash      []byte              # computed, not user-provided
+  signatures      map[slot_id][]byte  # accumulated over time
   created_at      timestamp
 ```
 
@@ -503,10 +519,10 @@ Both diffs and latest state are persisted. The state machine owns the in-memory 
 ```go
 type Storage interface {
     CreateSession(escrowID string, group []SlotAssignment, balance uint64) error
-    AppendDiff(escrowID string, diff Diff) error
+    AppendDiff(escrowID string, rec DiffRecord) error
     AddSignature(escrowID string, nonce uint64, slotID uint32, sig []byte) error
     GetState(escrowID string) (*EscrowState, error)
-    GetDiffs(escrowID string, fromNonce, toNonce uint64) ([]Diff, error)
+    GetDiffs(escrowID string, fromNonce, toNonce uint64) ([]DiffRecord, error)
 }
 ```
 
