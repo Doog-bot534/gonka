@@ -185,7 +185,14 @@ func MustAddParticipant(t *testing.T, ms types.MsgServer, ctx context.Context, m
 func TestMsgServer_FinishInference_InferenceNotFound(t *testing.T) {
 	k, ms, ctx := setupMsgServer(t)
 	k.SetEffectiveEpochIndex(ctx, 1) // Set to non-zero epoch to avoid epoch not found error
-	k.SetActiveParticipants(ctx, types.ActiveParticipants{})
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId: 1,
+		Participants: []*types.ActiveParticipant{
+			{
+				Index: testutil.Executor,
+			},
+		},
+	})
 	response, err := ms.FinishInference(ctx, &types.MsgFinishInference{
 		Creator:              testutil.Executor,
 		InferenceId:          "inferenceId",
@@ -298,7 +305,9 @@ func (h *MockInferenceHelper) EnsureActiveParticipants() {
 func (h *MockInferenceHelper) StartInference(
 	promptPayload string, model string, requestTimestamp int64, maxTokens uint64) (*types.Inference, error) {
 	h.Mocks.BankKeeper.EXPECT().SendCoinsFromAccountToModule(gomock.Any(), gomock.Any(), types.ModuleName, gomock.Any(), gomock.Any()).Return(nil)
+	h.Mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), h.MockRequester.GetBechAddress()).Return(true).AnyTimes()
 	h.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), h.MockRequester.GetBechAddress()).Return(h.MockRequester)
+	h.Mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), h.MockTransferAgent.GetBechAddress()).Return(true).AnyTimes()
 	h.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), h.MockTransferAgent.GetBechAddress()).Return(h.MockTransferAgent).AnyTimes()
 	h.Mocks.AuthzKeeper.EXPECT().GranterGrants(gomock.Any(), gomock.Any()).Return(&authztypes.QueryGranterGrantsResponse{Grants: []*authztypes.GrantAuthorization{}}, nil).AnyTimes()
 	h.EnsureActiveParticipants()
@@ -376,8 +385,11 @@ func (h *MockInferenceHelper) FinishInference() (*types.Inference, error) {
 	}
 	h.Mocks.BankKeeper.EXPECT().SendCoinsFromModuleToAccount(gomock.Any(), types.ModuleName, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
+	h.Mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), h.MockRequester.GetBechAddress()).Return(true).AnyTimes()
 	h.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), h.MockRequester.GetBechAddress()).Return(h.MockRequester).AnyTimes()
+	h.Mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), h.MockTransferAgent.GetBechAddress()).Return(true).AnyTimes()
 	h.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), h.MockTransferAgent.GetBechAddress()).Return(h.MockTransferAgent).AnyTimes()
+	h.Mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), h.MockExecutor.GetBechAddress()).Return(true).AnyTimes()
 	h.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), h.MockExecutor.GetBechAddress()).Return(h.MockExecutor).AnyTimes()
 	h.EnsureActiveParticipants()
 

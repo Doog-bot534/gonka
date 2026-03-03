@@ -13,7 +13,15 @@ import (
 
 func TestMsgServer_StartInferenceWithUnregesteredParticipant(t *testing.T) {
 	k, ms, ctx := setupMsgServer(t)
-	err := k.SetEffectiveEpochIndex(ctx, 1)
+	_ = k.SetEffectiveEpochIndex(ctx, 1)
+	_ = k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId: 1,
+		Participants: []*types.ActiveParticipant{
+			{
+				Index: testutil.Creator,
+			},
+		},
+	})
 	response, err := ms.StartInference(ctx, &types.MsgStartInference{
 		InferenceId:   "inferenceId",
 		PromptHash:    "promptHash",
@@ -27,6 +35,16 @@ func TestMsgServer_StartInferenceWithUnregesteredParticipant(t *testing.T) {
 
 func TestMsgServer_StartInference_DeveloperNotAllowlisted(t *testing.T) {
 	k, ms, ctx := setupMsgServer(t)
+	_ = k.SetEffectiveEpochIndex(ctx, 1)
+	_ = k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId: 1,
+		Participants: []*types.ActiveParticipant{
+			{
+				Index: testutil.Creator,
+			},
+		},
+	})
+	_ = k.SetModelCurrentPrice(ctx, "", calculations.PerTokenCost)
 
 	// Enable gating at current height + 100, with an allowlist that does NOT include testutil.Requester.
 	p, err := k.GetParams(ctx)

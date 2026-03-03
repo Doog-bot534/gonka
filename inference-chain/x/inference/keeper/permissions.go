@@ -2,7 +2,6 @@ package keeper
 
 import (
 	"context"
-	"errors"
 	"reflect"
 
 	"cosmossdk.io/collections"
@@ -11,6 +10,48 @@ import (
 )
 
 type Permission string
+
+type permissionChecker func(k msgServer, ctx context.Context, signer sdk.AccAddress) error
+
+var permissionCheckers = map[Permission]permissionChecker{
+	GovernancePermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return k.checkGovernancePermission(ctx, signer)
+	},
+	AccountPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return k.checkAccountPermission(ctx, signer)
+	},
+	ParticipantPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return k.checkParticipantPermission(ctx, signer)
+	},
+	ActiveParticipantPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return k.checkActiveParticipantPermission(ctx, signer, 0)
+	},
+	PreviousActiveParticipantPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return k.checkActiveParticipantPermission(ctx, signer, 1)
+	},
+	TrainingExecPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return k.checkTrainingExecPermission(ctx, signer)
+	},
+	TrainingStartPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return k.checkTrainingStartPermission(ctx, signer)
+	},
+	CurrentActiveParticipantPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return k.checkCurrentActiveParticipantPermission(ctx, signer)
+	},
+	ContractPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return k.checkContractPermission(ctx, signer)
+	},
+	OpenRegistrationPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		sdkCtx := sdk.UnwrapSDKContext(ctx)
+		if k.IsNewParticipantRegistrationClosed(ctx, sdkCtx.BlockHeight()) {
+			return types.ErrNewParticipantRegistrationClosed
+		}
+		return nil
+	},
+	NoPermission: func(k msgServer, ctx context.Context, signer sdk.AccAddress) error {
+		return nil
+	},
+}
 
 const (
 	// GovernancePermission allows only the module authority signer.
@@ -37,6 +78,8 @@ const (
 	OpenRegistrationPermission Permission = "open_registration"
 )
 
+// This is no longer "operational" at runtime, but it is still used in the unit test, allowing us to trust
+// this entire list as a source of truth for message permissions.
 var MessagePermissions = map[reflect.Type][]Permission{
 	reflect.TypeOf((*types.MsgUpdateParams)(nil)):                    {GovernancePermission},
 	reflect.TypeOf((*types.MsgSetTrainingAllowList)(nil)):            {GovernancePermission},
@@ -65,7 +108,7 @@ var MessagePermissions = map[reflect.Type][]Permission{
 	reflect.TypeOf((*types.MsgInvalidateInference)(nil)): {NoPermission},
 	reflect.TypeOf((*types.MsgRevalidateInference)(nil)): {NoPermission},
 
-	reflect.TypeOf((*types.MsgClaimRewards)(nil)):                     {ParticipantPermission},
+	reflect.TypeOf((*types.MsgClaimRewards)(nil)):                     {ActiveParticipantPermission, PreviousActiveParticipantPermission},
 	reflect.TypeOf((*types.MsgSubmitHardwareDiff)(nil)):               {ParticipantPermission},
 	reflect.TypeOf((*types.MsgSubmitPocBatch)(nil)):                   {ParticipantPermission},
 	reflect.TypeOf((*types.MsgSubmitPocValidation)(nil)):              {ParticipantPermission},
@@ -73,7 +116,7 @@ var MessagePermissions = map[reflect.Type][]Permission{
 	reflect.TypeOf((*types.MsgPoCV2StoreCommit)(nil)):                 {NoPermission},
 	reflect.TypeOf((*types.MsgMLNodeWeightDistribution)(nil)):         {NoPermission},
 	reflect.TypeOf((*types.MsgSubmitSeed)(nil)):                       {ParticipantPermission},
-	reflect.TypeOf((*types.MsgSubmitUnitOfComputePriceProposal)(nil)): {ParticipantPermission},
+	reflect.TypeOf((*types.MsgSubmitUnitOfComputePriceProposal)(nil)): {ActiveParticipantPermission},
 
 	reflect.TypeOf((*types.MsgSubmitTrainingKvRecord)(nil)):         {TrainingExecPermission},
 	reflect.TypeOf((*types.MsgJoinTraining)(nil)):                   {TrainingExecPermission},
@@ -85,25 +128,24 @@ var MessagePermissions = map[reflect.Type][]Permission{
 	reflect.TypeOf((*types.MsgCreateDummyTrainingTask)(nil)):        {TrainingStartPermission},
 	reflect.TypeOf((*types.MsgCreateTrainingTask)(nil)):             {TrainingStartPermission},
 
-	reflect.TypeOf((*types.MsgFinishInference)(nil)): {ParticipantPermission},
-	reflect.TypeOf((*types.MsgStartInference)(nil)):  {ParticipantPermission},
-
-	// Allow participants who are no longer active to perform catch up validations
-	reflect.TypeOf((*types.MsgValidation)(nil)): {ActiveParticipantPermission, PreviousActiveParticipantPermission},
+	reflect.TypeOf((*types.MsgStartInference)(nil)): {ActiveParticipantPermission},
+	// Finish could happen after a new epoch has started
+	reflect.TypeOf((*types.MsgFinishInference)(nil)): {ActiveParticipantPermission, PreviousActiveParticipantPermission},
+	reflect.TypeOf((*types.MsgValidation)(nil)):      {ActiveParticipantPermission, PreviousActiveParticipantPermission},
 }
 
 type HasSigners interface {
-	GetSigners() []string
+	GetSignersStrings() []string
 }
 
 // CheckPermission verifies that at least one signer on msg has one of the
 // declared permissions for the message type and that local/global declarations match.
 // At least one permission argument is required by signature.
 func (k msgServer) CheckPermission(ctx context.Context, msg HasSigners, permission Permission, permissions ...Permission) error {
-	signers := msg.GetSigners()
+	signers := msg.GetSignersStrings()
 	var err error
 	for _, signer := range signers {
-		err = k.checkPermissions(ctx, msg, signer, append(permissions, permission))
+		err = k.checkPermissions(ctx, signer, permission, permissions)
 		if err == nil {
 			return nil
 		}
@@ -111,118 +153,46 @@ func (k msgServer) CheckPermission(ctx context.Context, msg HasSigners, permissi
 	return err
 }
 
-func (k msgServer) checkPermissions(ctx context.Context, msg HasSigners, signer string, permissions []Permission) error {
+func (k msgServer) checkPermissions(ctx context.Context, signer string, requiredPermission Permission, additionalPermissions []Permission) error {
 	signerAddr, err := sdk.AccAddressFromBech32(signer)
 	if err != nil {
 		return err
 	}
-	permission, ok := MessagePermissions[reflect.TypeOf(msg)]
-	if !ok {
-		k.LogError("Permission not found for message type", types.Messages, "message type", reflect.TypeOf(msg))
-		return types.ErrInvalidPermission
-	}
-
-	// Double check that the global and local lists match (order independent):
-	if len(permission) != len(permissions) {
-		return types.ErrInvalidPermission
-	}
-	permMap := make(map[Permission]bool)
-	for _, p := range permission {
-		permMap[p] = true
-	}
-	for _, p := range permissions {
-		if !permMap[p] {
-			return types.ErrInvalidPermission
-		}
-	}
-
 	var lastErr error
-	for _, perm := range permission {
-		switch perm {
-		case GovernancePermission:
-			if err := k.checkGovernancePermission(ctx, signerAddr); err == nil {
-				return nil
-			} else {
-				lastErr = err
-			}
-		case AccountPermission:
-			if err := k.checkAccountPermission(ctx, signerAddr); err == nil {
-				return nil
-			} else {
-				lastErr = err
-			}
-		case ParticipantPermission:
-			if err := k.checkParticipantPermission(ctx, signerAddr); err == nil {
-				return nil
-			} else {
-				lastErr = err
-			}
-		case ActiveParticipantPermission:
-			if err := k.checkActiveParticipantPermission(ctx, signerAddr, 0); err == nil {
-				return nil
-			} else {
-				lastErr = err
-			}
-		case PreviousActiveParticipantPermission:
-			if err := k.checkActiveParticipantPermission(ctx, signerAddr, 1); err == nil {
-				return nil
-			} else {
-				lastErr = err
-			}
-		case TrainingExecPermission:
-			if err := k.checkTrainingExecPermission(ctx, signerAddr); err == nil {
-				return nil
-			} else {
-				lastErr = err
-			}
-		case TrainingStartPermission:
-			if err := k.checkTrainingStartPermission(ctx, signerAddr); err == nil {
-				return nil
-			} else {
-				lastErr = err
-			}
-		case CurrentActiveParticipantPermission:
-			if err := k.checkCurrentActiveParticipantPermission(ctx, signerAddr); err == nil {
-				return nil
-			} else {
-				lastErr = err
-			}
-		case ContractPermission:
-			if err := k.checkContractPermission(ctx, signerAddr); err == nil {
-				return nil
-			} else {
-				lastErr = err
-			}
-		case OpenRegistrationPermission:
-			sdkCtx := sdk.UnwrapSDKContext(ctx)
-			if k.IsNewParticipantRegistrationClosed(ctx, sdkCtx.BlockHeight()) {
-				return types.ErrNewParticipantRegistrationClosed
-			}
+	if lastErr = k.checkSinglePermission(ctx, requiredPermission, signerAddr); lastErr == nil {
+		return nil
+	}
+	for _, perm := range additionalPermissions {
+		err := k.checkSinglePermission(ctx, perm, signerAddr)
+		if err == nil {
 			return nil
-		case NoPermission:
-			return nil
-		default:
-			return types.ErrInvalidPermission
 		}
+		lastErr = err
 	}
 	return lastErr
+}
 
+func (k msgServer) checkSinglePermission(ctx context.Context, perm Permission, signerAddr sdk.AccAddress) error {
+	checker, ok := permissionCheckers[perm]
+	if !ok {
+		return types.ErrInvalidPermission
+	}
+	return checker(k, ctx, signerAddr)
 }
 
 func (k msgServer) checkAccountPermission(ctx context.Context, signer sdk.AccAddress) error {
-	acc := k.AccountKeeper.GetAccount(ctx, signer)
-	if acc == nil {
+	if !k.AccountKeeper.HasAccount(ctx, signer) {
 		return types.ErrAccountNotFound
 	}
 	return nil
 }
 
 func (k msgServer) checkParticipantPermission(ctx context.Context, signer sdk.AccAddress) error {
-	_, err := k.Participants.Get(ctx, signer)
-	if errors.Is(err, collections.ErrNotFound) {
+	found, err := k.Participants.Has(ctx, signer)
+	if err != nil || !found {
 		return types.ErrParticipantNotFound
 	}
-	return err
+	return nil
 }
 
 func (k msgServer) checkActiveParticipantPermission(ctx context.Context, signer sdk.AccAddress, epochOffset uint64) error {
@@ -233,16 +203,14 @@ func (k msgServer) checkActiveParticipantPermission(ctx context.Context, signer 
 	if currentEpoch < epochOffset {
 		return types.ErrActiveParticipantNotFound
 	}
-	p, found := k.GetActiveParticipants(ctx, currentEpoch-epochOffset)
+	found, err := k.ActiveParticipantsSet.Has(ctx, collections.Join(currentEpoch-epochOffset, signer))
+	if err != nil {
+		return err
+	}
 	if !found {
 		return types.ErrActiveParticipantNotFound
 	}
-	for _, participant := range p.Participants {
-		if participant.Index == signer.String() {
-			return nil
-		}
-	}
-	return types.ErrActiveParticipantNotFound
+	return nil
 }
 
 func (k msgServer) checkCurrentActiveParticipantPermission(ctx context.Context, signer sdk.AccAddress) error {

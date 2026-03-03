@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/cosmos/cosmos-sdk/x/group"
 	"github.com/productscience/inference/x/inference/types"
 	"github.com/stretchr/testify/require"
@@ -32,15 +31,19 @@ func TestBridgeExchange_DoubleVoteCaseBypass(t *testing.T) {
 	}
 	k.SetEpochGroupData(ctx, epochGroupData)
 
+	// Set active participants
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:      100,
+		Participants: []*types.ActiveParticipant{{Index: validatorLower}},
+	})
+
 	// Setup Mocks
 
-	// 1. AccountKeeper.GetAccount for Validator (both lower and upper)
+	// 1. AccountKeeper.HasAccount for Validator (both lower and upper)
 	accAddr, _ := sdk.AccAddressFromBech32(validatorLower)
 
-	// We expect GetAccount to be called. It just checks if account exists (not nil).
-	mocks.AccountKeeper.EXPECT().GetAccount(ctx, accAddr).Return(
-		&authtypes.BaseAccount{Address: validatorLower},
-	).AnyTimes()
+	// We expect HasAccount to be called.
+	mocks.AccountKeeper.EXPECT().HasAccount(ctx, accAddr).Return(true).AnyTimes()
 
 	// 2. GroupKeeper.GroupMembers
 	// Called when checking if validator is in epoch group.
