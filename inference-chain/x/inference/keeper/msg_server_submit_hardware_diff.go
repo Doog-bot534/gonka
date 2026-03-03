@@ -15,11 +15,6 @@ func (k msgServer) SubmitHardwareDiff(goCtx context.Context, msg *types.MsgSubmi
 	}
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
-	_, found := k.GetParticipant(goCtx, msg.Creator)
-	if !found {
-		return nil, types.ErrParticipantNotFound
-	}
-
 	// Check for duplicate LocalIds
 	seenIds := make(map[string]bool)
 	for _, node := range msg.NewOrModified {

@@ -13,11 +13,6 @@ func (k msgServer) RegisterTokenMetadata(goCtx context.Context, msg *types.MsgRe
 	}
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
-	// Validate authority - only governance can set token metadata
-	if msg.Authority != k.GetAuthority() {
-		return nil, types.ErrInvalidSigner
-	}
-
 	// Create TokenMetadata struct from the message
 	metadata := TokenMetadata{
 		Name:      msg.Name,
