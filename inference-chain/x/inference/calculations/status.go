@@ -26,10 +26,16 @@ const (
 	FailedConfirmationPoC ParticipantStatusReason = "failed_confirmation_poc"
 )
 
-const (
-	// Keeping the log precision low keeps compute low and high precision is not needed
-	LogPrecision = 12
-)
+func StatsHaveChanged(oldStats, newStats *types.CurrentEpochStats) bool {
+	if oldStats == nil || newStats == nil {
+		return true
+	}
+	return oldStats.InvalidatedInferences != newStats.InvalidatedInferences ||
+		oldStats.ValidatedInferences != newStats.ValidatedInferences ||
+		oldStats.InferenceCount != newStats.InferenceCount ||
+		oldStats.MissedRequests != newStats.MissedRequests ||
+		oldStats.ConfirmationPoCRatio != newStats.ConfirmationPoCRatio
+}
 
 // Note that newValue is passed in BY VALUE, so changes to newValue directly will not pass back
 func ComputeStatus(
