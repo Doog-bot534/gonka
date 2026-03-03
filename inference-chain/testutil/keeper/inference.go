@@ -184,11 +184,13 @@ func InferenceKeeperWithMock(
 ) (keeper.Keeper, sdk.Context) {
 	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
 	storeKey := storetypes.NewKVStoreKey(types.StoreKey)
+	transientStoreKey := storetypes.NewTransientStoreKey(types.TransientStoreKey)
 	blsStoreKey := storetypes.NewKVStoreKey(blstypes.StoreKey)
 
 	db := dbm.NewMemDB()
 	stateStore := store.NewCommitMultiStore(db, log.NewNopLogger(), metrics.NewNoOpMetrics())
 	stateStore.MountStoreWithDB(storeKey, storetypes.StoreTypeIAVL, db)
+	stateStore.MountStoreWithDB(transientStoreKey, storetypes.StoreTypeTransient, db)
 	stateStore.MountStoreWithDB(blsStoreKey, storetypes.StoreTypeIAVL, db)
 	require.NoError(t, stateStore.LoadLatestVersion())
 
@@ -207,6 +209,7 @@ func InferenceKeeperWithMock(
 	k := keeper.NewKeeper(
 		cdc,
 		runtime.NewKVStoreService(storeKey),
+		runtime.NewTransientStoreService(transientStoreKey),
 		PrintlnLogger{},
 		authority.String(),
 		bankMock,

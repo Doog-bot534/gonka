@@ -246,7 +246,7 @@ func (k msgServer) handleInferenceCompleted(ctx sdk.Context, inference *types.In
 		buildInferenceFinishedEventAttributes(inference)...,
 	))
 
-	if err := k.EnqueueFinishedInference(ctx, ctx.BlockHeight(), inference.InferenceId); err != nil {
+	if err := k.EnqueueFinishedInference(ctx, inference.InferenceId); err != nil {
 		k.LogError("Unable to enqueue pending inference validation", types.Validation, "inference_id", inference.InferenceId, "block_height", ctx.BlockHeight(), "err", err)
 		return
 	}

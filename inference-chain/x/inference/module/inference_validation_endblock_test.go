@@ -69,13 +69,16 @@ func TestEndBlock_ProcessesPendingInferenceValidationQueue(t *testing.T) {
 	require.NoError(t, k.PruningState.Set(ctx, types.PruningState{}))
 
 	ctx = ctx.WithBlockHeight(123)
-	require.NoError(t, k.EnqueueFinishedInference(ctx, ctx.BlockHeight(), inferenceID))
-	require.NoError(t, k.EnqueueFinishedInference(ctx, ctx.BlockHeight(), "missing-inference"))
+	require.NoError(t, k.EnqueueFinishedInference(ctx, inferenceID))
+	require.NoError(t, k.EnqueueFinishedInference(ctx, "missing-inference"))
 
 	am := inference.NewAppModule(nil, k, nil, nil, nil, nil)
 	require.NoError(t, am.EndBlock(ctx))
 
-	require.Empty(t, k.ListFinishedInferenceIDsForHeight(ctx, ctx.BlockHeight()))
+	// This no longer applies, The TransientStore is used and is wiped at commit, not endblock
+	ds, err := k.ListFinishedInferenceIDs(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, ds)
 
 	details, found := k.GetInferenceValidationDetails(ctx, effectiveEpoch.Index, inferenceID)
 	require.True(t, found)
