@@ -22,6 +22,7 @@ const (
 	BridgeEscrowAccName      = "bridge_escrow"
 )
 
+// These prefixes should NEVER change, only increase
 var (
 	ParticipantsPrefix                     = collections.NewPrefix(0)
 	RandomSeedPrefix                       = collections.NewPrefix(1)
@@ -66,8 +67,9 @@ var (
 	PocV2EnabledEpochPrefix                = collections.NewPrefix(41)
 	PoCValidationSnapshotPrefix            = collections.NewPrefix(42)
 	PunishmentGraceEpochsPrefix            = collections.NewPrefix(43)
-	ModelLoadRollingWindowPrefix           = collections.NewPrefix(44)
-	ModelInferenceCountRollingWindowPrefix = collections.NewPrefix(45)
+	ActiveParticipantsCachePrefix          = collections.NewPrefix(44)
+	ModelLoadRollingWindowPrefix           = collections.NewPrefix(45)
+	ModelInferenceCountRollingWindowPrefix = collections.NewPrefix(46)
 	ParamsKey                              = []byte("p_inference")
 )
 

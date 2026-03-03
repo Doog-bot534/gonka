@@ -13,6 +13,11 @@ import (
 )
 
 func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInference) (*types.MsgStartInferenceResponse, error) {
+	if err := k.CheckPermission(goCtx, msg, ActiveParticipantPermission); err != nil {
+		// return the failure and back out even batch transactions, since permissions will not change in a batch
+		return nil, err
+	}
+
 	ctx, err := k.Keeper.InjectParamsIntoContext(sdk.UnwrapSDKContext(goCtx))
 	if err != nil {
 		k.LogWarn("StartInference: failed to inject params", types.Inferences, "error", err)

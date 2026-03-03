@@ -16,6 +16,10 @@ const (
 )
 
 func (k msgServer) Validation(goCtx context.Context, msg *types.MsgValidation) (*types.MsgValidationResponse, error) {
+	if err := k.CheckPermission(goCtx, msg, ActiveParticipantPermission, PreviousActiveParticipantPermission); err != nil {
+		return nil, err
+	}
+
 	ctx, err := k.Keeper.InjectParamsIntoContext(sdk.UnwrapSDKContext(goCtx))
 	if err != nil {
 		k.LogWarn("Validation: failed to inject params", types.Validation, "error", err)
