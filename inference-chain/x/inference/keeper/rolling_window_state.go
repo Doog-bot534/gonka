@@ -196,18 +196,19 @@ func (k Keeper) removeInactiveModelRollingStates(
 	return nil
 }
 
-func (s rollingWindowState) normalize(targetWindow int) rollingWindowState {
+func (s rollingWindowState) normalize(targetWindow int64) rollingWindowState {
 	if targetWindow < 1 {
 		targetWindow = 1
 	}
 
 	values := append([]uint64(nil), s.Values...)
+	targetWindowInt := int(targetWindow)
 	switch {
-	case len(values) < targetWindow:
-		padded := make([]uint64, targetWindow-len(values))
+	case len(values) < targetWindowInt:
+		padded := make([]uint64, targetWindowInt-len(values))
 		values = append(padded, values...)
-	case len(values) > targetWindow:
-		values = values[len(values)-targetWindow:]
+	case len(values) > targetWindowInt:
+		values = values[len(values)-targetWindowInt:]
 	}
 
 	sum := uint64(0)
@@ -246,7 +247,7 @@ func rollingWindowStateFromProto(state types.RollingWindowState) rollingWindowSt
 	return rollingWindowState{
 		Values: append([]uint64(nil), state.Values...),
 		Sum:    state.Sum,
-	}.normalize(len(state.Values))
+	}.normalize(int64(len(state.Values)))
 }
 
 func (s rollingWindowState) toProto() types.RollingWindowState {
@@ -272,12 +273,12 @@ func secondsToBlocks(windowSeconds uint64) uint64 {
 	return windowBlocks
 }
 
-func windowBlocksToSize(windowBlocks uint64) int {
+func windowBlocksToSize(windowBlocks uint64) int64 {
 	if windowBlocks == 0 {
 		return 1
 	}
-	if windowBlocks > uint64(math.MaxInt) {
-		return math.MaxInt
+	if windowBlocks > uint64(math.MaxInt64) {
+		return math.MaxInt64
 	}
-	return int(windowBlocks)
+	return int64(windowBlocks)
 }
