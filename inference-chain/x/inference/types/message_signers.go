@@ -9,10 +9,12 @@ func (msg *MsgRegisterModel) GetSignersStrings() []string { return []string{msg.
 func (msg *MsgApproveBridgeTokenForTrading) GetSignersStrings() []string {
 	return []string{msg.Authority}
 }
-func (msg *MsgRegisterBridgeAddresses) GetSignersStrings() []string { return []string{msg.Authority} }
-func (msg *MsgRegisterLiquidityPool) GetSignersStrings() []string   { return []string{msg.Authority} }
-func (msg *MsgRegisterTokenMetadata) GetSignersStrings() []string   { return []string{msg.Authority} }
-func (msg *MsgMigrateAllWrappedTokens) GetSignersStrings() []string { return []string{msg.Authority} }
+func (msg *MsgRegisterBridgeAddresses) GetSignersStrings() []string   { return []string{msg.Authority} }
+func (msg *MsgRegisterLiquidityPool) GetSignersStrings() []string     { return []string{msg.Authority} }
+func (msg *MsgRegisterTokenMetadata) GetSignersStrings() []string     { return []string{msg.Authority} }
+func (msg *MsgApproveIbcTokenForTrading) GetSignersStrings() []string { return []string{msg.Authority} }
+func (msg *MsgRegisterIbcTokenMetadata) GetSignersStrings() []string  { return []string{msg.Authority} }
+func (msg *MsgMigrateAllWrappedTokens) GetSignersStrings() []string   { return []string{msg.Authority} }
 func (msg *MsgRegisterWrappedTokenContract) GetSignersStrings() []string {
 	return []string{msg.Authority}
 }

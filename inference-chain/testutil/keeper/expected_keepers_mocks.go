@@ -185,7 +185,7 @@ func (mr *MockBankKeeperMockRecorder) GetDenomMetaData(ctx, denom any) *gomock.C
 }
 
 // SetDenomMetaData mocks base method.
-func (m *MockBankKeeper) SetDenomMetaData(ctx context.Context, denomMetaData types1.Metadata) {
+func (m *MockBankKeeper) SetDenomMetaData(ctx context.Context, denomMetaData types2.Metadata) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "SetDenomMetaData", ctx, denomMetaData)
 }

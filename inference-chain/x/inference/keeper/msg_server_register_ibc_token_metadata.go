@@ -10,11 +10,20 @@ import (
 )
 
 func (k msgServer) RegisterIbcTokenMetadata(goCtx context.Context, msg *types.MsgRegisterIbcTokenMetadata) (*types.MsgRegisterIbcTokenMetadataResponse, error) {
+	if err := k.CheckPermission(goCtx, msg, GovernancePermission); err != nil {
+		return nil, err
+	}
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
-	// Validate authority - only governance can set token metadata
-	if msg.Authority != k.GetAuthority() {
-		return nil, types.ErrInvalidSigner
+	// Validate that this is strictly an IBC denom to protect native chain denoms (e.g. ugnk)
+	if len(msg.IbcDenom) < 4 || msg.IbcDenom[:4] != "ibc/" {
+		return nil, fmt.Errorf("invalid denom: must start with 'ibc/' to protect native token metadata")
+	}
+
+	// Protect against overwriting existing Bank metadata unless explicitly requested
+	_, existingBankMetaFound := k.BankView.GetDenomMetaData(ctx, msg.IbcDenom)
+	if existingBankMetaFound && !msg.Overwrite {
+		return nil, fmt.Errorf("bank metadata for denom %s already exists, set Overwrite=true to overwrite", msg.IbcDenom)
 	}
 
 	// Create BridgeTokenMetadata struct from the message
