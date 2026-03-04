@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	keepertest "github.com/productscience/inference/testutil/keeper"
 	"github.com/productscience/inference/testutil/sample"
 	blskeeper "github.com/productscience/inference/x/bls/keeper"
@@ -98,7 +99,7 @@ func setupRealStreamVestingKeepers(t testing.TB) (sdk.Context, keeper.Keeper, st
 		collateralKeeper,
 		svKeeper,
 		authzKeeper,
-		nil,
+		func() wasmkeeper.Keeper { return wasmkeeper.Keeper{} },
 		upgradeMock,
 	)
 

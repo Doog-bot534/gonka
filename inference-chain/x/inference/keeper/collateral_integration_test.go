@@ -20,6 +20,7 @@ import (
 	"cosmossdk.io/store"
 	"cosmossdk.io/store/metrics"
 	storetypes "cosmossdk.io/store/types"
+	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/codec"
@@ -109,7 +110,7 @@ func setupRealKeepers(t testing.TB) (sdk.Context, keeper.Keeper, collateralKeepe
 		cKeeper,
 		streamvestingMock,
 		authzMock,
-		nil,
+		func() wasmkeeper.Keeper { return wasmkeeper.Keeper{} },
 		upgradeMock,
 	)
 
@@ -236,20 +237,23 @@ func TestInvalidateInference_FullFlow_WithStatefulMock(t *testing.T) {
 	// --- End Stateful Mock Logic ---
 
 	// Set up the participant with 4 consecutive failures, just under the threshold
-	k.SetParticipant(ctx, types.Participant{
+	participant := types.Participant{
 		Index:                        participantAddrStr,
 		Address:                      participantAddrStr,
 		Status:                       types.ParticipantStatus_ACTIVE,
 		ConsecutiveInvalidInferences: 4,
 		CurrentEpochStats:            &types.CurrentEpochStats{},
-	})
+	}
+	k.SetParticipant(ctx, participant)
 	// The authority also needs to be a registered participant to invalidate
-	k.SetParticipant(ctx, types.Participant{Index: authority, Address: authority, CurrentEpochStats: &types.CurrentEpochStats{}})
+	authorityParticipant := types.Participant{Index: authority, Address: authority, CurrentEpochStats: &types.CurrentEpochStats{}}
+	k.SetParticipant(ctx, authorityParticipant)
 
 	// Mock bank keeper for the refund logic, even though cost is 0
 	mocks.BankKeeper.EXPECT().SendCoinsFromModuleToAccount(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	mocks.GroupKeeper.EXPECT().UpdateGroupMembers(gomock.Any(), gomock.Any())
 	mocks.GroupKeeper.EXPECT().UpdateGroupMetadata(gomock.Any(), gomock.Any())
+	k.SetActiveParticipants(ctx, ParticipantsToActive(1, participant, authorityParticipant))
 	// Setup the inference object that will be invalidated
 	inferenceId := "test-inference-to-trigger-invalid"
 	k.SetInference(ctx, types.Inference{
@@ -354,8 +358,10 @@ func TestDoubleJeopardy_DowntimeThenInvalidSlash(t *testing.T) {
 	k.SetParticipant(ctx, participant)
 
 	// The authority also needs to be a registered participant to invalidate
-	k.SetParticipant(ctx, types.Participant{Index: authority, Address: authority, CurrentEpochStats: &types.CurrentEpochStats{}})
+	authorityP := types.Participant{Index: authority, Address: authority, CurrentEpochStats: &types.CurrentEpochStats{}}
+	k.SetParticipant(ctx, authorityP)
 
+	k.SetActiveParticipants(ctx, ParticipantsToActive(1, participant, authorityP))
 	// Setup the inference object to be invalidated
 	inferenceId := "double-jeopardy-inference"
 	k.SetInference(ctx, types.Inference{
