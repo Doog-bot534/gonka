@@ -1,2 +1,3 @@
 domain,ssh_port,p2p_port,api_port,hf_home,deploy_dir,private_ip,chain_id
-example.com,22,26656,8000,/data/hf-cache,/srv/deploy,your_private_ip,gonka-testnet3
+xj7-5.s.filfox.io,18227,19253,19254,/srv/dai/cache,/srv/dai,172.18.114.104,gonka-testnet-2
+xj7-5.s.filfox.io,18228,19255,19256,/srv/dai/cache,/srv/dai,172.18.114.103,gonka-testnet-2

@@ -30,8 +30,8 @@ COLD_KEY_NAME = "gonka-account-key"
 
 INFERENCED_BINARY = SimpleNamespace(
     zip_file=BASE_DIR / "inferenced-linux-amd64.zip",
-    url="https://github.com/gonka-ai/gonka/releases/download/release%2Fv0.2.9/inferenced-linux-amd64.zip",
-    checksum="88e2f0118275c0620485ae23e855cd2d559da45e8efeb6e8429792a355266845",
+    url="https://github.com/gonka-ai/gonka/releases/download/release%2Fv0.2.10/inferenced-linux-amd64.zip",
+    checksum="2a78e52bcb4d9455a7ea7bd19aeaf95cdb8b71b07c17b68b08f23e97fbca65f1",
     path=BASE_DIR / "inferenced",
 )
 
@@ -43,19 +43,19 @@ def load_config_from_env(hf_home: str = None):
         "KEY_NAME": "genesis",
         "KEYRING_PASSWORD": "12345678",
         "API_PORT": "8000",
-        "PUBLIC_URL": "http://89.169.111.79:8000",
-        "P2P_EXTERNAL_ADDRESS": "tcp://89.169.111.79:5000",
+        "PUBLIC_URL": "http://89.169.110.61:8000",
+        "P2P_EXTERNAL_ADDRESS": "tcp://89.169.110.61:5000",
         "ACCOUNT_PUBKEY": "", # will be populated later
         "NODE_CONFIG": "./node-config.json",
         "HF_HOME": Path(hf_home) if hf_home else (Path(os.environ["HOME"]).absolute() / "hf-cache").__str__(),
-        "SEED_API_URL": "http://89.169.111.79:8000",
-        "SEED_NODE_RPC_URL": "http://89.169.111.79:26657",
+        "SEED_API_URL": "http://89.169.110.61:8000",
+        "SEED_NODE_RPC_URL": "http://89.169.110.61:26657",
         "DAPI_API__POC_CALLBACK_URL": "http://api:9100",
         "DAPI_CHAIN_NODE__URL": "http://node:26657",
         "DAPI_CHAIN_NODE__P2P_URL": "http://node:26656",
-        "SEED_NODE_P2P_URL": "tcp://89.169.111.79:5000",
-        "RPC_SERVER_URL_1": "http://89.169.111.79:26657",
-        "RPC_SERVER_URL_2": "http://89.169.111.79:26657",
+        "SEED_NODE_P2P_URL": "tcp://89.169.110.61:5000",
+        "RPC_SERVER_URL_1": "http://89.169.110.61:26657",
+        "RPC_SERVER_URL_2": "http://89.169.110.61:26657",
         "PORT": "8080",
         "INFERENCE_PORT": "5050",
         "KEYRING_BACKEND": "file",
@@ -389,7 +389,7 @@ def create_env_override():
     override_file = working_dir / "docker-compose.env-override.yml"
     
     is_test_net = CONFIG_ENV.get("IS_TEST_NET", "true")
-    chain_id = CONFIG_ENV.get("CHAIN_ID", "gonka-testnet")
+    chain_id = CONFIG_ENV.get("CHAIN_ID", "gonka-testnet-2").strip()
     
     override_content = f"""# Auto-generated environment override - do not commit
 services:
@@ -1616,9 +1616,9 @@ def main():
     # Parse command-line arguments
     args = parse_arguments()
     
-    # Store Chain ID in CONFIG_ENV so it permeates to config.env and Docker containers
-    CONFIG_ENV["CHAIN_ID"] = args.chainid
-    print(f"Using Chain ID: {args.chainid}")
+    # Store Chain ID in CONFIG_ENV so it permeates to config.env and Docker containers (strip whitespace; invalid in TMKMS chain id charset)
+    CONFIG_ENV["CHAIN_ID"] = args.chainid.strip()
+    print(f"Using Chain ID: {args.chainid.strip()}")
     
     # Determine operation mode
     is_genesis = (args.mode == "genesis")
