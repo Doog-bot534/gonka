@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 
+	"cosmossdk.io/collections"
 	"cosmossdk.io/core/appmodule"
 	"cosmossdk.io/core/store"
 	"cosmossdk.io/depinject"
@@ -170,7 +171,7 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 
 // ConsensusVersion is a sequence number for state-breaking change of the module.
 // It should be incremented on each consensus-breaking change introduced by the module.
-func (AppModule) ConsensusVersion() uint64 { return 12 }
+func (AppModule) ConsensusVersion() uint64 { return 13 }
 
 // BeginBlock contains the logic that is automatically triggered at the beginning of each block.
 func (am AppModule) BeginBlock(ctx context.Context) error {
@@ -584,6 +585,13 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 	if err != nil {
 		am.LogError("onEndOfPoCValidationStage: Unable to set active participants", types.EpochGroup, "error", err.Error())
 		return
+	}
+	if upcomingEpoch.Index > 3 {
+		outOfDateActiveParticipants := collections.NewPrefixedPairRange[uint64, sdk.AccAddress](upcomingEpoch.Index - 2)
+		err = am.keeper.ActiveParticipantsSet.Clear(ctx, outOfDateActiveParticipants)
+		if err != nil {
+			am.LogWarn("onEndOfPoCValidationStage: Unable to clear old active participants cache", types.EpochGroup, "epochIndex", upcomingEpoch.Index-2, "error", err.Error())
+		}
 	}
 
 	upcomingEg, err := am.keeper.GetEpochGroupForEpoch(ctx, *upcomingEpoch)

@@ -10,8 +10,8 @@ import (
 )
 
 func (k msgServer) UpdateParams(goCtx context.Context, req *types.MsgUpdateParams) (*types.MsgUpdateParamsResponse, error) {
-	if k.GetAuthority() != req.Authority {
-		return nil, errorsmod.Wrapf(types.ErrInvalidSigner, "invalid authority; expected %s, got %s", k.GetAuthority(), req.Authority)
+	if err := k.CheckPermission(goCtx, req, GovernancePermission); err != nil {
+		return nil, err
 	}
 
 	if err := req.Params.Validate(); err != nil {
