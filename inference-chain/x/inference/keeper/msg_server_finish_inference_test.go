@@ -199,6 +199,16 @@ func TestMsgServer_FinishInference_UpdatesExecutorOnceOnCompletion(t *testing.T)
 func TestMsgServer_FinishInference_ParamsCacheDoesNotLeakAcrossCalls(t *testing.T) {
 	k, ms, ctx := setupMsgServer(t)
 
+	err := k.SetEffectiveEpochIndex(ctx, 1) // Set to non-zero epoch to avoid epoch not found error
+	require.NoError(t, err)
+	err = k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId: 1,
+		Participants: []*types.ActiveParticipant{
+			{
+				Index: testutil.Creator,
+			},
+		},
+	})
 	params, err := k.GetParams(ctx)
 	require.NoError(t, err)
 	params.DeveloperAccessParams = &types.DeveloperAccessParams{
@@ -211,6 +221,7 @@ func TestMsgServer_FinishInference_ParamsCacheDoesNotLeakAcrossCalls(t *testing.
 		InferenceId: "cache-test-finish-1",
 		RequestedBy: testutil.Requester,
 		ExecutedBy:  testutil.Executor,
+		Creator:     testutil.Creator,
 	})
 	require.NoError(t, err)
 	require.NotContains(t, firstResp.ErrorMessage, types.ErrDeveloperNotAllowlisted.Error())
@@ -226,6 +237,7 @@ func TestMsgServer_FinishInference_ParamsCacheDoesNotLeakAcrossCalls(t *testing.
 		InferenceId: "cache-test-finish-2",
 		RequestedBy: testutil.Requester,
 		ExecutedBy:  testutil.Executor,
+		Creator:     testutil.Creator,
 	})
 	require.NoError(t, err)
 	require.Contains(t, secondResp.ErrorMessage, types.ErrDeveloperNotAllowlisted.Error())

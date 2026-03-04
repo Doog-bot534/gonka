@@ -137,6 +137,18 @@ func TestMsgServer_StartInference_DoesNotUpdateExecutorBeforeCompletion(t *testi
 func TestMsgServer_StartInference_ParamsCacheDoesNotLeakAcrossCalls(t *testing.T) {
 	k, ms, ctx := setupMsgServer(t)
 
+	err := k.SetEffectiveEpochIndex(ctx, 1)
+	require.NoError(t, err)
+	err = k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId: 1,
+		Participants: []*types.ActiveParticipant{
+			{
+				Index: testutil.Creator,
+			},
+		},
+	})
+	require.NoError(t, err)
+
 	params, err := k.GetParams(ctx)
 	require.NoError(t, err)
 	params.DeveloperAccessParams = &types.DeveloperAccessParams{
