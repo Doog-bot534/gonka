@@ -52,7 +52,7 @@ func (k *Keeper) UpdateDynamicPricing(ctx context.Context) error {
 		return nil
 	}
 
-	windowBlocks := utilizationWindowToBlocks(dpParams.UtilizationWindowDuration)
+	windowBlocks := types.UtilizationWindowToBlocks(dpParams.UtilizationWindowDuration)
 	k.LogInfo("Starting dynamic pricing update", types.Pricing,
 		"windowSeconds", dpParams.UtilizationWindowDuration,
 		"windowBlocks", windowBlocks)
@@ -88,7 +88,7 @@ func (k *Keeper) UpdateDynamicPricing(ctx context.Context) error {
 		// capacity is tokens/second, so scale it by the estimated block duration (~5s).
 		utilization := decimal.Zero
 		if capacity > 0 {
-			capacityPerBlock := decimal.NewFromInt(capacity).Mul(decimal.NewFromUint64(dynamicPricingEstimatedBlockSeconds))
+			capacityPerBlock := decimal.NewFromInt(capacity).Mul(decimal.NewFromUint64(types.DynamicPricingEstimatedBlockSeconds))
 			utilization = averageLoadPerBlock.Div(capacityPerBlock)
 		}
 

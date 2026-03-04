@@ -75,7 +75,8 @@ func TestEndBlock_ProcessesPendingInferenceValidationQueue(t *testing.T) {
 	am := inference.NewAppModule(nil, k, nil, nil, nil, nil)
 	require.NoError(t, am.EndBlock(ctx))
 
-	// This no longer applies, The TransientStore is used and is wiped at commit, not endblock
+	// The list does not empty after the endblock. TransientStore is wiped at commit, so the list will remain
+	// even after EndBlock
 	ds, err := k.ListFinishedInferenceIDs(ctx)
 	require.NoError(t, err)
 	require.NotEmpty(t, ds)
