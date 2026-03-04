@@ -13,7 +13,13 @@ import (
 )
 
 func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInference) (*types.MsgStartInferenceResponse, error) {
-	var ctx sdk.Context = sdk.UnwrapSDKContext(goCtx)
+	if err := k.CheckPermission(goCtx, msg, ActiveParticipantPermission); err != nil {
+		// return the failure and back out even batch transactions, since permissions will not change in a batch
+		return nil, err
+	}
+
+	var ctx = sdk.UnwrapSDKContext(goCtx)
+
 	k.LogInfo("StartInference", types.Inferences, "inferenceId", msg.InferenceId, "creator", msg.Creator, "requestedBy", msg.RequestedBy, "model", msg.Model)
 
 	// Developer access gating: before the cutoff height, only allowlisted developers may request inferences.
