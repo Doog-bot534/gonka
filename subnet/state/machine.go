@@ -234,34 +234,6 @@ func (sm *StateMachine) applyStartInference(msg *types.MsgStartInference) error 
 		VotedSlots:   make(map[uint32]bool),
 	}
 
-	// Fast path: if executor_sig present, verify and go directly to Started.
-	if len(msg.ExecutorSig) > 0 {
-		receiptContent := &types.ExecutorReceiptContent{
-			InferenceId: msg.InferenceId,
-			PromptHash:  msg.PromptHash,
-			Model:       msg.Model,
-			InputLength: msg.InputLength,
-			MaxTokens:   msg.MaxTokens,
-			StartedAt:   msg.StartedAt,
-		}
-		receiptData, err := proto.Marshal(receiptContent)
-		if err != nil {
-			return fmt.Errorf("marshal executor receipt: %w", err)
-		}
-
-		recovered, err := sm.verifier.RecoverAddress(receiptData, msg.ExecutorSig)
-		if err != nil {
-			return fmt.Errorf("%w: %v", types.ErrInvalidExecutorSig, err)
-		}
-
-		expectedAddr := sm.slotToAddress[executorSlot]
-		if recovered != expectedAddr {
-			return fmt.Errorf("%w: expected executor %s (slot %d), got %s",
-				types.ErrInvalidExecutorSig, expectedAddr, executorSlot, recovered)
-		}
-		rec.Status = types.StatusStarted
-	}
-
 	sm.state.Inferences[msg.InferenceId] = rec
 	logging.Debug("new inference", "subsystem", "state", "inference_id", msg.InferenceId, "executor_slot", executorSlot)
 	return nil
@@ -320,9 +292,9 @@ func (sm *StateMachine) applyFinishInference(msg *types.MsgFinishInference) erro
 	}
 
 	// Verify proposer signature.
-	if err := sm.verifyProposerSig(msg, msg.ProposerSig, func(m *types.MsgFinishInference) {
-		m.ProposerSig = nil
-	}); err != nil {
+	cloned := proto.Clone(msg).(*types.MsgFinishInference)
+	cloned.ProposerSig = nil
+	if err := sm.verifyProposerSig(cloned, msg.ProposerSig); err != nil {
 		return err
 	}
 
@@ -364,9 +336,9 @@ func (sm *StateMachine) applyValidation(msg *types.MsgValidation) error {
 	}
 
 	// Verify proposer signature.
-	if err := sm.verifyProposerSig(msg, msg.ProposerSig, func(m *types.MsgValidation) {
-		m.ProposerSig = nil
-	}); err != nil {
+	clonedV := proto.Clone(msg).(*types.MsgValidation)
+	clonedV.ProposerSig = nil
+	if err := sm.verifyProposerSig(clonedV, msg.ProposerSig); err != nil {
 		return err
 	}
 
@@ -403,9 +375,9 @@ func (sm *StateMachine) applyValidationVote(msg *types.MsgValidationVote) error 
 	}
 
 	// Verify proposer signature.
-	if err := sm.verifyProposerSig(msg, msg.ProposerSig, func(m *types.MsgValidationVote) {
-		m.ProposerSig = nil
-	}); err != nil {
+	clonedVV := proto.Clone(msg).(*types.MsgValidationVote)
+	clonedVV.ProposerSig = nil
+	if err := sm.verifyProposerSig(clonedVV, msg.ProposerSig); err != nil {
 		return err
 	}
 
@@ -510,9 +482,9 @@ func (sm *StateMachine) applyTimeout(msg *types.MsgTimeoutInference) error {
 
 func (sm *StateMachine) applyRevealSeed(msg *types.MsgRevealSeed) error {
 	// Verify proposer signature.
-	if err := sm.verifyProposerSig(msg, msg.ProposerSig, func(m *types.MsgRevealSeed) {
-		m.ProposerSig = nil
-	}); err != nil {
+	clonedRS := proto.Clone(msg).(*types.MsgRevealSeed)
+	clonedRS.ProposerSig = nil
+	if err := sm.verifyProposerSig(clonedRS, msg.ProposerSig); err != nil {
 		return err
 	}
 
@@ -542,27 +514,10 @@ func BuildDiffContent(nonce uint64, txs []*types.SubnetTx) *types.DiffContent {
 	}
 }
 
-// verifyProposerSig is a generic helper that verifies a host-proposed tx signature.
-// It clones the proto message, zeroes the sig field, marshals, recovers the address,
-// and checks that the recovered address belongs to a group member.
-func (sm *StateMachine) verifyProposerSig(msg proto.Message, sig []byte, clearSig any) error {
-	// Clone the message and zero the signature field.
-	cloned := proto.Clone(msg)
-
-	switch fn := clearSig.(type) {
-	case func(*types.MsgFinishInference):
-		fn(cloned.(*types.MsgFinishInference))
-	case func(*types.MsgValidation):
-		fn(cloned.(*types.MsgValidation))
-	case func(*types.MsgValidationVote):
-		fn(cloned.(*types.MsgValidationVote))
-	case func(*types.MsgRevealSeed):
-		fn(cloned.(*types.MsgRevealSeed))
-	default:
-		return fmt.Errorf("unsupported message type for proposer sig verification")
-	}
-
-	data, err := proto.Marshal(cloned)
+// verifyProposerSig verifies that sig was produced by a group member over
+// msgWithoutSig (the proto message with its proposer_sig field already zeroed).
+func (sm *StateMachine) verifyProposerSig(msgWithoutSig proto.Message, sig []byte) error {
+	data, err := proto.Marshal(msgWithoutSig)
 	if err != nil {
 		return fmt.Errorf("marshal for proposer sig: %w", err)
 	}

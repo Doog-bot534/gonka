@@ -4,6 +4,7 @@ package subnet
 type ExecuteRequest struct {
 	InferenceID uint64
 	Model       string
+	Prompt      []byte
 	PromptHash  []byte
 	InputLength uint64
 	MaxTokens   uint64

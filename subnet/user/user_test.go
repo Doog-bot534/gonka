@@ -60,7 +60,7 @@ func TestUser_RoundRobinSelection(t *testing.T) {
 	ctx := context.Background()
 
 	params := InferenceParams{
-		Model: "llama", PromptHash: []byte("prompt"),
+		Model: "llama", Prompt: []byte("prompt"),
 		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
 	}
 
@@ -85,7 +85,7 @@ func TestUser_PipelinesReceipt(t *testing.T) {
 	ctx := context.Background()
 
 	params := InferenceParams{
-		Model: "llama", PromptHash: []byte("prompt"),
+		Model: "llama", Prompt: []byte("prompt"),
 		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
 	}
 
@@ -115,7 +115,7 @@ func TestUser_CollectsSignatures(t *testing.T) {
 	ctx := context.Background()
 
 	params := InferenceParams{
-		Model: "llama", PromptHash: []byte("prompt"),
+		Model: "llama", Prompt: []byte("prompt"),
 		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
 	}
 
@@ -171,7 +171,7 @@ func TestUser_HostError_StateConsistency(t *testing.T) {
 
 	ctx := context.Background()
 	params := InferenceParams{
-		Model: "llama", PromptHash: []byte("prompt"),
+		Model: "llama", Prompt: []byte("prompt"),
 		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
 	}
 
@@ -194,7 +194,7 @@ func TestUser_Finalize(t *testing.T) {
 	session, _, _ := setupSession(t, 3, 100000, 100)
 	ctx := context.Background()
 	params := InferenceParams{
-		Model: "llama", PromptHash: []byte("prompt"),
+		Model: "llama", Prompt: []byte("prompt"),
 		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
 	}
 
@@ -211,4 +211,84 @@ func TestUser_Finalize(t *testing.T) {
 	for id, rec := range st.Inferences {
 		require.Equal(t, types.StatusFinished, rec.Status, "inference %d should be finished", id)
 	}
+}
+
+func TestUser_Finalize_CollectsSignatures(t *testing.T) {
+	session, _, _ := setupSession(t, 3, 100000, 100)
+	ctx := context.Background()
+	params := InferenceParams{
+		Model: "llama", Prompt: []byte("prompt"),
+		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
+	}
+
+	for i := 0; i < 3; i++ {
+		_, err := session.SendInference(ctx, params)
+		require.NoError(t, err)
+	}
+
+	err := session.Finalize(ctx)
+	require.NoError(t, err)
+
+	// Phase B visits all 3 hosts. Each should have signed at some nonce.
+	sigs := session.Signatures()
+	signedSlots := make(map[uint32]bool)
+	for _, slotSigs := range sigs {
+		for slotID := range slotSigs {
+			signedSlots[slotID] = true
+		}
+	}
+	for i := uint32(0); i < 3; i++ {
+		require.True(t, signedSlots[i], "slot %d should have signed at least once", i)
+	}
+}
+
+func TestUser_Finalize_DiffCount(t *testing.T) {
+	numHosts := 3
+	session, _, _ := setupSession(t, numHosts, 100000, 100)
+	ctx := context.Background()
+	params := InferenceParams{
+		Model: "llama", Prompt: []byte("prompt"),
+		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
+	}
+
+	for i := 0; i < 3; i++ {
+		_, err := session.SendInference(ctx, params)
+		require.NoError(t, err)
+	}
+	preFinalize := len(session.Diffs())
+
+	err := session.Finalize(ctx)
+	require.NoError(t, err)
+
+	// Finalize adds N diffs (Phase A) + N diffs (Phase B) = 2*N.
+	expected := preFinalize + 2*numHosts
+	require.Equal(t, expected, len(session.Diffs()),
+		"total diffs = pre-finalize(%d) + 2*N(%d)", preFinalize, 2*numHosts)
+}
+
+func TestUser_PendingTxDedup(t *testing.T) {
+	session, _, _ := setupSession(t, 3, 100000, 100)
+	ctx := context.Background()
+	params := InferenceParams{
+		Model: "llama", Prompt: []byte("prompt"),
+		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
+	}
+
+	// Send one inference to populate host mempool.
+	result, err := session.SendInference(ctx, params)
+	require.NoError(t, err)
+
+	// ProcessResponse already queued mempool txs. Record count.
+	countBefore := len(session.PendingTxs())
+
+	// Simulate receiving the same mempool again (as if from another host).
+	err = session.ProcessResponse(0, &host.HostResponse{
+		Nonce:   result.Nonce,
+		Mempool: result.Mempool,
+	})
+	require.NoError(t, err)
+
+	// Dedup should prevent growth.
+	require.Equal(t, countBefore, len(session.PendingTxs()),
+		"duplicate mempool txs should be deduplicated")
 }

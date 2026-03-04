@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 
 	"google.golang.org/protobuf/proto"
@@ -27,7 +28,7 @@ func (c *InProcessClient) Send(ctx context.Context, req host.HostRequest) (*host
 // InferenceParams describes a new inference to send.
 type InferenceParams struct {
 	Model       string
-	PromptHash  []byte
+	Prompt      []byte
 	InputLength uint64
 	MaxTokens   uint64
 	StartedAt   int64
@@ -53,6 +54,7 @@ type Session struct {
 	diffs         []types.Diff                 // append-only log
 	hostSyncNonce map[int]uint64               // hostIdx -> last nonce sent
 	pendingTxs    []*types.SubnetTx            // from host mempools, for next diff
+	pendingTxKeys map[string]struct{}           // dedup set keyed by tx_type:id
 	signatures    map[uint64]map[uint32][]byte // nonce -> slotID -> sig
 }
 
@@ -75,6 +77,7 @@ func NewSession(
 		group:         group,
 		clients:       clients,
 		hostSyncNonce: make(map[int]uint64),
+		pendingTxKeys: make(map[string]struct{}),
 		signatures:    make(map[uint64]map[uint32][]byte),
 	}, nil
 }
@@ -91,11 +94,12 @@ func (s *Session) NextDiff(params InferenceParams) (types.Diff, int, error) {
 	txs = append(txs, s.pendingTxs...)
 
 	// Add MsgStartInference.
+	promptHash := sha256.Sum256(params.Prompt)
 	txs = append(txs, &types.SubnetTx{Tx: &types.SubnetTx_StartInference{
 		StartInference: &types.MsgStartInference{
 			InferenceId: nonce,
 			Model:       params.Model,
-			PromptHash:  params.PromptHash,
+			PromptHash:  promptHash[:],
 			InputLength: params.InputLength,
 			MaxTokens:   params.MaxTokens,
 			StartedAt:   params.StartedAt,
@@ -147,7 +151,7 @@ func (s *Session) ProcessResponse(hostIdx int, resp *host.HostResponse) error {
 	// Queue receipt as MsgConfirmStart for the next diff.
 	if resp.Receipt != nil {
 		// The inference ID is the nonce of the diff that triggered the receipt.
-		s.pendingTxs = append(s.pendingTxs, &types.SubnetTx{
+		s.addPendingTx(&types.SubnetTx{
 			Tx: &types.SubnetTx_ConfirmStart{ConfirmStart: &types.MsgConfirmStart{
 				InferenceId: resp.Nonce,
 				ExecutorSig: resp.Receipt,
@@ -156,7 +160,9 @@ func (s *Session) ProcessResponse(hostIdx int, resp *host.HostResponse) error {
 	}
 
 	// Queue mempool txs (finish msgs) for the next diff.
-	s.pendingTxs = append(s.pendingTxs, resp.Mempool...)
+	for _, tx := range resp.Mempool {
+		s.addPendingTx(tx)
+	}
 
 	return nil
 }
@@ -177,12 +183,22 @@ func (s *Session) SendInference(ctx context.Context, params InferenceParams) (*I
 	s.diffs = append(s.diffs, diff)
 	s.nonce = diff.Nonce
 	// Clear pending txs since they're now included in this diff.
-	s.pendingTxs = nil
+	s.clearPendingTxs()
 
 	// Build catch-up diffs for the target host.
 	catchUpDiffs := s.DiffsForHost(hostIdx)
 
-	resp, err := s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUpDiffs})
+	resp, err := s.clients[hostIdx].Send(ctx, host.HostRequest{
+		Diffs: catchUpDiffs,
+		Nonce: diff.Nonce,
+		Payload: &host.InferencePayload{
+			Prompt:      params.Prompt,
+			Model:       params.Model,
+			InputLength: params.InputLength,
+			MaxTokens:   params.MaxTokens,
+			StartedAt:   params.StartedAt,
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("send to host %d: %w", hostIdx, err)
 	}
@@ -200,134 +216,130 @@ func (s *Session) SendInference(ctx context.Context, params InferenceParams) (*I
 	}, nil
 }
 
-// Finalize sends MsgFinalizeRound, then propagates remaining txs until
-// all hosts have the complete state and have signed it.
+// Finalize completes the round in two single-pass phases.
 //
-// Phase A: collect remaining txs. Round-robin through hosts, sending pending
-// txs. Hosts return mempool entries (MsgFinishInference) that haven't been
-// seen yet. Ends when a full pass produces no new pending txs.
+// Phase A: one diff per host. The first diff (i=0) carries MsgFinalizeRound
+// plus any pending txs. Each subsequent diff carries txs returned by the
+// previous host's response.
 //
-// Phase B: propagate complete state. One final round-robin pass where every
-// host has the complete state. Collects final signatures.
+// Phase B: one empty diff per host. Propagates complete state via catch-up
+// and collects signatures from every host.
 func (s *Session) Finalize(ctx context.Context) error {
-	// Compose the finalize diff.
-	nonce := s.nonce + 1
-	hostIdx := int(nonce % uint64(len(s.group)))
+	n := len(s.group)
 
-	var txs []*types.SubnetTx
-	txs = append(txs, s.pendingTxs...)
-	txs = append(txs, &types.SubnetTx{Tx: &types.SubnetTx_FinalizeRound{
-		FinalizeRound: &types.MsgFinalizeRound{},
-	}})
+	// Phase A: collect remaining txs, one diff per host.
+	for i := 0; i < n; i++ {
+		nonce := s.nonce + 1
+		hostIdx := int(nonce % uint64(n))
 
-	content := state.BuildDiffContent(nonce, txs)
-	data, err := proto.Marshal(content)
-	if err != nil {
-		return fmt.Errorf("marshal diff content: %w", err)
-	}
-	sig, err := s.signer.Sign(data)
-	if err != nil {
-		return fmt.Errorf("sign diff: %w", err)
-	}
-
-	diff := types.Diff{Nonce: nonce, Txs: txs, UserSig: sig}
-	if _, err := s.sm.ApplyDiff(diff); err != nil {
-		return fmt.Errorf("local apply finalize: %w", err)
-	}
-	s.diffs = append(s.diffs, diff)
-	s.nonce = nonce
-	s.pendingTxs = nil
-
-	// Send to target host.
-	catchUp := s.DiffsForHost(hostIdx)
-	resp, err := s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUp})
-	if err != nil {
-		return fmt.Errorf("send finalize to host %d: %w", hostIdx, err)
-	}
-	if err := s.ProcessResponse(hostIdx, resp); err != nil {
-		return fmt.Errorf("process finalize response from host %d: %w", hostIdx, err)
-	}
-
-	// Phase A: collect remaining txs via round-robin until no new txs.
-	for {
-		newTxs := false
-		for i := 0; i < len(s.group); i++ {
-			if len(s.pendingTxs) == 0 && i > 0 {
-				// No pending txs and we've sent to at least one host this pass.
-				continue
-			}
-			if len(s.pendingTxs) > 0 {
-				newTxs = true
-			}
-
-			nonce = s.nonce + 1
-			hostIdx = int(nonce % uint64(len(s.group)))
-
-			content = state.BuildDiffContent(nonce, s.pendingTxs)
-			data, err = proto.Marshal(content)
-			if err != nil {
-				return fmt.Errorf("marshal diff content: %w", err)
-			}
-			sig, err = s.signer.Sign(data)
-			if err != nil {
-				return fmt.Errorf("sign diff: %w", err)
-			}
-
-			diff = types.Diff{Nonce: nonce, Txs: s.pendingTxs, UserSig: sig}
-			if _, err := s.sm.ApplyDiff(diff); err != nil {
-				return fmt.Errorf("local apply: %w", err)
-			}
-			s.diffs = append(s.diffs, diff)
-			s.nonce = nonce
-			s.pendingTxs = nil
-
-			catchUp = s.DiffsForHost(hostIdx)
-			resp, err = s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUp})
-			if err != nil {
-				return fmt.Errorf("send to host %d: %w", hostIdx, err)
-			}
-			if err := s.ProcessResponse(hostIdx, resp); err != nil {
-				return fmt.Errorf("process response from host %d: %w", hostIdx, err)
-			}
+		txs := s.pendingTxs
+		if i == 0 {
+			txs = append(txs, &types.SubnetTx{Tx: &types.SubnetTx_FinalizeRound{
+				FinalizeRound: &types.MsgFinalizeRound{},
+			}})
 		}
-		if !newTxs && len(s.pendingTxs) == 0 {
-			break
-		}
-	}
 
-	// Phase B: one final pass to propagate complete state + collect signatures.
-	for i := 0; i < len(s.group); i++ {
-		nonce = s.nonce + 1
-		hostIdx = int(nonce % uint64(len(s.group)))
-
-		content = state.BuildDiffContent(nonce, nil)
-		data, err = proto.Marshal(content)
+		diff, err := s.signDiff(nonce, txs)
 		if err != nil {
-			return fmt.Errorf("marshal diff content: %w", err)
+			return err
 		}
-		sig, err = s.signer.Sign(data)
-		if err != nil {
-			return fmt.Errorf("sign diff: %w", err)
+		if _, err := s.sm.ApplyDiff(diff); err != nil {
+			return fmt.Errorf("local apply: %w", err)
 		}
+		s.diffs = append(s.diffs, diff)
+		s.nonce = nonce
+		s.clearPendingTxs()
 
-		diff = types.Diff{Nonce: nonce, Txs: nil, UserSig: sig}
+		if err := s.sendAndProcess(ctx, hostIdx); err != nil {
+			return err
+		}
+	}
+
+	// Phase B: propagate complete state, collect signatures.
+	for i := 0; i < n; i++ {
+		nonce := s.nonce + 1
+		hostIdx := int(nonce % uint64(n))
+
+		diff, err := s.signDiff(nonce, nil)
+		if err != nil {
+			return err
+		}
 		if _, err := s.sm.ApplyDiff(diff); err != nil {
 			return fmt.Errorf("local apply: %w", err)
 		}
 		s.diffs = append(s.diffs, diff)
 		s.nonce = nonce
 
-		catchUp = s.DiffsForHost(hostIdx)
-		resp, err = s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUp})
-		if err != nil {
-			return fmt.Errorf("send to host %d: %w", hostIdx, err)
-		}
-		if err := s.ProcessResponse(hostIdx, resp); err != nil {
-			return fmt.Errorf("process response from host %d: %w", hostIdx, err)
+		if err := s.sendAndProcess(ctx, hostIdx); err != nil {
+			return err
 		}
 	}
 
 	return nil
+}
+
+// signDiff builds and signs a diff with the given nonce and txs.
+func (s *Session) signDiff(nonce uint64, txs []*types.SubnetTx) (types.Diff, error) {
+	content := state.BuildDiffContent(nonce, txs)
+	data, err := proto.Marshal(content)
+	if err != nil {
+		return types.Diff{}, fmt.Errorf("marshal diff content: %w", err)
+	}
+	sig, err := s.signer.Sign(data)
+	if err != nil {
+		return types.Diff{}, fmt.Errorf("sign diff: %w", err)
+	}
+	return types.Diff{Nonce: nonce, Txs: txs, UserSig: sig}, nil
+}
+
+// sendAndProcess sends catch-up diffs to a host and processes the response.
+func (s *Session) sendAndProcess(ctx context.Context, hostIdx int) error {
+	catchUp := s.DiffsForHost(hostIdx)
+	resp, err := s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUp, Nonce: s.nonce})
+	if err != nil {
+		return fmt.Errorf("send to host %d: %w", hostIdx, err)
+	}
+	if err := s.ProcessResponse(hostIdx, resp); err != nil {
+		return fmt.Errorf("process response from host %d: %w", hostIdx, err)
+	}
+	return nil
+}
+
+// subnetTxKey returns a dedup key for host-proposed txs.
+// Returns "" for user-proposed types (start, finalize, timeout).
+func subnetTxKey(tx *types.SubnetTx) string {
+	switch inner := tx.GetTx().(type) {
+	case *types.SubnetTx_FinishInference:
+		return fmt.Sprintf("finish:%d", inner.FinishInference.InferenceId)
+	case *types.SubnetTx_ConfirmStart:
+		return fmt.Sprintf("confirm:%d", inner.ConfirmStart.InferenceId)
+	case *types.SubnetTx_Validation:
+		return fmt.Sprintf("validation:%d:%d", inner.Validation.InferenceId, inner.Validation.ValidatorSlot)
+	case *types.SubnetTx_ValidationVote:
+		return fmt.Sprintf("vote:%d:%d", inner.ValidationVote.InferenceId, inner.ValidationVote.VoterSlot)
+	case *types.SubnetTx_RevealSeed:
+		return fmt.Sprintf("reveal_seed:%d", inner.RevealSeed.SlotId)
+	default:
+		return ""
+	}
+}
+
+// addPendingTx appends tx to pendingTxs if not a duplicate.
+func (s *Session) addPendingTx(tx *types.SubnetTx) {
+	key := subnetTxKey(tx)
+	if key != "" {
+		if _, dup := s.pendingTxKeys[key]; dup {
+			return
+		}
+		s.pendingTxKeys[key] = struct{}{}
+	}
+	s.pendingTxs = append(s.pendingTxs, tx)
+}
+
+// clearPendingTxs resets the pending tx slice and dedup set.
+func (s *Session) clearPendingTxs() {
+	s.pendingTxs = nil
+	s.pendingTxKeys = make(map[string]struct{})
 }
 
 func (s *Session) Signatures() map[uint64]map[uint32][]byte {
@@ -340,6 +352,10 @@ func (s *Session) Nonce() uint64 {
 
 func (s *Session) Diffs() []types.Diff {
 	return s.diffs
+}
+
+func (s *Session) PendingTxs() []*types.SubnetTx {
+	return s.pendingTxs
 }
 
 func (s *Session) StateMachine() *state.StateMachine {

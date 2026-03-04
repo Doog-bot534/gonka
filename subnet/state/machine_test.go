@@ -144,23 +144,6 @@ func TestApplyDiff_ConfirmStart_InvalidReceipt(t *testing.T) {
 	require.ErrorIs(t, err, types.ErrInvalidExecutorSig)
 }
 
-func TestApplyDiff_StartInference_FastPath(t *testing.T) {
-	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
-	sm, user := newTestSM(t, hosts, 10000)
-
-	// Executor for ID=1 is slot 1 (1%3=1).
-	execSig := testutil.SignExecutorReceipt(t, hosts[1], 1, []byte("prompt"), "llama", 100, 50, 1000)
-	diff := testutil.SignDiff(t, user, 1, []*types.SubnetTx{txStart(&types.MsgStartInference{
-		InferenceId: 1, PromptHash: []byte("prompt"), Model: "llama",
-		InputLength: 100, MaxTokens: 50, StartedAt: 1000, ExecutorSig: execSig,
-	})})
-	_, err := sm.ApplyDiff(diff)
-	require.NoError(t, err)
-
-	state := sm.GetState()
-	require.Equal(t, types.StatusStarted, state.Inferences[1].Status)
-}
-
 func TestApplyDiff_FinishInference(t *testing.T) {
 	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
 	sm, user := newTestSM(t, hosts, 10000)

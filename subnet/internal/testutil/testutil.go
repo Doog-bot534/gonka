@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"crypto/sha256"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -9,6 +10,9 @@ import (
 	"subnet/signing"
 	"subnet/types"
 )
+
+var TestPrompt = []byte("prompt")
+var TestPromptHash = sha256.Sum256(TestPrompt)
 
 func MustGenerateKey(t *testing.T) *signing.Secp256k1Signer {
 	t.Helper()
@@ -97,7 +101,7 @@ func SignTimeoutVote(t *testing.T, signer signing.Signer, escrowID string, infer
 func StartTx(inferenceID uint64) *types.SubnetTx {
 	return &types.SubnetTx{Tx: &types.SubnetTx_StartInference{StartInference: &types.MsgStartInference{
 		InferenceId: inferenceID,
-		PromptHash:  []byte("prompt"),
+		PromptHash:  TestPromptHash[:],
 		Model:       "llama",
 		InputLength: 100,
 		MaxTokens:   50,

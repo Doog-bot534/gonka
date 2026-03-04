@@ -17,6 +17,17 @@ import (
 
 // --- Package-specific test helpers ---
 
+// defaultPayload returns the InferencePayload matching testutil.StartTx defaults.
+func defaultPayload() *InferencePayload {
+	return &InferencePayload{
+		Prompt:      testutil.TestPrompt,
+		Model:       "llama",
+		InputLength: 100,
+		MaxTokens:   50,
+		StartedAt:   1000,
+	}
+}
+
 func newTestHost(t *testing.T, hostIdx int, hosts []*signing.Secp256k1Signer, user *signing.Secp256k1Signer, balance uint64, grace uint64) *Host {
 	t.Helper()
 	return newTestHostWithChecker(t, hostIdx, hosts, user, balance, grace, nil)
@@ -87,7 +98,9 @@ func TestHost_ExecutorReceipt(t *testing.T) {
 	h := newTestHost(t, 1, hosts, user, 10000, 10) // host at slot 1
 
 	diff := testutil.SignDiff(t, user, 1, []*types.SubnetTx{testutil.StartTx(1)})
-	resp, err := h.HandleRequest(context.Background(), HostRequest{Diffs: []types.Diff{diff}})
+	resp, err := h.HandleRequest(context.Background(), HostRequest{
+		Diffs: []types.Diff{diff}, Nonce: 1, Payload: defaultPayload(),
+	})
 	require.NoError(t, err)
 	require.NotNil(t, resp.Receipt, "executor should return receipt")
 
@@ -95,7 +108,7 @@ func TestHost_ExecutorReceipt(t *testing.T) {
 	verifier := signing.NewSecp256k1Verifier()
 	receiptContent := &types.ExecutorReceiptContent{
 		InferenceId: 1,
-		PromptHash:  []byte("prompt"),
+		PromptHash:  testutil.TestPromptHash[:],
 		Model:       "llama",
 		InputLength: 100,
 		MaxTokens:   50,
@@ -115,7 +128,9 @@ func TestHost_NonExecutorNoReceipt(t *testing.T) {
 	h := newTestHost(t, 0, hosts, user, 10000, 10) // host at slot 0
 
 	diff := testutil.SignDiff(t, user, 1, []*types.SubnetTx{testutil.StartTx(1)})
-	resp, err := h.HandleRequest(context.Background(), HostRequest{Diffs: []types.Diff{diff}})
+	resp, err := h.HandleRequest(context.Background(), HostRequest{
+		Diffs: []types.Diff{diff}, Nonce: 1, Payload: defaultPayload(),
+	})
 	require.NoError(t, err)
 	require.Nil(t, resp.Receipt, "non-executor should not return receipt")
 }
@@ -126,7 +141,9 @@ func TestHost_ProducesMsgFinish(t *testing.T) {
 	h := newTestHost(t, 1, hosts, user, 10000, 10) // executor for inference 1
 
 	diff := testutil.SignDiff(t, user, 1, []*types.SubnetTx{testutil.StartTx(1)})
-	resp, err := h.HandleRequest(context.Background(), HostRequest{Diffs: []types.Diff{diff}})
+	resp, err := h.HandleRequest(context.Background(), HostRequest{
+		Diffs: []types.Diff{diff}, Nonce: 1, Payload: defaultPayload(),
+	})
 	require.NoError(t, err)
 	require.Len(t, resp.Mempool, 1)
 
@@ -146,7 +163,9 @@ func TestHost_WithholdsOnStaleTx(t *testing.T) {
 
 	// Nonce 1: start inference 1, executor=slot 1 -> produces mempool entry at nonce 1.
 	diff := testutil.SignDiff(t, user, 1, []*types.SubnetTx{testutil.StartTx(1)})
-	resp, err := h.HandleRequest(context.Background(), HostRequest{Diffs: []types.Diff{diff}})
+	resp, err := h.HandleRequest(context.Background(), HostRequest{
+		Diffs: []types.Diff{diff}, Nonce: 1, Payload: defaultPayload(),
+	})
 	require.NoError(t, err)
 	require.NotNil(t, resp.StateSig, "should sign at nonce 1 (not stale yet)")
 
@@ -174,7 +193,9 @@ func TestHost_SignsAfterIncluded(t *testing.T) {
 
 	// Nonce 1: start inference 1 -> executor, mempool entry.
 	diff1 := testutil.SignDiff(t, user, 1, []*types.SubnetTx{testutil.StartTx(1)})
-	resp, err := h.HandleRequest(context.Background(), HostRequest{Diffs: []types.Diff{diff1}})
+	resp, err := h.HandleRequest(context.Background(), HostRequest{
+		Diffs: []types.Diff{diff1}, Nonce: 1, Payload: defaultPayload(),
+	})
 	require.NoError(t, err)
 	require.Len(t, resp.Mempool, 1)
 
@@ -183,7 +204,7 @@ func TestHost_SignsAfterIncluded(t *testing.T) {
 
 	// Nonce 2: confirm start (needed for state machine to accept finish).
 	receiptContent := &types.ExecutorReceiptContent{
-		InferenceId: 1, PromptHash: []byte("prompt"), Model: "llama",
+		InferenceId: 1, PromptHash: testutil.TestPromptHash[:], Model: "llama",
 		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
 	}
 	receiptData, _ := proto.Marshal(receiptContent)
@@ -270,6 +291,7 @@ func TestHost_MultiSlotExecutor(t *testing.T) {
 	diff4 := testutil.SignDiff(t, user, 4, []*types.SubnetTx{testutil.StartTx(4)})
 	resp, err := h.HandleRequest(context.Background(), HostRequest{
 		Diffs: []types.Diff{diff1, diff2, diff3, diff4},
+		Nonce: 4, Payload: defaultPayload(),
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp.Receipt, "host should execute for slot 0 (nonce 4)")
@@ -281,7 +303,7 @@ func TestHost_MultiSlotExecutor(t *testing.T) {
 	diff5 := testutil.SignDiff(t, user, 5, nil)
 	diff6 := testutil.SignDiff(t, user, 6, []*types.SubnetTx{testutil.StartTx(6)})
 	resp, err = h.HandleRequest(context.Background(), HostRequest{
-		Diffs: []types.Diff{diff5, diff6},
+		Diffs: []types.Diff{diff5, diff6}, Nonce: 6, Payload: defaultPayload(),
 	})
 	require.NoError(t, err)
 	require.Nil(t, resp.Receipt, "host should NOT execute for slot 2")
@@ -289,7 +311,7 @@ func TestHost_MultiSlotExecutor(t *testing.T) {
 	// nonce 7: executor = group[7%4]=group[3] -> slot 3 -> hosts[0] again.
 	diff7 := testutil.SignDiff(t, user, 7, []*types.SubnetTx{testutil.StartTx(7)})
 	resp, err = h.HandleRequest(context.Background(), HostRequest{
-		Diffs: []types.Diff{diff7},
+		Diffs: []types.Diff{diff7}, Nonce: 7, Payload: defaultPayload(),
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp.Receipt, "host should execute for slot 3 (nonce 7)")
@@ -372,4 +394,32 @@ func TestHost_AcceptanceBlockPersistsAcrossRounds(t *testing.T) {
 	resp, err = h.HandleRequest(context.Background(), HostRequest{Diffs: []types.Diff{diff3}})
 	require.NoError(t, err)
 	require.NotNil(t, resp.StateSig, "round 3: checker allows signing")
+}
+
+func TestHost_PayloadMismatch_PromptHash(t *testing.T) {
+	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
+	user := testutil.MustGenerateKey(t)
+	h := newTestHost(t, 1, hosts, user, 10000, 10)
+
+	diff := testutil.SignDiff(t, user, 1, []*types.SubnetTx{testutil.StartTx(1)})
+	badPayload := defaultPayload()
+	badPayload.Prompt = []byte("wrong prompt")
+	_, err := h.HandleRequest(context.Background(), HostRequest{
+		Diffs: []types.Diff{diff}, Nonce: 1, Payload: badPayload,
+	})
+	require.ErrorIs(t, err, types.ErrPromptHashMismatch)
+}
+
+func TestHost_PayloadMismatch_Params(t *testing.T) {
+	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
+	user := testutil.MustGenerateKey(t)
+	h := newTestHost(t, 1, hosts, user, 10000, 10)
+
+	diff := testutil.SignDiff(t, user, 1, []*types.SubnetTx{testutil.StartTx(1)})
+	badPayload := defaultPayload()
+	badPayload.MaxTokens = 999
+	_, err := h.HandleRequest(context.Background(), HostRequest{
+		Diffs: []types.Diff{diff}, Nonce: 1, Payload: badPayload,
+	})
+	require.ErrorIs(t, err, types.ErrPayloadMismatch)
 }

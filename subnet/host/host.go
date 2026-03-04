@@ -1,7 +1,9 @@
 package host
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 
 	"google.golang.org/protobuf/proto"
@@ -12,16 +14,28 @@ import (
 	"subnet/types"
 )
 
+// InferencePayload carries the actual request data for the current inference.
+// The host verifies these against the signed MsgStartInference in the diff.
+type InferencePayload struct {
+	Prompt      []byte
+	Model       string
+	InputLength uint64
+	MaxTokens   uint64
+	StartedAt   int64
+}
+
 // HostRequest carries diffs from the user to a host.
 type HostRequest struct {
-	Diffs []types.Diff
+	Diffs   []types.Diff
+	Nonce   uint64            // nonce of the current request
+	Payload *InferencePayload // nil if no new inference (e.g., Finalize, empty diffs)
 }
 
 // HostResponse carries the host's reply back to the user.
 type HostResponse struct {
-	StateSig []byte          // nil = withheld
-	Nonce    uint64          // current nonce after applying diffs
-	Receipt  []byte          // executor receipt sig, nil if not executor
+	StateSig []byte // nil = withheld
+	Nonce    uint64 // current nonce after applying diffs
+	Receipt  []byte // executor receipt sig, nil if not executor
 	Mempool  []*types.SubnetTx
 }
 
@@ -81,94 +95,107 @@ func NewHost(
 func (h *Host) StateRoot() ([]byte, error) { return h.sm.ComputeStateRoot() }
 
 func (h *Host) HandleRequest(ctx context.Context, req HostRequest) (*HostResponse, error) {
-	var receipt []byte
-
+	// (a) Apply all new diffs.
 	for _, diff := range req.Diffs {
-		// Skip diffs the host has already seen (catch-up).
 		currentNonce := h.sm.GetState().LatestNonce
 		if diff.Nonce <= currentNonce {
 			continue
 		}
-
 		if _, err := h.sm.ApplyDiff(diff); err != nil {
 			return nil, fmt.Errorf("apply diff nonce %d: %w", diff.Nonce, err)
 		}
-
-		// Remove included txs from mempool.
 		h.mempool.RemoveIncluded(diff.Txs)
+	}
 
-		// Check if this diff contains MsgStartInference and we are the executor.
-		for _, tx := range diff.Txs {
-			start := tx.GetStartInference()
-			if start == nil {
-				continue
+	// (b) Executor check at req.Nonce.
+	var receipt []byte
+	if req.Payload != nil {
+		var targetDiff *types.Diff
+		for i := range req.Diffs {
+			if req.Diffs[i].Nonce == req.Nonce {
+				targetDiff = &req.Diffs[i]
+				break
 			}
-			executorSlot := h.group[start.InferenceId%uint64(len(h.group))].SlotID
-			if !h.slotIDs[executorSlot] {
-				continue
-			}
+		}
+		if targetDiff != nil {
+			for _, tx := range targetDiff.Txs {
+				start := tx.GetStartInference()
+				if start == nil {
+					continue
+				}
+				executorSlot := h.group[start.InferenceId%uint64(len(h.group))].SlotID
+				if !h.slotIDs[executorSlot] {
+					continue
+				}
 
-			// Sign executor receipt.
-			receiptContent := &types.ExecutorReceiptContent{
-				InferenceId: start.InferenceId,
-				PromptHash:  start.PromptHash,
-				Model:       start.Model,
-				InputLength: start.InputLength,
-				MaxTokens:   start.MaxTokens,
-				StartedAt:   start.StartedAt,
-			}
-			receiptData, err := proto.Marshal(receiptContent)
-			if err != nil {
-				return nil, fmt.Errorf("marshal executor receipt: %w", err)
-			}
-			sig, err := h.signer.Sign(receiptData)
-			if err != nil {
-				return nil, fmt.Errorf("sign executor receipt: %w", err)
-			}
-			receipt = sig
+				// Verify payload matches signed diff.
+				if err := h.verifyPayload(req.Payload, start); err != nil {
+					return nil, err
+				}
 
-			// Execute inference.
-			result, err := h.engine.Execute(ctx, subnet.ExecuteRequest{
-				InferenceID: start.InferenceId,
-				Model:       start.Model,
-				PromptHash:  start.PromptHash,
-				InputLength: start.InputLength,
-				MaxTokens:   start.MaxTokens,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("execute inference %d: %w", start.InferenceId, err)
-			}
+				// Sign executor receipt.
+				receiptContent := &types.ExecutorReceiptContent{
+					InferenceId: start.InferenceId,
+					PromptHash:  start.PromptHash,
+					Model:       start.Model,
+					InputLength: start.InputLength,
+					MaxTokens:   start.MaxTokens,
+					StartedAt:   start.StartedAt,
+				}
+				receiptData, err := proto.Marshal(receiptContent)
+				if err != nil {
+					return nil, fmt.Errorf("marshal executor receipt: %w", err)
+				}
+				sig, err := h.signer.Sign(receiptData)
+				if err != nil {
+					return nil, fmt.Errorf("sign executor receipt: %w", err)
+				}
+				receipt = sig
 
-			// Build MsgFinishInference, sign as proposer, add to mempool.
-			finishMsg := &types.MsgFinishInference{
-				InferenceId:  start.InferenceId,
-				ResponseHash: result.ResponseHash,
-				InputTokens:  result.InputTokens,
-				OutputTokens: result.OutputTokens,
-				ExecutorSlot: executorSlot,
-			}
-			finishData, err := proto.Marshal(finishMsg)
-			if err != nil {
-				return nil, fmt.Errorf("marshal finish msg: %w", err)
-			}
-			proposerSig, err := h.signer.Sign(finishData)
-			if err != nil {
-				return nil, fmt.Errorf("sign finish msg: %w", err)
-			}
-			finishMsg.ProposerSig = proposerSig
+				// Execute inference.
+				result, err := h.engine.Execute(ctx, subnet.ExecuteRequest{
+					InferenceID: start.InferenceId,
+					Model:       start.Model,
+					Prompt:      req.Payload.Prompt,
+					PromptHash:  start.PromptHash,
+					InputLength: start.InputLength,
+					MaxTokens:   start.MaxTokens,
+				})
+				if err != nil {
+					return nil, fmt.Errorf("execute inference %d: %w", start.InferenceId, err)
+				}
 
-			h.mempool.Add(MempoolEntry{
-				Tx: &types.SubnetTx{Tx: &types.SubnetTx_FinishInference{
-					FinishInference: finishMsg,
-				}},
-				ProposedAt: diff.Nonce,
-			})
+				// Build MsgFinishInference, sign as proposer, add to mempool.
+				finishMsg := &types.MsgFinishInference{
+					InferenceId:  start.InferenceId,
+					ResponseHash: result.ResponseHash,
+					InputTokens:  result.InputTokens,
+					OutputTokens: result.OutputTokens,
+					ExecutorSlot: executorSlot,
+				}
+				finishData, err := proto.Marshal(finishMsg)
+				if err != nil {
+					return nil, fmt.Errorf("marshal finish msg: %w", err)
+				}
+				proposerSig, err := h.signer.Sign(finishData)
+				if err != nil {
+					return nil, fmt.Errorf("sign finish msg: %w", err)
+				}
+				finishMsg.ProposerSig = proposerSig
+
+				h.mempool.Add(MempoolEntry{
+					Tx: &types.SubnetTx{Tx: &types.SubnetTx_FinishInference{
+						FinishInference: finishMsg,
+					}},
+					ProposedAt: targetDiff.Nonce,
+				})
+			}
 		}
 	}
 
+	// (c) State signing + response.
 	nonce := h.sm.GetState().LatestNonce
 
-	// Sign state root unless mempool has stale entries or acceptance check fails.
 	var stateSig []byte
 	blocked := false
 	if h.checker != nil {
@@ -203,4 +230,24 @@ func (h *Host) HandleRequest(ctx context.Context, req HostRequest) (*HostRespons
 		Receipt:  receipt,
 		Mempool:  h.mempool.Txs(),
 	}, nil
+}
+
+func (h *Host) verifyPayload(p *InferencePayload, start *types.MsgStartInference) error {
+	hash := sha256.Sum256(p.Prompt)
+	if !bytes.Equal(hash[:], start.PromptHash) {
+		return types.ErrPromptHashMismatch
+	}
+	if p.InputLength != start.InputLength {
+		return fmt.Errorf("%w: input_length %d vs %d", types.ErrPayloadMismatch, p.InputLength, start.InputLength)
+	}
+	if p.MaxTokens != start.MaxTokens {
+		return fmt.Errorf("%w: max_tokens %d vs %d", types.ErrPayloadMismatch, p.MaxTokens, start.MaxTokens)
+	}
+	if p.StartedAt != start.StartedAt {
+		return fmt.Errorf("%w: started_at %d vs %d", types.ErrPayloadMismatch, p.StartedAt, start.StartedAt)
+	}
+	if p.Model != start.Model {
+		return fmt.Errorf("%w: model %s vs %s", types.ErrPayloadMismatch, p.Model, start.Model)
+	}
+	return nil
 }
