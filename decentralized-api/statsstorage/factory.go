@@ -11,30 +11,36 @@ import (
 )
 
 // NewStatsStorage creates a stats storage backend.
-// Uses PostgreSQL when configured and reachable, otherwise falls back to file storage.
+// Uses PostgreSQL when configured and reachable.
+// File storage is only used if DAPI_STATS_FILE_STORAGE_ENABLED is set to "true".
+// Otherwise, returns a disabled storage that returns errors for all stats operations.
 func NewStatsStorage(ctx context.Context) (StatsStorage, error) {
-	fileBasePath := os.Getenv("DAPI_STATS_STORAGE_PATH")
-	if fileBasePath == "" {
-		fileBasePath = "/root/.dapi/data/stats"
-	}
 	retentionDays := parseRetentionDays()
 
-	fileStorage := NewFileStorage(fileBasePath)
-
 	pgHost := os.Getenv("PGHOST")
-	if pgHost == "" {
-		logging.Info("PGHOST not set for stats storage, using file storage only", types.System,
-			"path", fileBasePath, "retention_days", retentionDays)
+	if pgHost != "" {
+		pgStorage, err := NewPostgresStorage(ctx)
+		if err == nil {
+			logging.Info("Using PostgreSQL stats storage", types.System, "host", pgHost, "retention_days", retentionDays)
+			return NewManagedStorage(pgStorage, retentionDays), nil
+		}
+		// Fail. If they want to be running PostgreSQL and init fails, better to stop and allow them to fix the feature than continue
+		// and lose data silently
+		return nil, err
+	}
+
+	if os.Getenv("DAPI_STATS_FILE_STORAGE_ENABLED") == "true" {
+		fileBasePath := os.Getenv("DAPI_STATS_STORAGE_PATH")
+		if fileBasePath == "" {
+			fileBasePath = "/root/.dapi/data/stats"
+		}
+		logging.Warn("CRITICAL: File-based stats storage is ENABLED. Use at your own peril.", types.System, "path", fileBasePath)
+		fileStorage := NewFileStorage(fileBasePath)
 		return NewManagedStorage(fileStorage, retentionDays), nil
 	}
 
-	pgStorage, err := NewPostgresStorage(ctx)
-	if err != nil {
-		logging.Warn("PostgreSQL stats storage init failed, using file storage fallback", types.System, "host", pgHost, "error", err)
-		return NewManagedStorage(fileStorage, retentionDays), nil
-	}
-	logging.Info("Using PostgreSQL stats storage", types.System, "host", pgHost, "retention_days", retentionDays)
-	return NewManagedStorage(pgStorage, retentionDays), nil
+	logging.Info("Stats storage is disabled", types.System)
+	return &DisabledStorage{}, nil
 }
 
 func parseRetentionDays() int {
