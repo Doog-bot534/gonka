@@ -24,7 +24,6 @@ func NewStatsStorage(ctx context.Context) (StatsStorage, error) {
 			logging.Info("Using PostgreSQL stats storage", types.System, "host", pgHost, "retention_days", retentionDays)
 			return NewManagedStorage(pgStorage, retentionDays), nil
 		}
-		logging.Error("PostgreSQL stats storage init failed", types.System, "host", pgHost, "error", err)
 		// Fail. If they want to be running PostgreSQL and init fails, better to stop and allow them to fix the feature than continue
 		// and lose data silently
 		return nil, err
@@ -40,7 +39,7 @@ func NewStatsStorage(ctx context.Context) (StatsStorage, error) {
 		return NewManagedStorage(fileStorage, retentionDays), nil
 	}
 
-	logging.Info("Stats storage is disabled (no PostgreSQL configured and DAPI_STATS_FILE_STORAGE_ENABLED not set)", types.System)
+	logging.Info("Stats storage is disabled", types.System)
 	return &DisabledStorage{}, nil
 }
 
