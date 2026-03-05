@@ -63,6 +63,46 @@ func StubModelSubgroup(t *testing.T, ctx context.Context, k keeper.Keeper, mocks
 	require.NoError(t, err)
 }
 
+func TestMsgServer_FinishInference_DeveloperAccessRestricted(t *testing.T) {
+	const (
+		epochId = 1
+	)
+
+	inferenceHelper, k, ctx := NewMockInferenceHelper(t)
+
+	// Developer access gating should apply to FinishInference as well (gated by RequestedBy).
+	originalParams, err := k.GetParams(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = k.SetParams(ctx, originalParams)
+	})
+
+	params, err := k.GetParams(ctx)
+	require.NoError(t, err)
+	params.DeveloperAccessParams = &types.DeveloperAccessParams{
+		UntilBlockHeight:          9999999,
+		AllowedDeveloperAddresses: []string{"gonka1someotherxxxxxxxxxxxxxxxxxxxxxx"},
+	}
+	_ = k.SetParams(ctx, params)
+	participant := types.Participant{
+		Address: testutil.Creator,
+		Index:   testutil.Creator,
+		Status:  types.ParticipantStatus_ACTIVE,
+	}
+	_ = k.SetParticipant(ctx, participant)
+	_ = k.SetEffectiveEpochIndex(ctx, epochId)
+	_ = k.SetActiveParticipants(ctx, ParticipantsToActive(epochId, participant))
+
+	resp, err := inferenceHelper.MessageServer.FinishInference(ctx, &types.MsgFinishInference{
+		Creator:     testutil.Creator,
+		InferenceId: "dummy",
+		RequestedBy: testutil.Requester,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Contains(t, resp.ErrorMessage, types.ErrDeveloperNotAllowlisted.Error())
+}
+
 func TestMsgServer_FinishInference(t *testing.T) {
 	const (
 		epochId  = 1
@@ -70,31 +110,6 @@ func TestMsgServer_FinishInference(t *testing.T) {
 	)
 
 	inferenceHelper, k, ctx := NewMockInferenceHelper(t)
-
-	// Developer access gating should apply to FinishInference as well (gated by RequestedBy).
-	t.Run("DeveloperAccessRestricted", func(t *testing.T) {
-		originalParams, err := k.GetParams(ctx)
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			_ = k.SetParams(ctx, originalParams)
-		})
-
-		params, err := k.GetParams(ctx)
-		require.NoError(t, err)
-		params.DeveloperAccessParams = &types.DeveloperAccessParams{
-			UntilBlockHeight:          9999999,
-			AllowedDeveloperAddresses: []string{"gonka1someotherxxxxxxxxxxxxxxxxxxxxxx"},
-		}
-		k.SetParams(ctx, params)
-
-		resp, err := inferenceHelper.MessageServer.FinishInference(ctx, &types.MsgFinishInference{
-			InferenceId: "dummy",
-			RequestedBy: testutil.Requester,
-		})
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-		require.Contains(t, resp.ErrorMessage, types.ErrDeveloperNotAllowlisted.Error())
-	})
 
 	requestTimestamp := inferenceHelper.context.BlockTime().UnixNano()
 	initialBlockTime := ctx.BlockTime().UnixMilli()
@@ -169,7 +184,17 @@ func MustAddParticipant(t *testing.T, ms types.MsgServer, ctx context.Context, m
 
 func TestMsgServer_FinishInference_InferenceNotFound(t *testing.T) {
 	k, ms, ctx := setupMsgServer(t)
+	k.SetEffectiveEpochIndex(ctx, 1) // Set to non-zero epoch to avoid epoch not found error
+	k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId: 1,
+		Participants: []*types.ActiveParticipant{
+			{
+				Index: testutil.Executor,
+			},
+		},
+	})
 	response, err := ms.FinishInference(ctx, &types.MsgFinishInference{
+		Creator:              testutil.Executor,
 		InferenceId:          "inferenceId",
 		ResponseHash:         "responseHash",
 		ResponsePayload:      "responsePayload",
@@ -265,12 +290,37 @@ func NewMockInferenceHelper(t *testing.T) (*MockInferenceHelper, keeper.Keeper, 
 	}, k, ctx
 }
 
+func (h *MockInferenceHelper) EnsureActiveParticipants() {
+	currentEpoch, found := h.keeper.GetEffectiveEpochIndex(h.context)
+	require.True(h.testingT, found)
+	err := h.keeper.SetActiveParticipants(h.context, types.ActiveParticipants{
+		EpochId: currentEpoch,
+		Participants: []*types.ActiveParticipant{
+			{
+				Index: h.MockRequester.address,
+			},
+			{
+				Index: h.MockTransferAgent.address,
+			},
+			{
+				Index: h.MockExecutor.address,
+			},
+			{
+				Index: testutil.Validator,
+			},
+		},
+	})
+	require.NoError(h.testingT, err)
+}
 func (h *MockInferenceHelper) StartInference(
 	promptPayload string, model string, requestTimestamp int64, maxTokens uint64) (*types.Inference, error) {
 	h.Mocks.BankKeeper.EXPECT().SendCoinsFromAccountToModule(gomock.Any(), gomock.Any(), types.ModuleName, gomock.Any(), gomock.Any()).Return(nil)
+	h.Mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), h.MockRequester.GetBechAddress()).Return(true).AnyTimes()
 	h.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), h.MockRequester.GetBechAddress()).Return(h.MockRequester)
+	h.Mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), h.MockTransferAgent.GetBechAddress()).Return(true).AnyTimes()
 	h.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), h.MockTransferAgent.GetBechAddress()).Return(h.MockTransferAgent).AnyTimes()
 	h.Mocks.AuthzKeeper.EXPECT().GranterGrants(gomock.Any(), gomock.Any()).Return(&authztypes.QueryGranterGrantsResponse{Grants: []*authztypes.GrantAuthorization{}}, nil).AnyTimes()
+	h.EnsureActiveParticipants()
 
 	// Phase 3: Compute hashes for signatures
 	originalPromptHash := sha256Hash(promptPayload)
@@ -337,7 +387,7 @@ func (h *MockInferenceHelper) StartInference(
 		OriginalPrompt:      "",                        // Phase 6: Stored offchain
 		PerTokenPrice:       calculations.PerTokenCost, // Set expected dynamic pricing value
 	}
-	return h.previousInference, nil
+	return h.previousInference, err
 }
 
 func (h *MockInferenceHelper) FinishInference() (*types.Inference, error) {
@@ -346,9 +396,13 @@ func (h *MockInferenceHelper) FinishInference() (*types.Inference, error) {
 	}
 	h.Mocks.BankKeeper.EXPECT().SendCoinsFromModuleToAccount(gomock.Any(), types.ModuleName, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
+	h.Mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), h.MockRequester.GetBechAddress()).Return(true).AnyTimes()
 	h.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), h.MockRequester.GetBechAddress()).Return(h.MockRequester).AnyTimes()
+	h.Mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), h.MockTransferAgent.GetBechAddress()).Return(true).AnyTimes()
 	h.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), h.MockTransferAgent.GetBechAddress()).Return(h.MockTransferAgent).AnyTimes()
+	h.Mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), h.MockExecutor.GetBechAddress()).Return(true).AnyTimes()
 	h.Mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), h.MockExecutor.GetBechAddress()).Return(h.MockExecutor).AnyTimes()
+	h.EnsureActiveParticipants()
 
 	// Phase 3: Compute hashes for signatures
 	// Phase 6: Use stored promptPayload (not from inference struct, which is now empty)

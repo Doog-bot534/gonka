@@ -11,8 +11,13 @@ import (
 )
 
 func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishInference) (*types.MsgFinishInferenceResponse, error) {
-	ctx := sdk.UnwrapSDKContext(goCtx)
+	if err := k.CheckPermission(goCtx, msg, ActiveParticipantPermission, PreviousActiveParticipantPermission); err != nil {
+		// do not return failedFinish here. The entire transaction should fail here since permissions will all
+		// have the same result
+		return nil, err
+	}
 
+	ctx := sdk.UnwrapSDKContext(goCtx)
 	k.LogInfo("FinishInference", types.Inferences, "inference_id", msg.InferenceId, "executed_by", msg.ExecutedBy, "created_by", msg.Creator)
 	if msg.Creator != msg.ExecutedBy {
 		err := sdkerrors.Wrapf(types.ErrInferenceRoleMismatch, "creator (%s) must equal executed_by (%s)", msg.Creator, msg.ExecutedBy)

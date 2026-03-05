@@ -23,12 +23,18 @@ func TestMsgServer_OutOfOrderInference(t *testing.T) {
 	MustAddParticipant(t, ms, ctx, *mockTransferAgent)
 	MustAddParticipant(t, ms, ctx, *mockExecutor)
 
+	k.SetActiveParticipants(ctx, ParticipantsToActive(0, types.Participant{Index: testutil.Executor},
+		types.Participant{Index: testutil.Creator}, types.Participant{Index: testutil.Requester}))
 	mocks.StubForInitGenesis(ctx)
 
 	// For escrow calls
 	mocks.BankKeeper.ExpectAny(ctx)
-	mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), mockRequester.GetBechAddress()).Return(mockRequester).AnyTimes()
-	mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), mockTransferAgent.GetBechAddress()).Return(mockTransferAgent).AnyTimes()
+	mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), mockRequester.GetBechAddress()).Return(true).AnyTimes()
+	mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), mockRequester.GetBechAddress()).Return(mockRequester).Times(2)
+	mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), mockTransferAgent.GetBechAddress()).Return(true).AnyTimes()
+	mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), mockTransferAgent.GetBechAddress()).Return(mockTransferAgent).Times(2)
+	mocks.AccountKeeper.EXPECT().HasAccount(gomock.Any(), mockExecutor.GetBechAddress()).Return(true).AnyTimes()
+	mocks.AccountKeeper.EXPECT().GetAccount(gomock.Any(), mockExecutor.GetBechAddress()).Return(mockExecutor).Times(1)
 
 	// For GranteesByMessageType calls (used by both FinishInference and StartInference)
 	mocks.AuthzKeeper.EXPECT().GranterGrants(gomock.Any(), gomock.Any()).Return(&authztypes.QueryGranterGrantsResponse{Grants: []*authztypes.GrantAuthorization{}}, nil).AnyTimes()
@@ -73,7 +79,7 @@ func TestMsgServer_OutOfOrderInference(t *testing.T) {
 	// First, try to finish an inference that hasn't been started yet
 	// With our fix, this should now succeed
 	_, err = ms.FinishInference(ctx, &types.MsgFinishInference{
-		Creator:              mockExecutor.address,
+		Creator:              mockTransferAgent.address,
 		InferenceId:          inferenceId,
 		ResponseHash:         "responseHash",
 		ResponsePayload:      "responsePayload",

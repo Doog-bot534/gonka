@@ -28,7 +28,8 @@
           "poc_exchange_duration": "1",
           "poc_validation_delay": "1",
           "poc_validation_duration": "4",
-          "set_new_validators_delay": "1"
+          "set_new_validators_delay": "1",
+          "confirmation_poc_safety_window": "0"
         },
         "validation_params": {
           "expiration_blocks": "10",
