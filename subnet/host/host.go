@@ -63,7 +63,8 @@ type Host struct {
 	mempool  *Mempool
 	grace    uint64
 	checker  AcceptanceChecker
-	store    storage.Storage // optional, nil = no persistence
+	store    storage.Storage  // optional, nil = no persistence
+	gsp      *gossip.Gossip   // optional, nil = no gossip pruning
 }
 
 func NewHost(
@@ -114,6 +115,11 @@ func WithStorage(s storage.Storage) HostOption {
 // WithVerifier sets the signature verifier for gossip sig accumulation.
 func WithVerifier(v signing.Verifier) HostOption {
 	return func(h *Host) { h.verifier = v }
+}
+
+// WithGossip sets the gossip instance for pruning on finalization.
+func WithGossip(g *gossip.Gossip) HostOption {
+	return func(h *Host) { h.gsp = g }
 }
 
 func (h *Host) StateRoot() ([]byte, error) { return h.sm.ComputeStateRoot() }
@@ -439,6 +445,10 @@ func (h *Host) checkFinalization(nonce uint64) {
 	if len(sigs) >= threshold {
 		if err := h.store.MarkFinalized(h.escrowID, nonce); err != nil {
 			logging.Debug("mark finalized failed", "subsystem", "host", "nonce", nonce, "error", err)
+			return
+		}
+		if h.gsp != nil {
+			h.gsp.PruneBelow(nonce)
 		}
 	}
 }

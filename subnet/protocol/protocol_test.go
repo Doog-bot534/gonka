@@ -648,12 +648,8 @@ func TestProtocol_SignatureThreshold(t *testing.T) {
 
 	sigs := env.session.Signatures()
 
-	// Current limitation: each round-robin host signs once per nonce it sees.
-	// Verify we collected exactly 1 signature per nonce.
 	for nonce, slotSigs := range sigs {
 		require.Len(t, slotSigs, 1,
-			"nonce %d: expected 1 signature (current limitation), got %d", nonce, len(slotSigs))
+			"nonce %d: expected 1 signature from round-robin host, got %d", nonce, len(slotSigs))
 	}
-
-	// TODO: Phase 3 adds BroadcastDiff for 2/3+ collection at single nonce.
 }

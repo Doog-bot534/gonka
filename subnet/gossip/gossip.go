@@ -1,11 +1,15 @@
 package gossip
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"math/rand"
 	"sync"
 	"time"
+
+	"google.golang.org/protobuf/proto"
 
 	"subnet/logging"
 	"subnet/types"
@@ -13,10 +17,11 @@ import (
 
 // nonceRecord tracks state hash seen at a given nonce.
 type nonceRecord struct {
-	stateHash []byte
-	stateSig  []byte
-	slotID    uint32
-	seenAt    time.Time
+	stateHash   []byte
+	stateSig    []byte
+	slotID      uint32
+	seenAt      time.Time
+	rebroadcast bool // true after first rebroadcast
 }
 
 // Gossip propagates nonce notifications and detects equivocation.
@@ -29,6 +34,8 @@ type Gossip struct {
 	K        int           // fanout, default 10
 	StaleTTL time.Duration // how long unapplied nonces stay before re-gossip
 
+	highestSeen uint64 // tracked O(1)
+
 	mempool          MempoolSink    // receives forwarded txs
 	sigAccumulator   SigAccumulator // receives sigs for applied nonces
 	diffFetcher      DiffFetcher    // fetches diffs from peers for recovery
@@ -38,8 +45,11 @@ type Gossip struct {
 	lastAfterReq     time.Time      // last time AfterRequest was called
 	lastAfterReqNonce uint64        // nonce from the most recent AfterRequest call
 
-	stopCh  chan struct{}
-	stopped chan struct{}
+	broadcastedTxs map[uint64]bool // hash of proto bytes -> already sent
+
+	stopCh    chan struct{}
+	stopped   chan struct{}
+	closeOnce sync.Once
 }
 
 // MempoolSink receives transactions from gossip peers.
@@ -50,17 +60,18 @@ type MempoolSink interface {
 // NewGossip creates a new gossip instance.
 func NewGossip(escrowID string, slotID uint32, peers []PeerClient, mempool MempoolSink) *Gossip {
 	return &Gossip{
-		escrowID:      escrowID,
-		slotID:        slotID,
-		peers:         peers,
-		seen:          make(map[uint64]*nonceRecord),
-		K:             10,
-		StaleTTL:      120 * time.Second,
-		RecoveryDelay: 60 * time.Second,
-		RecoveryTick:  60 * time.Second,
-		mempool:       mempool,
-		stopCh:        make(chan struct{}),
-		stopped:       make(chan struct{}),
+		escrowID:       escrowID,
+		slotID:         slotID,
+		peers:          peers,
+		seen:           make(map[uint64]*nonceRecord),
+		K:              10,
+		StaleTTL:       120 * time.Second,
+		RecoveryDelay:  60 * time.Second,
+		RecoveryTick:   60 * time.Second,
+		mempool:        mempool,
+		broadcastedTxs: make(map[uint64]bool),
+		stopCh:         make(chan struct{}),
+		stopped:        make(chan struct{}),
 	}
 }
 
@@ -89,6 +100,9 @@ func (g *Gossip) AfterRequest(ctx context.Context, nonce uint64, stateHash, stat
 		slotID:    g.slotID,
 		seenAt:    time.Now(),
 	}
+	if nonce > g.highestSeen {
+		g.highestSeen = nonce
+	}
 	g.lastAfterReq = time.Now()
 	g.lastAfterReqNonce = nonce
 	peers := g.pickPeers()
@@ -104,7 +118,7 @@ func (g *Gossip) OnNonceReceived(nonce uint64, stateHash, stateSig []byte, sende
 
 	existing, ok := g.seen[nonce]
 	if ok {
-		if !bytesEqual(existing.stateHash, stateHash) {
+		if !bytes.Equal(existing.stateHash, stateHash) {
 			g.mu.Unlock()
 			return fmt.Errorf("equivocation at nonce %d: hash %x vs %x (slots %d vs %d)",
 				nonce, existing.stateHash, stateHash, existing.slotID, senderSlot)
@@ -127,6 +141,9 @@ func (g *Gossip) OnNonceReceived(nonce uint64, stateHash, stateSig []byte, sende
 		stateSig:  stateSig,
 		slotID:    senderSlot,
 		seenAt:    time.Now(),
+	}
+	if nonce > g.highestSeen {
+		g.highestSeen = nonce
 	}
 	peers := g.pickPeers()
 	g.mu.Unlock()
@@ -151,13 +168,80 @@ func (g *Gossip) OnTxsReceived(txs []*types.SubnetTx) {
 func (g *Gossip) HighestSeen() uint64 {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	var max uint64
-	for nonce := range g.seen {
-		if nonce > max {
-			max = nonce
+	return g.highestSeen
+}
+
+// PruneBelow removes seen-map entries below nonce - margin.
+// Called by the host after successful finalization. The 100-nonce margin
+// keeps a window for late-arriving equivocation evidence.
+func (g *Gossip) PruneBelow(nonce uint64) {
+	const margin = 100
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if nonce <= margin {
+		return
+	}
+	cutoff := nonce - margin
+	for n := range g.seen {
+		if n < cutoff {
+			delete(g.seen, n)
 		}
 	}
-	return max
+}
+
+// BroadcastTxs sends txs to ALL peers with dedup.
+// Stale txs are rare and critical, so we broadcast to everyone (not K random).
+func (g *Gossip) BroadcastTxs(ctx context.Context, txs []*types.SubnetTx) {
+	if len(txs) == 0 {
+		return
+	}
+
+	g.mu.Lock()
+	var newTxs []*types.SubnetTx
+	for _, tx := range txs {
+		h := txHash(tx)
+		if !g.broadcastedTxs[h] {
+			g.broadcastedTxs[h] = true
+			newTxs = append(newTxs, tx)
+		}
+	}
+	peers := make([]PeerClient, len(g.peers))
+	copy(peers, g.peers)
+	g.mu.Unlock()
+
+	if len(newTxs) == 0 {
+		return
+	}
+
+	var wg sync.WaitGroup
+	for _, p := range peers {
+		wg.Add(1)
+		go func(peer PeerClient) {
+			defer wg.Done()
+			sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			if err := peer.GossipTxs(sendCtx, newTxs); err != nil {
+				logging.Debug("broadcast txs failed", "subsystem", "gossip", "error", err)
+			}
+		}(p)
+	}
+	wg.Wait()
+}
+
+// txHash returns a deterministic hash for dedup. Uses sha256 of proto bytes.
+func txHash(tx *types.SubnetTx) uint64 {
+	data, err := proto.Marshal(tx)
+	if err != nil {
+		return 0
+	}
+	h := sha256.Sum256(data)
+	// Use first 8 bytes as uint64.
+	var v uint64
+	for i := 0; i < 8; i++ {
+		v = (v << 8) | uint64(h[i])
+	}
+	return v
 }
 
 // Start begins the background re-propagation and recovery loops.
@@ -165,9 +249,11 @@ func (g *Gossip) Start(ctx context.Context) {
 	go g.backgroundLoop(ctx)
 }
 
-// Stop halts the background loop.
+// Stop halts the background loop. Safe to call multiple times.
 func (g *Gossip) Stop() {
-	close(g.stopCh)
+	g.closeOnce.Do(func() {
+		close(g.stopCh)
+	})
 	<-g.stopped
 }
 
@@ -203,9 +289,13 @@ func (g *Gossip) rebroadcastStale(ctx context.Context) {
 	var stale []nonceRecord
 	var staleNonces []uint64
 	for nonce, rec := range g.seen {
+		if rec.rebroadcast {
+			continue
+		}
 		if now.Sub(rec.seenAt) > g.StaleTTL {
 			stale = append(stale, *rec)
 			staleNonces = append(staleNonces, nonce)
+			rec.rebroadcast = true
 		}
 	}
 	peers := g.pickPeers()
@@ -223,16 +313,13 @@ func (g *Gossip) tryRecovery(ctx context.Context) {
 	updater := g.stateUpdater
 	lastReq := g.lastAfterReq
 	recoveryDelay := g.RecoveryDelay
+	highestSeen := g.highestSeen
+	lastAppliedNonce := g.lastAfterReqNonce
 	g.mu.Unlock()
 
 	if fetcher == nil || updater == nil {
 		return
 	}
-
-	highestSeen := g.HighestSeen()
-	g.mu.Lock()
-	lastAppliedNonce := g.lastAfterReqNonce
-	g.mu.Unlock()
 
 	if highestSeen <= lastAppliedNonce {
 		return
@@ -264,6 +351,14 @@ func (g *Gossip) tryRecovery(ctx context.Context) {
 		return
 	}
 
+	// Update watermark to highest recovered nonce.
+	var maxRecovered uint64
+	for _, sig := range sigs {
+		if sig.Nonce > maxRecovered {
+			maxRecovered = sig.Nonce
+		}
+	}
+
 	// Ensure recovered nonces are in the seen map and gossip own sigs.
 	g.mu.Lock()
 	for _, sig := range sigs {
@@ -275,6 +370,13 @@ func (g *Gossip) tryRecovery(ctx context.Context) {
 				seenAt:    time.Now(),
 			}
 		}
+		if sig.Nonce > g.highestSeen {
+			g.highestSeen = sig.Nonce
+		}
+	}
+	if maxRecovered > g.lastAfterReqNonce {
+		g.lastAfterReqNonce = maxRecovered
+		g.lastAfterReq = time.Now()
 	}
 	peers := g.pickPeers()
 	g.mu.Unlock()
@@ -312,16 +414,4 @@ func (g *Gossip) sendNonceToPeers(ctx context.Context, peers []PeerClient, nonce
 		}(p)
 	}
 	wg.Wait()
-}
-
-func bytesEqual(a, b []byte) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }

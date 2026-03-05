@@ -219,6 +219,12 @@ func (s *Server) handleInference(c echo.Context) error {
 		go s.gossip.AfterRequest(context.Background(), resp.Nonce, resp.StateHash, resp.StateSig)
 	}
 
+	// Lazy tx gossip: if signature was withheld (stale mempool) and mempool
+	// is non-empty, broadcast txs so peers can include them.
+	if s.gossip != nil && resp.StateSig == nil && len(resp.Mempool) > 0 {
+		go s.gossip.BroadcastTxs(context.Background(), resp.Mempool)
+	}
+
 	return writeJSON(c, http.StatusOK, respJSON)
 }
 
