@@ -33,7 +33,16 @@ func TestParamsRollingWindowValidation(t *testing.T) {
 
 	// Test BandwidthLimitsParams.InvalidationsSamplePeriod
 	if params.BandwidthLimitsParams == nil {
-		params.BandwidthLimitsParams = types.DefaultBandwidthLimitsParams()
+		params.BandwidthLimitsParams = &types.BandwidthLimitsParams{
+			EstimatedLimitsPerBlockKb:      1000, // 1MB per block
+			KbPerInputToken:                types.DecimalFromFloat(0.0001),
+			KbPerOutputToken:               types.DecimalFromFloat(0.0004),
+			InvalidationsLimit:             500,
+			InvalidationsSamplePeriod:      60,
+			InvalidationsLimitCurve:        1,
+			MinimumConcurrentInvalidations: 10,
+			MaxInferencesPerBlock:          200,
+		}
 	}
 
 	params.BandwidthLimitsParams.InvalidationsSamplePeriod = 2500

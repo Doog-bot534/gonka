@@ -119,7 +119,6 @@ func DefaultParams() Params {
 		CollateralParams:      DefaultCollateralParams(),
 		BitcoinRewardParams:   DefaultBitcoinRewardParams(),
 		DynamicPricingParams:  DefaultDynamicPricingParams(),
-		BandwidthLimitsParams: DefaultBandwidthLimitsParams(),
 		GenesisGuardianParams: &GenesisGuardianParams{
 			NetworkMaturityThreshold: 2_000_000,
 			NetworkMaturityMinHeight: 0,
@@ -286,19 +285,6 @@ func DefaultDynamicPricingParams() *DynamicPricingParams {
 		BasePerTokenPrice:         100,                    // Initial per-token price after grace period (100 ngonka)
 		GracePeriodEndEpoch:       90,                     // Grace period ends at epoch 90
 		GracePeriodPerTokenPrice:  0,                      // Free inference during grace period (0 ngonka)
-	}
-}
-
-func DefaultBandwidthLimitsParams() *BandwidthLimitsParams {
-	return &BandwidthLimitsParams{
-		EstimatedLimitsPerBlockKb:      1000, // 1MB per block
-		KbPerInputToken:                DecimalFromFloat(0.0001),
-		KbPerOutputToken:               DecimalFromFloat(0.0004),
-		InvalidationsLimit:             500,
-		InvalidationsSamplePeriod:      60,
-		InvalidationsLimitCurve:        1,
-		MinimumConcurrentInvalidations: 10,
-		MaxInferencesPerBlock:          200,
 	}
 }
 
