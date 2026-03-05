@@ -188,6 +188,7 @@ pub fn instantiate(
         native_denom: native_denom.clone(),
         is_paused: false,
         total_tokens_sold: Uint128::zero(),
+        allow_all_trade_tokens: msg.allow_all_trade_tokens.unwrap_or(false),
     };
     CONFIG.save(deps.storage, &config)?;
 
@@ -199,7 +200,8 @@ pub fn instantiate(
         .add_attribute("accepted_eth_contract", msg.accepted_eth_contract)
         .add_attribute("accepted_ibc_denom", msg.accepted_ibc_denom)
         .add_attribute("price_usd", msg.price_usd)
-        .add_attribute("native_denom", native_denom))
+        .add_attribute("native_denom", native_denom)
+        .add_attribute("allow_all_trade_tokens", config.allow_all_trade_tokens.to_string()))
 }
 
 #[entry_point]
@@ -216,6 +218,7 @@ pub fn execute(
         ExecuteMsg::Resume {} => resume_contract(deps, info),
         ExecuteMsg::UpdateBuyer { buyer } => update_buyer(deps, info, buyer),
         ExecuteMsg::UpdatePrice { price_usd } => update_price(deps, info, price_usd),
+        ExecuteMsg::UpdateAllowAllTradeTokens { allow } => update_allow_all_trade_tokens(deps, info, allow),
         ExecuteMsg::WithdrawNative { amount, recipient } => withdraw_native(deps, info, amount, recipient),
         ExecuteMsg::WithdrawCw20 { contract_addr, amount, recipient } => withdraw_cw20(deps, env, info, contract_addr, amount, recipient),
         ExecuteMsg::WithdrawIbc { denom, amount, recipient } => withdraw_ibc(deps, env, info, denom, amount, recipient),
@@ -249,7 +252,7 @@ fn purchase_with_native(
         return Err(ContractError::ZeroAmount {});
     }
 
-    if payment.denom != config.accepted_ibc_denom {
+    if !config.allow_all_trade_tokens && payment.denom != config.accepted_ibc_denom {
         return Err(ContractError::Std(StdError::msg(format!(
             "Token not accepted. Expected IBC denom: {}, got: {}",
             config.accepted_ibc_denom, payment.denom
@@ -416,15 +419,17 @@ fn receive_cw20(
         });
     }
 
-    // Check 3: Query underlying Ethereum address and compare to expected
-    let (chain_id, eth_contract) = query_bridge_info(deps.as_ref(), &cw20_contract)?;
-    if chain_id != config.accepted_chain_id || eth_contract != config.accepted_eth_contract {
-        return Err(ContractError::WrongToken {
-            expected_chain: config.accepted_chain_id.clone(),
-            expected_contract: config.accepted_eth_contract.clone(),
-            got_chain: chain_id,
-            got_contract: eth_contract,
-        });
+    // Check 3: Query underlying Ethereum address and compare to expected (if allow_all is false)
+    if !config.allow_all_trade_tokens {
+        let (chain_id, eth_contract) = query_bridge_info(deps.as_ref(), &cw20_contract)?;
+        if chain_id != config.accepted_chain_id || eth_contract != config.accepted_eth_contract {
+            return Err(ContractError::WrongToken {
+                expected_chain: config.accepted_chain_id.clone(),
+                expected_contract: config.accepted_eth_contract.clone(),
+                got_chain: chain_id,
+                got_contract: eth_contract,
+            });
+        }
     }
 
     let _purchase_msg: PurchaseTokenMsg = from_json(&cw20_msg.msg)?;
@@ -538,6 +543,18 @@ fn update_price(deps: DepsMut, info: MessageInfo, price_usd: Uint128) -> Result<
         .add_attribute("price_usd", price_usd))
 }
 
+fn update_allow_all_trade_tokens(deps: DepsMut, info: MessageInfo, allow: bool) -> Result<Response, ContractError> {
+    let mut config = CONFIG.load(deps.storage)?;
+    if info.sender.as_str() != config.admin {
+        return Err(ContractError::Unauthorized {});
+    }
+    config.allow_all_trade_tokens = allow;
+    CONFIG.save(deps.storage, &config)?;
+    Ok(Response::new()
+        .add_attribute("method", "update_allow_all_trade_tokens")
+        .add_attribute("allow_all_trade_tokens", allow.to_string()))
+}
+
 fn withdraw_native(
     deps: DepsMut,
     info: MessageInfo,
@@ -624,13 +641,16 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
     // Attempt to load current config. If it fails, try loading as V1.
     let config = match CONFIG.load(deps.storage) {
         Ok(c) => {
-            // Already V2, update if params provided
+            // Already current, update if params provided
             let mut updated = c;
-            if let Some(denom) = msg.native_denom {
+            if let Some(denom) = msg.native_denom.clone() {
                 updated.native_denom = denom;
             }
-            if let Some(ibc_denom) = msg.accepted_ibc_denom {
+            if let Some(ibc_denom) = msg.accepted_ibc_denom.clone() {
                 updated.accepted_ibc_denom = ibc_denom;
+            }
+            if let Some(allow) = msg.allow_all_trade_tokens {
+                updated.allow_all_trade_tokens = allow;
             }
             updated
         },
@@ -658,13 +678,21 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
                 buyer: v1.buyer,
                 accepted_chain_id: v1.accepted_chain_id,
                 accepted_eth_contract: v1.accepted_eth_contract,
-                accepted_ibc_denom: msg.accepted_ibc_denom.ok_or_else(|| {
-                    ContractError::Std(StdError::msg("accepted_ibc_denom is required for migration from V1"))
-                })?,
+                accepted_ibc_denom: match msg.accepted_ibc_denom {
+                    Some(denom) => denom,
+                    None => {
+                        if msg.allow_all_trade_tokens.unwrap_or(false) {
+                            "".to_string()
+                        } else {
+                            return Err(ContractError::Std(StdError::msg("accepted_ibc_denom is required for migration from V1 if allow_all_trade_tokens is not true")));
+                        }
+                    }
+                },
                 price_usd: v1.price_usd,
                 native_denom: msg.native_denom.unwrap_or(v1.native_denom),
                 is_paused: v1.is_paused,
                 total_tokens_sold: v1.total_tokens_sold,
+                allow_all_trade_tokens: msg.allow_all_trade_tokens.unwrap_or(false),
             }
         }
     };
@@ -689,6 +717,7 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
         native_denom: config.native_denom,
         is_paused: config.is_paused,
         total_tokens_sold: config.total_tokens_sold,
+        allow_all_trade_tokens: config.allow_all_trade_tokens,
     })
 }
 
@@ -783,6 +812,7 @@ mod tests {
             accepted_ibc_denom: "ibc/1234567890ABCDEF".to_string(),
             price_usd: Uint128::from(25000u128), // $0.025
             native_denom: Some("ngonka".to_string()),
+            allow_all_trade_tokens: None,
         }
     }
 
@@ -989,6 +1019,7 @@ mod tests {
         let migrate_msg = MigrateMsg {
             native_denom: Some("unewdenom".to_string()),
             accepted_ibc_denom: Some("ibc/NEWDENOM".to_string()),
+            allow_all_trade_tokens: None,
         };
 
         migrate(deps.as_mut(), mock_env(), migrate_msg).unwrap();

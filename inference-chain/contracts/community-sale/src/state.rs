@@ -22,6 +22,8 @@ pub struct Config {
     pub is_paused: bool,
     /// Total tokens sold
     pub total_tokens_sold: Uint128,
+    /// Whether to allow any approved token for trading or just the specifically accepted one
+    pub allow_all_trade_tokens: bool,
 }
 
 /// Contract configuration

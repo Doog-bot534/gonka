@@ -29,6 +29,10 @@ We introduce new files to mirror the existing bridge functionality but adapted f
     *   **Internal Map**: Stores metadata in `WrappedTokenMetadataMap` for bridge-specific logic.
     *   **Bank Module integration**: Calls `BankKeeper.SetDenomMetaData` to ensure the IBC token decimals and symbol are visible via standard Cosmos bank queries and explorers.
 
+#### C. Contract Migration Integration (`app/upgrades/v0_2_11`)
+*   **Upgrade Handler**: Added CosmWasm contract migration steps directly into the consensus upgrade.
+*   **Execution**: Parses the governance `Plan.Info` field for a JSON string containing `community_sale_address` and `new_code_id`. Utilizing `wasmkeeper`, it safely executes the contract migration, automatically triggering the update payload to enable new configuration `allow_all_trade_tokens`.
+
 ### 2. Contract Logic (`liquidity-pool`)
 
 #### A. Dynamic Token Validation
@@ -57,14 +61,19 @@ We introduce new files to mirror the existing bridge functionality but adapted f
 *   **Method**: `ExecuteMsg::PurchaseWithNative`
 *   **Logic**: Added support for purchasing GNK using native IBC tokens (e.g., Nobel USDC). The contract validates the IBC denom against the governance-maintained allowlist on the chain.
 
-#### B. Migration Support
-*   **Migration Path**: Implemented a comprehensive `migrate` entry point that allows existing contract instances (like the one funded in Proposal 14) to be upgraded to this new version while preserving their balances and configurations.
+#### B. Dynamic Multi-Token Support (`allow_all_trade_tokens`)
+*   **Method**: `ExecuteMsg::UpdateAllowAllTradeTokens` & `Config` structural changes.
+*   **Logic**: Introduced an `allow_all_trade_tokens` configuration boolean. When enabled, the contract bypasses checks for a *single* strictly defined `accepted_ibc_denom` or `accepted_eth_contract`. Instead, it mirrors the `liquidity-pool` behavior by independently validating *any* received token dynamically against the on-chain governance allowlist (via `ValidateWrappedTokenForTrade` and `ValidateIbcTokenForTrade` queries).
+
+#### C. Migration Support
+*   **Migration Path**: Implemented a comprehensive `migrate` entry point that allows existing contract instances (like the one funded in Proposal 14) to be safely upgraded to this new version.
+*   **Config Backwards-Compatibility**: If no V3 configuration updates are passed during migration, the contract perfectly retains the pre-migration restrictions (falling back to requiring the explicitly defined single token configurations) preserving the expected behavior of any active legacy contracts.
 
 ---
 
 ## Bridge Audit Fixes Included in This PR
 
-The following security findings from the bridge audit ([`bridge-audit/todo.md`](../bridge-audit/todo.md)) have been resolved as part of this change set:
+The following security findings from Certik bridge audit have been resolved as part of this change set:
 
 | ID | Severity | Title | Fixed In |
 |----|----------|-------|----------|

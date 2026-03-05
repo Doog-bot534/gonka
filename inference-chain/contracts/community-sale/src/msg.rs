@@ -17,6 +17,8 @@ pub struct InstantiateMsg {
     pub price_usd: Uint128,
     /// Optional native token denomination (defaults to "ngonka" if not provided)
     pub native_denom: Option<String>,
+    /// Whether to allow any approved token for trading or just the specifically accepted one
+    pub allow_all_trade_tokens: Option<bool>,
 }
 
 #[cw_serde]
@@ -33,6 +35,8 @@ pub enum ExecuteMsg {
     UpdateBuyer { buyer: String },
     /// Admin: Update fixed price
     UpdatePrice { price_usd: Uint128 },
+    /// Admin: Update allow_all_trade_tokens flag
+    UpdateAllowAllTradeTokens { allow: bool },
     /// Admin: Withdraw native tokens from contract
     WithdrawNative { amount: Uint128, recipient: String },
     /// Admin: Withdraw CW20 tokens from contract
@@ -87,6 +91,7 @@ pub struct ConfigResponse {
     pub native_denom: String,
     pub is_paused: bool,
     pub total_tokens_sold: Uint128,
+    pub allow_all_trade_tokens: bool,
 }
 
 #[cw_serde]
@@ -125,4 +130,5 @@ pub struct ApprovedTokenJson {
 pub struct MigrateMsg {
     pub native_denom: Option<String>,
     pub accepted_ibc_denom: Option<String>,
+    pub allow_all_trade_tokens: Option<bool>,
 }
