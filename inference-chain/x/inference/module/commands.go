@@ -13,7 +13,7 @@ import (
 
 func GrantMLOpsPermissionsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "grant-ml-ops-permissions <account-key-name> <ml-operational-address>",
+		Use:   "grant-ml-ops-permissions [account-address-or-key-name] <ml-operational-address>",
 		Short: "Grant ML operations permissions from account key to ML operational key",
 		Long: `Grant all ML operations permissions from account key to ML operational key.
 
@@ -21,18 +21,27 @@ This allows the ML operational key to perform automated ML operations on behalf 
 The account key retains full control and can revoke these permissions at any time.
 
 Arguments:
-  account-key-name         Name of the account key in keyring (cold wallet)
-  ml-operational-address   Bech32 address of the ML operational key (hot wallet)
+  account-address-or-key-name   (Optional) Bech32 address or keyring key name of the granter.
+                                If omitted, uses --from flag value.
+  ml-operational-address        Bech32 address of the ML operational key (hot wallet)
 
-Example:
+Examples:
+  # Using key name (legacy)
   inferenced tx inference grant-ml-ops-permissions \
     gonka-account-key \
     gonka1rk52j24xj9ej87jas4zqpvjuhrgpnd7h3feqmm \
     --from gonka-account-key \
     --node http://node2.gonka.ai:8000/chain-rpc/
 
+  # Using --from only (recommended, supports --generate-only for multisig)
+  inferenced tx inference grant-ml-ops-permissions \
+    gonka1rk52j24xj9ej87jas4zqpvjuhrgpnd7h3feqmm \
+    --from gonka12c4ymjl6zzujvdgs26qlc59nvy0u4zk09fdt20 \
+    --generate-only \
+    --node http://node2.gonka.ai:8000/chain-rpc/
+
 Note: Chain ID will be auto-detected from the chain if not specified with --chain-id`,
-		Args: cobra.ExactArgs(2),
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
@@ -49,8 +58,29 @@ Note: Chain ID will be auto-detected from the chain if not specified with --chai
 
 			clientCtx = clientCtx.WithChainID(chainID)
 
-			accountKeyName := args[0]
-			mlOperationalAddressStr := args[1]
+			var operatorAddress sdk.AccAddress
+			var mlOperationalAddressStr string
+
+			if len(args) == 2 {
+				mlOperationalAddressStr = args[1]
+				operatorAddress, err = sdk.AccAddressFromBech32(args[0])
+				if err != nil {
+					keyInfo, keyErr := clientCtx.Keyring.Key(args[0])
+					if keyErr != nil {
+						return fmt.Errorf("invalid account address or key name %q: %w", args[0], err)
+					}
+					operatorAddress, err = keyInfo.GetAddress()
+					if err != nil {
+						return fmt.Errorf("failed to get address from key %q: %w", args[0], err)
+					}
+				}
+			} else {
+				mlOperationalAddressStr = args[0]
+				operatorAddress = clientCtx.FromAddress
+				if operatorAddress.Empty() {
+					return fmt.Errorf("--from flag is required when account address is not provided as first argument")
+				}
+			}
 
 			mlOperationalAddress, err := sdk.AccAddressFromBech32(mlOperationalAddressStr)
 			if err != nil {
@@ -64,11 +94,10 @@ Note: Chain ID will be auto-detected from the chain if not specified with --chai
 
 			txFactory = txFactory.WithChainID(clientCtx.ChainID)
 
-			return inference.GrantMLOperationalKeyPermissionsToAccount(
-				cmd.Context(),
+			return inference.GrantMLOperationalKeyPermissions(
 				clientCtx,
 				txFactory,
-				accountKeyName,
+				operatorAddress,
 				mlOperationalAddress,
 				nil, // Use default expiration (1 year)
 			)
