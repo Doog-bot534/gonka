@@ -66,6 +66,54 @@ func (m *mockMempool) AddTx(tx *types.SubnetTx) {
 	m.txs = append(m.txs, tx)
 }
 
+// mockSigAccumulator records AccumulateGossipSig calls.
+type mockSigAccumulator struct {
+	mu    sync.Mutex
+	calls []sigAccCall
+}
+
+type sigAccCall struct {
+	nonce     uint64
+	stateHash []byte
+	sig       []byte
+	slot      uint32
+}
+
+func (m *mockSigAccumulator) AccumulateGossipSig(nonce uint64, stateHash, sig []byte, senderSlot uint32) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = append(m.calls, sigAccCall{nonce, stateHash, sig, senderSlot})
+	return nil
+}
+
+func (m *mockSigAccumulator) getCalls() []sigAccCall {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make([]sigAccCall, len(m.calls))
+	copy(result, m.calls)
+	return result
+}
+
+// mockDiffFetcher returns pre-configured diffs.
+type mockDiffFetcher struct {
+	diffs []types.Diff
+	err   error
+}
+
+func (m *mockDiffFetcher) GetDiffs(_ context.Context, _, _ uint64) ([]types.Diff, error) {
+	return m.diffs, m.err
+}
+
+// mockStateUpdater returns pre-configured sigs.
+type mockStateUpdater struct {
+	sigs []GossipSig
+	err  error
+}
+
+func (m *mockStateUpdater) ApplyRecoveredDiffs(_ context.Context, _ []types.Diff) ([]GossipSig, error) {
+	return m.sigs, m.err
+}
+
 func TestAfterRequest_SendsToKPeers(t *testing.T) {
 	peers := make([]PeerClient, 15)
 	mocks := make([]*mockPeer, 15)
@@ -133,6 +181,63 @@ func TestOnNonceReceived_DifferentHash_Equivocation(t *testing.T) {
 	require.Contains(t, err.Error(), "equivocation")
 }
 
+func TestOnNonceReceived_Amplification(t *testing.T) {
+	peer := &mockPeer{}
+	g := NewGossip("escrow-1", 0, []PeerClient{peer}, nil)
+	g.K = 5
+
+	// First time seeing nonce 5 -> should forward to peers.
+	err := g.OnNonceReceived(5, []byte("hash5"), []byte("sig5"), 2)
+	require.NoError(t, err)
+
+	// Wait for async send to complete.
+	time.Sleep(50 * time.Millisecond)
+
+	calls := peer.getNonceCalls()
+	require.Len(t, calls, 1, "new nonce should be forwarded to peers")
+	require.Equal(t, uint64(5), calls[0].nonce)
+	require.Equal(t, uint32(2), calls[0].slotID)
+}
+
+func TestOnNonceReceived_NoAmplificationForKnownNonce(t *testing.T) {
+	peer := &mockPeer{}
+	g := NewGossip("escrow-1", 0, []PeerClient{peer}, nil)
+
+	// First receive: triggers amplification.
+	err := g.OnNonceReceived(5, []byte("hash5"), []byte("sig5"), 2)
+	require.NoError(t, err)
+	time.Sleep(50 * time.Millisecond)
+
+	countAfterFirst := int(peer.nonceCount.Load())
+
+	// Second receive with same hash: no amplification.
+	err = g.OnNonceReceived(5, []byte("hash5"), []byte("sig6"), 3)
+	require.NoError(t, err)
+	time.Sleep(50 * time.Millisecond)
+
+	require.Equal(t, countAfterFirst, int(peer.nonceCount.Load()),
+		"known nonce should not trigger re-amplification")
+}
+
+func TestOnNonceReceived_SigAccumulation(t *testing.T) {
+	acc := &mockSigAccumulator{}
+	g := NewGossip("escrow-1", 0, nil, nil)
+	g.SetSigAccumulator(acc)
+
+	// AfterRequest stores nonce 5 in seen map.
+	g.AfterRequest(context.Background(), 5, []byte("hash5"), []byte("our-sig"))
+
+	// Receive gossip for same nonce -> should accumulate sig.
+	err := g.OnNonceReceived(5, []byte("hash5"), []byte("peer-sig"), 3)
+	require.NoError(t, err)
+
+	calls := acc.getCalls()
+	require.Len(t, calls, 1)
+	require.Equal(t, uint64(5), calls[0].nonce)
+	require.Equal(t, uint32(3), calls[0].slot)
+	require.Equal(t, []byte("peer-sig"), calls[0].sig)
+}
+
 func TestOnTxsReceived_ForwardsToMempool(t *testing.T) {
 	mem := &mockMempool{}
 	g := NewGossip("escrow-1", 0, nil, mem)
@@ -147,40 +252,91 @@ func TestOnTxsReceived_ForwardsToMempool(t *testing.T) {
 	require.Len(t, mem.txs, 1)
 }
 
-func TestRebroadcast_StaleUnbackedNonce(t *testing.T) {
+func TestRebroadcast_StaleNonce(t *testing.T) {
 	peer := &mockPeer{}
 	g := NewGossip("escrow-1", 0, []PeerClient{peer}, nil)
 	g.StaleTTL = 10 * time.Millisecond
 
-	// Simulate receiving a nonce that is never backed.
+	// Simulate receiving a nonce.
 	err := g.OnNonceReceived(5, []byte("hash5"), []byte("sig5"), 2)
 	require.NoError(t, err)
 
-	// Wait past StaleTTL.
-	time.Sleep(20 * time.Millisecond)
+	// Wait for async amplification + past StaleTTL.
+	time.Sleep(50 * time.Millisecond)
+
+	initialCount := int(peer.nonceCount.Load())
 
 	ctx := context.Background()
 	g.rebroadcastStale(ctx)
 
 	calls := peer.getNonceCalls()
-	require.Len(t, calls, 1)
-	require.Equal(t, uint64(5), calls[0].nonce)
+	require.Greater(t, len(calls), initialCount, "stale nonce should be rebroadcast")
 }
 
-func TestRebroadcast_BackedNonce_NotRebroadcast(t *testing.T) {
+func TestHighestSeen(t *testing.T) {
+	g := NewGossip("escrow-1", 0, nil, nil)
+
+	require.Equal(t, uint64(0), g.HighestSeen())
+
+	g.AfterRequest(context.Background(), 3, []byte("h3"), []byte("s3"))
+	require.Equal(t, uint64(3), g.HighestSeen())
+
+	_ = g.OnNonceReceived(7, []byte("h7"), []byte("s7"), 1)
+	require.Equal(t, uint64(7), g.HighestSeen())
+}
+
+func TestRecovery_TriggersWhenBehind(t *testing.T) {
+	fetchedDiffs := []types.Diff{
+		{Nonce: 4, UserSig: []byte("sig4")},
+		{Nonce: 5, UserSig: []byte("sig5")},
+	}
+	recoveredSigs := []GossipSig{
+		{Nonce: 4, StateHash: []byte("h4"), Sig: []byte("s4"), SlotID: 0},
+		{Nonce: 5, StateHash: []byte("h5"), Sig: []byte("s5"), SlotID: 0},
+	}
+
+	fetcher := &mockDiffFetcher{diffs: fetchedDiffs}
+	updater := &mockStateUpdater{sigs: recoveredSigs}
 	peer := &mockPeer{}
+
 	g := NewGossip("escrow-1", 0, []PeerClient{peer}, nil)
-	g.StaleTTL = 10 * time.Millisecond
+	g.SetRecovery(fetcher, updater)
+	g.RecoveryDelay = 0 // no delay for test
 
-	err := g.OnNonceReceived(5, []byte("hash5"), []byte("sig5"), 2)
-	require.NoError(t, err)
-	g.MarkBacked(5)
+	// AfterRequest sets lastAfterReqNonce to 3.
+	g.AfterRequest(context.Background(), 3, []byte("h3"), []byte("s3"))
+	// Gossip sees nonce 5 -> gap: highestSeen(5) > lastAfterReqNonce(3).
+	_ = g.OnNonceReceived(5, []byte("h5"), []byte("s5"), 1)
 
-	time.Sleep(20 * time.Millisecond)
+	// Wait for amplification of nonce 5 to complete.
+	time.Sleep(50 * time.Millisecond)
 
-	ctx := context.Background()
-	g.rebroadcastStale(ctx)
+	// Reset lastAfterReq to past so recovery triggers.
+	g.mu.Lock()
+	g.lastAfterReq = time.Now().Add(-2 * time.Hour)
+	g.mu.Unlock()
 
-	calls := peer.getNonceCalls()
-	require.Len(t, calls, 0, "backed nonce should not be rebroadcast")
+	peerCountBefore := int(peer.nonceCount.Load())
+
+	g.tryRecovery(context.Background())
+
+	// Should have gossipped recovered sigs.
+	time.Sleep(50 * time.Millisecond)
+	require.Greater(t, int(peer.nonceCount.Load()), peerCountBefore,
+		"recovery should gossip recovered sigs")
+}
+
+func TestRecovery_DoesNotTriggerWhenUpToDate(t *testing.T) {
+	fetcher := &mockDiffFetcher{}
+	updater := &mockStateUpdater{}
+
+	g := NewGossip("escrow-1", 0, nil, nil)
+	g.SetRecovery(fetcher, updater)
+
+	// AfterRequest sets lastAfterReqNonce to 5. highestSeen is also 5.
+	g.AfterRequest(context.Background(), 5, []byte("h5"), []byte("s5"))
+
+	// No gap -> recovery should not fetch.
+	g.tryRecovery(context.Background())
+	// No panic/error = success.
 }

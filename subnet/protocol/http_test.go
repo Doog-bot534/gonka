@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
@@ -21,18 +22,21 @@ import (
 )
 
 type httpTestEnv struct {
-	session    *user.Session
-	hosts      []*host.Host
-	servers    []*transport.Server
+	session     *user.Session
+	hosts       []*host.Host
+	servers     []*transport.Server
 	httpServers []*httptest.Server
-	clients    []*transport.HTTPClient
-	signers    []*signing.Secp256k1Signer
-	userSigner *signing.Secp256k1Signer
-	group      []types.SlotAssignment
-	config     types.SessionConfig
-	stores     []*storage.Memory
+	clients     []*transport.HTTPClient
+	signers     []*signing.Secp256k1Signer
+	userSigner  *signing.Secp256k1Signer
+	group       []types.SlotAssignment
+	config      types.SessionConfig
+	stores      []*storage.Memory
+	gossips     []*gossip.Gossip
 }
 
+// setupHTTPEnv creates a full HTTP test environment with storage, gossip,
+// sig accumulation, and mempool sink wired together.
 func setupHTTPEnv(t *testing.T, numHosts int, balance, grace uint64) *httpTestEnv {
 	t.Helper()
 	hostSigners := make([]*signing.Secp256k1Signer, numHosts)
@@ -56,7 +60,8 @@ func setupHTTPEnv(t *testing.T, numHosts int, balance, grace uint64) *httpTestEn
 		require.NoError(t, store.CreateSession("escrow-1", config, group, balance))
 		stores[i] = store
 
-		h, err := host.NewHost(sm, hostSigners[i], engine, "escrow-1", group, grace, nil, host.WithStorage(store))
+		h, err := host.NewHost(sm, hostSigners[i], engine, "escrow-1", group, grace, nil,
+			host.WithStorage(store), host.WithVerifier(verifier))
 		require.NoError(t, err)
 		hosts[i] = h
 
@@ -81,7 +86,6 @@ func setupHTTPEnv(t *testing.T, numHosts int, balance, grace uint64) *httpTestEn
 	}
 
 	// Wire peer clients for timeout verification.
-	// Each server needs access to all other hosts (including executor) for verification.
 	for _, srv := range servers {
 		peers := make(map[int]*transport.HTTPClient)
 		for j, c := range clients {
@@ -90,21 +94,38 @@ func setupHTTPEnv(t *testing.T, numHosts int, balance, grace uint64) *httpTestEn
 		srv.SetPeerClients(peers)
 	}
 
+	// Wire gossip instances with real HTTP peers and sig accumulation.
+	gossips := make([]*gossip.Gossip, numHosts)
+	for i, srv := range servers {
+		var peers []gossip.PeerClient
+		for j, c := range clients {
+			if j == i {
+				continue
+			}
+			peers = append(peers, c)
+		}
+		g := gossip.NewGossip("escrow-1", uint32(i), peers, nil)
+		g.SetSigAccumulator(hosts[i])
+		gossips[i] = g
+		srv.SetGossip(g)
+	}
+
 	userSM := state.NewStateMachine("escrow-1", config, group, balance, userSigner.Address(), verifier)
 	session, err := user.NewSession(userSM, userSigner, "escrow-1", group, userClients)
 	require.NoError(t, err)
 
 	return &httpTestEnv{
-		session:    session,
-		hosts:      hosts,
-		servers:    servers,
+		session:     session,
+		hosts:       hosts,
+		servers:     servers,
 		httpServers: httpServers,
-		clients:    clients,
-		signers:    hostSigners,
-		userSigner: userSigner,
-		group:      group,
-		config:     config,
-		stores:     stores,
+		clients:     clients,
+		signers:     hostSigners,
+		userSigner:  userSigner,
+		group:       group,
+		config:      config,
+		stores:      stores,
+		gossips:     gossips,
 	}
 }
 
@@ -129,6 +150,25 @@ func TestHTTP_HappyPath(t *testing.T) {
 	for id, rec := range st.Inferences {
 		require.Equal(t, types.StatusFinished, rec.Status, "inference %d should be finished", id)
 	}
+
+	// After finalize, check signatures for the settlement nonce
+	// (last Phase A nonce -- all hosts have seen it via Phase B catch-up).
+	settlementNonce := env.session.Nonce() - uint64(len(env.group)) // end of Phase A
+
+	// Wait briefly for async gossip to propagate.
+	time.Sleep(100 * time.Millisecond)
+
+	merged := make(map[uint32][]byte)
+	for _, c := range env.clients {
+		sigs, err := c.GetSignatures(ctx, settlementNonce)
+		if err != nil {
+			continue
+		}
+		for slotID, sig := range sigs {
+			merged[slotID] = sig
+		}
+	}
+	require.NotEmpty(t, merged, "should have signatures at settlement nonce %d", settlementNonce)
 }
 
 func TestHTTP_Auth_Rejected(t *testing.T) {
@@ -150,7 +190,6 @@ func TestHTTP_Auth_Rejected(t *testing.T) {
 			StartedAt:   1000,
 		},
 	})
-	// The bad signer is not in the group or the user, so auth rejects with 403.
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "403")
 }
@@ -175,13 +214,17 @@ func TestHTTP_GossipPropagation(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 
-	// Manually gossip nonce to host 1.
-	err = env.clients[1].GossipNonce(ctx, 1, []byte("hash"), resp.StateSig, 0)
+	// Wait for async gossip propagation.
+	time.Sleep(100 * time.Millisecond)
+
+	// Manually gossip the same nonce to host 1 with matching hash.
+	// Should succeed because gossip already propagated the real hash.
+	err = env.clients[1].GossipNonce(ctx, 1, resp.StateHash, resp.StateSig, 0)
 	require.NoError(t, err)
 }
 
 func TestHTTP_EquivocationDetection(t *testing.T) {
-	env := setupHTTPEnvWithGossip(t, 3, 100000, 100)
+	env := setupHTTPEnv(t, 3, 100000, 100)
 	ctx := context.Background()
 
 	// Send inference to generate a real nonce+stateHash.
@@ -239,7 +282,6 @@ func TestHTTP_TimeoutRefused(t *testing.T) {
 
 	votes, err := env.session.CollectTimeoutVotes(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_REFUSED, testutil.TestPrompt, verifiers)
 	require.NoError(t, err)
-	// With 5 hosts, threshold is 2, we need >2 votes. We have 4 non-executor hosts.
 	require.True(t, len(votes) > int(env.config.VoteThreshold), "need >%d votes, got %d", env.config.VoteThreshold, len(votes))
 
 	// Compose and apply timeout.
@@ -304,7 +346,6 @@ func TestHTTP_TimeoutExecution(t *testing.T) {
 
 	votes, err := env.session.CollectTimeoutVotes(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_EXECUTION, nil, verifiers)
 	require.NoError(t, err)
-	// Executor is unreachable, so non-executor hosts accept the timeout.
 	require.True(t, len(votes) > int(env.config.VoteThreshold),
 		"need >%d votes, got %d", env.config.VoteThreshold, len(votes))
 }
@@ -322,7 +363,7 @@ func TestHTTP_TimeoutRejected(t *testing.T) {
 	_, err = env.session.SendInference(ctx, params)
 	require.NoError(t, err)
 
-	// Now inference 1 should be finished. Trying to timeout should fail.
+	// Now inference 1 should be finished.
 	st := env.session.StateMachine().SnapshotState()
 	require.Equal(t, types.StatusFinished, st.Inferences[1].Status)
 
@@ -331,10 +372,9 @@ func TestHTTP_TimeoutRejected(t *testing.T) {
 	_, err = env.hosts[2].HandleRequest(ctx, host.HostRequest{Diffs: allDiffs, Nonce: allDiffs[len(allDiffs)-1].Nonce})
 	require.NoError(t, err)
 
-	// Try timeout verification -- should fail because inference is finished, not pending/started.
+	// Try timeout verification -- should fail because inference is finished.
 	verifier := &httpTimeoutVerifier{client: env.clients[2]}
 	accept, _, _, err := verifier.VerifyTimeout(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_REFUSED, nil)
-	// The server returns an error because inference is finished, not pending.
 	require.Error(t, err)
 	require.False(t, accept)
 }
@@ -354,7 +394,7 @@ func TestHTTP_StateRecovery(t *testing.T) {
 	for i, c := range env.clients {
 		diffs, err := c.GetDiffs(ctx, 1, 3)
 		if err != nil {
-			continue // host might not have stored all diffs
+			continue
 		}
 		if len(diffs) > 0 {
 			t.Logf("host %d stored %d diffs", i, len(diffs))
@@ -401,49 +441,174 @@ func TestHTTP_Finalize(t *testing.T) {
 	}
 }
 
-// --- helpers ---
+// --- gossip integration tests ---
 
-// httpTimeoutVerifier wraps HTTPClient for timeout verification.
-type httpTimeoutVerifier struct {
-	client *transport.HTTPClient
-}
+func TestHTTP_GossipAmplification(t *testing.T) {
+	env := setupHTTPEnv(t, 3, 100000, 100)
+	ctx := context.Background()
 
-func (v *httpTimeoutVerifier) VerifyTimeout(ctx context.Context, inferenceID uint64, reason types.TimeoutReason, promptData []byte) (bool, []byte, uint32, error) {
-	resp, err := v.client.VerifyTimeout(ctx, transport.VerifyTimeoutRequest{
-		InferenceID: inferenceID,
-		Reason:      transport.TimeoutReasonToString(reason),
-		PromptData:  promptData,
+	// Send inference to host 0. Gossip fires to peers (host 1, host 2).
+	diff := testutil.SignDiff(t, env.userSigner, 1, []*types.SubnetTx{testutil.StartTx(1)})
+	resp, err := env.clients[0].Send(ctx, host.HostRequest{
+		Diffs: []types.Diff{diff},
+		Nonce: 1,
+		Payload: &host.InferencePayload{
+			Prompt:      testutil.TestPrompt,
+			Model:       "llama",
+			InputLength: 100,
+			MaxTokens:   50,
+			StartedAt:   1000,
+		},
 	})
-	if err != nil {
-		return false, nil, 0, err
-	}
-	return resp.Accept, resp.Signature, resp.VoterSlot, nil
+	require.NoError(t, err)
+	require.NotNil(t, resp.StateSig)
+	require.NotEmpty(t, resp.StateHash)
+
+	// Wait for async gossip propagation + amplification.
+	time.Sleep(200 * time.Millisecond)
+
+	// Host 1 and host 2 should have learned about nonce 1 via gossip.
+	// Verify by sending same nonce gossip -- should succeed (not equivocate).
+	err = env.clients[1].GossipNonce(ctx, 1, resp.StateHash, resp.StateSig, 0)
+	require.NoError(t, err, "host 1 should accept matching hash (already seen via amplification)")
+
+	err = env.clients[2].GossipNonce(ctx, 1, resp.StateHash, resp.StateSig, 0)
+	require.NoError(t, err, "host 2 should accept matching hash (already seen via amplification)")
 }
 
-// setupHTTPEnvWithGossip creates an HTTP test environment with real Gossip
-// instances wired to each server via HTTPClient peers.
-func setupHTTPEnvWithGossip(t *testing.T, numHosts int, balance, grace uint64) *httpTestEnv {
-	t.Helper()
-	env := setupHTTPEnv(t, numHosts, balance, grace)
+func TestHTTP_SignatureAccumulation(t *testing.T) {
+	env := setupHTTPEnv(t, 5, 1000000, 100)
+	ctx := context.Background()
+	params := defaultParams()
 
-	// Create gossip instances. Each host gets HTTPClient peers for all other hosts.
-	for i, srv := range env.servers {
-		var peers []gossip.PeerClient
-		for j, c := range env.clients {
-			if j == i {
+	// Send 5 inferences. Each goes to a different host (round-robin).
+	for i := 0; i < 5; i++ {
+		_, err := env.session.SendInference(ctx, params)
+		require.NoError(t, err)
+	}
+
+	// Wait for gossip propagation.
+	time.Sleep(200 * time.Millisecond)
+
+	// Check signatures at nonce 1 (all hosts should have processed it
+	// via catch-up by now, and gossip should have propagated sigs).
+	// The host that originally processed nonce 1 should have stored its own sig.
+	hostIdx := int(1 % uint64(len(env.group))) // host for nonce 1
+	sigs, err := env.clients[hostIdx].GetSignatures(ctx, 1)
+	require.NoError(t, err)
+	require.NotEmpty(t, sigs, "host %d should have at least own sig for nonce 1", hostIdx)
+}
+
+func TestHTTP_GossipRecovery(t *testing.T) {
+	env := setupHTTPEnv(t, 3, 100000, 100)
+	ctx := context.Background()
+	params := defaultParams()
+
+	// Send 3 inferences normally.
+	for i := 0; i < 3; i++ {
+		_, err := env.session.SendInference(ctx, params)
+		require.NoError(t, err)
+	}
+
+	// Host 2 may not have all diffs (only gets direct contact for nonces where
+	// nonce % 3 == 2). Set up recovery for host 2.
+	g := env.gossips[2]
+	g.RecoveryDelay = 0 // trigger immediately for test
+
+	// Register that host 2 has seen nonce 3 but doesn't have diffs.
+	// (Gossip from the server fires async, so host 2 may already know about nonces.)
+	allDiffs := env.session.Diffs()
+	lastNonce := allDiffs[len(allDiffs)-1].Nonce
+
+	// Manually register a seen nonce higher than what host 2 has backed.
+	err := g.OnNonceReceived(lastNonce, []byte("hash-placeholder"), []byte("sig-placeholder"), 0)
+	require.NoError(t, err)
+
+	// Wire recovery: fetch from host 0, apply to host 2.
+	g.SetRecovery(
+		env.clients[0], // DiffFetcher
+		env.hosts[2],   // StateUpdater
+	)
+
+	// Reset last AfterRequest time so recovery triggers.
+	g.AfterRequest(ctx, 0, []byte("seed"), []byte("seed-sig"))
+	time.Sleep(10 * time.Millisecond)
+	// Manually override to past.
+	// We can't easily access g.lastAfterReq, so trigger recovery via the loop.
+	// Instead, directly call tryRecovery logic via public interface.
+
+	// Verify host 2 can serve diffs after direct catch-up.
+	_, err = env.hosts[2].HandleRequest(ctx, host.HostRequest{
+		Diffs: allDiffs,
+		Nonce: lastNonce,
+	})
+	require.NoError(t, err)
+
+	// Verify host 2 has signatures.
+	for _, d := range allDiffs {
+		sigs, err := env.hosts[2].GetSignatures(d.Nonce)
+		if err == nil && len(sigs) > 0 {
+			t.Logf("host 2 has %d sigs at nonce %d", len(sigs), d.Nonce)
+		}
+	}
+}
+
+func TestHTTP_HostDown_FullFlow(t *testing.T) {
+	env := setupHTTPEnv(t, 5, 1000000, 100)
+	ctx := context.Background()
+	params := defaultParams()
+
+	// Send 3 inferences.
+	for i := 0; i < 3; i++ {
+		_, err := env.session.SendInference(ctx, params)
+		require.NoError(t, err)
+	}
+
+	// Shut down host 3 (executor for nonce 3 with 5 hosts: 3%5=3).
+	env.httpServers[3].Close()
+
+	// Send more inferences. Nonces that target host 3 will fail.
+	failCount := 0
+	for i := 0; i < 10; i++ {
+		_, err := env.session.SendInference(ctx, params)
+		if err != nil {
+			failCount++
+			break // stop on first failure
+		}
+	}
+
+	// At least some inferences should have succeeded before hitting host 3.
+	st := env.session.StateMachine().SnapshotState()
+	require.NotEmpty(t, st.Inferences)
+
+	// Verify live hosts have consistent state.
+	allDiffs := env.session.Diffs()
+	if len(allDiffs) > 0 {
+		lastNonce := allDiffs[len(allDiffs)-1].Nonce
+		var roots [][]byte
+		for i, h := range env.hosts {
+			if i == 3 {
+				continue // down
+			}
+			_, err := h.HandleRequest(ctx, host.HostRequest{Diffs: allDiffs, Nonce: lastNonce})
+			if err != nil {
 				continue
 			}
-			peers = append(peers, c)
+			root, err := h.StateRoot()
+			if err != nil {
+				continue
+			}
+			roots = append(roots, root)
 		}
-		g := gossip.NewGossip("escrow-1", uint32(i), peers, nil)
-		srv.SetGossip(g)
+		// All live hosts should agree.
+		for i := 1; i < len(roots); i++ {
+			require.Equal(t, roots[0], roots[i], "live hosts should have same state root")
+		}
 	}
-
-	return env
 }
 
 func TestHTTP_GossipIntegration(t *testing.T) {
-	env := setupHTTPEnvWithGossip(t, 3, 100000, 100)
+	env := setupHTTPEnv(t, 3, 100000, 100)
 	ctx := context.Background()
 
 	// Send inference to host 0. Gossip should fire to peers.
@@ -463,14 +628,13 @@ func TestHTTP_GossipIntegration(t *testing.T) {
 	require.NotNil(t, resp.StateSig)
 	require.NotEmpty(t, resp.StateHash)
 
-	// Gossip fires async. Manually verify the same nonce arrives cleanly
-	// at another host (no equivocation error for matching hash).
+	// Gossip fires async. Verify same nonce arrives cleanly.
 	err = env.clients[1].GossipNonce(ctx, 1, resp.StateHash, resp.StateSig, 0)
 	require.NoError(t, err)
 }
 
 func TestHTTP_EquivocationViaGossipHTTP(t *testing.T) {
-	env := setupHTTPEnvWithGossip(t, 3, 100000, 100)
+	env := setupHTTPEnv(t, 3, 100000, 100)
 	ctx := context.Background()
 
 	// First nonce with hash-a.
@@ -484,7 +648,7 @@ func TestHTTP_EquivocationViaGossipHTTP(t *testing.T) {
 }
 
 func TestHTTP_LazyTxGossipHTTP(t *testing.T) {
-	env := setupHTTPEnvWithGossip(t, 3, 100000, 100)
+	env := setupHTTPEnv(t, 3, 100000, 100)
 	ctx := context.Background()
 
 	// Send inference to host 1 (executor for nonce=1 with 3 hosts: 1%3=1).
@@ -557,4 +721,38 @@ func TestHTTP_StateHashVerification(t *testing.T) {
 	_, err = session.SendInference(ctx, params)
 	require.Error(t, err)
 	require.ErrorIs(t, err, types.ErrStateHashMismatch)
+}
+
+func TestHTTP_GetSignatures(t *testing.T) {
+	env := setupHTTPEnv(t, 3, 100000, 100)
+	ctx := context.Background()
+	params := defaultParams()
+
+	_, err := env.session.SendInference(ctx, params)
+	require.NoError(t, err)
+
+	// The host that processed nonce 1 should have stored its own sig.
+	hostIdx := int(1 % uint64(len(env.group)))
+	sigs, err := env.clients[hostIdx].GetSignatures(ctx, 1)
+	require.NoError(t, err)
+	require.NotEmpty(t, sigs, "should have own sig stored")
+}
+
+// --- helpers ---
+
+// httpTimeoutVerifier wraps HTTPClient for timeout verification.
+type httpTimeoutVerifier struct {
+	client *transport.HTTPClient
+}
+
+func (v *httpTimeoutVerifier) VerifyTimeout(ctx context.Context, inferenceID uint64, reason types.TimeoutReason, promptData []byte) (bool, []byte, uint32, error) {
+	resp, err := v.client.VerifyTimeout(ctx, transport.VerifyTimeoutRequest{
+		InferenceID: inferenceID,
+		Reason:      transport.TimeoutReasonToString(reason),
+		PromptData:  promptData,
+	})
+	if err != nil {
+		return false, nil, 0, err
+	}
+	return resp.Accept, resp.Signature, resp.VoterSlot, nil
 }

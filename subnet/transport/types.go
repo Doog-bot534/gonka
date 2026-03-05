@@ -69,6 +69,11 @@ type GossipTxsRequest struct {
 	Txs [][]byte `json:"txs"` // each: proto bytes of SubnetTx
 }
 
+// SignaturesResponse is returned by the signatures endpoint.
+type SignaturesResponse struct {
+	Signatures map[uint32][]byte `json:"signatures"` // slotID -> sig bytes
+}
+
 // DiffToJSON converts a domain Diff to its JSON wire format.
 func DiffToJSON(d types.Diff) (DiffJSON, error) {
 	// Serialize the txs as a DiffContent proto (nonce + txs together)

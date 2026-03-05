@@ -182,6 +182,24 @@ func (c *HTTPClient) GetDiffs(ctx context.Context, from, to uint64) ([]types.Dif
 	return diffs, nil
 }
 
+// GetSignatures fetches accumulated signatures for a nonce from a host.
+func (c *HTTPClient) GetSignatures(ctx context.Context, nonce uint64) (map[uint32][]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.config.QueryTimeout)
+	defer cancel()
+
+	url := fmt.Sprintf("%s/subnet/v1/sessions/%s/signatures?nonce=%d", c.baseURL, c.escrowID, nonce)
+	respBody, err := c.doGet(ctx, url)
+	if err != nil {
+		return nil, fmt.Errorf("get signatures: %w", err)
+	}
+
+	var resp SignaturesResponse
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal signatures: %w", err)
+	}
+	return resp.Signatures, nil
+}
+
 // GetMempool fetches the host's current mempool.
 func (c *HTTPClient) GetMempool(ctx context.Context) ([]*types.SubnetTx, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.config.QueryTimeout)

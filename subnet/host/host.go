@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"subnet"
+	"subnet/gossip"
 	"subnet/logging"
 	"subnet/signing"
 	"subnet/state"
@@ -54,6 +55,7 @@ type AcceptanceChecker interface {
 type Host struct {
 	sm       *state.StateMachine
 	signer   signing.Signer
+	verifier signing.Verifier
 	engine   subnet.InferenceEngine
 	escrowID string
 	slotIDs  map[uint32]bool
@@ -107,6 +109,11 @@ type HostOption func(*Host)
 // WithStorage sets the storage backend for diff persistence.
 func WithStorage(s storage.Storage) HostOption {
 	return func(h *Host) { h.store = s }
+}
+
+// WithVerifier sets the signature verifier for gossip sig accumulation.
+func WithVerifier(v signing.Verifier) HostOption {
+	return func(h *Host) { h.verifier = v }
 }
 
 func (h *Host) StateRoot() ([]byte, error) { return h.sm.ComputeStateRoot() }
@@ -187,6 +194,16 @@ func (h *Host) HandleRequest(ctx context.Context, req HostRequest) (*HostRespons
 			return nil, fmt.Errorf("sign state root: %w", err)
 		}
 		stateSig = sig
+
+		// Store own signature in storage.
+		if h.store != nil {
+			for slotID := range h.slotIDs {
+				if err := h.store.AddSignature(h.escrowID, nonce, slotID, sig); err != nil {
+					logging.Debug("store own sig failed", "subsystem", "host", "nonce", nonce, "error", err)
+				}
+			}
+			h.checkFinalization(nonce)
+		}
 	}
 
 	return &HostResponse{
@@ -291,6 +308,147 @@ func (h *Host) executeIfAssigned(ctx context.Context, req HostRequest) ([]byte, 
 		})
 	}
 	return receipt, nil
+}
+
+// AccumulateGossipSig verifies and stores a signature received via gossip.
+// The sig must recover to group[senderSlot] and the stateHash must match the
+// stored DiffRecord for that nonce.
+func (h *Host) AccumulateGossipSig(nonce uint64, stateHash, sig []byte, senderSlot uint32) error {
+	if h.verifier == nil || h.store == nil {
+		return fmt.Errorf("host not configured for sig accumulation (verifier=%v, store=%v)", h.verifier != nil, h.store != nil)
+	}
+
+	if int(senderSlot) >= len(h.group) {
+		return fmt.Errorf("sender slot %d out of range (group size %d)", senderSlot, len(h.group))
+	}
+
+	// Verify sig recovers to the expected address.
+	sigContent := &types.StateSignatureContent{
+		StateRoot: stateHash,
+		EscrowId:  h.escrowID,
+		Nonce:     nonce,
+	}
+	sigData, err := proto.Marshal(sigContent)
+	if err != nil {
+		return fmt.Errorf("marshal sig content: %w", err)
+	}
+	addr, err := h.verifier.RecoverAddress(sigData, sig)
+	if err != nil {
+		return fmt.Errorf("recover address: %w", err)
+	}
+	expected := h.group[senderSlot].ValidatorAddress
+	if addr != expected {
+		return fmt.Errorf("sig from slot %d: expected %s, got %s", senderSlot, expected, addr)
+	}
+
+	// Verify stateHash matches stored record.
+	records, err := h.store.GetDiffs(h.escrowID, nonce, nonce)
+	if err != nil || len(records) == 0 {
+		return fmt.Errorf("no stored diff at nonce %d", nonce)
+	}
+	if !bytes.Equal(records[0].StateHash, stateHash) {
+		return fmt.Errorf("state hash mismatch at nonce %d: stored %x, gossip %x", nonce, records[0].StateHash, stateHash)
+	}
+
+	if err := h.store.AddSignature(h.escrowID, nonce, senderSlot, sig); err != nil {
+		return err
+	}
+	h.checkFinalization(nonce)
+	return nil
+}
+
+// ApplyRecoveredDiffs applies diffs fetched during gossip recovery.
+// Returns GossipSig for each successfully applied nonce.
+func (h *Host) ApplyRecoveredDiffs(ctx context.Context, diffs []types.Diff) ([]gossip.GossipSig, error) {
+	var sigs []gossip.GossipSig
+
+	for _, diff := range diffs {
+		currentNonce := h.sm.LatestNonce()
+		if diff.Nonce <= currentNonce {
+			continue
+		}
+		root, err := h.sm.ApplyDiff(diff)
+		if err != nil {
+			return sigs, fmt.Errorf("apply recovered diff nonce %d: %w", diff.Nonce, err)
+		}
+		h.mempool.RemoveIncluded(diff.Txs)
+
+		if h.store != nil {
+			rec := types.DiffRecord{Diff: diff, StateHash: root}
+			if err := h.store.AppendDiff(h.escrowID, rec); err != nil {
+				return sigs, fmt.Errorf("persist recovered diff nonce %d: %w", diff.Nonce, err)
+			}
+		}
+
+		// Sign the state.
+		nonce := h.sm.LatestNonce()
+		sigContent := &types.StateSignatureContent{
+			StateRoot: root,
+			EscrowId:  h.escrowID,
+			Nonce:     nonce,
+		}
+		sigData, err := proto.Marshal(sigContent)
+		if err != nil {
+			return sigs, fmt.Errorf("marshal state sig content: %w", err)
+		}
+		sig, err := h.signer.Sign(sigData)
+		if err != nil {
+			return sigs, fmt.Errorf("sign recovered state: %w", err)
+		}
+
+		// Store own signature.
+		if h.store != nil {
+			for slotID := range h.slotIDs {
+				if err := h.store.AddSignature(h.escrowID, nonce, slotID, sig); err != nil {
+					logging.Debug("store own sig failed", "subsystem", "host", "nonce", nonce, "error", err)
+				}
+				sigs = append(sigs, gossip.GossipSig{
+					Nonce:     nonce,
+					StateHash: root,
+					Sig:       sig,
+					SlotID:    slotID,
+				})
+			}
+		}
+	}
+
+	return sigs, nil
+}
+
+// LatestNonce returns the latest applied nonce from the state machine.
+func (h *Host) LatestNonce() uint64 { return h.sm.LatestNonce() }
+
+// LastFinalized returns the highest nonce marked as finalized (>2/3 sigs).
+func (h *Host) LastFinalized() (uint64, error) {
+	if h.store == nil {
+		return 0, fmt.Errorf("no storage configured")
+	}
+	return h.store.LastFinalized(h.escrowID)
+}
+
+// checkFinalization checks if a nonce has enough sigs (>2/3) and marks it finalized.
+func (h *Host) checkFinalization(nonce uint64) {
+	if h.store == nil {
+		return
+	}
+	sigs, err := h.store.GetSignatures(h.escrowID, nonce)
+	if err != nil {
+		return
+	}
+	threshold := 2*len(h.group)/3 + 1
+	if len(sigs) >= threshold {
+		if err := h.store.MarkFinalized(h.escrowID, nonce); err != nil {
+			logging.Debug("mark finalized failed", "subsystem", "host", "nonce", nonce, "error", err)
+		}
+	}
+}
+
+// GetSignatures returns accumulated signatures for a nonce from storage.
+func (h *Host) GetSignatures(nonce uint64) (map[uint32][]byte, error) {
+	if h.store == nil {
+		return nil, fmt.Errorf("no storage configured")
+	}
+	return h.store.GetSignatures(h.escrowID, nonce)
 }
 
 func (h *Host) verifyPayload(p *InferencePayload, start *types.MsgStartInference) error {

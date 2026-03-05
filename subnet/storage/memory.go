@@ -8,12 +8,13 @@ import (
 )
 
 type sessionData struct {
-	escrowID     string
-	config       types.SessionConfig
-	group        []types.SlotAssignment
-	balance      uint64
-	diffs        []types.DiffRecord
-	nonceToIndex map[uint64]int
+	escrowID      string
+	config        types.SessionConfig
+	group         []types.SlotAssignment
+	balance       uint64
+	diffs         []types.DiffRecord
+	nonceToIndex  map[uint64]int
+	lastFinalized uint64
 }
 
 // Memory is an in-memory storage implementation for testing.
@@ -132,6 +133,57 @@ func (m *Memory) GetState(escrowID string) (*types.EscrowState, error) {
 	}
 
 	return state, nil
+}
+
+func (m *Memory) GetSignatures(escrowID string, nonce uint64) (map[uint32][]byte, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	s, ok := m.sessions[escrowID]
+	if !ok {
+		return nil, fmt.Errorf("session %s not found", escrowID)
+	}
+
+	idx, ok := s.nonceToIndex[nonce]
+	if !ok {
+		return nil, fmt.Errorf("diff at nonce %d not found for session %s", nonce, escrowID)
+	}
+
+	sigs := s.diffs[idx].Signatures
+	result := make(map[uint32][]byte, len(sigs))
+	for k, v := range sigs {
+		vc := make([]byte, len(v))
+		copy(vc, v)
+		result[k] = vc
+	}
+	return result, nil
+}
+
+func (m *Memory) MarkFinalized(escrowID string, nonce uint64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	s, ok := m.sessions[escrowID]
+	if !ok {
+		return fmt.Errorf("session %s not found", escrowID)
+	}
+
+	if nonce > s.lastFinalized {
+		s.lastFinalized = nonce
+	}
+	return nil
+}
+
+func (m *Memory) LastFinalized(escrowID string) (uint64, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	s, ok := m.sessions[escrowID]
+	if !ok {
+		return 0, fmt.Errorf("session %s not found", escrowID)
+	}
+
+	return s.lastFinalized, nil
 }
 
 func (m *Memory) GetDiffs(escrowID string, fromNonce, toNonce uint64) ([]types.DiffRecord, error) {

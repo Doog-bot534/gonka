@@ -293,6 +293,7 @@ func (s *Session) Finalize(ctx context.Context) error {
 	return nil
 }
 
+
 // signDiff builds and signs a diff with the given nonce and txs.
 func (s *Session) signDiff(nonce uint64, txs []*types.SubnetTx) (types.Diff, error) {
 	content := state.BuildDiffContent(nonce, txs)

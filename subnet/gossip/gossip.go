@@ -17,7 +17,6 @@ type nonceRecord struct {
 	stateSig  []byte
 	slotID    uint32
 	seenAt    time.Time
-	backed    bool // true if a diff at this nonce was applied
 }
 
 // Gossip propagates nonce notifications and detects equivocation.
@@ -28,10 +27,19 @@ type Gossip struct {
 	peers    []PeerClient
 	seen     map[uint64]*nonceRecord
 	K        int           // fanout, default 10
-	StaleTTL time.Duration // how long unbacked nonces stay before re-gossip
-	mempool  MempoolSink   // receives forwarded txs
-	stopCh   chan struct{}
-	stopped  chan struct{}
+	StaleTTL time.Duration // how long unapplied nonces stay before re-gossip
+
+	mempool          MempoolSink    // receives forwarded txs
+	sigAccumulator   SigAccumulator // receives sigs for applied nonces
+	diffFetcher      DiffFetcher    // fetches diffs from peers for recovery
+	stateUpdater     StateUpdater   // applies recovered diffs
+	RecoveryDelay    time.Duration  // delay before recovery triggers (default 60s)
+	RecoveryTick     time.Duration  // recovery loop interval (default 60s)
+	lastAfterReq     time.Time      // last time AfterRequest was called
+	lastAfterReqNonce uint64        // nonce from the most recent AfterRequest call
+
+	stopCh  chan struct{}
+	stopped chan struct{}
 }
 
 // MempoolSink receives transactions from gossip peers.
@@ -42,16 +50,33 @@ type MempoolSink interface {
 // NewGossip creates a new gossip instance.
 func NewGossip(escrowID string, slotID uint32, peers []PeerClient, mempool MempoolSink) *Gossip {
 	return &Gossip{
-		escrowID: escrowID,
-		slotID:   slotID,
-		peers:    peers,
-		seen:     make(map[uint64]*nonceRecord),
-		K:        10,
-		StaleTTL: 120 * time.Second,
-		mempool:  mempool,
-		stopCh:   make(chan struct{}),
-		stopped:  make(chan struct{}),
+		escrowID:      escrowID,
+		slotID:        slotID,
+		peers:         peers,
+		seen:          make(map[uint64]*nonceRecord),
+		K:             10,
+		StaleTTL:      120 * time.Second,
+		RecoveryDelay: 60 * time.Second,
+		RecoveryTick:  60 * time.Second,
+		mempool:       mempool,
+		stopCh:        make(chan struct{}),
+		stopped:       make(chan struct{}),
 	}
+}
+
+// SetSigAccumulator sets the callback for accumulating gossip signatures.
+func (g *Gossip) SetSigAccumulator(acc SigAccumulator) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.sigAccumulator = acc
+}
+
+// SetRecovery configures the recovery dependencies.
+func (g *Gossip) SetRecovery(fetcher DiffFetcher, updater StateUpdater) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.diffFetcher = fetcher
+	g.stateUpdater = updater
 }
 
 // AfterRequest is called after a successful host request.
@@ -63,8 +88,9 @@ func (g *Gossip) AfterRequest(ctx context.Context, nonce uint64, stateHash, stat
 		stateSig:  stateSig,
 		slotID:    g.slotID,
 		seenAt:    time.Now(),
-		backed:    true, // we applied the diff, so it's backed
 	}
+	g.lastAfterReq = time.Now()
+	g.lastAfterReqNonce = nonce
 	peers := g.pickPeers()
 	g.mu.Unlock()
 
@@ -75,14 +101,24 @@ func (g *Gossip) AfterRequest(ctx context.Context, nonce uint64, stateHash, stat
 // Returns an error if equivocation is detected (same nonce, different hash).
 func (g *Gossip) OnNonceReceived(nonce uint64, stateHash, stateSig []byte, senderSlot uint32) error {
 	g.mu.Lock()
-	defer g.mu.Unlock()
 
 	existing, ok := g.seen[nonce]
 	if ok {
 		if !bytesEqual(existing.stateHash, stateHash) {
+			g.mu.Unlock()
 			return fmt.Errorf("equivocation at nonce %d: hash %x vs %x (slots %d vs %d)",
 				nonce, existing.stateHash, stateHash, existing.slotID, senderSlot)
 		}
+		// Already seen with same hash. Try to accumulate signature.
+		if g.sigAccumulator != nil {
+			acc := g.sigAccumulator
+			g.mu.Unlock()
+			if err := acc.AccumulateGossipSig(nonce, stateHash, stateSig, senderSlot); err != nil {
+				logging.Debug("accumulate gossip sig failed", "subsystem", "gossip", "nonce", nonce, "error", err)
+			}
+			return nil
+		}
+		g.mu.Unlock()
 		return nil
 	}
 
@@ -92,16 +128,13 @@ func (g *Gossip) OnNonceReceived(nonce uint64, stateHash, stateSig []byte, sende
 		slotID:    senderSlot,
 		seenAt:    time.Now(),
 	}
-	return nil
-}
+	peers := g.pickPeers()
+	g.mu.Unlock()
 
-// MarkBacked marks a nonce as backed by a diff (applied locally).
-func (g *Gossip) MarkBacked(nonce uint64) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if rec, ok := g.seen[nonce]; ok {
-		rec.backed = true
-	}
+	// Amplification: forward new nonce to K random peers.
+	go g.sendNonceToPeers(context.Background(), peers, nonce, stateHash, stateSig, senderSlot)
+
+	return nil
 }
 
 // OnTxsReceived handles incoming transactions from peers.
@@ -114,9 +147,22 @@ func (g *Gossip) OnTxsReceived(txs []*types.SubnetTx) {
 	}
 }
 
-// Start begins the background re-propagation loop.
+// HighestSeen returns the highest nonce seen via gossip or AfterRequest.
+func (g *Gossip) HighestSeen() uint64 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	var max uint64
+	for nonce := range g.seen {
+		if nonce > max {
+			max = nonce
+		}
+	}
+	return max
+}
+
+// Start begins the background re-propagation and recovery loops.
 func (g *Gossip) Start(ctx context.Context) {
-	go g.rebroadcastLoop(ctx)
+	go g.backgroundLoop(ctx)
 }
 
 // Stop halts the background loop.
@@ -125,10 +171,17 @@ func (g *Gossip) Stop() {
 	<-g.stopped
 }
 
-func (g *Gossip) rebroadcastLoop(ctx context.Context) {
+func (g *Gossip) backgroundLoop(ctx context.Context) {
 	defer close(g.stopped)
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+	rebroadcastTicker := time.NewTicker(30 * time.Second)
+	defer rebroadcastTicker.Stop()
+
+	recoveryTick := g.RecoveryTick
+	if recoveryTick <= 0 {
+		recoveryTick = 60 * time.Second
+	}
+	recoveryTicker := time.NewTicker(recoveryTick)
+	defer recoveryTicker.Stop()
 
 	for {
 		select {
@@ -136,8 +189,10 @@ func (g *Gossip) rebroadcastLoop(ctx context.Context) {
 			return
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-rebroadcastTicker.C:
 			g.rebroadcastStale(ctx)
+		case <-recoveryTicker.C:
+			g.tryRecovery(ctx)
 		}
 	}
 }
@@ -148,7 +203,7 @@ func (g *Gossip) rebroadcastStale(ctx context.Context) {
 	var stale []nonceRecord
 	var staleNonces []uint64
 	for nonce, rec := range g.seen {
-		if !rec.backed && now.Sub(rec.seenAt) > g.StaleTTL {
+		if now.Sub(rec.seenAt) > g.StaleTTL {
 			stale = append(stale, *rec)
 			staleNonces = append(staleNonces, nonce)
 		}
@@ -159,6 +214,73 @@ func (g *Gossip) rebroadcastStale(ctx context.Context) {
 	for i, rec := range stale {
 		logging.Debug("re-gossip stale nonce", "subsystem", "gossip", "nonce", staleNonces[i])
 		g.sendNonceToPeers(ctx, peers, staleNonces[i], rec.stateHash, rec.stateSig, rec.slotID)
+	}
+}
+
+func (g *Gossip) tryRecovery(ctx context.Context) {
+	g.mu.Lock()
+	fetcher := g.diffFetcher
+	updater := g.stateUpdater
+	lastReq := g.lastAfterReq
+	recoveryDelay := g.RecoveryDelay
+	g.mu.Unlock()
+
+	if fetcher == nil || updater == nil {
+		return
+	}
+
+	highestSeen := g.HighestSeen()
+	g.mu.Lock()
+	lastAppliedNonce := g.lastAfterReqNonce
+	g.mu.Unlock()
+
+	if highestSeen <= lastAppliedNonce {
+		return
+	}
+
+	// Only trigger recovery if we haven't received a user request recently.
+	if !lastReq.IsZero() && time.Since(lastReq) < recoveryDelay {
+		return
+	}
+
+	logging.Debug("gossip recovery triggered",
+		"subsystem", "gossip",
+		"highest_seen", highestSeen,
+		"last_after_req_nonce", lastAppliedNonce,
+	)
+
+	diffs, err := fetcher.GetDiffs(ctx, lastAppliedNonce+1, highestSeen)
+	if err != nil {
+		logging.Debug("recovery fetch diffs failed", "subsystem", "gossip", "error", err)
+		return
+	}
+	if len(diffs) == 0 {
+		return
+	}
+
+	sigs, err := updater.ApplyRecoveredDiffs(ctx, diffs)
+	if err != nil {
+		logging.Debug("recovery apply diffs failed", "subsystem", "gossip", "error", err)
+		return
+	}
+
+	// Ensure recovered nonces are in the seen map and gossip own sigs.
+	g.mu.Lock()
+	for _, sig := range sigs {
+		if _, ok := g.seen[sig.Nonce]; !ok {
+			g.seen[sig.Nonce] = &nonceRecord{
+				stateHash: sig.StateHash,
+				stateSig:  sig.Sig,
+				slotID:    sig.SlotID,
+				seenAt:    time.Now(),
+			}
+		}
+	}
+	peers := g.pickPeers()
+	g.mu.Unlock()
+
+	for _, sig := range sigs {
+		g.sendNonceToPeers(ctx, peers, sig.Nonce, sig.StateHash, sig.Sig, sig.SlotID)
 	}
 }
 

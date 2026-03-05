@@ -11,6 +11,7 @@ import (
 	"subnet/internal/testutil"
 	"subnet/signing"
 	"subnet/state"
+	"subnet/storage"
 	"subnet/stub"
 	"subnet/types"
 )
@@ -422,6 +423,211 @@ func TestHost_PayloadMismatch_Params(t *testing.T) {
 		Diffs: []types.Diff{diff}, Nonce: 1, Payload: badPayload,
 	})
 	require.ErrorIs(t, err, types.ErrPayloadMismatch)
+}
+
+func TestHost_StoresOwnSignature(t *testing.T) {
+	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
+	user := testutil.MustGenerateKey(t)
+	group := testutil.MakeGroup(hosts)
+	config := testutil.DefaultConfig(len(hosts))
+	verifier := signing.NewSecp256k1Verifier()
+	store := storage.NewMemory()
+	require.NoError(t, store.CreateSession("escrow-1", config, group, 10000))
+
+	sm := state.NewStateMachine("escrow-1", config, group, 10000, user.Address(), verifier)
+	engine := stub.NewInferenceEngine()
+	h, err := NewHost(sm, hosts[0], engine, "escrow-1", group, 10, nil,
+		WithStorage(store), WithVerifier(verifier))
+	require.NoError(t, err)
+
+	diff := testutil.SignDiff(t, user, 1, []*types.SubnetTx{testutil.StartTx(1)})
+	resp, err := h.HandleRequest(context.Background(), HostRequest{Diffs: []types.Diff{diff}})
+	require.NoError(t, err)
+	require.NotNil(t, resp.StateSig)
+
+	// Own sig should be stored in storage.
+	sigs, err := store.GetSignatures("escrow-1", 1)
+	require.NoError(t, err)
+	require.Equal(t, resp.StateSig, sigs[0])
+}
+
+func TestHost_AccumulateGossipSig(t *testing.T) {
+	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
+	user := testutil.MustGenerateKey(t)
+	group := testutil.MakeGroup(hosts)
+	config := testutil.DefaultConfig(len(hosts))
+	verifier := signing.NewSecp256k1Verifier()
+	store := storage.NewMemory()
+	require.NoError(t, store.CreateSession("escrow-1", config, group, 10000))
+
+	sm := state.NewStateMachine("escrow-1", config, group, 10000, user.Address(), verifier)
+	engine := stub.NewInferenceEngine()
+	h, err := NewHost(sm, hosts[0], engine, "escrow-1", group, 10, nil,
+		WithStorage(store), WithVerifier(verifier))
+	require.NoError(t, err)
+
+	// Apply a diff to create a backed nonce.
+	diff := testutil.SignDiff(t, user, 1, []*types.SubnetTx{testutil.StartTx(1)})
+	resp, err := h.HandleRequest(context.Background(), HostRequest{Diffs: []types.Diff{diff}})
+	require.NoError(t, err)
+	require.NotNil(t, resp.StateHash)
+
+	// Sign from host[1] for the same state.
+	sigContent := &types.StateSignatureContent{
+		StateRoot: resp.StateHash,
+		EscrowId:  "escrow-1",
+		Nonce:     1,
+	}
+	sigData, err := proto.Marshal(sigContent)
+	require.NoError(t, err)
+	peerSig, err := hosts[1].Sign(sigData)
+	require.NoError(t, err)
+
+	err = h.AccumulateGossipSig(1, resp.StateHash, peerSig, 1)
+	require.NoError(t, err)
+
+	// Verify stored.
+	sigs, err := store.GetSignatures("escrow-1", 1)
+	require.NoError(t, err)
+	require.Equal(t, peerSig, sigs[1])
+}
+
+func TestHost_AccumulateGossipSig_WrongSigner(t *testing.T) {
+	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
+	user := testutil.MustGenerateKey(t)
+	group := testutil.MakeGroup(hosts)
+	config := testutil.DefaultConfig(len(hosts))
+	verifier := signing.NewSecp256k1Verifier()
+	store := storage.NewMemory()
+	require.NoError(t, store.CreateSession("escrow-1", config, group, 10000))
+
+	sm := state.NewStateMachine("escrow-1", config, group, 10000, user.Address(), verifier)
+	engine := stub.NewInferenceEngine()
+	h, err := NewHost(sm, hosts[0], engine, "escrow-1", group, 10, nil,
+		WithStorage(store), WithVerifier(verifier))
+	require.NoError(t, err)
+
+	diff := testutil.SignDiff(t, user, 1, []*types.SubnetTx{testutil.StartTx(1)})
+	resp, err := h.HandleRequest(context.Background(), HostRequest{Diffs: []types.Diff{diff}})
+	require.NoError(t, err)
+
+	// Sign with hosts[2] but claim slot 1 -> address mismatch.
+	sigContent := &types.StateSignatureContent{
+		StateRoot: resp.StateHash,
+		EscrowId:  "escrow-1",
+		Nonce:     1,
+	}
+	sigData, err := proto.Marshal(sigContent)
+	require.NoError(t, err)
+	wrongSig, err := hosts[2].Sign(sigData)
+	require.NoError(t, err)
+
+	err = h.AccumulateGossipSig(1, resp.StateHash, wrongSig, 1)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "expected")
+}
+
+func TestHost_GetSignatures(t *testing.T) {
+	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
+	user := testutil.MustGenerateKey(t)
+	group := testutil.MakeGroup(hosts)
+	config := testutil.DefaultConfig(len(hosts))
+	verifier := signing.NewSecp256k1Verifier()
+	store := storage.NewMemory()
+	require.NoError(t, store.CreateSession("escrow-1", config, group, 10000))
+
+	sm := state.NewStateMachine("escrow-1", config, group, 10000, user.Address(), verifier)
+	engine := stub.NewInferenceEngine()
+	h, err := NewHost(sm, hosts[0], engine, "escrow-1", group, 10, nil,
+		WithStorage(store), WithVerifier(verifier))
+	require.NoError(t, err)
+
+	diff := testutil.SignDiff(t, user, 1, []*types.SubnetTx{testutil.StartTx(1)})
+	_, err = h.HandleRequest(context.Background(), HostRequest{Diffs: []types.Diff{diff}})
+	require.NoError(t, err)
+
+	sigs, err := h.GetSignatures(1)
+	require.NoError(t, err)
+	require.NotEmpty(t, sigs)
+	require.NotNil(t, sigs[0], "own sig at slot 0")
+}
+
+func TestHost_GetSignatures_NoStorage(t *testing.T) {
+	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
+	user := testutil.MustGenerateKey(t)
+	h := newTestHost(t, 0, hosts, user, 10000, 10)
+
+	_, err := h.GetSignatures(1)
+	require.Error(t, err)
+}
+
+func TestHost_FinalizationThreshold(t *testing.T) {
+	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
+	user := testutil.MustGenerateKey(t)
+	group := testutil.MakeGroup(hosts)
+	config := testutil.DefaultConfig(len(hosts))
+	verifier := signing.NewSecp256k1Verifier()
+	store := storage.NewMemory()
+	require.NoError(t, store.CreateSession("escrow-1", config, group, 10000))
+
+	sm := state.NewStateMachine("escrow-1", config, group, 10000, user.Address(), verifier)
+	engine := stub.NewInferenceEngine()
+	h, err := NewHost(sm, hosts[0], engine, "escrow-1", group, 10, nil,
+		WithStorage(store), WithVerifier(verifier))
+	require.NoError(t, err)
+
+	// Apply a diff so nonce 1 exists.
+	diff := testutil.SignDiff(t, user, 1, []*types.SubnetTx{testutil.StartTx(1)})
+	resp, err := h.HandleRequest(context.Background(), HostRequest{Diffs: []types.Diff{diff}})
+	require.NoError(t, err)
+	require.NotNil(t, resp.StateHash)
+
+	// After HandleRequest, host[0] stores its own sig. 1 sig < threshold (2*3/3+1=3).
+	last, err := h.LastFinalized()
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), last, "1 sig should not finalize")
+
+	// Accumulate sig from host[1].
+	sigContent := &types.StateSignatureContent{
+		StateRoot: resp.StateHash,
+		EscrowId:  "escrow-1",
+		Nonce:     1,
+	}
+	sigData, err := proto.Marshal(sigContent)
+	require.NoError(t, err)
+	sig1, err := hosts[1].Sign(sigData)
+	require.NoError(t, err)
+	err = h.AccumulateGossipSig(1, resp.StateHash, sig1, 1)
+	require.NoError(t, err)
+
+	// 2 sigs < 3 threshold.
+	last, err = h.LastFinalized()
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), last, "2 sigs should not finalize")
+
+	// Accumulate sig from host[2] -> 3 sigs >= threshold.
+	sig2, err := hosts[2].Sign(sigData)
+	require.NoError(t, err)
+	err = h.AccumulateGossipSig(1, resp.StateHash, sig2, 2)
+	require.NoError(t, err)
+
+	last, err = h.LastFinalized()
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), last, "3 sigs should finalize nonce 1")
+}
+
+func TestHost_LatestNonce(t *testing.T) {
+	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
+	user := testutil.MustGenerateKey(t)
+	h := newTestHost(t, 0, hosts, user, 10000, 10)
+
+	require.Equal(t, uint64(0), h.LatestNonce())
+
+	diff := testutil.SignDiff(t, user, 1, []*types.SubnetTx{testutil.StartTx(1)})
+	_, err := h.HandleRequest(context.Background(), HostRequest{Diffs: []types.Diff{diff}})
+	require.NoError(t, err)
+
+	require.Equal(t, uint64(1), h.LatestNonce())
 }
 
 func TestHost_ExecuteFailure_ReturnsReceiptNoMempool(t *testing.T) {

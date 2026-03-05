@@ -16,6 +16,7 @@ import (
 
 	"subnet/gossip"
 	"subnet/host"
+	"subnet/logging"
 	"subnet/signing"
 	"subnet/storage"
 	"subnet/types"
@@ -112,6 +113,7 @@ func (s *Server) Register(g *echo.Group) {
 	// GET endpoints intentionally skip group membership check for now.
 	g.GET("/sessions/:id/diffs", s.handleGetDiffs)
 	g.GET("/sessions/:id/mempool", s.handleGetMempool)
+	g.GET("/sessions/:id/signatures", s.handleGetSignatures)
 }
 
 // writeJSON serializes v with goccy/go-json, bypassing Echo's default serializer.
@@ -310,6 +312,14 @@ func (s *Server) handleGossipNonce(c echo.Context) error {
 		}
 	}
 
+	// Accumulate sig directly if the host has this nonce backed.
+	// This is independent of gossip -- even without gossip wired, we
+	// can accumulate sigs from incoming gossip messages.
+	if err := s.host.AccumulateGossipSig(req.Nonce, req.StateHash, req.StateSig, req.SlotID); err != nil {
+		// Not an error for the caller -- just log it.
+		logging.Debug("accumulate gossip sig skipped", "subsystem", "server", "nonce", req.Nonce, "error", err)
+	}
+
 	return c.NoContent(http.StatusOK)
 }
 
@@ -330,6 +340,24 @@ func (s *Server) handleGossipTxs(c echo.Context) error {
 	}
 
 	return c.NoContent(http.StatusOK)
+}
+
+func (s *Server) handleGetSignatures(c echo.Context) error {
+	nonceStr := c.QueryParam("nonce")
+	if nonceStr == "" {
+		return writeJSON(c, http.StatusBadRequest, map[string]string{"error": "missing 'nonce' parameter"})
+	}
+	nonce, err := strconv.ParseUint(nonceStr, 10, 64)
+	if err != nil {
+		return writeJSON(c, http.StatusBadRequest, map[string]string{"error": "invalid 'nonce' parameter"})
+	}
+
+	sigs, err := s.host.GetSignatures(nonce)
+	if err != nil {
+		return writeJSON(c, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return writeJSON(c, http.StatusOK, SignaturesResponse{Signatures: sigs})
 }
 
 func (s *Server) handleGetDiffs(c echo.Context) error {
