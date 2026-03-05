@@ -362,3 +362,74 @@ func (s *Session) PendingTxs() []*types.SubnetTx {
 func (s *Session) StateMachine() *state.StateMachine {
 	return s.sm
 }
+
+// TimeoutVerifier contacts a host for timeout verification votes.
+type TimeoutVerifier interface {
+	VerifyTimeout(ctx context.Context, inferenceID uint64, reason types.TimeoutReason, promptData []byte) (accept bool, sig []byte, voterSlot uint32, err error)
+}
+
+// CollectTimeoutVotes contacts non-executor hosts to collect signed votes.
+// Returns votes for inclusion in MsgTimeoutInference.
+func (s *Session) CollectTimeoutVotes(
+	ctx context.Context,
+	inferenceID uint64,
+	reason types.TimeoutReason,
+	promptData []byte,
+	verifiers map[int]TimeoutVerifier, // hostIdx -> verifier
+) ([]*types.TimeoutVote, error) {
+	// Determine executor slot.
+	executorIdx := int(inferenceID % uint64(len(s.group)))
+
+	type voteResult struct {
+		vote *types.TimeoutVote
+		err  error
+	}
+
+	results := make(chan voteResult, len(verifiers))
+	for idx, v := range verifiers {
+		if idx == executorIdx {
+			continue // skip executor
+		}
+		go func(verifier TimeoutVerifier) {
+			accept, sig, voterSlot, err := verifier.VerifyTimeout(ctx, inferenceID, reason, promptData)
+			if err != nil {
+				results <- voteResult{err: err}
+				return
+			}
+			if !accept {
+				results <- voteResult{} // nil vote, no error
+				return
+			}
+			results <- voteResult{vote: &types.TimeoutVote{
+				VoterSlot: voterSlot,
+				Accept:    true,
+				Signature: sig,
+			}}
+		}(v)
+	}
+
+	var votes []*types.TimeoutVote
+	// Count expected responses (non-executor verifiers).
+	expected := 0
+	for idx := range verifiers {
+		if idx != executorIdx {
+			expected++
+		}
+	}
+
+	for i := 0; i < expected; i++ {
+		res := <-results
+		if res.err != nil {
+			continue // skip failed hosts
+		}
+		if res.vote != nil {
+			votes = append(votes, res.vote)
+		}
+		// Check if we have enough.
+		if uint32(len(votes)) > s.sm.SnapshotState().Config.VoteThreshold {
+			break
+		}
+	}
+
+	return votes, nil
+}

@@ -12,6 +12,7 @@ import (
 	"subnet/logging"
 	"subnet/signing"
 	"subnet/state"
+	"subnet/storage"
 	"subnet/types"
 )
 
@@ -59,6 +60,7 @@ type Host struct {
 	mempool  *Mempool
 	grace    uint64
 	checker  AcceptanceChecker
+	store    storage.Storage // optional, nil = no persistence
 }
 
 func NewHost(
@@ -69,6 +71,7 @@ func NewHost(
 	group []types.SlotAssignment,
 	grace uint64,
 	checker AcceptanceChecker,
+	opts ...HostOption,
 ) (*Host, error) {
 	addr := signer.Address()
 	slotIDs := make(map[uint32]bool)
@@ -80,7 +83,7 @@ func NewHost(
 	if len(slotIDs) == 0 {
 		return nil, fmt.Errorf("%w: %s", types.ErrHostNotInGroup, addr)
 	}
-	return &Host{
+	h := &Host{
 		sm:       sm,
 		signer:   signer,
 		engine:   engine,
@@ -90,10 +93,40 @@ func NewHost(
 		mempool:  NewMempool(),
 		grace:    grace,
 		checker:  checker,
-	}, nil
+	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h, nil
+}
+
+// HostOption configures optional Host behavior.
+type HostOption func(*Host)
+
+// WithStorage sets the storage backend for diff persistence.
+func WithStorage(s storage.Storage) HostOption {
+	return func(h *Host) { h.store = s }
 }
 
 func (h *Host) StateRoot() ([]byte, error) { return h.sm.ComputeStateRoot() }
+
+// MempoolTxs returns a copy of the current mempool transactions.
+func (h *Host) MempoolTxs() []*types.SubnetTx { return h.mempool.Txs() }
+
+// EscrowID returns the escrow ID this host is configured for.
+func (h *Host) EscrowID() string { return h.escrowID }
+
+// Group returns the slot assignments for this session.
+func (h *Host) Group() []types.SlotAssignment { return h.group }
+
+// SlotIDs returns the set of slot IDs owned by this host.
+func (h *Host) SlotIDs() map[uint32]bool { return h.slotIDs }
+
+// SnapshotState returns a deep copy of the current state.
+func (h *Host) SnapshotState() types.EscrowState { return h.sm.SnapshotState() }
+
+// Signer returns the host's signer (for timeout vote signing).
+func (h *Host) Signer() signing.Signer { return h.signer }
 
 func (h *Host) HandleRequest(ctx context.Context, req HostRequest) (*HostResponse, error) {
 	// (a) Apply all new diffs.
@@ -102,10 +135,19 @@ func (h *Host) HandleRequest(ctx context.Context, req HostRequest) (*HostRespons
 		if diff.Nonce <= currentNonce {
 			continue
 		}
-		if _, err := h.sm.ApplyDiff(diff); err != nil {
+		root, err := h.sm.ApplyDiff(diff)
+		if err != nil {
 			return nil, fmt.Errorf("apply diff nonce %d: %w", diff.Nonce, err)
 		}
 		h.mempool.RemoveIncluded(diff.Txs)
+
+		// Persist diff if storage is configured.
+		if h.store != nil {
+			rec := types.DiffRecord{Diff: diff, StateHash: root}
+			if err := h.store.AppendDiff(h.escrowID, rec); err != nil {
+				return nil, fmt.Errorf("persist diff nonce %d: %w", diff.Nonce, err)
+			}
+		}
 	}
 
 	// (b) Executor check at req.Nonce.
