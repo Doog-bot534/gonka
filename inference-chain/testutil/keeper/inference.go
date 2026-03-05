@@ -49,6 +49,7 @@ func InferenceKeeper(t testing.TB) (keeper.Keeper, sdk.Context) {
 	upgradeKeeper := NewMockUpgradeKeeper(ctrl)
 	mock, context := InferenceKeeperWithMock(t, bankKeeper, accountKeeperMock, validatorSetMock, groupMock, stakingMock, collateralMock, streamvestingMock, bankViewKeeper, authzKeeper, upgradeKeeper)
 	bankKeeper.ExpectAny(context)
+	mock.PrecomputeSPRTValues(context)
 	return mock, context
 }
 
@@ -168,6 +169,7 @@ func InferenceKeeperReturningMocks(t testing.TB) (keeper.Keeper, sdk.Context, In
 		BankViewKeeper:      bankViewKeeper,
 		AuthzKeeper:         authzKeeper,
 	}
+	keep.PrecomputeSPRTValues(context)
 	return keep, context, mocks
 }
 
