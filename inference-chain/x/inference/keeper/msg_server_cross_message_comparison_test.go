@@ -1,9 +1,12 @@
 package keeper_test
 
 import (
+	"context"
 	"encoding/base64"
-	"github.com/productscience/inference/x/inference/calculations"
 	"testing"
+
+	"github.com/productscience/inference/x/inference/calculations"
+	"github.com/productscience/inference/x/inference/keeper"
 
 	authztypes "github.com/cosmos/cosmos-sdk/x/authz"
 	"github.com/productscience/inference/testutil"
@@ -341,6 +344,7 @@ func TestCrossMsg_StartFirst_FinishSecond_ExecutorMismatch(t *testing.T) {
 
 	other := NewMockAccount(testutil.Executor2)
 	MustAddParticipant(t, s.helper.MessageServer, s.helper.context, *other)
+	AddParticipantToActive(s.helper.context, s.helper.keeper, other.address, 0)
 
 	msg := s.validFinishMsg()
 	msg.ExecutedBy = other.address
@@ -348,6 +352,27 @@ func TestCrossMsg_StartFirst_FinishSecond_ExecutorMismatch(t *testing.T) {
 	resp, err := s.helper.MessageServer.FinishInference(s.helper.context, msg)
 	require.NoError(t, err)
 	require.Contains(t, resp.ErrorMessage, types.ErrTAComponentMismatch.Error())
+}
+
+func AddParticipantToActive(ctx context.Context, k *keeper.Keeper, address string, epochIndex uint64) {
+	current, found := k.GetActiveParticipants(ctx, epochIndex)
+	var currentParticipants []*types.ActiveParticipant
+	if found {
+		currentParticipants = current.Participants
+	} else {
+		currentParticipants = []*types.ActiveParticipant{}
+	}
+	currentParticipants = append(currentParticipants, &types.ActiveParticipant{
+		Index: address,
+	})
+	newParticipants := types.ActiveParticipants{
+		EpochId:      epochIndex,
+		Participants: currentParticipants,
+	}
+	err := k.SetActiveParticipants(ctx, newParticipants)
+	if err != nil {
+		panic(err)
+	}
 }
 
 // =============================================

@@ -95,6 +95,7 @@ func TestMsgServer_FinishInference_DeveloperAccessRestricted(t *testing.T) {
 
 	resp, err := inferenceHelper.MessageServer.FinishInference(ctx, &types.MsgFinishInference{
 		Creator:     testutil.Creator,
+		ExecutedBy:  testutil.Creator,
 		InferenceId: "dummy",
 		RequestedBy: testutil.Requester,
 	})
@@ -209,7 +210,9 @@ func TestMsgServer_FinishInference_InferenceNotFound(t *testing.T) {
 }
 
 func TestMsgServer_FinishInferenceCreatorMustMatchExecutor(t *testing.T) {
-	_, ms, ctx := setupMsgServer(t)
+	k, ms, ctx := setupMsgServer(t)
+	_ = k.SetEffectiveEpochIndex(ctx, 1)
+	AddParticipantToActive(ctx, &k, testutil.Creator, 1)
 	resp, err := ms.FinishInference(ctx, &types.MsgFinishInference{
 		Creator:    testutil.Creator,
 		ExecutedBy: testutil.Executor,
@@ -277,6 +280,24 @@ func NewMockInferenceHelper(t *testing.T) (*MockInferenceHelper, keeper.Keeper, 
 	MustAddParticipant(t, ms, ctx, *requesterAccount)
 	MustAddParticipant(t, ms, ctx, *taAccount)
 	MustAddParticipant(t, ms, ctx, *executorAccount)
+
+	currentEpoch, found := k.GetEffectiveEpochIndex(ctx)
+	require.True(t, found)
+	err = k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId: currentEpoch,
+		Participants: []*types.ActiveParticipant{
+			{
+				Index: requesterAccount.address,
+			},
+			{
+				Index: taAccount.address,
+			},
+			{
+				Index: executorAccount.address,
+			},
+		},
+	})
+	require.NoError(t, err)
 
 	return &MockInferenceHelper{
 		MockRequester:     requesterAccount,
