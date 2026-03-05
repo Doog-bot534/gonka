@@ -26,6 +26,7 @@ service Msg {
   rpc StartInference                   (MsgStartInference) returns (MsgStartInferenceResponse);
   rpc FinishInference                  (MsgFinishInference) returns (MsgFinishInferenceResponse);
   rpc CreateEscrow                     (MsgCreateEscrow) returns (MsgCreateEscrowResponse);
+  rpc InvalidateEscrow                 (MsgInvalidateEscrow) returns (MsgInvalidateEscrowResponse);
   rpc SubmitNewParticipant             (MsgSubmitNewParticipant) returns (MsgSubmitNewParticipantResponse);
   rpc Validation                       (MsgValidation) returns (MsgValidationResponse);
   rpc SubmitNewUnfundedParticipant     (MsgSubmitNewUnfundedParticipant) returns (MsgSubmitNewUnfundedParticipantResponse);
@@ -143,6 +144,22 @@ message MsgCreateEscrow {
 message MsgCreateEscrowResponse {
   string escrow_id = 1;
 }
+
+message MsgInvalidateEscrow {
+  option (cosmos.msg.v1.signer) = "creator";
+  string creator = 1;
+  string escrow_id = 2;
+  string developer_address = 3;
+  uint64 block_sequence = 4;
+  string left_block_hash = 5;
+  string right_block_hash = 6;
+  string left_block_signature = 7;
+  string right_block_signature = 8;
+  string left_block_messages_hash = 9;
+  string right_block_messages_hash = 10;
+}
+
+message MsgInvalidateEscrowResponse {}
 
 message EscrowAccess {
   string developer_address = 1;

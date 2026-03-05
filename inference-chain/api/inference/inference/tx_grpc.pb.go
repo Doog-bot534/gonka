@@ -23,6 +23,7 @@ const (
 	Msg_StartInference_FullMethodName                   = "/inference.inference.Msg/StartInference"
 	Msg_FinishInference_FullMethodName                  = "/inference.inference.Msg/FinishInference"
 	Msg_CreateEscrow_FullMethodName                     = "/inference.inference.Msg/CreateEscrow"
+	Msg_InvalidateEscrow_FullMethodName                 = "/inference.inference.Msg/InvalidateEscrow"
 	Msg_SubmitNewParticipant_FullMethodName             = "/inference.inference.Msg/SubmitNewParticipant"
 	Msg_Validation_FullMethodName                       = "/inference.inference.Msg/Validation"
 	Msg_SubmitNewUnfundedParticipant_FullMethodName     = "/inference.inference.Msg/SubmitNewUnfundedParticipant"
@@ -74,6 +75,7 @@ type MsgClient interface {
 	StartInference(ctx context.Context, in *MsgStartInference, opts ...grpc.CallOption) (*MsgStartInferenceResponse, error)
 	FinishInference(ctx context.Context, in *MsgFinishInference, opts ...grpc.CallOption) (*MsgFinishInferenceResponse, error)
 	CreateEscrow(ctx context.Context, in *MsgCreateEscrow, opts ...grpc.CallOption) (*MsgCreateEscrowResponse, error)
+	InvalidateEscrow(ctx context.Context, in *MsgInvalidateEscrow, opts ...grpc.CallOption) (*MsgInvalidateEscrowResponse, error)
 	SubmitNewParticipant(ctx context.Context, in *MsgSubmitNewParticipant, opts ...grpc.CallOption) (*MsgSubmitNewParticipantResponse, error)
 	Validation(ctx context.Context, in *MsgValidation, opts ...grpc.CallOption) (*MsgValidationResponse, error)
 	SubmitNewUnfundedParticipant(ctx context.Context, in *MsgSubmitNewUnfundedParticipant, opts ...grpc.CallOption) (*MsgSubmitNewUnfundedParticipantResponse, error)
@@ -155,6 +157,15 @@ func (c *msgClient) FinishInference(ctx context.Context, in *MsgFinishInference,
 func (c *msgClient) CreateEscrow(ctx context.Context, in *MsgCreateEscrow, opts ...grpc.CallOption) (*MsgCreateEscrowResponse, error) {
 	out := new(MsgCreateEscrowResponse)
 	err := c.cc.Invoke(ctx, Msg_CreateEscrow_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) InvalidateEscrow(ctx context.Context, in *MsgInvalidateEscrow, opts ...grpc.CallOption) (*MsgInvalidateEscrowResponse, error) {
+	out := new(MsgInvalidateEscrowResponse)
+	err := c.cc.Invoke(ctx, Msg_InvalidateEscrow_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -522,6 +533,7 @@ type MsgServer interface {
 	StartInference(context.Context, *MsgStartInference) (*MsgStartInferenceResponse, error)
 	FinishInference(context.Context, *MsgFinishInference) (*MsgFinishInferenceResponse, error)
 	CreateEscrow(context.Context, *MsgCreateEscrow) (*MsgCreateEscrowResponse, error)
+	InvalidateEscrow(context.Context, *MsgInvalidateEscrow) (*MsgInvalidateEscrowResponse, error)
 	SubmitNewParticipant(context.Context, *MsgSubmitNewParticipant) (*MsgSubmitNewParticipantResponse, error)
 	Validation(context.Context, *MsgValidation) (*MsgValidationResponse, error)
 	SubmitNewUnfundedParticipant(context.Context, *MsgSubmitNewUnfundedParticipant) (*MsgSubmitNewUnfundedParticipantResponse, error)
@@ -581,6 +593,9 @@ func (UnimplementedMsgServer) FinishInference(context.Context, *MsgFinishInferen
 }
 func (UnimplementedMsgServer) CreateEscrow(context.Context, *MsgCreateEscrow) (*MsgCreateEscrowResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateEscrow not implemented")
+}
+func (UnimplementedMsgServer) InvalidateEscrow(context.Context, *MsgInvalidateEscrow) (*MsgInvalidateEscrowResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method InvalidateEscrow not implemented")
 }
 func (UnimplementedMsgServer) SubmitNewParticipant(context.Context, *MsgSubmitNewParticipant) (*MsgSubmitNewParticipantResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SubmitNewParticipant not implemented")
@@ -780,6 +795,24 @@ func _Msg_CreateEscrow_Handler(srv interface{}, ctx context.Context, dec func(in
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(MsgServer).CreateEscrow(ctx, req.(*MsgCreateEscrow))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_InvalidateEscrow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgInvalidateEscrow)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).InvalidateEscrow(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Msg_InvalidateEscrow_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).InvalidateEscrow(ctx, req.(*MsgInvalidateEscrow))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1508,6 +1541,10 @@ var Msg_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateEscrow",
 			Handler:    _Msg_CreateEscrow_Handler,
+		},
+		{
+			MethodName: "InvalidateEscrow",
+			Handler:    _Msg_InvalidateEscrow_Handler,
 		},
 		{
 			MethodName: "SubmitNewParticipant",

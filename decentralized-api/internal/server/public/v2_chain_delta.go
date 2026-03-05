@@ -516,6 +516,12 @@ func validateV2DeveloperChainDeltaForCurrentRequest(
 					"block_sequence", block.BlockSequence,
 					"stored_latest_block_sequence", storedLatestBlockSequence,
 				)
+				if ok {
+					return &v2OverlapConflictError{
+						storedBlock:   storedBlock,
+						incomingBlock: block,
+					}
+				}
 				return ErrV2DeveloperChainDeltaOverlapMismatch
 			}
 		}
@@ -660,6 +666,19 @@ func developerChainBlockEqual(left DeveloperChainBlock, right DeveloperChainBloc
 		}
 	}
 	return true
+}
+
+type v2OverlapConflictError struct {
+	storedBlock   DeveloperChainBlock
+	incomingBlock DeveloperChainBlock
+}
+
+func (e *v2OverlapConflictError) Error() string {
+	return ErrV2DeveloperChainDeltaOverlapMismatch.Error()
+}
+
+func (e *v2OverlapConflictError) Unwrap() error {
+	return ErrV2DeveloperChainDeltaOverlapMismatch
 }
 
 func parseFlexibleUint64(raw json.RawMessage) (uint64, error) {

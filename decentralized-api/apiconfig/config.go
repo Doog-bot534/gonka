@@ -26,6 +26,7 @@ type Config struct {
 	TransferAgentAccessCache TransferAgentAccessCache      `koanf:"-" json:"-"` // not persisted, synced from chain
 	EscrowAccessByID         map[string]EscrowAccessRecord `koanf:"-" json:"-"`
 	EscrowLatestSequenceByID map[string]uint64             `koanf:"-" json:"-"`
+	EscrowInvalidatedByID    map[string]bool               `koanf:"-" json:"-"`
 }
 
 type NatsServerConfig struct {
@@ -190,6 +191,7 @@ type EscrowAccessRecord struct {
 	DeveloperAddress string
 	DeveloperPubKey  string
 	ModelID          string
+	Invalidated      bool
 	EpochID          uint64
 	BlockHeight      int64
 }

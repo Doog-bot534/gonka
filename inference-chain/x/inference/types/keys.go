@@ -66,6 +66,7 @@ var (
 	PunishmentGraceEpochsPrefix       = collections.NewPrefix(43)
 	EscrowAccessByIDPrefix            = collections.NewPrefix(44)
 	EscrowGlobalSequencePrefix        = collections.NewPrefix(45)
+	EscrowInvalidatedByIDPrefix       = collections.NewPrefix(46)
 	ParamsKey                         = []byte("p_inference")
 )
 

@@ -3,6 +3,7 @@ package public
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"decentralized-api/broker"
 	"decentralized-api/logging"
 	"decentralized-api/utils"
@@ -46,6 +47,9 @@ func (s *Server) postChatV2(ctx echo.Context) error {
 	if escrowID == "" {
 		return ErrV2EscrowIDRequired
 	}
+	if s.configManager.IsEscrowInvalidated(escrowID) {
+		return ErrV2EscrowInvalidated
+	}
 
 	escrowSequenceRaw := ctx.Request().Header.Get(utils.XEscrowSequenceHeader)
 	if escrowSequenceRaw == "" {
@@ -63,6 +67,9 @@ func (s *Server) postChatV2(ctx echo.Context) error {
 			"requester_address", requesterAddress,
 		)
 		return ErrV2EscrowNotAuthorized
+	}
+	if record.Invalidated {
+		return ErrV2EscrowInvalidated
 	}
 	if record.ModelID != "" && record.ModelID != parsedRequest.openAIRequest.Model {
 		logging.Warn("V2 escrow model mismatch", types.Inferences,
@@ -162,6 +169,27 @@ func (s *Server) postChatV2(ctx echo.Context) error {
 		},
 	)
 	if err != nil {
+		if errors.Is(err, ErrV2DeveloperChainDeltaOverlapMismatch) {
+			if localParticipantAddress == intendedExecutorAddress {
+				var conflictErr *v2OverlapConflictError
+				if errors.As(err, &conflictErr) {
+					if submitErr := s.submitEscrowInvalidationConflict(
+						escrowID,
+						record.DeveloperAddress,
+						conflictErr.storedBlock,
+						conflictErr.incomingBlock,
+					); submitErr != nil {
+						logging.Warn("Failed to submit on-chain escrow invalidation conflict evidence", types.Inferences,
+							"escrow_id", escrowID,
+							"error", submitErr,
+						)
+					} else {
+						s.configManager.MarkEscrowInvalidated(escrowID)
+					}
+				}
+			}
+			return ErrV2DeveloperChainDeltaOverlapMismatch
+		}
 		return err
 	}
 
@@ -208,6 +236,51 @@ func resolveV2IntendedExecutorAddress(responsibleParticipants []string) (string,
 		return "", ErrV2IntendedExecutorUnavailable
 	}
 	return responsibleParticipants[0], nil
+}
+
+func (s *Server) submitEscrowInvalidationConflict(
+	escrowID string,
+	developerAddress string,
+	storedBlock DeveloperChainBlock,
+	incomingBlock DeveloperChainBlock,
+) error {
+	if s.recorder == nil {
+		return fmt.Errorf("recorder unavailable")
+	}
+	if storedBlock.BlockSequence != incomingBlock.BlockSequence {
+		return fmt.Errorf("conflict block_sequence mismatch")
+	}
+	chainID := s.resolveV2DeveloperBlockSignatureChainID()
+	leftHash, leftMessagesHash := computeV2DeveloperConflictBlockEvidence(chainID, storedBlock)
+	rightHash, rightMessagesHash := computeV2DeveloperConflictBlockEvidence(chainID, incomingBlock)
+
+	msg := &types.MsgInvalidateEscrow{
+		Creator:                strings.TrimSpace(s.recorder.GetAccountAddress()),
+		EscrowId:               escrowID,
+		DeveloperAddress:       developerAddress,
+		BlockSequence:          storedBlock.BlockSequence,
+		LeftBlockHash:          leftHash,
+		RightBlockHash:         rightHash,
+		LeftBlockSignature:     strings.TrimSpace(storedBlock.Signature),
+		RightBlockSignature:    strings.TrimSpace(incomingBlock.Signature),
+		LeftBlockMessagesHash:  leftMessagesHash,
+		RightBlockMessagesHash: rightMessagesHash,
+	}
+	if _, err := s.recorder.SendTransactionAsyncWithRetry(msg); err != nil {
+		return err
+	}
+	logging.Warn("Submitted on-chain escrow invalidation due to conflicting developer-signed block", types.Inferences,
+		"escrow_id", escrowID,
+		"block_sequence", storedBlock.BlockSequence,
+	)
+	return nil
+}
+
+func computeV2DeveloperConflictBlockEvidence(chainID string, block DeveloperChainBlock) (string, string) {
+	blockMessagesHash := computeV2DeveloperBlockMessagesHash(block.Messages)
+	preimage := buildV2DeveloperBlockSigningPreimage(chainID, block.EscrowID, block.BlockSequence, blockMessagesHash)
+	hash := sha256.Sum256(preimage)
+	return fmt.Sprintf("%x", hash[:]), fmt.Sprintf("%x", blockMessagesHash[:])
 }
 
 func exceedsV2RelayHopLimit(requestHeaders http.Header) bool {

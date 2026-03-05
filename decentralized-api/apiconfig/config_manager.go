@@ -313,6 +313,9 @@ func (cm *ConfigManager) UpsertEscrowAccessRecord(record EscrowAccessRecord) {
 	if cm.currentConfig.EscrowAccessByID == nil {
 		cm.currentConfig.EscrowAccessByID = make(map[string]EscrowAccessRecord)
 	}
+	if cm.currentConfig.EscrowInvalidatedByID != nil && cm.currentConfig.EscrowInvalidatedByID[record.EscrowID] {
+		record.Invalidated = true
+	}
 	cm.currentConfig.EscrowAccessByID[record.EscrowID] = record
 }
 
@@ -322,6 +325,33 @@ func (cm *ConfigManager) GetEscrowAccessRecord(escrowID string) (EscrowAccessRec
 
 	record, ok := cm.currentConfig.EscrowAccessByID[escrowID]
 	return record, ok
+}
+
+func (cm *ConfigManager) MarkEscrowInvalidated(escrowID string) bool {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+
+	if cm.currentConfig.EscrowInvalidatedByID == nil {
+		cm.currentConfig.EscrowInvalidatedByID = make(map[string]bool)
+	}
+	cm.currentConfig.EscrowInvalidatedByID[escrowID] = true
+
+	record, ok := cm.currentConfig.EscrowAccessByID[escrowID]
+	if !ok {
+		return true
+	}
+	record.Invalidated = true
+	cm.currentConfig.EscrowAccessByID[escrowID] = record
+	return true
+}
+
+func (cm *ConfigManager) IsEscrowInvalidated(escrowID string) bool {
+	if cm == nil {
+		return false
+	}
+	cm.mutex.RLock()
+	defer cm.mutex.RUnlock()
+	return cm.currentConfig.EscrowInvalidatedByID != nil && cm.currentConfig.EscrowInvalidatedByID[escrowID]
 }
 
 func (cm *ConfigManager) RecordEscrowSequenceIfIncreasing(escrowID string, sequence uint64) bool {

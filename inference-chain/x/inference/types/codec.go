@@ -18,6 +18,9 @@ func RegisterInterfaces(registry cdctypes.InterfaceRegistry) {
 		&MsgCreateEscrow{},
 	)
 	registry.RegisterImplementations((*sdk.Msg)(nil),
+		&MsgInvalidateEscrow{},
+	)
+	registry.RegisterImplementations((*sdk.Msg)(nil),
 		&MsgSubmitNewParticipant{},
 	)
 	registry.RegisterImplementations((*sdk.Msg)(nil),

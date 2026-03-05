@@ -13,7 +13,7 @@ Introduce a new inference request flow that:
 - removes per-request on-chain messages for v2 inference execution,
 - keeps access control and participant assignment deterministic and verifiable.
 
-This document defines implementation steps (1-17). Steps 1-13 are implemented in the current milestone; steps 14-17 are planned next.
+This document defines implementation steps (1-23). Steps 1-15 are implemented in the current milestone; steps 16-23 are planned next.
 
 ## Non-Goals (for this stage)
 
@@ -384,6 +384,8 @@ Consume Step 14.2 proof metadata on the developer side, persist it into `FinishI
 
 Detect developer equivocation for the same block identity and finalize invalidation on-chain via `MsgInvalidateEscrow` carrying conflict evidence.
 
+Status: implemented.
+
 ### Step 15 Requirements
 
 - Define conflict identity key explicitly as `(developer_address, escrow_id, block_sequence)`.
@@ -622,6 +624,13 @@ Replace raw store-key reads for active participant metadata with a typed gRPC qu
   - streaming developer path now ingests terminal `v2_executor_proof` SSE event and verifies proof signature against locally recomputed stream payload hash in Testermint flow,
   - API/executor/relay chain-delta validation now enforces executor proof presence and verifies signatures against request-linked start block signature and `response_payload_hash`,
   - signer authorization is enforced against authz-backed signer lookup (`MsgFinishInference` scope) when available.
+- **Step 15 (implemented)**:
+  - overlap mismatch detection now surfaces conflicting block evidence (same `escrow_id` + `block_sequence`, different signed block),
+  - intended executor submits on-chain `MsgInvalidateEscrow` with conflicting block hashes, block message hashes, and signatures,
+  - chain recomputes canonical conflict hashes and verifies both developer signatures before setting invalidated state,
+  - chain emits `escrow_invalidated` event, and decentralized-api nodes ingest this event to mark escrow invalidated locally,
+  - all nodes reject subsequent requests for invalidated escrow with deterministic conflict error (`Escrow is invalidated due to conflicting signed blocks`),
+  - Testermint E2E scenario added for conflict -> on-chain invalidation -> cluster-wide rejection.
 - **Step 22 (planned)**:
   - move signer-authorization source from per-request authz lookup to epoch-pinned active-participant signer snapshots for deterministic warm-key verification across replays/boundaries.
 - **Step 23 (planned)**:
@@ -659,7 +668,7 @@ Replace raw store-key reads for active participant metadata with a typed gRPC qu
 - [x] Step 14.1: add/validate developer block signatures.
 - [x] Step 14.2: add/validate executor `FinishInference` signatures and response transport.
 - [x] Step 14.3: ingest executor proofs into `FinishInference` and validate on executor/relay ingest.
-- [ ] Step 15: conflicting signed block evidence + on-chain `MsgInvalidateEscrow`.
+- [x] Step 15: conflicting signed block evidence + on-chain `MsgInvalidateEscrow`.
 - [ ] Step 16: signed relay non-response errors + majority-by-weight `MissedInference`.
 - [ ] Step 17: deterministic per-executor state accounting + per-block `state_hash`.
 - [ ] Step 18: streaming replay hub hardening (backpressure, limits, and cache eviction).
@@ -683,7 +692,8 @@ Replace raw store-key reads for active participant metadata with a typed gRPC qu
   - [x] developer ingestion and persistence of executor proof fields in `FinishInference` (non-streaming path).
   - [x] executor/relay validation of received `FinishInference` executor proofs.
   - [x] streaming terminal-proof ingestion and signature verification in Testermint stream flow.
-  - [ ] deterministic escrow invalidation on conflicting signed blocks.
+  - [x] deterministic escrow invalidation on conflicting signed blocks.
+  - [x] on-chain rejection for malformed/invalid conflict evidence (hash/signature mismatch).
   - [ ] relay signed-error quorum path resulting in valid `MissedInference`.
   - [ ] deterministic state-hash convergence across developer/executor nodes.
   - [ ] streaming replay backpressure handling and cleanup/eviction behavior.

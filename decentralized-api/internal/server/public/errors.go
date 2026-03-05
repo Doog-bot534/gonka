@@ -28,6 +28,7 @@ var (
 	ErrV2EscrowSequenceNotIncreasing                   = echo.NewHTTPError(http.StatusConflict, "X-Escrow-Sequence must be strictly increasing for this escrow_id")
 	ErrV2RequesterRequired                             = echo.NewHTTPError(http.StatusBadRequest, "X-Requester-Address header required")
 	ErrV2EscrowNotAuthorized                           = echo.NewHTTPError(http.StatusForbidden, "Requester does not have access to this escrow_id")
+	ErrV2EscrowInvalidated                             = echo.NewHTTPError(http.StatusConflict, "Escrow is invalidated due to conflicting signed blocks")
 	ErrV2EscrowModelMismatch                           = echo.NewHTTPError(http.StatusForbidden, "Escrow model_id does not match request model")
 	ErrV2ParticipantNotResponsible                     = echo.NewHTTPError(http.StatusForbidden, "This participant is not responsible for escrow_id+sequence")
 	ErrV2ParticipantAddressUnavailable                 = echo.NewHTTPError(http.StatusServiceUnavailable, "Unable to resolve participant address")

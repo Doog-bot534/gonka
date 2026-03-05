@@ -71,4 +71,7 @@ var (
 	ErrTransferAgentNotAllowlisted           = sdkerrors.Register(ModuleName, 1165, "transfer agent not in allowlist")
 	ErrEscrowModelIdEmpty                    = sdkerrors.Register(ModuleName, 1166, "model id must not be empty")
 	ErrEscrowAlreadyExists                   = sdkerrors.Register(ModuleName, 1167, "escrow id already exists")
+	ErrEscrowNotFound                        = sdkerrors.Register(ModuleName, 1168, "escrow id not found")
+	ErrEscrowInvalidated                     = sdkerrors.Register(ModuleName, 1169, "escrow already invalidated")
+	ErrEscrowConflictEvidenceInvalid         = sdkerrors.Register(ModuleName, 1170, "escrow conflict evidence is invalid")
 )

@@ -923,6 +923,155 @@ class V2EscrowFlowTest : TestermintTest() {
         }.hasMessageContaining("409")
     }
 
+    @Test
+    fun `conflicting overlap invalidates escrow and all participants reject subsequent requests`() {
+        logSection("V2 Step15 escrow invalidation E2E setup")
+        val fixture = setupV2EscrowFixture()
+        val allPairs = fixture.allPairs
+        val genesis = fixture.genesis
+        val pairByAddress = fixture.pairByAddress
+        val weightedParticipants = fixture.weightedParticipants
+        val developerAddress = fixture.developerAddress
+        val developerBlockSigner = fixture.developerBlockSigner
+        val escrowContext = createEscrowAndWaitForIndexing(genesis, allPairs, developerAddress)
+        val escrowId = escrowContext.escrowId
+        val epochId = escrowContext.epochId
+
+        val intendedForSeq3 = selectResponsibleParticipantsDeterministic(
+            participants = weightedParticipants,
+            selectionCount = EXPECTED_RESPONSIBLE_PARTICIPANTS,
+            escrowId = escrowId,
+            sequence = 3L,
+        ).first()
+        val intendedPair = requireNotNull(pairByAddress[intendedForSeq3]) {
+            "Missing pair for intended participant=$intendedForSeq3"
+        }
+
+        val request1 = buildOpenAiRequest(sequence = 1L, stream = false)
+        val block1 = buildStartInferenceBlock(
+            blockSequence = 1L,
+            escrowId = escrowId,
+            modelId = defaultModel,
+            requestPayloadHash = computeV2RequestPayloadHash(request1),
+            timestampSeconds = System.currentTimeMillis() / 1000,
+            developerBlockSigner = developerBlockSigner,
+        )
+        val request1Envelope = buildV2RequestEnvelope(
+            openAiRequest = request1,
+            developerChainDelta = DeveloperChainDelta(
+                baseBlockSequence = 0,
+                blocks = listOf(block1),
+                latestBlockSequence = 1,
+            )
+        )
+        val response1 = sendV2Request(
+            pair = intendedPair,
+            request = request1Envelope,
+            requesterAddress = developerAddress,
+            escrowId = escrowId,
+            sequence = 1L,
+            epochId = epochId,
+        )
+        assertThat(response1.latestBlockSequence).isEqualTo(1L)
+
+        val request2 = buildOpenAiRequest(sequence = 2L, stream = false)
+        val block2 = buildStartInferenceBlock(
+            blockSequence = 2L,
+            escrowId = escrowId,
+            modelId = defaultModel,
+            requestPayloadHash = computeV2RequestPayloadHash(request2),
+            timestampSeconds = System.currentTimeMillis() / 1000,
+            developerBlockSigner = developerBlockSigner,
+        )
+        val request2Envelope = buildV2RequestEnvelope(
+            openAiRequest = request2,
+            developerChainDelta = DeveloperChainDelta(
+                baseBlockSequence = 0,
+                blocks = listOf(block1, block2),
+                latestBlockSequence = 2,
+            )
+        )
+        val response2 = sendV2Request(
+            pair = intendedPair,
+            request = request2Envelope,
+            requesterAddress = developerAddress,
+            escrowId = escrowId,
+            sequence = 2L,
+            epochId = epochId,
+        )
+        assertThat(response2.latestBlockSequence).isEqualTo(2L)
+
+        val request3 = buildOpenAiRequest(sequence = 3L, stream = false)
+        val mismatchedOverlapBlock2 = buildStartInferenceBlock(
+            blockSequence = 2L,
+            escrowId = escrowId,
+            modelId = defaultModel,
+            requestPayloadHash = "deadbeef",
+            timestampSeconds = (System.currentTimeMillis() / 1000) + 77,
+            developerBlockSigner = developerBlockSigner,
+        )
+        val request3Envelope = buildV2RequestEnvelope(
+            openAiRequest = request3,
+            developerChainDelta = DeveloperChainDelta(
+                baseBlockSequence = 1,
+                blocks = listOf(
+                    mismatchedOverlapBlock2,
+                    buildStartInferenceBlock(
+                        blockSequence = 3L,
+                        escrowId = escrowId,
+                        modelId = defaultModel,
+                        requestPayloadHash = computeV2RequestPayloadHash(request3),
+                        timestampSeconds = System.currentTimeMillis() / 1000,
+                        developerBlockSigner = developerBlockSigner,
+                    )
+                ),
+                latestBlockSequence = 3,
+            )
+        )
+        assertThatThrownBy {
+            sendV2Request(
+                pair = intendedPair,
+                request = request3Envelope,
+                requesterAddress = developerAddress,
+                escrowId = escrowId,
+                sequence = 3L,
+                epochId = epochId,
+            )
+        }.hasMessageContaining("409")
+
+        // Wait until all API nodes ingest the on-chain escrow_invalidated event.
+        allPairs.forEach { it.node.waitForNextBlock(2) }
+
+        val request4 = buildOpenAiRequest(sequence = 4L, stream = false)
+        val request4Envelope = buildSingleStartEnvelope(
+            openAiRequest = request4,
+            escrowId = escrowId,
+            sequence = 4L,
+            developerBlockSigner = developerBlockSigner,
+        )
+        val responsibleForSeq4 = selectResponsibleParticipantsDeterministic(
+            participants = weightedParticipants,
+            selectionCount = EXPECTED_RESPONSIBLE_PARTICIPANTS,
+            escrowId = escrowId,
+            sequence = 4L,
+        )
+        responsibleForSeq4.forEach { participantAddress ->
+            val pair = requireNotNull(pairByAddress[participantAddress]) {
+                "Missing pair for participant=$participantAddress"
+            }
+            assertThatThrownBy {
+                sendV2Request(
+                    pair = pair,
+                    request = request4Envelope,
+                    requesterAddress = developerAddress,
+                    escrowId = escrowId,
+                    sequence = 4L,
+                    epochId = epochId,
+                )
+            }.hasMessageContaining("409")
+        }
+    }
+
     private fun setupV2EscrowFixture(joinCount: Int = 2): V2EscrowFixture {
         val (cluster, genesis) = initCluster(joinCount = joinCount)
         val allPairs = listOf(genesis) + cluster.joinPairs

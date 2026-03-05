@@ -88,6 +88,7 @@ func NewEventListener(
 		&SubmitProposalEventHandler{},
 		&TrainingTaskAssignedEventHandler{},
 		&EscrowCreatedEventHandler{},
+		&EscrowInvalidatedEventHandler{},
 	}
 
 	bo := NewBlockObserver(configManager)
@@ -582,6 +583,7 @@ func (e *EscrowCreatedEventHandler) Handle(event *chainevents.JSONRPCResponse, e
 			DeveloperAddress: developer,
 			DeveloperPubKey:  developerPubKey,
 			ModelID:          modelID,
+			Invalidated:      false,
 			EpochID:          epochID,
 			BlockHeight:      height,
 		})
@@ -594,6 +596,31 @@ func (e *EscrowCreatedEventHandler) Handle(event *chainevents.JSONRPCResponse, e
 		)
 	}
 
+	return nil
+}
+
+type EscrowInvalidatedEventHandler struct{}
+
+func (e *EscrowInvalidatedEventHandler) GetName() string {
+	return "escrow_invalidated"
+}
+
+func (e *EscrowInvalidatedEventHandler) CanHandle(event *chainevents.JSONRPCResponse) bool {
+	return len(event.Result.Events["escrow_invalidated.escrow_id"]) > 0
+}
+
+func (e *EscrowInvalidatedEventHandler) Handle(event *chainevents.JSONRPCResponse, el *EventListener) error {
+	escrowIDs := event.Result.Events["escrow_invalidated.escrow_id"]
+	for _, escrowID := range escrowIDs {
+		if strings.TrimSpace(escrowID) == "" {
+			continue
+		}
+		if !el.configManager.MarkEscrowInvalidated(escrowID) {
+			logging.Warn("Received escrow_invalidated for unknown escrow", types.EventProcessing, "escrow_id", escrowID)
+			continue
+		}
+		logging.Info("Marked escrow as invalidated from chain event", types.EventProcessing, "escrow_id", escrowID)
+	}
 	return nil
 }
 

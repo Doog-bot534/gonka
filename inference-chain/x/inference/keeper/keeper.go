@@ -66,6 +66,7 @@ type (
 		ParticipantAllowListSet   collections.KeySet[sdk.AccAddress]
 		EscrowAccessByID          collections.Map[string, types.EscrowAccess]
 		EscrowGlobalSequence      collections.Item[uint64]
+		EscrowInvalidatedByID     collections.KeySet[string]
 		PruningState              collections.Item[types.PruningState]
 		InferencesToPrune         collections.Map[collections.Pair[int64, string], collections.NoValue]
 		ActiveInvalidations       collections.KeySet[collections.Pair[sdk.AccAddress, string]]
@@ -323,6 +324,12 @@ func NewKeeper(
 			types.EscrowGlobalSequencePrefix,
 			"escrow_global_sequence",
 			collections.Uint64Value,
+		),
+		EscrowInvalidatedByID: collections.NewKeySet(
+			sb,
+			types.EscrowInvalidatedByIDPrefix,
+			"escrow_invalidated_by_id",
+			collections.StringKey,
 		),
 		PruningState: collections.NewItem(
 			sb,

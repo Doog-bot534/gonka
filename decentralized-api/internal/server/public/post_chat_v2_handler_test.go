@@ -207,8 +207,8 @@ func TestPostChatV2_SetsExecutorProofHeadersForJSONResponse(t *testing.T) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Header: http.Header{
-					"Content-Type":                    []string{"application/json"},
-					utils.XV2ExecutorAddressHeader:    []string{"gonka1exec-upstream"},
+					"Content-Type":                       []string{"application/json"},
+					utils.XV2ExecutorAddressHeader:       []string{"gonka1exec-upstream"},
 					utils.XV2ExecutorSignerAddressHeader: []string{"gonka1execwarm-upstream"},
 					utils.XV2ExecutorSignerPubKeyHeader:  []string{upstreamPubKey},
 					utils.XV2ExecutorSignatureHeader:     []string{upstreamSignature},
@@ -516,6 +516,34 @@ func TestPostChatV2_RejectsUnauthorizedEscrowAccess(t *testing.T) {
 	httpErr, ok := err.(*echo.HTTPError)
 	require.True(t, ok)
 	require.Equal(t, http.StatusForbidden, httpErr.Code)
+}
+
+func TestPostChatV2_RejectsInvalidatedEscrow(t *testing.T) {
+	e := echo.New()
+	body := mustMarshalV2Envelope(
+		t,
+		defaultV2OpenAIRequest("model-1"),
+		validV2ChainDelta("model-1", "escrow-1", "escrow-1:1", 0, 1),
+	)
+	ctx, _ := newV2RequestContext(e, body, "gonka1dev", "escrow-1", "1")
+
+	cfg := &apiconfig.ConfigManager{}
+	cfg.UpsertEscrowAccessRecord(apiconfig.EscrowAccessRecord{
+		EscrowID:         "escrow-1",
+		DeveloperAddress: "gonka1dev",
+		ModelID:          "model-1",
+		Invalidated:      true,
+	})
+
+	s := &Server{
+		configManager: cfg,
+	}
+
+	err := s.postChatV2(ctx)
+	require.Error(t, err)
+	httpErr, ok := err.(*echo.HTTPError)
+	require.True(t, ok)
+	require.Equal(t, http.StatusConflict, httpErr.Code)
 }
 
 func TestPostChatV2_RejectsModelMismatch(t *testing.T) {
@@ -992,15 +1020,15 @@ func TestPostChatV2_AcceptsFinishInferenceLinkedToPriorStart(t *testing.T) {
 				EscrowID:      "escrow-1",
 				Messages: []DeveloperChainMessage{
 					{
-						Type:                v2ChainMessageTypeFinishInference,
-						RequestID:           "escrow-1:1",
-						Status:              "finished",
-						ResponsePayloadHash: "resp-hash-1",
-						ExecutorAddress:     v2TestExecutorAddress,
+						Type:                  v2ChainMessageTypeFinishInference,
+						RequestID:             "escrow-1:1",
+						Status:                "finished",
+						ResponsePayloadHash:   "resp-hash-1",
+						ExecutorAddress:       v2TestExecutorAddress,
 						ExecutorSignerAddress: v2TestExecutorProofSignerAddress,
 						ExecutorSignerPubKey:  v2TestExecutorProofSigner.GetPubKeyBase64(),
-						ExecutorSignature: mustSignV2ExecutorProofForTests(t, firstDelta.Blocks[0].Signature, "resp-hash-1"),
-						Timestamp:           1710000001,
+						ExecutorSignature:     mustSignV2ExecutorProofForTests(t, firstDelta.Blocks[0].Signature, "resp-hash-1"),
+						Timestamp:             1710000001,
 					},
 					{
 						Type:               v2ChainMessageTypeStartInference,
@@ -1277,15 +1305,15 @@ func TestPostChatV2_RejectsFinishInferenceForUnknownRequestID(t *testing.T) {
 				EscrowID:      "escrow-1",
 				Messages: []DeveloperChainMessage{
 					{
-						Type:                v2ChainMessageTypeFinishInference,
-						RequestID:           "escrow-1:999",
-						Status:              "finished",
-						ResponsePayloadHash: "resp-hash-999",
+						Type:                  v2ChainMessageTypeFinishInference,
+						RequestID:             "escrow-1:999",
+						Status:                "finished",
+						ResponsePayloadHash:   "resp-hash-999",
 						ExecutorAddress:       v2TestExecutorAddress,
 						ExecutorSignerAddress: v2TestExecutorProofSignerAddress,
 						ExecutorSignerPubKey:  v2TestExecutorProofSigner.GetPubKeyBase64(),
 						ExecutorSignature:     "invalid-proof-for-unknown-request",
-						Timestamp:           1710000001,
+						Timestamp:             1710000001,
 					},
 					{
 						Type:               v2ChainMessageTypeStartInference,
