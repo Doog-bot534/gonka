@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -86,6 +87,7 @@ func NewEventListener(
 		&InferenceValidationEventHandler{},
 		&SubmitProposalEventHandler{},
 		&TrainingTaskAssignedEventHandler{},
+		&EscrowCreatedEventHandler{},
 	}
 
 	bo := NewBlockObserver(configManager)
@@ -492,6 +494,106 @@ func (e *TrainingTaskAssignedEventHandler) Handle(event *chainevents.JSONRPCResp
 			el.trainingExecutor.ProcessTaskAssignedEvent(taskIdUint)
 		}
 	}
+	return nil
+}
+
+type EscrowCreatedEventHandler struct{}
+
+func (e *EscrowCreatedEventHandler) GetName() string {
+	return "escrow_created"
+}
+
+func (e *EscrowCreatedEventHandler) CanHandle(event *chainevents.JSONRPCResponse) bool {
+	return len(event.Result.Events["escrow_created.escrow_id"]) > 0
+}
+
+func (e *EscrowCreatedEventHandler) Handle(event *chainevents.JSONRPCResponse, el *EventListener) error {
+	escrowIDs := event.Result.Events["escrow_created.escrow_id"]
+	developers := event.Result.Events["escrow_created.developer_address"]
+	developerPubKeys := event.Result.Events["escrow_created.developer_pubkey"]
+	modelIDs := event.Result.Events["escrow_created.model_id"]
+	epochIDs := event.Result.Events["escrow_created.epoch_id"]
+	if len(escrowIDs) == 0 {
+		return errors.New("escrow_id not found in escrow_created event")
+	}
+
+	var height int64
+	if heights := event.Result.Events["tx.height"]; len(heights) > 0 {
+		parsedHeight, err := strconv.ParseInt(heights[0], 10, 64)
+		if err != nil {
+			logging.Warn("Failed to parse escrow_created event height", types.EventProcessing, "height", heights[0], "error", err)
+		} else {
+			height = parsedHeight
+		}
+	}
+
+	txHash := ""
+	if hashes := event.Result.Events["tx.hash"]; len(hashes) > 0 {
+		txHash = hashes[0]
+	}
+
+	for idx, escrowID := range escrowIDs {
+		if escrowID == "" {
+			continue
+		}
+
+		developer := ""
+		if idx < len(developers) {
+			developer = developers[idx]
+		}
+
+		modelID := ""
+		if idx < len(modelIDs) {
+			modelID = modelIDs[idx]
+		}
+		developerPubKey := ""
+		if idx < len(developerPubKeys) {
+			developerPubKey = strings.TrimSpace(developerPubKeys[idx])
+		}
+		epochID := uint64(0)
+		if idx < len(epochIDs) {
+			parsedEpochID, parseErr := strconv.ParseUint(strings.TrimSpace(epochIDs[idx]), 10, 64)
+			if parseErr != nil {
+				logging.Warn("Failed to parse escrow_created epoch_id", types.EventProcessing,
+					"escrow_id", escrowID,
+					"epoch_id", epochIDs[idx],
+					"error", parseErr,
+				)
+			} else {
+				epochID = parsedEpochID
+			}
+		}
+		if developerPubKey == "" && strings.TrimSpace(developer) != "" {
+			queryClient := el.transactionRecorder.NewInferenceQueryClient()
+			response, queryErr := queryClient.InferenceParticipant(context.Background(), &types.QueryInferenceParticipantRequest{Address: developer})
+			if queryErr != nil {
+				logging.Warn("Unable to resolve developer pubkey while indexing escrow access", types.EventProcessing,
+					"escrow_id", escrowID,
+					"developer_address", developer,
+					"error", queryErr,
+				)
+			} else {
+				developerPubKey = strings.TrimSpace(response.GetPubkey())
+			}
+		}
+
+		el.configManager.UpsertEscrowAccessRecord(apiconfig.EscrowAccessRecord{
+			EscrowID:         escrowID,
+			DeveloperAddress: developer,
+			DeveloperPubKey:  developerPubKey,
+			ModelID:          modelID,
+			EpochID:          epochID,
+			BlockHeight:      height,
+		})
+		logging.Info("Indexed escrow access record from chain event", types.EventProcessing,
+			"escrow_id", escrowID,
+			"developer_address", developer,
+			"model_id", modelID,
+			"epoch_id", epochID,
+			"tx_hash", txHash,
+		)
+	}
+
 	return nil
 }
 

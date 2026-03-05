@@ -24,6 +24,7 @@ message Params {
   DeveloperAccessParams developer_access_params = 11;
   ParticipantAccessParams participant_access_params = 12;
   TransferAgentAccessParams transfer_agent_access_params = 13;
+  InferenceV2Params inference_v2_params = 14;
 }
 
 message GenesisOnlyParams {
@@ -290,6 +291,13 @@ message DeveloperAccessParams {
   int64 until_block_height = 1;
   // allowed_developer_addresses are the bech32 account addresses allowed to request inferences before until_block_height.
   repeated string allowed_developer_addresses = 2;
+}
+
+message InferenceV2Params {
+  option (gogoproto.equal) = true;
+  // responsible_participants_count is N for deterministic escrow v2 routing.
+  // Set to 0 to use the node default.
+  uint32 responsible_participants_count = 1;
 }
 
 // ParticipantAccessParams controls participant access via blocklist and allowlist mechanisms.

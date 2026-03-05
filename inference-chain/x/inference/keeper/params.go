@@ -12,6 +12,7 @@ const defaultGenesisGuardianNetworkMaturityMinHeight int64 = 0
 
 const defaultDeveloperAccessUntilBlockHeight int64 = 0
 const defaultNewParticipantRegistrationStartHeight int64 = 0
+const defaultV2ResponsibleParticipantsCount uint32 = types.DefaultV2ResponsibleParticipantsCount
 
 // GetParams get all parameters as types.Params
 func (k Keeper) GetParams(ctx context.Context) (params types.Params, err error) {
@@ -232,6 +233,18 @@ func (k Keeper) IsPoCParticipantBlocked(ctx context.Context, address string) boo
 	}
 	_, ok := blocked[address]
 	return ok
+}
+
+func (k Keeper) GetV2ResponsibleParticipantsCount(ctx context.Context) uint32 {
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		k.LogError("Unable to get Params in GetV2ResponsibleParticipantsCount", types.System, "error", err)
+		return defaultV2ResponsibleParticipantsCount
+	}
+	if params.InferenceV2Params == nil || params.InferenceV2Params.ResponsibleParticipantsCount == 0 {
+		return defaultV2ResponsibleParticipantsCount
+	}
+	return params.InferenceV2Params.ResponsibleParticipantsCount
 }
 
 func (k Keeper) GetTransferAgentAccessParams(ctx context.Context) *types.TransferAgentAccessParams {

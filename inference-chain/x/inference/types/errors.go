@@ -69,4 +69,6 @@ var (
 	ErrNotSupported                          = sdkerrors.Register(ModuleName, 1163, "operation not supported in current mode")
 	ErrInvalidAddress                        = sdkerrors.Register(ModuleName, 1164, "invalid address")
 	ErrTransferAgentNotAllowlisted           = sdkerrors.Register(ModuleName, 1165, "transfer agent not in allowlist")
+	ErrEscrowModelIdEmpty                    = sdkerrors.Register(ModuleName, 1166, "model id must not be empty")
+	ErrEscrowAlreadyExists                   = sdkerrors.Register(ModuleName, 1167, "escrow id already exists")
 )

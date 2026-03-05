@@ -21,20 +21,27 @@ import (
 const httpClientTimeout = 20 * time.Minute
 
 type Server struct {
-	e                   *echo.Echo
-	nodeBroker          *broker.Broker
-	configManager       *apiconfig.ConfigManager
-	recorder            cosmosclient.CosmosMessageClient
-	trainingExecutor    *training.Executor
-	blockQueue          *BridgeQueue
-	bandwidthLimiter    *internal.BandwidthLimiter
-	identityCache       *identityCache
-	payloadStorage      payloadstorage.PayloadStorage
-	phaseTracker        *chainphase.ChainPhaseTracker
-	epochGroupDataCache *internal.EpochGroupDataCache
-	artifactStore       *artifacts.ManagedArtifactStore
-	authzCache          *authzcache.AuthzCache
-	httpClient          *http.Client
+	e                            *echo.Echo
+	nodeBroker                   *broker.Broker
+	configManager                *apiconfig.ConfigManager
+	recorder                     cosmosclient.CosmosMessageClient
+	trainingExecutor             *training.Executor
+	blockQueue                   *BridgeQueue
+	bandwidthLimiter             *internal.BandwidthLimiter
+	identityCache                *identityCache
+	payloadStorage               payloadstorage.PayloadStorage
+	phaseTracker                 *chainphase.ChainPhaseTracker
+	epochGroupDataCache          *internal.EpochGroupDataCache
+	artifactStore                *artifacts.ManagedArtifactStore
+	authzCache                   *authzcache.AuthzCache
+	httpClient                   *http.Client
+	v2CompletionProxy            v2CompletionProxyFunc
+	v2RelayProxy                 v2RelayProxyFunc
+	v2ParticipantSelector        v2ParticipantSelectorFunc
+	v2ParticipantAddressResolver v2ParticipantAddressResolverFunc
+	v2ExecutorSignerPubKeyResolver v2ExecutorSignerPubKeyResolverFunc
+	v2DeveloperChainStore        *v2DeveloperChainStore
+	v2RequestDeduper             *v2RequestDeduper
 }
 
 // ServerOption configures optional Server dependencies.
@@ -63,19 +70,26 @@ func NewServer(
 	configManagerRef = configManager
 
 	s := &Server{
-		e:                   e,
-		nodeBroker:          nodeBroker,
-		configManager:       configManager,
-		recorder:            recorder,
-		trainingExecutor:    trainingExecutor,
-		blockQueue:          blockQueue,
-		identityCache:       newIdentityCache(),
-		payloadStorage:      payloadStorage,
-		phaseTracker:        phaseTracker,
-		epochGroupDataCache: internal.NewEpochGroupDataCache(recorder),
-		authzCache:          authzcache.NewAuthzCache(recorder),
-		httpClient:          NewNoRedirectClient(httpClientTimeout),
+		e:                     e,
+		nodeBroker:            nodeBroker,
+		configManager:         configManager,
+		recorder:              recorder,
+		trainingExecutor:      trainingExecutor,
+		blockQueue:            blockQueue,
+		identityCache:         newIdentityCache(),
+		payloadStorage:        payloadStorage,
+		phaseTracker:          phaseTracker,
+		epochGroupDataCache:   internal.NewEpochGroupDataCache(recorder),
+		authzCache:            authzcache.NewAuthzCache(recorder),
+		httpClient:            NewNoRedirectClient(httpClientTimeout),
+		v2DeveloperChainStore: newV2DeveloperChainStore(),
+		v2RequestDeduper:      newV2RequestDeduper(),
 	}
+	s.v2CompletionProxy = s.forwardV2CompletionRequest
+	s.v2RelayProxy = s.relayV2CompletionToIntended
+	s.v2ParticipantSelector = s.resolveV2ResponsibleParticipants
+	s.v2ParticipantAddressResolver = s.resolveV2LocalParticipantAddress
+	s.v2ExecutorSignerPubKeyResolver = s.resolveV2ExecutorSignerPubKey
 
 	for _, opt := range opts {
 		opt(s)
@@ -145,6 +159,9 @@ func NewServer(
 
 	// PoC artifact state endpoint (for testermint/validators to get real count and root_hash)
 	g.GET("poc/artifacts/state", s.getPocArtifactsState)
+
+	v2 := e.Group("/v2/")
+	v2.POST("chat/completions", s.postChatV2)
 
 	return s
 }

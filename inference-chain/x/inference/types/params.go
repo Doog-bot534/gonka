@@ -54,6 +54,7 @@ func NewParams() Params {
 const million = 1_000_000
 const billion = 1_000_000_000
 const year = 365 * 24 * 60 * 60
+const DefaultV2ResponsibleParticipantsCount uint32 = 4
 
 func DefaultGenesisOnlyParams() GenesisOnlyParams {
 	return GenesisOnlyParams{
@@ -97,6 +98,9 @@ func DefaultParams() Params {
 			UntilBlockHeight: 0, // disabled by default
 			// Note: proto encoding does not preserve empty-vs-nil for repeated fields; keep nil to match round-trips.
 			AllowedDeveloperAddresses: nil,
+		},
+		InferenceV2Params: &InferenceV2Params{
+			ResponsibleParticipantsCount: DefaultV2ResponsibleParticipantsCount,
 		},
 		ParticipantAccessParams: &ParticipantAccessParams{
 			NewParticipantRegistrationStartHeight: 0,     // disabled by default

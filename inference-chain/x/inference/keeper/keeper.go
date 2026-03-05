@@ -64,6 +64,8 @@ type (
 		TrainingExecAllowListSet  collections.KeySet[sdk.AccAddress]
 		TrainingStartAllowListSet collections.KeySet[sdk.AccAddress]
 		ParticipantAllowListSet   collections.KeySet[sdk.AccAddress]
+		EscrowAccessByID          collections.Map[string, types.EscrowAccess]
+		EscrowGlobalSequence      collections.Item[uint64]
 		PruningState              collections.Item[types.PruningState]
 		InferencesToPrune         collections.Map[collections.Pair[int64, string], collections.NoValue]
 		ActiveInvalidations       collections.KeySet[collections.Pair[sdk.AccAddress, string]]
@@ -308,6 +310,19 @@ func NewKeeper(
 			types.ParticipantAllowListPrefix,
 			"participant_allow_list",
 			sdk.AccAddressKey,
+		),
+		EscrowAccessByID: collections.NewMap(
+			sb,
+			types.EscrowAccessByIDPrefix,
+			"escrow_access_by_id",
+			collections.StringKey,
+			codec.CollValue[types.EscrowAccess](cdc),
+		),
+		EscrowGlobalSequence: collections.NewItem(
+			sb,
+			types.EscrowGlobalSequencePrefix,
+			"escrow_global_sequence",
+			collections.Uint64Value,
 		),
 		PruningState: collections.NewItem(
 			sb,

@@ -167,6 +167,12 @@ data class MsgValidation(
     val revalidation: Boolean = false,
 ) : TxMessage
 
+data class MsgCreateEscrow(
+    override val type: String = "/inference.inference.MsgCreateEscrow",
+    val creator: String = "",
+    val modelId: String = "",
+) : TxMessage
+
 data class MsgClaimRewards(
     override val type: String = "/inference.inference.MsgClaimRewards",
     val creator: String = "",

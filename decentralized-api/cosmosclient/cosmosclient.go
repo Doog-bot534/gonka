@@ -235,6 +235,7 @@ type CosmosMessageClient interface {
 	GetClientContext() sdkclient.Context
 	GetAccountAddress() string
 	GetAccountPubKey() cryptotypes.PubKey
+	GetSignerPubKey() cryptotypes.PubKey
 	GetSignerAddress() string
 	SubmitDealerPart(transaction *blstypes.MsgSubmitDealerPart) error
 	SubmitVerificationVector(transaction *blstypes.MsgSubmitVerificationVector) (*sdk.TxResponse, error)
@@ -281,6 +282,18 @@ func (icc *InferenceCosmosClient) GetAccountAddress() string {
 
 func (icc *InferenceCosmosClient) GetAccountPubKey() cryptotypes.PubKey {
 	return icc.apiAccount.AccountKey
+}
+
+func (icc *InferenceCosmosClient) GetSignerPubKey() cryptotypes.PubKey {
+	if icc.apiAccount.SignerAccount == nil || icc.apiAccount.SignerAccount.Record == nil {
+		return nil
+	}
+	pubKey, err := icc.apiAccount.SignerAccount.Record.GetPubKey()
+	if err != nil {
+		logging.Error("Failed to get signer public key", types.Messages, "error", err)
+		return nil
+	}
+	return pubKey
 }
 
 func (icc *InferenceCosmosClient) GetSignerAddress() string {

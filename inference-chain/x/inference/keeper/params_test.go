@@ -20,6 +20,23 @@ func TestGetParams(t *testing.T) {
 	require.Equal(t, params, outParams)
 }
 
+func TestGetV2ResponsibleParticipantsCount_DefaultAndCustom(t *testing.T) {
+	k, ctx := keepertest.InferenceKeeper(t)
+
+	// Default fallback when params are not explicitly set.
+	require.Equal(t, types.DefaultV2ResponsibleParticipantsCount, k.GetV2ResponsibleParticipantsCount(ctx))
+
+	params := types.DefaultParams()
+	params.InferenceV2Params.ResponsibleParticipantsCount = 7
+	require.NoError(t, k.SetParams(ctx, params))
+	require.Equal(t, uint32(7), k.GetV2ResponsibleParticipantsCount(ctx))
+
+	// Zero is treated as "use software default" for backward compatibility.
+	params.InferenceV2Params.ResponsibleParticipantsCount = 0
+	require.NoError(t, k.SetParams(ctx, params))
+	require.Equal(t, types.DefaultV2ResponsibleParticipantsCount, k.GetV2ResponsibleParticipantsCount(ctx))
+}
+
 func TestTokenomicsParamsGovernance(t *testing.T) {
 	k, ctx := keepertest.InferenceKeeper(t)
 	wctx := sdk.UnwrapSDKContext(ctx)

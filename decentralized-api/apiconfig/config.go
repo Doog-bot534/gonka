@@ -6,24 +6,26 @@ import (
 )
 
 type Config struct {
-	Api                 ApiConfig             `koanf:"api" json:"api"`
-	Nodes               []InferenceNodeConfig `koanf:"nodes" json:"nodes"`
-	NodeConfigIsMerged  bool                  `koanf:"merged_node_config" json:"merged_node_config"`
-	ChainNode           ChainNodeConfig       `koanf:"chain_node" json:"chain_node"`
-	UpcomingSeed        SeedInfo              `koanf:"upcoming_seed" json:"upcoming_seed"`
-	CurrentSeed         SeedInfo              `koanf:"current_seed" json:"current_seed"`
-	PreviousSeed        SeedInfo              `koanf:"previous_seed" json:"previous_seed"`
-	CurrentHeight       int64                 `koanf:"current_height" json:"current_height"`
-	LastProcessedHeight int64                 `koanf:"last_processed_height" json:"last_processed_height"`
-	UpgradePlan         UpgradePlan           `koanf:"upgrade_plan" json:"upgrade_plan"`
-	MLNodeKeyConfig     MLNodeKeyConfig       `koanf:"ml_node_key_config" json:"ml_node_key_config"`
-	Nats                NatsServerConfig      `koanf:"nats" json:"nats"`
-	TxBatching          TxBatchingConfig      `koanf:"tx_batching" json:"tx_batching"`
-	CurrentNodeVersion       string                   `koanf:"current_node_version" json:"current_node_version"`
-	LastUsedVersion          string                   `koanf:"last_used_version" json:"last_used_version"`
-	ValidationParams         ValidationParamsCache    `koanf:"validation_params" json:"validation_params"`
-	BandwidthParams          BandwidthParamsCache     `koanf:"bandwidth_params" json:"bandwidth_params"`
-	TransferAgentAccessCache TransferAgentAccessCache `koanf:"-" json:"-"` // not persisted, synced from chain
+	Api                      ApiConfig                     `koanf:"api" json:"api"`
+	Nodes                    []InferenceNodeConfig         `koanf:"nodes" json:"nodes"`
+	NodeConfigIsMerged       bool                          `koanf:"merged_node_config" json:"merged_node_config"`
+	ChainNode                ChainNodeConfig               `koanf:"chain_node" json:"chain_node"`
+	UpcomingSeed             SeedInfo                      `koanf:"upcoming_seed" json:"upcoming_seed"`
+	CurrentSeed              SeedInfo                      `koanf:"current_seed" json:"current_seed"`
+	PreviousSeed             SeedInfo                      `koanf:"previous_seed" json:"previous_seed"`
+	CurrentHeight            int64                         `koanf:"current_height" json:"current_height"`
+	LastProcessedHeight      int64                         `koanf:"last_processed_height" json:"last_processed_height"`
+	UpgradePlan              UpgradePlan                   `koanf:"upgrade_plan" json:"upgrade_plan"`
+	MLNodeKeyConfig          MLNodeKeyConfig               `koanf:"ml_node_key_config" json:"ml_node_key_config"`
+	Nats                     NatsServerConfig              `koanf:"nats" json:"nats"`
+	TxBatching               TxBatchingConfig              `koanf:"tx_batching" json:"tx_batching"`
+	CurrentNodeVersion       string                        `koanf:"current_node_version" json:"current_node_version"`
+	LastUsedVersion          string                        `koanf:"last_used_version" json:"last_used_version"`
+	ValidationParams         ValidationParamsCache         `koanf:"validation_params" json:"validation_params"`
+	BandwidthParams          BandwidthParamsCache          `koanf:"bandwidth_params" json:"bandwidth_params"`
+	TransferAgentAccessCache TransferAgentAccessCache      `koanf:"-" json:"-"` // not persisted, synced from chain
+	EscrowAccessByID         map[string]EscrowAccessRecord `koanf:"-" json:"-"`
+	EscrowLatestSequenceByID map[string]uint64             `koanf:"-" json:"-"`
 }
 
 type NatsServerConfig struct {
@@ -179,4 +181,15 @@ type BandwidthParamsCache struct {
 type TransferAgentAccessCache struct {
 	AllowedAddresses map[string]struct{} // O(1) lookup
 	IsEnabled        bool                // true if whitelist is non-empty
+}
+
+// EscrowAccessRecord is an in-memory access grant loaded from chain events.
+// It is intentionally not persisted yet.
+type EscrowAccessRecord struct {
+	EscrowID         string
+	DeveloperAddress string
+	DeveloperPubKey  string
+	ModelID          string
+	EpochID          uint64
+	BlockHeight      int64
 }

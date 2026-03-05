@@ -238,6 +238,13 @@ func (d *OnNewBlockDispatcher) ProcessNewBlock(ctx context.Context, blockInfo ch
 				d.phaseTracker.UpdatePocV2Enabled(params.Params.PocParams.PocV2Enabled)
 				d.phaseTracker.UpdateConfirmationPocV2Enabled(params.Params.PocParams.ConfirmationPocV2Enabled)
 			}
+
+			// Update inference-v2 participant selection count cache.
+			if params.Params.InferenceV2Params != nil {
+				d.phaseTracker.UpdateV2ResponsibleParticipantsCount(params.Params.InferenceV2Params.ResponsibleParticipantsCount)
+			} else {
+				d.phaseTracker.UpdateV2ResponsibleParticipantsCount(types.DefaultV2ResponsibleParticipantsCount)
+			}
 		}
 	}
 

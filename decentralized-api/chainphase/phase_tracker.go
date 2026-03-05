@@ -15,12 +15,13 @@ type ChainPhaseTracker struct {
 	currentBlock BlockInfo
 	// latestEpoch is not the effective epoch, but the latest epoch that has been set
 	// so if PoC has just started it will be effectiveEpoch + 1
-	latestEpoch                *types.Epoch
-	currentEpochParams         *types.EpochParams
-	currentIsSynced            bool
-	activeConfirmationPoCEvent *types.ConfirmationPoCEvent
-	pocV2Enabled               bool // cached from PocParams.PocV2Enabled, default false (set from chain)
-	confirmationPocV2Enabled   bool // cached from PocParams.ConfirmationPocV2Enabled, default true
+	latestEpoch                    *types.Epoch
+	currentEpochParams             *types.EpochParams
+	currentIsSynced                bool
+	activeConfirmationPoCEvent     *types.ConfirmationPoCEvent
+	pocV2Enabled                   bool   // cached from PocParams.PocV2Enabled, default false (set from chain)
+	confirmationPocV2Enabled       bool   // cached from PocParams.ConfirmationPocV2Enabled, default true
+	v2ResponsibleParticipantsCount uint32 // cached from InferenceV2Params.ResponsibleParticipantsCount
 }
 
 type BlockInfo struct {
@@ -31,8 +32,9 @@ type BlockInfo struct {
 // NewChainPhaseTracker creates a new ChainPhaseTracker instance.
 func NewChainPhaseTracker() *ChainPhaseTracker {
 	return &ChainPhaseTracker{
-		pocV2Enabled:             false, // Start false, will be set from chain params
-		confirmationPocV2Enabled: true,  // V2 is default going forward
+		pocV2Enabled:                   false, // Start false, will be set from chain params
+		confirmationPocV2Enabled:       true,  // V2 is default going forward
+		v2ResponsibleParticipantsCount: types.DefaultV2ResponsibleParticipantsCount,
 	}
 }
 
@@ -133,4 +135,25 @@ func (t *ChainPhaseTracker) IsConfirmationPoCv2Enabled() bool {
 	defer t.mu.RUnlock()
 
 	return t.confirmationPocV2Enabled
+}
+
+func (t *ChainPhaseTracker) UpdateV2ResponsibleParticipantsCount(count uint32) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if count == 0 {
+		t.v2ResponsibleParticipantsCount = types.DefaultV2ResponsibleParticipantsCount
+		return
+	}
+	t.v2ResponsibleParticipantsCount = count
+}
+
+func (t *ChainPhaseTracker) GetV2ResponsibleParticipantsCount() uint32 {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	if t.v2ResponsibleParticipantsCount == 0 {
+		return types.DefaultV2ResponsibleParticipantsCount
+	}
+	return t.v2ResponsibleParticipantsCount
 }

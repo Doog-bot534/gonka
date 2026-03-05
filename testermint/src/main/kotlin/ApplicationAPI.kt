@@ -16,6 +16,7 @@ import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
+import java.security.MessageDigest
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -23,6 +24,21 @@ import java.net.URLEncoder
 const val SERVER_TYPE_PUBLIC = "public"
 const val SERVER_TYPE_ML = "ml"
 const val SERVER_TYPE_ADMIN = "admin"
+
+data class V2InferenceResponse(
+    val openAIResponse: OpenAIResponse,
+    val latestBlockSequence: Long,
+    val responsePayloadHash: String? = null,
+    val executorAddress: String? = null,
+    val executorSignerAddress: String? = null,
+    val executorSignerPubKey: String? = null,
+    val executorSignature: String? = null,
+)
+
+data class V2InferenceStreamConnection(
+    val latestBlockSequence: Long,
+    val streamConnection: StreamConnection,
+)
 
 data class ApplicationAPI(
     val urls: Map<String, String>,
@@ -134,6 +150,52 @@ data class ApplicationAPI(
             response.third.get()
         }
 
+    fun makeInferenceRequestV2(
+        request: String,
+        requesterAddress: String,
+        escrowId: String,
+        sequence: Long,
+        epochId: Long,
+    ): V2InferenceResponse =
+        wrapLog("MakeInferenceRequestV2", true) {
+            val url = urlFor(SERVER_TYPE_PUBLIC)
+            val response = Fuel.post((url + "/v2/chat/completions"))
+                .jsonBody(request)
+                .header("X-Requester-Address", requesterAddress)
+                .header("X-Escrow-Id", escrowId)
+                .header("X-Escrow-Sequence", sequence)
+                .header("X-Epoch-Id", epochId)
+                .timeout(1000 * 60)
+                .timeoutRead(1000 * 60)
+                .responseString()
+            logResponse(response)
+            val rawResponseBody = response.third.get()
+            val openAIResponse = cosmosJson.fromJson(rawResponseBody, OpenAIResponse::class.java)
+            val latestBlockSequence = response.second.headers["X-Latest-Block-Sequence"]
+                ?.lastOrNull()
+                ?.toLongOrNull()
+                ?: error("Missing or invalid X-Latest-Block-Sequence header in v2 response")
+            val executorAddress = response.second.headers["X-V2-Executor-Address"]?.lastOrNull()
+            val executorSignerAddress = response.second.headers["X-V2-Executor-Signer-Address"]?.lastOrNull()
+            val executorSignerPubKey = response.second.headers["X-V2-Executor-Signer-PubKey"]?.lastOrNull()
+            val executorSignature = response.second.headers["X-V2-Executor-Signature"]?.lastOrNull()
+            val responsePayloadHash = sha256Hex(rawResponseBody.toByteArray(Charsets.UTF_8))
+            V2InferenceResponse(
+                openAIResponse = openAIResponse,
+                latestBlockSequence = latestBlockSequence,
+                responsePayloadHash = responsePayloadHash,
+                executorAddress = executorAddress,
+                executorSignerAddress = executorSignerAddress,
+                executorSignerPubKey = executorSignerPubKey,
+                executorSignature = executorSignature,
+            )
+        }
+
+    private fun sha256Hex(input: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        return digest.digest(input).joinToString("") { "%02x".format(it) }
+    }
+
     fun makeStreamedInferenceRequest(
         request: String,
         address: String,
@@ -166,6 +228,25 @@ data class ApplicationAPI(
                 signature = signature,
                 jsonBody = request,
                 timestamp = timestamp
+            )
+        }
+
+    fun createInferenceStreamConnectionV2(
+        request: String,
+        requesterAddress: String,
+        escrowId: String,
+        sequence: Long,
+        epochId: Long,
+    ): V2InferenceStreamConnection =
+        wrapLog("CreateInferenceStreamConnectionV2", true) {
+            val url = urlFor(SERVER_TYPE_PUBLIC)
+            createV2StreamConnection(
+                url = "$url/v2/chat/completions",
+                requesterAddress = requesterAddress,
+                escrowId = escrowId,
+                sequence = sequence,
+                epochId = epochId,
+                jsonBody = request,
             )
         }
 
@@ -572,6 +653,54 @@ fun createStreamConnection(
         connection.disconnect()
         throw RuntimeException("Failed to connect to API: ResponseCode=$responseCode")
     }
+}
+
+fun createV2StreamConnection(
+    url: String,
+    requesterAddress: String,
+    escrowId: String,
+    sequence: Long,
+    epochId: Long,
+    jsonBody: String,
+): V2InferenceStreamConnection {
+    val endpoint = URL(url)
+    val connection = endpoint.openConnection() as HttpURLConnection
+    connection.requestMethod = "POST"
+    connection.setRequestProperty("X-Requester-Address", requesterAddress)
+    connection.setRequestProperty("X-Escrow-Id", escrowId)
+    connection.setRequestProperty("X-Escrow-Sequence", sequence.toString())
+    connection.setRequestProperty("X-Epoch-Id", epochId.toString())
+    connection.setRequestProperty("Content-Type", "application/json")
+    connection.doOutput = true
+
+    connection.outputStream.use { outputStream ->
+        BufferedWriter(OutputStreamWriter(outputStream, "UTF-8")).use { writer ->
+            writer.write(jsonBody)
+            writer.flush()
+        }
+    }
+
+    val responseCode = connection.responseCode
+    if (responseCode == HttpURLConnection.HTTP_OK) {
+        val latestBlockSequence = connection.getHeaderField("X-Latest-Block-Sequence")
+            ?.toLongOrNull()
+            ?: run {
+                connection.disconnect()
+                throw RuntimeException("Missing or invalid X-Latest-Block-Sequence header in v2 stream response")
+            }
+        val reader = BufferedReader(InputStreamReader(connection.inputStream))
+        return V2InferenceStreamConnection(
+            latestBlockSequence = latestBlockSequence,
+            streamConnection = StreamConnection(connection, reader),
+        )
+    }
+
+    val errorText = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+    connection.disconnect()
+    throw RuntimeException(
+        "Failed to connect to v2 API: ResponseCode=$responseCode" +
+            if (errorText.isNotBlank()) " Body=$errorText" else ""
+    )
 }
 
 /**

@@ -306,6 +306,41 @@ func (cm *ConfigManager) GetTransferAgentAccessCache() TransferAgentAccessCache 
 	return cm.currentConfig.TransferAgentAccessCache
 }
 
+func (cm *ConfigManager) UpsertEscrowAccessRecord(record EscrowAccessRecord) {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+
+	if cm.currentConfig.EscrowAccessByID == nil {
+		cm.currentConfig.EscrowAccessByID = make(map[string]EscrowAccessRecord)
+	}
+	cm.currentConfig.EscrowAccessByID[record.EscrowID] = record
+}
+
+func (cm *ConfigManager) GetEscrowAccessRecord(escrowID string) (EscrowAccessRecord, bool) {
+	cm.mutex.RLock()
+	defer cm.mutex.RUnlock()
+
+	record, ok := cm.currentConfig.EscrowAccessByID[escrowID]
+	return record, ok
+}
+
+func (cm *ConfigManager) RecordEscrowSequenceIfIncreasing(escrowID string, sequence uint64) bool {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+
+	if cm.currentConfig.EscrowLatestSequenceByID == nil {
+		cm.currentConfig.EscrowLatestSequenceByID = make(map[string]uint64)
+	}
+
+	lastSequence := cm.currentConfig.EscrowLatestSequenceByID[escrowID]
+	if sequence <= lastSequence {
+		return false
+	}
+
+	cm.currentConfig.EscrowLatestSequenceByID[escrowID] = sequence
+	return true
+}
+
 func (cm *ConfigManager) GetHeight() int64 {
 	return cm.currentConfig.CurrentHeight
 }
