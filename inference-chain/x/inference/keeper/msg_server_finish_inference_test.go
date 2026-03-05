@@ -218,11 +218,12 @@ func TestMsgServer_FinishInference_ParamsCacheDoesNotLeakAcrossCalls(t *testing.
 	}
 	require.NoError(t, k.SetParams(ctx, params))
 
+	AddParticipantToActive(ctx, &k, testutil.Executor, 1)
 	firstResp, err := ms.FinishInference(ctx, &types.MsgFinishInference{
 		InferenceId: "cache-test-finish-1",
 		RequestedBy: testutil.Requester,
 		ExecutedBy:  testutil.Executor,
-		Creator:     testutil.Creator,
+		Creator:     testutil.Executor,
 	})
 	require.NoError(t, err)
 	require.NotContains(t, firstResp.ErrorMessage, types.ErrDeveloperNotAllowlisted.Error())
@@ -238,7 +239,7 @@ func TestMsgServer_FinishInference_ParamsCacheDoesNotLeakAcrossCalls(t *testing.
 		InferenceId: "cache-test-finish-2",
 		RequestedBy: testutil.Requester,
 		ExecutedBy:  testutil.Executor,
-		Creator:     testutil.Creator,
+		Creator:     testutil.Executor,
 	})
 	require.NoError(t, err)
 	require.Contains(t, secondResp.ErrorMessage, types.ErrDeveloperNotAllowlisted.Error())
