@@ -70,7 +70,7 @@ func InvalidationsSamplePeriodToBlocks(invalidationsSamplePeriodSeconds uint64) 
 }
 
 func SecondsToBlocks(windowSeconds uint64) uint64 {
-	windowBlocks := (windowSeconds + DynamicPricingEstimatedBlockSeconds - 1) / DynamicPricingEstimatedBlockSeconds
+	windowBlocks := windowSeconds / DynamicPricingEstimatedBlockSeconds
 	if windowBlocks == 0 {
 		return 1
 	}
