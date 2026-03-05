@@ -43,7 +43,7 @@ func (d *DisabledStorage) GetDebugStats(ctx context.Context) (DebugStats, error)
 }
 
 func (d *DisabledStorage) PruneOlderThan(ctx context.Context, cutoffTimestamp UnixMillis) error {
-	return ErrStatsDisabled
+	return nil
 }
 
 func (d *DisabledStorage) Close() {}
