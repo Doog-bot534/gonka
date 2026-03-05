@@ -24,7 +24,10 @@ func NewStatsStorage(ctx context.Context) (StatsStorage, error) {
 			logging.Info("Using PostgreSQL stats storage", types.System, "host", pgHost, "retention_days", retentionDays)
 			return NewManagedStorage(pgStorage, retentionDays), nil
 		}
-		logging.Warn("PostgreSQL stats storage init failed", types.System, "host", pgHost, "error", err)
+		logging.Error("PostgreSQL stats storage init failed", types.System, "host", pgHost, "error", err)
+		// Fail. If they want to be running PostgreSQL and init fails, better to stop and allow them to fix the feature than continue
+		// and lose data silently
+		return nil, err
 	}
 
 	if os.Getenv("DAPI_STATS_FILE_STORAGE_ENABLED") == "true" {
@@ -32,7 +35,7 @@ func NewStatsStorage(ctx context.Context) (StatsStorage, error) {
 		if fileBasePath == "" {
 			fileBasePath = "/root/.dapi/data/stats"
 		}
-		logging.Warn("CRITICAL: File-based stats storage is ENABLED. This is risky and NOT RECOMMENDED for high-volume nodes as it can cause performance degradation and crashes.", types.System, "path", fileBasePath)
+		logging.Warn("CRITICAL: File-based stats storage is ENABLED. Use at your own peril.", types.System, "path", fileBasePath)
 		fileStorage := NewFileStorage(fileBasePath)
 		return NewManagedStorage(fileStorage, retentionDays), nil
 	}

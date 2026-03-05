@@ -11,11 +11,11 @@ var ErrStatsDisabled = errors.New("stats storage is disabled")
 type DisabledStorage struct{}
 
 func (d *DisabledStorage) UpsertInference(ctx context.Context, rec InferenceRecord) error {
-	return ErrStatsDisabled
+	return nil
 }
 
 func (d *DisabledStorage) UpdateInferenceStatus(ctx context.Context, inferenceID, status string) error {
-	return ErrStatsDisabled
+	return nil
 }
 
 func (d *DisabledStorage) GetDeveloperInferencesByTime(ctx context.Context, developer string, timeFrom, timeTo UnixMillis) ([]InferenceRecord, error) {
