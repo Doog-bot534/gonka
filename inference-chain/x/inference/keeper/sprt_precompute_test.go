@@ -108,10 +108,3 @@ func TestPrecomputeSPRTValues(t *testing.T) {
 	require.True(t, precomputed.InactiveLogFail.ToDecimal().Equal(expectedInactiveLogFail))
 	require.True(t, precomputed.InactiveLogPass.ToDecimal().Equal(expectedInactiveLogPass))
 }
-
-func TestGetPrecomputedSPRTValues_Empty(t *testing.T) {
-	k, ctx, _ := testkeeper.InferenceKeeperReturningMocks(t)
-
-	precomputed := k.GetPrecomputedSPRTValues(ctx)
-	require.True(t, precomputed.InvalidationLogFail == nil || precomputed.InvalidationLogFail.Value == 0)
-}

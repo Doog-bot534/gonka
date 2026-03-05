@@ -228,7 +228,8 @@ func TestMsgServer_Validation_InvalidationsLimit_NoStatusChange_ButRecordsCredit
 	params.BandwidthLimitsParams.InvalidationsLimit = 1
 	params.BandwidthLimitsParams.InvalidationsLimitCurve = 1
 	params.BandwidthLimitsParams.InvalidationsSamplePeriod = 60
-	k.SetParams(ctx, params)
+	err = k.SetParams(ctx, params)
+	require.NoError(t, err)
 
 	// Pre-populate one active invalidation for the validator so we hit the limit (>= 1)
 	err = k.ActiveInvalidations.Set(ctx, collections.Join(sdk.MustAccAddressFromBech32(testutil.Validator), "prev-inference"))

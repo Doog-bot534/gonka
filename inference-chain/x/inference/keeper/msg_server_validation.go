@@ -224,7 +224,7 @@ func (k msgServer) MaximumInvalidationsReached(ctx sdk.Context, creator sdk.AccA
 		return false
 	}
 
-	windowBlocks := invalidationsSamplePeriodToBlocks(params.BandwidthLimitsParams.InvalidationsSamplePeriod)
+	windowBlocks := types.InvalidationsSamplePeriodToBlocks(params.BandwidthLimitsParams.InvalidationsSamplePeriod)
 	inferencesForModel := int64(0)
 	rollingInferenceCount, found, err := k.GetModelInferenceCountRollingSum(ctx, data.ModelId, windowBlocks)
 	if err != nil {

@@ -4,15 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 
 	"cosmossdk.io/collections"
 	"github.com/productscience/inference/x/inference/types"
 	"github.com/shopspring/decimal"
-)
-
-const (
-	dynamicPricingEstimatedBlockSeconds = uint64(5)
 )
 
 type rollingWindowState struct {
@@ -60,8 +55,8 @@ func (k Keeper) UpdateModelRollingWindowsForActiveModels(
 	modelBlockInferenceCounts map[string]uint64,
 	invalidationsSamplePeriodSeconds uint64,
 ) error {
-	loadWindowBlocks := utilizationWindowToBlocks(utilizationWindowSeconds)
-	inferenceCountWindowBlocks := invalidationsSamplePeriodToBlocks(invalidationsSamplePeriodSeconds)
+	loadWindowBlocks := types.UtilizationWindowToBlocks(utilizationWindowSeconds)
+	inferenceCountWindowBlocks := types.InvalidationsSamplePeriodToBlocks(invalidationsSamplePeriodSeconds)
 
 	activeSet := make(map[string]struct{}, len(activeModels))
 	for _, modelID := range activeModels {
@@ -113,7 +108,7 @@ func (k Keeper) updateModelRollingWindowState(
 		state = rollingWindowState{}
 	}
 
-	state = state.normalize(windowBlocksToSize(windowBlocks))
+	state = state.normalize(types.WindowBlocksToSize(windowBlocks))
 	state = state.push(newValue)
 	return k.setModelRollingWindowState(ctx, stateMap, modelID, state)
 }
@@ -127,7 +122,7 @@ func (k Keeper) GetModelLoadRollingAveragePerBlock(ctx context.Context, modelID 
 		return decimal.Zero, false, nil
 	}
 
-	state = state.normalize(windowBlocksToSize(windowBlocks))
+	state = state.normalize(types.WindowBlocksToSize(windowBlocks))
 	if len(state.Values) == 0 {
 		return decimal.Zero, true, nil
 	}
@@ -144,7 +139,7 @@ func (k Keeper) GetModelInferenceCountRollingSum(ctx context.Context, modelID st
 		return 0, false, nil
 	}
 
-	state = state.normalize(windowBlocksToSize(windowBlocks))
+	state = state.normalize(types.WindowBlocksToSize(windowBlocks))
 	return state.Sum, true, nil
 }
 
@@ -255,30 +250,4 @@ func (s rollingWindowState) toProto() types.RollingWindowState {
 		Values: append([]uint64(nil), s.Values...),
 		Sum:    s.Sum,
 	}
-}
-
-func utilizationWindowToBlocks(utilizationWindowSeconds uint64) uint64 {
-	return secondsToBlocks(utilizationWindowSeconds)
-}
-
-func invalidationsSamplePeriodToBlocks(invalidationsSamplePeriodSeconds uint64) uint64 {
-	return secondsToBlocks(invalidationsSamplePeriodSeconds)
-}
-
-func secondsToBlocks(windowSeconds uint64) uint64 {
-	windowBlocks := windowSeconds / dynamicPricingEstimatedBlockSeconds
-	if windowBlocks == 0 {
-		return 1
-	}
-	return windowBlocks
-}
-
-func windowBlocksToSize(windowBlocks uint64) int64 {
-	if windowBlocks == 0 {
-		return 1
-	}
-	if windowBlocks > uint64(math.MaxInt64) {
-		return math.MaxInt64
-	}
-	return int64(windowBlocks)
 }
