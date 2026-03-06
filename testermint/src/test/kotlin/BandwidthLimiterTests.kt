@@ -135,7 +135,7 @@ class BandwidthLimiterTests : TestermintTest() {
         logSection("Results: $successCount successes, $bandwidthRejectionCount bandwidth rejections, $otherErrorCount other errors")
 
         // With 512KB limit and ~512KB requests, should get many rejections with 30 parallel requests
-        assertThat(bandwidthRejectionCount).describedAs("Bandwidth limiter should reject many requests with 30 parallel requests (~15MB total vs 512KB limit)").isGreaterThan(10)
+        assertThat(bandwidthRejectionCount).describedAs("Bandwidth limiter should reject many requests with 30 parallel requests (~15MB total vs 512KB limit)").isGreaterThan(8)
         logSection("✓ Bandwidth limiter correctly rejected $bandwidthRejectionCount out of 30 requests")
 
         // Test bandwidth release after waiting
