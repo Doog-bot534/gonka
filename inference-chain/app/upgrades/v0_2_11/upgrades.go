@@ -40,6 +40,11 @@ func CreateUpgradeHandler(
 			return fromVM, err
 		}
 
+		err = k.MigrateEpochGroupValidationsToEntries(ctx)
+		if err != nil {
+			return fromVM, err
+		}
+
 		toVM, err := mm.RunMigrations(ctx, configurator, fromVM)
 		if err != nil {
 			return toVM, err

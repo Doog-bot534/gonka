@@ -20,8 +20,8 @@ func createNEpochGroupValidations(keeper keeper.Keeper, ctx context.Context, n i
 	for i := range items {
 		items[i].Participant = strconv.Itoa(i)
 		items[i].EpochIndex = uint64(i)
-
-		keeper.SetEpochGroupValidations(ctx, items[i])
+		items[i].ValidatedInferences = []string{strconv.Itoa(i)}
+		_ = keeper.SeedEpochGroupValidationEntries(ctx, items[i])
 	}
 	return items
 }
@@ -41,22 +41,6 @@ func TestEpochGroupValidationsGet(t *testing.T) {
 		)
 	}
 }
-func TestEpochGroupValidationsRemove(t *testing.T) {
-	keeper, ctx := keepertest.InferenceKeeper(t)
-	items := createNEpochGroupValidations(keeper, ctx, 10)
-	for _, item := range items {
-		keeper.RemoveEpochGroupValidations(ctx,
-			item.Participant,
-			item.EpochIndex,
-		)
-		_, found := keeper.GetEpochGroupValidations(ctx,
-			item.Participant,
-			item.EpochIndex,
-		)
-		require.False(t, found)
-	}
-}
-
 func TestEpochGroupValidationsGetAll(t *testing.T) {
 	keeper, ctx := keepertest.InferenceKeeper(t)
 	items := createNEpochGroupValidations(keeper, ctx, 10)
