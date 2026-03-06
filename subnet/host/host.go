@@ -422,6 +422,13 @@ func (h *Host) maybeRevealSeed() {
 		}
 	}
 
+	// Check if already revealed in state.
+	for slot := range h.slotIDs {
+		if h.sm.IsSlotRevealed(slot) {
+			return
+		}
+	}
+
 	// Pick first owned slot as representative.
 	var repSlot uint32
 	for slot := range h.slotIDs {
@@ -581,8 +588,7 @@ func (h *Host) challengeReceiptLocked(inferenceID uint64, payload *InferencePayl
 		}
 	}
 
-	st := h.sm.SnapshotState()
-	rec, ok := st.Inferences[inferenceID]
+	rec, ok := h.sm.GetInference(inferenceID)
 	if !ok || rec.Status != types.StatusPending {
 		return nil, 0, nil, nil
 	}

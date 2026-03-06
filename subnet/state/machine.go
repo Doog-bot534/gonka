@@ -3,6 +3,7 @@ package state
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"slices"
 
 	"google.golang.org/protobuf/proto"
@@ -211,9 +212,7 @@ func (sm *StateMachine) SnapshotState() types.EscrowState {
 
 	// Deep copy RevealedSeeds.
 	s.RevealedSeeds = make(map[uint32]int64, len(sm.state.RevealedSeeds))
-	for k, v := range sm.state.RevealedSeeds {
-		s.RevealedSeeds[k] = v
-	}
+	maps.Copy(s.RevealedSeeds, sm.state.RevealedSeeds)
 
 	// Deep copy Inferences.
 	s.Inferences = make(map[uint64]*types.InferenceRecord, len(sm.state.Inferences))
@@ -229,9 +228,7 @@ func (sm *StateMachine) SnapshotState() types.EscrowState {
 		}
 		if v.VotedSlots != nil {
 			cp.VotedSlots = make(map[uint32]bool, len(v.VotedSlots))
-			for sk, sv := range v.VotedSlots {
-				cp.VotedSlots[sk] = sv
-			}
+			maps.Copy(cp.VotedSlots, v.VotedSlots)
 		}
 		s.Inferences[k] = &cp
 	}
@@ -254,9 +251,7 @@ func (sm *StateMachine) snapshotMutable() mutableSnapshot {
 		cp := *v
 		if v.VotedSlots != nil {
 			cp.VotedSlots = make(map[uint32]bool, len(v.VotedSlots))
-			for sk, sv := range v.VotedSlots {
-				cp.VotedSlots[sk] = sv
-			}
+			maps.Copy(cp.VotedSlots, v.VotedSlots)
 		}
 		if v.PromptHash != nil {
 			cp.PromptHash = make([]byte, len(v.PromptHash))
@@ -276,9 +271,7 @@ func (sm *StateMachine) snapshotMutable() mutableSnapshot {
 	}
 
 	seedsCopy := make(map[uint32]int64, len(sm.state.RevealedSeeds))
-	for k, v := range sm.state.RevealedSeeds {
-		seedsCopy[k] = v
-	}
+	maps.Copy(seedsCopy, sm.state.RevealedSeeds)
 
 	return mutableSnapshot{
 		Balance:       sm.state.Balance,
@@ -519,8 +512,8 @@ func (sm *StateMachine) applyValidationVote(msg *types.MsgValidationVote) error 
 
 	// Dedup by address: a multi-slot validator votes once for all its slots.
 	voterAddr := sm.slotToAddress[msg.VoterSlot]
-	for slot, voted := range rec.VotedSlots {
-		if voted && sm.slotToAddress[slot] == voterAddr {
+	for _, slot := range slices.Sorted(maps.Keys(rec.VotedSlots)) {
+		if rec.VotedSlots[slot] && sm.slotToAddress[slot] == voterAddr {
 			return fmt.Errorf("%w: slot %d (address %s already voted via slot %d)", types.ErrDuplicateVote, msg.VoterSlot, voterAddr, slot)
 		}
 	}
@@ -534,8 +527,8 @@ func (sm *StateMachine) applyValidationVote(msg *types.MsgValidationVote) error 
 
 	// Mark ALL slots owned by this address as voted (deterministic dedup + hash).
 	weight := sm.addressToSlotCount[voterAddr]
-	for slot, addr := range sm.slotToAddress {
-		if addr == voterAddr {
+	for _, slot := range slices.Sorted(maps.Keys(sm.slotToAddress)) {
+		if sm.slotToAddress[slot] == voterAddr {
 			rec.VotedSlots[slot] = true
 		}
 	}
@@ -667,7 +660,7 @@ func (sm *StateMachine) applyRevealSeed(msg *types.MsgRevealSeed) error {
 	}
 
 	// Dedup by address: check if any slot owned by same address already revealed.
-	for slot := range sm.state.RevealedSeeds {
+	for _, slot := range slices.Sorted(maps.Keys(sm.state.RevealedSeeds)) {
 		if sm.slotToAddress[slot] == revealerAddr {
 			return fmt.Errorf("%w: address %s already revealed via slot %d", types.ErrDuplicateSeedReveal, revealerAddr, slot)
 		}
@@ -688,7 +681,8 @@ func (sm *StateMachine) applyRevealSeed(msg *types.MsgRevealSeed) error {
 	requiredValidations := uint32(0)
 	completedValidations := uint32(0)
 
-	for infID, rec := range sm.state.Inferences {
+	for _, infID := range slices.Sorted(maps.Keys(sm.state.Inferences)) {
+		rec := sm.state.Inferences[infID]
 		// Only consider finished-like statuses.
 		switch rec.Status {
 		case types.StatusFinished, types.StatusChallenged, types.StatusValidated, types.StatusInvalidated:
@@ -707,7 +701,7 @@ func (sm *StateMachine) applyRevealSeed(msg *types.MsgRevealSeed) error {
 		if ShouldValidate(seed, infID, validatorSlotCount, executorSlotCount, sm.totalSlots, sm.state.Config.ValidationRate) {
 			requiredValidations++
 			// Check if this validator actually validated this inference.
-			if rec.ValidatorSlot != 0 || rec.Status == types.StatusChallenged || rec.Status == types.StatusValidated || rec.Status == types.StatusInvalidated {
+			if rec.Status == types.StatusChallenged || rec.Status == types.StatusValidated || rec.Status == types.StatusInvalidated {
 				validatorAddr := sm.slotToAddress[rec.ValidatorSlot]
 				if validatorAddr == revealerAddr {
 					completedValidations++
@@ -717,8 +711,8 @@ func (sm *StateMachine) applyRevealSeed(msg *types.MsgRevealSeed) error {
 	}
 
 	// Write compliance to all HostStats entries owned by this address.
-	for slot, addr := range sm.slotToAddress {
-		if addr == revealerAddr {
+	for _, slot := range slices.Sorted(maps.Keys(sm.slotToAddress)) {
+		if sm.slotToAddress[slot] == revealerAddr {
 			if hs, ok := sm.state.HostStats[slot]; ok {
 				hs.RequiredValidations = requiredValidations
 				hs.CompletedValidations = completedValidations
@@ -777,6 +771,36 @@ func (sm *StateMachine) SlotAddress(slotID uint32) string {
 
 func (sm *StateMachine) AddressSlotCount(addr string) uint32 {
 	return sm.addressToSlotCount[addr]
+}
+
+// IsSlotRevealed returns true if the given slot has already revealed its seed.
+func (sm *StateMachine) IsSlotRevealed(slotID uint32) bool {
+	_, ok := sm.state.RevealedSeeds[slotID]
+	return ok
+}
+
+// GetInference returns a copy of the inference record for the given ID.
+func (sm *StateMachine) GetInference(id uint64) (types.InferenceRecord, bool) {
+	rec, ok := sm.state.Inferences[id]
+	if !ok {
+		return types.InferenceRecord{}, false
+	}
+	return *rec, ok
+}
+
+// RevealedSlots returns a shallow copy of the revealed seeds map.
+func (sm *StateMachine) RevealedSlots() map[uint32]int64 {
+	if len(sm.state.RevealedSeeds) == 0 {
+		return nil
+	}
+	cp := make(map[uint32]int64, len(sm.state.RevealedSeeds))
+	maps.Copy(cp, sm.state.RevealedSeeds)
+	return cp
+}
+
+// VoteThreshold returns the session's vote threshold.
+func (sm *StateMachine) VoteThreshold() uint32 {
+	return sm.state.Config.VoteThreshold
 }
 
 func SortedSlotIDs(group []types.SlotAssignment) []uint32 {

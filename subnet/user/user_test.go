@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"testing"
 
@@ -407,4 +408,88 @@ func (m *mockTimeoutVerifier) VerifyTimeout(_ context.Context, inferenceID uint6
 		return false, nil, 0, err
 	}
 	return true, sig, voterSlot, nil
+}
+
+func TestUser_Finalize_SeedRevealAndSettlement(t *testing.T) {
+	numHosts := 3
+	hosts := make([]*signing.Secp256k1Signer, numHosts)
+	for i := range hosts {
+		hosts[i] = testutil.MustGenerateKey(t)
+	}
+	userKey := testutil.MustGenerateKey(t)
+	group := testutil.MakeGroup(hosts)
+	config := types.SessionConfig{
+		RefusalTimeout:   60,
+		ExecutionTimeout: 1200,
+		TokenPrice:       1,
+		VoteThreshold:    uint32(numHosts) / 2,
+		ValidationRate:   10000, // 100%
+	}
+	verifier := signing.NewSecp256k1Verifier()
+
+	clients := make([]HostClient, numHosts)
+	for i := range hosts {
+		sm := state.NewStateMachine("escrow-1", config, group, 100000, userKey.Address(), verifier)
+		engine := stub.NewInferenceEngine()
+		h, err := host.NewHost(sm, hosts[i], engine, "escrow-1", group, nil, host.WithGrace(100))
+		require.NoError(t, err)
+		clients[i] = &InProcessClient{Host: h}
+	}
+
+	userSM := state.NewStateMachine("escrow-1", config, group, 100000, userKey.Address(), verifier)
+	session, err := NewSession(userSM, userKey, "escrow-1", group, clients)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	params := InferenceParams{
+		Model: "llama", Prompt: []byte("prompt"),
+		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
+	}
+
+	// Send 3 inferences (one per host via round-robin).
+	for i := 0; i < numHosts; i++ {
+		_, err := session.SendInference(ctx, params)
+		require.NoError(t, err)
+	}
+
+	err = session.Finalize(ctx)
+	require.NoError(t, err)
+
+	st := session.StateMachine().SnapshotState()
+
+	// All 3 hosts should have revealed seeds.
+	require.Len(t, st.RevealedSeeds, numHosts, "all hosts should have revealed seeds")
+	for slot := range st.RevealedSeeds {
+		require.Contains(t, st.RevealedSeeds, slot)
+	}
+
+	// With 100% validation rate, non-executor hosts should have RequiredValidations > 0.
+	hasRequired := false
+	for _, hs := range st.HostStats {
+		if hs.RequiredValidations > 0 {
+			hasRequired = true
+			break
+		}
+	}
+	require.True(t, hasRequired, "at least one host should have RequiredValidations > 0")
+
+	// Build settlement and verify Merkle proof.
+	finalNonce := session.Nonce()
+	sigs := session.Signatures()
+	latestSigs, ok := sigs[finalNonce]
+	require.True(t, ok, "should have signatures for final nonce")
+
+	payload, err := state.BuildSettlement(st, latestSigs, finalNonce)
+	require.NoError(t, err)
+
+	// Verify: stateRoot == sha256(hostStatsHash || restHash).
+	hostStatsHash, err := state.ComputeHostStatsHash(st.HostStats)
+	require.NoError(t, err)
+
+	h := sha256.New()
+	h.Write(hostStatsHash)
+	h.Write(payload.RestHash)
+	expectedRoot := h.Sum(nil)
+
+	require.Equal(t, expectedRoot, payload.StateRoot, "stateRoot should equal sha256(hostStatsHash || restHash)")
 }

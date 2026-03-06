@@ -1,6 +1,8 @@
 package state
 
 import (
+	"crypto/sha256"
+
 	"subnet/types"
 )
 
@@ -25,12 +27,10 @@ func BuildSettlement(st types.EscrowState, signatures map[uint32][]byte, nonce u
 		return nil, err
 	}
 
-	stateRoot, err := ComputeStateRoot(st.Balance, st.HostStats, st.Inferences)
-	if err != nil {
-		return nil, err
-	}
-
-	_ = hostStatsHash // used implicitly via stateRoot = sha256(hostStatsHash || restHash)
+	h := sha256.New()
+	h.Write(hostStatsHash)
+	h.Write(restHash)
+	stateRoot := h.Sum(nil)
 
 	return &SettlementPayload{
 		StateRoot:  stateRoot,

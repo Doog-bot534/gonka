@@ -477,14 +477,14 @@ func (s *Session) clearPendingTxs() {
 // filterPendingTxs removes txs that would be rejected by the state machine.
 // Currently: drops MsgRevealSeed for addresses that already revealed.
 func (s *Session) filterPendingTxs() {
-	st := s.sm.SnapshotState()
-	if len(st.RevealedSeeds) == 0 {
+	seeds := s.sm.RevealedSlots()
+	if len(seeds) == 0 {
 		return
 	}
 
 	// Build set of addresses that already revealed.
-	revealed := make(map[string]bool, len(st.RevealedSeeds))
-	for slot := range st.RevealedSeeds {
+	revealed := make(map[string]bool, len(seeds))
+	for slot := range seeds {
 		revealed[s.sm.SlotAddress(slot)] = true
 	}
 
@@ -600,7 +600,7 @@ func (s *Session) CollectTimeoutVotes(
 	var votes []*types.TimeoutVote
 	expected := len(deduped)
 
-	voteThreshold := s.sm.SnapshotState().Config.VoteThreshold
+	voteThreshold := s.sm.VoteThreshold()
 	var accWeight uint32
 	for i := 0; i < expected; i++ {
 		res := <-results
