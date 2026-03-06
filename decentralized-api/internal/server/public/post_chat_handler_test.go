@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"testing"
 
 	"decentralized-api/chainphase"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/productscience/inference/x/inference/types"
 	"github.com/stretchr/testify/require"
+
+	"decentralized-api/completionapi"
 )
 
 // createTestRequest creates a test HTTP request with the given body
