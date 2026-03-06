@@ -708,7 +708,8 @@ func (s *InferenceValidator) isAlreadyValidated(inferenceId string, epochId uint
 // Returns ErrEpochStale if inference epoch becomes too old during retries.
 func (s *InferenceValidator) retrievePayloadsWithRetry(inf types.Inference) ([]byte, []byte, error) {
 	const maxRetries = 10
-	const retryInterval = 2 * time.Minute // 10 * 2 min = 20 min total
+	const firstRetryInterval = 10 * time.Second
+	const subsequentRetryInterval = 2 * time.Minute
 
 	ctx := s.recorder.GetContext()
 	var lastErr error
@@ -749,7 +750,13 @@ func (s *InferenceValidator) retrievePayloadsWithRetry(inf types.Inference) ([]b
 
 		// Wait between retries with random jitter (skip sleep on final attempt since we're done)
 		if attempt < maxRetries {
-			jitter := time.Duration(1+rand.Intn(120)) * time.Second
+			retryInterval := subsequentRetryInterval
+			jitterMaxSeconds := 120
+			if attempt == 1 {
+				retryInterval = firstRetryInterval
+				jitterMaxSeconds = 10
+			}
+			jitter := time.Duration(1+rand.Intn(jitterMaxSeconds)) * time.Second
 			time.Sleep(retryInterval + jitter)
 		}
 	}
