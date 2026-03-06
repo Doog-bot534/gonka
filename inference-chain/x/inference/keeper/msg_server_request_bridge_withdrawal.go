@@ -69,12 +69,15 @@ func (k msgServer) RequestBridgeWithdrawal(goCtx context.Context, msg *types.Msg
 	// Prepare data for BLS signing - only the parts after epochId/chainId/requestId
 	// The BLS system will prepend: epochId (8 bytes) + gonkaChainId (32 bytes) + requestId (32 bytes)
 	// We need to provide: ethereumChainId + WITHDRAW_OPERATION + recipient + tokenContract + amount
-	blsData := k.prepareBridgeWithdrawalSignatureData(
+	blsData, err := k.prepareBridgeWithdrawalSignatureData(
 		destinationChainId,                         // Numeric chain ID (e.g., "1", "137")
 		msg.DestinationAddress,                     // Ethereum address to receive tokens
 		bridgeWrappedTokenContract.ContractAddress, // Original token address on destination chain
 		msg.Amount, // Amount as string
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare bridge withdrawal signature data: %v", err)
+	}
 
 	// 8. Request BLS threshold signature
 	// Use the actual Gonka chain ID from context (source chain)
@@ -135,12 +138,24 @@ func (k msgServer) generateRequestID(ctx sdk.Context) string {
 // prepareBridgeWithdrawalSignatureData prepares the data portion for BLS signature according to Ethereum bridge format
 // This function only prepares the data that comes AFTER epochId, gonkaChainId, and requestId
 // Final message format: [epochId, gonkaChainId, requestId, ethereumChainId, WITHDRAW_OPERATION, recipient, tokenContract, amount]
-func (k msgServer) prepareBridgeWithdrawalSignatureData(chainId, recipient, tokenContract, amount string) [][]byte {
+func (k msgServer) prepareBridgeWithdrawalSignatureData(chainId, recipient, tokenContract, amount string) ([][]byte, error) {
 	// Use helper functions for consistent encoding
-	ethereumChainIdBytes := chainIdToBytes32(chainId)
-	recipientBytes := ethereumAddressToBytes(recipient)
-	tokenBytes := ethereumAddressToBytes(tokenContract)
-	amountBytes := amountToBytes32(amount)
+	ethereumChainIdBytes, err := chainIdToBytes32(chainId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode chain ID: %w", err)
+	}
+	recipientBytes, err := ethereumAddressToBytes(recipient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode recipient address: %w", err)
+	}
+	tokenBytes, err := ethereumAddressToBytes(tokenContract)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode token contract address: %w", err)
+	}
+	amountBytes, err := amountToBytes32(amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode amount: %w", err)
+	}
 
 	// Return the data fields that come after epochId, gonkaChainId, requestId
 	// Order: ethereumChainId (32 bytes) + WITHDRAW_OPERATION (32 bytes) + recipient (20 bytes) + tokenContract (20 bytes) + amount (32 bytes)
@@ -152,5 +167,5 @@ func (k msgServer) prepareBridgeWithdrawalSignatureData(chainId, recipient, toke
 		amountBytes,              // Amount as uint256 (32 bytes)
 	}
 
-	return data
+	return data, nil
 }
