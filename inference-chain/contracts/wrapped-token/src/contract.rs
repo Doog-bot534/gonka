@@ -17,9 +17,6 @@ use crate::msg::{
 };
 use crate::state::{ BridgeInfo, BRIDGE_INFO, TOKEN_METADATA, TokenMetadataOverride };
 
-// Admin storage: stores the address of the contract admin (governance module)
-pub const ADMIN: Item<Addr> = Item::new("admin");
-
 // Creator storage: stores the address of the contract creator (inference module) 
 pub const CREATOR: Item<Addr> = Item::new("creator");
 
@@ -55,7 +52,6 @@ pub fn instantiate(
             }
         }
     };
-    ADMIN.save(deps.storage, &admin_addr)?;
     
     // Persist bridge info (extra state)
     BRIDGE_INFO.save(deps.storage, &BridgeInfo { chain_id: msg.chain_id.clone(), contract_address: msg.contract_address.clone() })?;
@@ -94,7 +90,7 @@ pub fn execute(
     match msg {
         // Custom extras
         ExecuteMsg::Withdraw { amount, destination_address } => withdraw(deps, env, info, amount, destination_address),
-        ExecuteMsg::UpdateMetadata { name, symbol, decimals } => update_metadata(deps, info, name, symbol, decimals),
+        ExecuteMsg::UpdateMetadata { name, symbol, decimals } => update_metadata(deps, env, info, name, symbol, decimals),
         // Delegate all standard cw20 ops
         ExecuteMsg::Transfer { recipient, amount } => cw20_base_contract::execute(deps, env, info, cw20_base_msg::ExecuteMsg::Transfer { recipient, amount }).map_err(|e| ContractError::Std(StdError::generic_err(e.to_string()))),
         ExecuteMsg::Burn { amount } => cw20_base_contract::execute(deps, env, info, cw20_base_msg::ExecuteMsg::Burn { amount }).map_err(|e| ContractError::Std(StdError::generic_err(e.to_string()))),
@@ -131,18 +127,22 @@ fn map_expiration(exp: Option<crate::msg::Expiration>) -> Option<CwExpiration> {
 /// Allows both creator (inference module) and admin (governance module) to update token metadata.
 fn update_metadata(
     deps: DepsMut,
+    env: Env,
     info: MessageInfo,
     name: String,
     symbol: String,
     decimals: u8,
 ) -> Result<Response, ContractError> {
-    // Load both creator and admin addresses
+    // Load creator (inference module)
     let creator = CREATOR.load(deps.storage)?;
-    let admin = ADMIN.load(deps.storage)?;
+    
+    // Dynamically query admin (governance module)
+    let is_admin = deps.querier.query_wasm_contract_info(&env.contract.address)
+        .map(|contract_info| contract_info.admin.map_or(false, |admin| admin == info.sender))
+        .unwrap_or(false);
     
     // Allow both creator (inference module) and admin (governance module) to update metadata
     let is_creator = info.sender == creator;
-    let is_admin = info.sender == admin;
     
     if !is_creator && !is_admin {
         return Err(ContractError::Unauthorized {});
@@ -296,10 +296,9 @@ pub fn migrate(
     let old = get_contract_version(deps.storage)
         .map_err(|e| ContractError::Std(StdError::generic_err(e.to_string())))?;
     
-    // Allow migration from both cw20-base (legacy) and wrapped-token contracts
-    if old.contract != CONTRACT_NAME && old.contract != "crates.io:cw20-base" {
+    if old.contract != CONTRACT_NAME {
         return Err(ContractError::Std(StdError::generic_err(format!(
-            "wrong contract: expected {} or crates.io:cw20-base, got {}",
+            "wrong contract: expected {}, got {}",
             CONTRACT_NAME, old.contract
         ))));
     }
