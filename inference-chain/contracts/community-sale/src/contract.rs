@@ -631,6 +631,17 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
 pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, ContractError> {
     let old_version = get_contract_version(deps.storage)
         .map_err(|e| ContractError::Std(StdError::msg(e.to_string())))?;
+        
+    if old_version.contract != CONTRACT_NAME {
+        return Err(ContractError::Std(StdError::msg(format!(
+            "Cannot migrate from contract type: {}",
+            old_version.contract
+        ))));
+    }
+
+    if old_version.version.is_empty() {
+        return Err(ContractError::Std(StdError::msg("Invalid contract version")));
+    }
     
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)
         .map_err(|e| ContractError::Std(StdError::msg(e.to_string())))?;
@@ -639,8 +650,8 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
     // but the main goal here is state migration from v1.
     
     // Attempt to load current config. If it fails, try loading as V1.
-    let config = match CONFIG.load(deps.storage) {
-        Ok(c) => {
+    let config = match CONFIG.may_load(deps.storage) {
+        Ok(Some(c)) => {
             // Already current, update if params provided
             let mut updated = c;
             if let Some(denom) = msg.native_denom.clone() {
@@ -653,6 +664,9 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
                 updated.allow_all_trade_tokens = allow;
             }
             updated
+        },
+        Ok(None) => {
+            return Err(ContractError::Std(StdError::msg("CONFIG not found in state")));
         },
         Err(_) => {
             // Try loading as V1
@@ -669,9 +683,11 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
             }
             
             let v1_item: Item<ConfigV1> = Item::new("config");
-            let v1 = v1_item.load(deps.storage).map_err(|e| {
-                ContractError::Std(StdError::msg(format!("Failed to load old config: {e}")))
-            })?;
+            let v1 = match v1_item.may_load(deps.storage) {
+                Ok(Some(v)) => v,
+                Ok(None) => return Err(ContractError::Std(StdError::msg("CONFIG not found in state"))),
+                Err(e) => return Err(ContractError::Std(StdError::msg(format!("Failed to parse old config: {e}")))),
+            };
             
             Config {
                 admin: v1.admin,
