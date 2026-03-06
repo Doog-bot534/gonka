@@ -22,6 +22,18 @@ type weightedParticipant struct {
 }
 
 func (s *Server) resolveV2ResponsibleParticipants(ctx context.Context, model string, escrowID string, sequence uint64) ([]string, error) {
+	responsibleWeightedParticipants, err := s.resolveV2ResponsibleWeightedParticipants(ctx, model, escrowID, sequence)
+	if err != nil {
+		return nil, err
+	}
+	responsibleParticipants := make([]string, 0, len(responsibleWeightedParticipants))
+	for _, participant := range responsibleWeightedParticipants {
+		responsibleParticipants = append(responsibleParticipants, participant.address)
+	}
+	return responsibleParticipants, nil
+}
+
+func (s *Server) resolveV2ResponsibleWeightedParticipants(ctx context.Context, model string, escrowID string, sequence uint64) ([]weightedParticipant, error) {
 	selectionCount := resolveV2ResponsibleParticipantCount(s.resolveCachedV2ResponsibleParticipantCount())
 	epochID, ok := ctx.Value(v2EpochIDContextKey).(uint64)
 	if !ok || epochID == 0 {
@@ -62,6 +74,21 @@ func (s *Server) resolveV2ResponsibleParticipants(ctx context.Context, model str
 		)
 		return nil, echo.NewHTTPError(http.StatusServiceUnavailable, "No eligible participants for this model")
 	}
+	weightByAddress := make(map[string]uint64, len(weightedParticipants))
+	for _, participant := range weightedParticipants {
+		weightByAddress[participant.address] = participant.weight
+	}
+	responsibleWeightedParticipants := make([]weightedParticipant, 0, len(responsibleParticipants))
+	for _, address := range responsibleParticipants {
+		weight := weightByAddress[address]
+		if weight == 0 {
+			continue
+		}
+		responsibleWeightedParticipants = append(responsibleWeightedParticipants, weightedParticipant{
+			address: address,
+			weight:  weight,
+		})
+	}
 
 	logging.Info("Resolved deterministic v2 participants", types.Inferences,
 		"model", model,
@@ -70,7 +97,7 @@ func (s *Server) resolveV2ResponsibleParticipants(ctx context.Context, model str
 		"selection_count", selectionCount,
 		"responsible_participants", responsibleParticipants,
 	)
-	return responsibleParticipants, nil
+	return responsibleWeightedParticipants, nil
 }
 
 func resolveV2ResponsibleParticipantCount(count uint32) int {

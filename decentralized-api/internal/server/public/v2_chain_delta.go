@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,9 +27,11 @@ const (
 
 	v2ChainMessageTypeStartInference  = "StartInference"
 	v2ChainMessageTypeFinishInference = "FinishInference"
+	v2ChainMessageTypeMissedInference = "MissedInference"
 
 	v2DeveloperBlockMessageDomain = "v2_dev_block_msg_v1"
 	v2DeveloperBlockSignDomain    = "v2_dev_block_sig_v1"
+	v2DeveloperStateHashDomain    = "v2_dev_state_hash_v1"
 )
 
 type V2RequestEnvelope struct {
@@ -45,22 +48,26 @@ type DeveloperChainDelta struct {
 type DeveloperChainBlock struct {
 	BlockSequence uint64                  `json:"block_sequence"`
 	EscrowID      string                  `json:"escrow_id"`
+	StateHash     string                  `json:"state_hash"`
 	Messages      []DeveloperChainMessage `json:"messages"`
 	Signature     string                  `json:"signature"`
 }
 
 type DeveloperChainMessage struct {
-	Type                  string `json:"type"`
-	RequestID             string `json:"request_id"`
-	ModelID               string `json:"model_id,omitempty"`
-	RequestPayloadHash    string `json:"request_payload_hash,omitempty"`
-	ResponsePayloadHash   string `json:"response_payload_hash,omitempty"`
-	ExecutorAddress       string `json:"executor_address,omitempty"`
-	ExecutorSignerAddress string `json:"executor_signer_address,omitempty"`
-	ExecutorSignerPubKey  string `json:"executor_signer_pubkey,omitempty"`
-	ExecutorSignature     string `json:"executor_signature,omitempty"`
-	Status                string `json:"status,omitempty"`
-	Timestamp             int64  `json:"timestamp"`
+	Type                    string `json:"type"`
+	RequestID               string `json:"request_id"`
+	ModelID                 string `json:"model_id,omitempty"`
+	RequestPayloadHash      string `json:"request_payload_hash,omitempty"`
+	ResponsePayloadHash     string `json:"response_payload_hash,omitempty"`
+	ExecutorAddress         string `json:"executor_address,omitempty"`
+	ExecutorSignerAddress   string `json:"executor_signer_address,omitempty"`
+	ExecutorSignerPubKey    string `json:"executor_signer_pubkey,omitempty"`
+	ExecutorSignature       string `json:"executor_signature,omitempty"`
+	InputTokenCount         uint64 `json:"input_token_count,omitempty"`
+	OutputTokenCount        uint64 `json:"output_token_count,omitempty"`
+	MissedInferenceEvidence string `json:"missed_inference_evidence,omitempty"`
+	Status                  string `json:"status,omitempty"`
+	Timestamp               int64  `json:"timestamp"`
 }
 
 func (d *DeveloperChainDelta) UnmarshalJSON(data []byte) error {
@@ -94,6 +101,7 @@ func (b *DeveloperChainBlock) UnmarshalJSON(data []byte) error {
 	type blockAlias struct {
 		BlockSequence json.RawMessage         `json:"block_sequence"`
 		EscrowID      string                  `json:"escrow_id"`
+		StateHash     string                  `json:"state_hash"`
 		Messages      []DeveloperChainMessage `json:"messages"`
 		Signature     string                  `json:"signature"`
 	}
@@ -110,6 +118,7 @@ func (b *DeveloperChainBlock) UnmarshalJSON(data []byte) error {
 
 	b.BlockSequence = blockSequence
 	b.EscrowID = aux.EscrowID
+	b.StateHash = aux.StateHash
 	b.Messages = aux.Messages
 	b.Signature = aux.Signature
 	return nil
@@ -117,17 +126,20 @@ func (b *DeveloperChainBlock) UnmarshalJSON(data []byte) error {
 
 func (m *DeveloperChainMessage) UnmarshalJSON(data []byte) error {
 	type messageAlias struct {
-		Type                  string          `json:"type"`
-		RequestID             string          `json:"request_id"`
-		ModelID               string          `json:"model_id,omitempty"`
-		RequestPayloadHash    string          `json:"request_payload_hash,omitempty"`
-		ResponsePayloadHash   string          `json:"response_payload_hash,omitempty"`
-		ExecutorAddress       string          `json:"executor_address,omitempty"`
-		ExecutorSignerAddress string          `json:"executor_signer_address,omitempty"`
-		ExecutorSignerPubKey  string          `json:"executor_signer_pubkey,omitempty"`
-		ExecutorSignature     string          `json:"executor_signature,omitempty"`
-		Status                string          `json:"status,omitempty"`
-		Timestamp             json.RawMessage `json:"timestamp"`
+		Type                    string          `json:"type"`
+		RequestID               string          `json:"request_id"`
+		ModelID                 string          `json:"model_id,omitempty"`
+		RequestPayloadHash      string          `json:"request_payload_hash,omitempty"`
+		ResponsePayloadHash     string          `json:"response_payload_hash,omitempty"`
+		ExecutorAddress         string          `json:"executor_address,omitempty"`
+		ExecutorSignerAddress   string          `json:"executor_signer_address,omitempty"`
+		ExecutorSignerPubKey    string          `json:"executor_signer_pubkey,omitempty"`
+		ExecutorSignature       string          `json:"executor_signature,omitempty"`
+		InputTokenCount         json.RawMessage `json:"input_token_count,omitempty"`
+		OutputTokenCount        json.RawMessage `json:"output_token_count,omitempty"`
+		MissedInferenceEvidence string          `json:"missed_inference_evidence,omitempty"`
+		Status                  string          `json:"status,omitempty"`
+		Timestamp               json.RawMessage `json:"timestamp"`
 	}
 
 	aux := messageAlias{}
@@ -139,6 +151,14 @@ func (m *DeveloperChainMessage) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("timestamp: %w", err)
 	}
+	inputTokenCount, err := parseFlexibleOptionalUint64(aux.InputTokenCount)
+	if err != nil {
+		return fmt.Errorf("input_token_count: %w", err)
+	}
+	outputTokenCount, err := parseFlexibleOptionalUint64(aux.OutputTokenCount)
+	if err != nil {
+		return fmt.Errorf("output_token_count: %w", err)
+	}
 
 	m.Type = aux.Type
 	m.RequestID = aux.RequestID
@@ -149,6 +169,9 @@ func (m *DeveloperChainMessage) UnmarshalJSON(data []byte) error {
 	m.ExecutorSignerAddress = aux.ExecutorSignerAddress
 	m.ExecutorSignerPubKey = aux.ExecutorSignerPubKey
 	m.ExecutorSignature = aux.ExecutorSignature
+	m.InputTokenCount = inputTokenCount
+	m.OutputTokenCount = outputTokenCount
+	m.MissedInferenceEvidence = aux.MissedInferenceEvidence
 	m.Status = aux.Status
 	m.Timestamp = timestamp
 	return nil
@@ -164,6 +187,19 @@ type parsedV2Request struct {
 type v2DeveloperChainState struct {
 	latestBlockSequence uint64
 	blocksBySeq         map[uint64]DeveloperChainBlock
+	deterministicState  v2DeterministicChainState
+	stateByBlockSeq     map[uint64]v2DeterministicChainState
+}
+
+type v2DeterministicChainState struct {
+	executorStats map[string]v2ExecutorDeterministicStats
+}
+
+type v2ExecutorDeterministicStats struct {
+	processedInferences uint64
+	inputTokenTotal     uint64
+	outputTokenTotal    uint64
+	missedInferences    uint64
 }
 
 type v2DeveloperChainStore struct {
@@ -232,6 +268,9 @@ func validateV2DeveloperChainDeltaEnvelope(developerChainDelta *DeveloperChainDe
 		if strings.TrimSpace(block.EscrowID) == "" {
 			return ErrV2DeveloperChainDeltaMalformed
 		}
+		if strings.TrimSpace(block.StateHash) == "" {
+			return ErrV2DeveloperBlockStateHashRequired
+		}
 		if len(block.Messages) == 0 {
 			return ErrV2DeveloperChainDeltaMalformed
 		}
@@ -264,6 +303,7 @@ func (s *Server) validateAndStoreV2DeveloperChainDelta(
 	developerChainDelta DeveloperChainDelta,
 	resolveExecutorSignerPubKey v2ExecutorSignerPubKeyResolverFunc,
 	allowChainAdvance func() bool,
+	validateMissedInference func(ctx context.Context, message DeveloperChainMessage) error,
 ) (uint64, error) {
 	expectedRequestID := buildV2RequestID(escrowID, escrowSequence)
 	chainKey := buildV2DeveloperChainKey(requesterAddress, escrowID)
@@ -279,6 +319,7 @@ func (s *Server) validateAndStoreV2DeveloperChainDelta(
 		signatureChainID,
 		resolveExecutorSignerPubKey,
 		allowChainAdvance,
+		validateMissedInference,
 	)
 }
 
@@ -301,6 +342,7 @@ func (store *v2DeveloperChainStore) validateAndAppend(
 	signatureChainID string,
 	resolveExecutorSignerPubKey v2ExecutorSignerPubKeyResolverFunc,
 	allowChainAdvance func() bool,
+	validateMissedInference func(ctx context.Context, message DeveloperChainMessage) error,
 ) (uint64, error) {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
@@ -312,6 +354,13 @@ func (store *v2DeveloperChainStore) validateAndAppend(
 	state := store.chains[chainKey]
 	if state.blocksBySeq == nil {
 		state.blocksBySeq = make(map[uint64]DeveloperChainBlock)
+	}
+	if state.stateByBlockSeq == nil {
+		state.stateByBlockSeq = make(map[uint64]v2DeterministicChainState)
+	}
+	baseDeterministicState, err := resolveV2DeterministicStateAtBaseSequence(state, developerChainDelta.BaseBlockSequence)
+	if err != nil {
+		return 0, err
 	}
 	startRequestIDsInStoredBlocks := make(map[string]struct{})
 	startRequestSignaturesInStoredBlocks := make(map[string]string)
@@ -339,11 +388,13 @@ func (store *v2DeveloperChainStore) validateAndAppend(
 		signatureChainID,
 		startRequestIDsInStoredBlocks,
 		startRequestSignaturesInStoredBlocks,
+		baseDeterministicState,
 		func(sequence uint64) (DeveloperChainBlock, bool) {
 			block, ok := state.blocksBySeq[sequence]
 			return block, ok
 		},
 		resolveExecutorSignerPubKey,
+		validateMissedInference,
 	); err != nil {
 		return 0, err
 	}
@@ -378,10 +429,15 @@ func (store *v2DeveloperChainStore) validateAndAppend(
 		copiedBlock := DeveloperChainBlock{
 			BlockSequence: block.BlockSequence,
 			EscrowID:      block.EscrowID,
+			StateHash:     block.StateHash,
 			Messages:      append([]DeveloperChainMessage(nil), block.Messages...),
 			Signature:     block.Signature,
 		}
 		state.blocksBySeq[copiedBlock.BlockSequence] = copiedBlock
+		if err := applyV2DeterministicStateBlock(&state.deterministicState, copiedBlock.Messages); err != nil {
+			return 0, err
+		}
+		state.stateByBlockSeq[copiedBlock.BlockSequence] = cloneV2DeterministicChainState(state.deterministicState)
 		chainAdvanced = true
 	}
 	if developerChainDelta.LatestBlockSequence > state.latestBlockSequence {
@@ -404,8 +460,10 @@ func validateV2DeveloperChainDeltaForCurrentRequest(
 	signatureChainID string,
 	startRequestIDsInStoredBlocks map[string]struct{},
 	startRequestSignaturesInStoredBlocks map[string]string,
+	initialDeterministicState v2DeterministicChainState,
 	getStoredBlockBySequence func(sequence uint64) (DeveloperChainBlock, bool),
 	resolveExecutorSignerPubKey v2ExecutorSignerPubKeyResolverFunc,
+	validateMissedInference func(ctx context.Context, message DeveloperChainMessage) error,
 ) error {
 	if developerChainDelta.BaseBlockSequence > storedLatestBlockSequence {
 		return ErrV2DeveloperChainDeltaBaseBlockSequenceMismatch
@@ -430,6 +488,7 @@ func validateV2DeveloperChainDeltaForCurrentRequest(
 	for requestID, signature := range startRequestSignaturesInStoredBlocks {
 		knownStartedRequestSignatures[requestID] = signature
 	}
+	workingDeterministicState := cloneV2DeterministicChainState(initialDeterministicState)
 
 	for blockIndex, block := range developerChainDelta.Blocks {
 		if block.BlockSequence != expectedBlockSequence {
@@ -501,6 +560,19 @@ func validateV2DeveloperChainDeltaForCurrentRequest(
 				); err != nil {
 					return ErrV2FinishInferenceProofInvalid
 				}
+			case v2ChainMessageTypeMissedInference:
+				if _, started := knownStartedRequestIDs[message.RequestID]; !started {
+					return ErrV2DeveloperChainDeltaMalformed
+				}
+				if strings.TrimSpace(message.MissedInferenceEvidence) == "" {
+					return ErrV2MissedInferenceEvidenceRequired
+				}
+				if validateMissedInference == nil {
+					return ErrV2MissedInferenceEvidenceInvalid
+				}
+				if err := validateMissedInference(ctx, message); err != nil {
+					return err
+				}
 			default:
 				return ErrV2DeveloperChainDeltaMalformed
 			}
@@ -508,6 +580,13 @@ func validateV2DeveloperChainDeltaForCurrentRequest(
 
 		if startInferenceCount != 1 {
 			return ErrV2DeveloperChainDeltaMalformed
+		}
+		if err := applyV2DeterministicStateBlock(&workingDeterministicState, block.Messages); err != nil {
+			return err
+		}
+		expectedStateHash := computeV2DeterministicStateHashHex(workingDeterministicState)
+		if strings.TrimSpace(block.StateHash) != expectedStateHash {
+			return ErrV2DeveloperBlockStateHashInvalid
 		}
 		if block.BlockSequence <= storedLatestBlockSequence {
 			storedBlock, ok := getStoredBlockBySequence(block.BlockSequence)
@@ -556,6 +635,9 @@ func validateV2DeveloperBlockSignature(
 	if strings.TrimSpace(block.Signature) == "" {
 		return ErrV2DeveloperBlockSignatureRequired
 	}
+	if strings.TrimSpace(block.StateHash) == "" {
+		return ErrV2DeveloperBlockStateHashRequired
+	}
 	if strings.TrimSpace(block.EscrowID) == "" || block.EscrowID != escrowID {
 		return ErrV2DeveloperChainDeltaMalformed
 	}
@@ -568,7 +650,7 @@ func validateV2DeveloperBlockSignature(
 	}
 
 	blockMessagesHash := computeV2DeveloperBlockMessagesHash(block.Messages)
-	preimage := buildV2DeveloperBlockSigningPreimage(chainID, block.EscrowID, block.BlockSequence, blockMessagesHash)
+	preimage := buildV2DeveloperBlockSigningPreimage(chainID, block.EscrowID, block.BlockSequence, blockMessagesHash, block.StateHash)
 	preimageHash := sha256.Sum256(preimage)
 	signingPayload := []byte(fmt.Sprintf("%x", preimageHash[:]))
 
@@ -601,6 +683,9 @@ func canonicalV2DeveloperChainMessageBytes(message DeveloperChainMessage) []byte
 	writeV2LengthPrefixedString(&buffer, message.ExecutorSignerAddress)
 	writeV2LengthPrefixedString(&buffer, message.ExecutorSignerPubKey)
 	writeV2LengthPrefixedString(&buffer, message.ExecutorSignature)
+	writeV2Uint64(&buffer, message.InputTokenCount)
+	writeV2Uint64(&buffer, message.OutputTokenCount)
+	writeV2LengthPrefixedString(&buffer, message.MissedInferenceEvidence)
 	writeV2LengthPrefixedString(&buffer, message.Status)
 	writeV2Int64(&buffer, message.Timestamp)
 	return buffer.Bytes()
@@ -611,6 +696,7 @@ func buildV2DeveloperBlockSigningPreimage(
 	escrowID string,
 	blockSequence uint64,
 	blockMessagesHash [32]byte,
+	stateHash string,
 ) []byte {
 	var buffer bytes.Buffer
 	writeV2LengthPrefixedString(&buffer, v2DeveloperBlockSignDomain)
@@ -618,6 +704,7 @@ func buildV2DeveloperBlockSigningPreimage(
 	writeV2LengthPrefixedString(&buffer, escrowID)
 	writeV2Uint64(&buffer, blockSequence)
 	_, _ = buffer.Write(blockMessagesHash[:])
+	writeV2LengthPrefixedString(&buffer, stateHash)
 	return buffer.Bytes()
 }
 
@@ -646,6 +733,22 @@ func buildV2RequestID(escrowID string, escrowSequence uint64) string {
 	return fmt.Sprintf("%s:%d", escrowID, escrowSequence)
 }
 
+func parseV2RequestSequence(requestID string, escrowID string) (uint64, error) {
+	expectedPrefix := escrowID + ":"
+	if !strings.HasPrefix(requestID, expectedPrefix) {
+		return 0, fmt.Errorf("request_id does not match escrow")
+	}
+	sequencePart := strings.TrimPrefix(requestID, expectedPrefix)
+	if sequencePart == "" {
+		return 0, fmt.Errorf("request sequence is required")
+	}
+	sequence, err := strconv.ParseUint(sequencePart, 10, 64)
+	if err != nil || sequence == 0 {
+		return 0, fmt.Errorf("request sequence is invalid")
+	}
+	return sequence, nil
+}
+
 func buildV2DeveloperChainKey(requesterAddress string, escrowID string) string {
 	return fmt.Sprintf("%s|%s", requesterAddress, escrowID)
 }
@@ -654,7 +757,7 @@ func developerChainBlockEqual(left DeveloperChainBlock, right DeveloperChainBloc
 	if left.BlockSequence != right.BlockSequence {
 		return false
 	}
-	if left.EscrowID != right.EscrowID || left.Signature != right.Signature {
+	if left.EscrowID != right.EscrowID || left.StateHash != right.StateHash || left.Signature != right.Signature {
 		return false
 	}
 	if len(left.Messages) != len(right.Messages) {
@@ -719,4 +822,111 @@ func parseFlexibleInt64(raw json.RawMessage) (int64, error) {
 		return 0, fmt.Errorf("must be an integer")
 	}
 	return parsed, nil
+}
+
+func parseFlexibleOptionalUint64(raw json.RawMessage) (uint64, error) {
+	value := strings.TrimSpace(string(raw))
+	if value == "" || value == "null" {
+		return 0, nil
+	}
+	return parseFlexibleUint64(raw)
+}
+
+func applyV2DeterministicStateBlock(state *v2DeterministicChainState, messages []DeveloperChainMessage) error {
+	if state.executorStats == nil {
+		state.executorStats = make(map[string]v2ExecutorDeterministicStats)
+	}
+	for _, message := range messages {
+		switch message.Type {
+		case v2ChainMessageTypeStartInference:
+			// StartInference does not mutate deterministic executor accounting.
+		case v2ChainMessageTypeFinishInference:
+			executorAddress := strings.TrimSpace(message.ExecutorAddress)
+			if executorAddress == "" {
+				return ErrV2DeveloperChainDeltaMalformed
+			}
+			stats := state.executorStats[executorAddress]
+			stats.processedInferences++
+			stats.inputTokenTotal += message.InputTokenCount
+			stats.outputTokenTotal += message.OutputTokenCount
+			state.executorStats[executorAddress] = stats
+		case v2ChainMessageTypeMissedInference:
+			intendedExecutorAddress, err := extractV2MissedInferenceIntendedExecutor(message.MissedInferenceEvidence)
+			if err != nil {
+				return err
+			}
+			stats := state.executorStats[intendedExecutorAddress]
+			stats.missedInferences++
+			state.executorStats[intendedExecutorAddress] = stats
+		default:
+			return ErrV2DeveloperChainDeltaMalformed
+		}
+	}
+	return nil
+}
+
+func extractV2MissedInferenceIntendedExecutor(missedInferenceEvidence string) (string, error) {
+	evidence := v2MissedInferenceEvidence{}
+	if err := json.Unmarshal([]byte(missedInferenceEvidence), &evidence); err != nil {
+		return "", ErrV2MissedInferenceEvidenceMalformed
+	}
+	if len(evidence.RelayErrors) == 0 {
+		return "", ErrV2MissedInferenceEvidenceMalformed
+	}
+	intendedExecutorAddress := strings.TrimSpace(evidence.RelayErrors[0].IntendedExecutorAddress)
+	if intendedExecutorAddress == "" {
+		return "", ErrV2MissedInferenceEvidenceMalformed
+	}
+	return intendedExecutorAddress, nil
+}
+
+func cloneV2DeterministicChainState(state v2DeterministicChainState) v2DeterministicChainState {
+	cloned := v2DeterministicChainState{
+		executorStats: make(map[string]v2ExecutorDeterministicStats, len(state.executorStats)),
+	}
+	for executorAddress, stats := range state.executorStats {
+		cloned.executorStats[executorAddress] = stats
+	}
+	return cloned
+}
+
+func resolveV2DeterministicStateAtBaseSequence(state v2DeveloperChainState, baseBlockSequence uint64) (v2DeterministicChainState, error) {
+	if baseBlockSequence == 0 {
+		return v2DeterministicChainState{}, nil
+	}
+	if snapshot, ok := state.stateByBlockSeq[baseBlockSequence]; ok {
+		return cloneV2DeterministicChainState(snapshot), nil
+	}
+	rebuiltState := v2DeterministicChainState{}
+	for sequence := uint64(1); sequence <= baseBlockSequence; sequence++ {
+		block, ok := state.blocksBySeq[sequence]
+		if !ok {
+			return v2DeterministicChainState{}, ErrV2DeveloperChainDeltaBaseBlockSequenceMismatch
+		}
+		if err := applyV2DeterministicStateBlock(&rebuiltState, block.Messages); err != nil {
+			return v2DeterministicChainState{}, err
+		}
+	}
+	return rebuiltState, nil
+}
+
+func computeV2DeterministicStateHashHex(state v2DeterministicChainState) string {
+	var buffer bytes.Buffer
+	writeV2LengthPrefixedString(&buffer, v2DeveloperStateHashDomain)
+	executorAddresses := make([]string, 0, len(state.executorStats))
+	for executorAddress := range state.executorStats {
+		executorAddresses = append(executorAddresses, executorAddress)
+	}
+	sort.Strings(executorAddresses)
+	writeV2Uint64(&buffer, uint64(len(executorAddresses)))
+	for _, executorAddress := range executorAddresses {
+		stats := state.executorStats[executorAddress]
+		writeV2LengthPrefixedString(&buffer, executorAddress)
+		writeV2Uint64(&buffer, stats.processedInferences)
+		writeV2Uint64(&buffer, stats.inputTokenTotal)
+		writeV2Uint64(&buffer, stats.outputTokenTotal)
+		writeV2Uint64(&buffer, stats.missedInferences)
+	}
+	stateHash := sha256.Sum256(buffer.Bytes())
+	return fmt.Sprintf("%x", stateHash[:])
 }

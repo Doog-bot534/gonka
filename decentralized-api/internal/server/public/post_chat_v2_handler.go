@@ -167,6 +167,9 @@ func (s *Server) postChatV2(ctx echo.Context) error {
 		func() bool {
 			return s.configManager.RecordEscrowSequenceIfIncreasing(escrowID, escrowSequence)
 		},
+		func(ctx context.Context, message DeveloperChainMessage) error {
+			return s.validateV2MissedInferenceEvidence(ctx, escrowID, parsedRequest.openAIRequest.Model, message)
+		},
 	)
 	if err != nil {
 		if errors.Is(err, ErrV2DeveloperChainDeltaOverlapMismatch) {
@@ -221,6 +224,10 @@ func (s *Server) postChatV2(ctx echo.Context) error {
 		},
 	)
 	if err != nil {
+		var relayErr *v2RelayExecutionError
+		if errors.As(err, &relayErr) && relayErr.artifact != nil {
+			return echo.NewHTTPError(http.StatusServiceUnavailable, relayErr.artifact)
+		}
 		return err
 	}
 	defer resp.Body.Close()
@@ -278,7 +285,7 @@ func (s *Server) submitEscrowInvalidationConflict(
 
 func computeV2DeveloperConflictBlockEvidence(chainID string, block DeveloperChainBlock) (string, string) {
 	blockMessagesHash := computeV2DeveloperBlockMessagesHash(block.Messages)
-	preimage := buildV2DeveloperBlockSigningPreimage(chainID, block.EscrowID, block.BlockSequence, blockMessagesHash)
+	preimage := buildV2DeveloperBlockSigningPreimage(chainID, block.EscrowID, block.BlockSequence, blockMessagesHash, block.StateHash)
 	hash := sha256.Sum256(preimage)
 	return fmt.Sprintf("%x", hash[:]), fmt.Sprintf("%x", blockMessagesHash[:])
 }
@@ -314,6 +321,17 @@ func (s *Server) relayV2CompletionToIntended(
 			"intended_executor", intendedExecutorAddress,
 			"error", err,
 		)
+		relayAddress := s.resolveV2LocalParticipantAddress()
+		artifact, artifactErr := s.buildSignedV2RelayErrorArtifact( //nolint:contextcheck
+			requestHeaders.Get(utils.XEscrowIDHeader),
+			requestID,
+			intendedExecutorAddress,
+			relayAddress,
+			"intended_executor_unavailable",
+		)
+		if artifactErr == nil {
+			return nil, &v2RelayExecutionError{artifact: artifact}
+		}
 		return nil, ErrV2IntendedExecutorUnavailable
 	}
 	relayURL, joinErr := url.JoinPath(intendedExecutorURL, "/v2/chat/completions")
@@ -323,11 +341,33 @@ func (s *Server) relayV2CompletionToIntended(
 			"intended_executor", intendedExecutorAddress,
 			"error", joinErr,
 		)
+		relayAddress := s.resolveV2LocalParticipantAddress()
+		artifact, artifactErr := s.buildSignedV2RelayErrorArtifact( //nolint:contextcheck
+			requestHeaders.Get(utils.XEscrowIDHeader),
+			requestID,
+			intendedExecutorAddress,
+			relayAddress,
+			"relay_transport_failure",
+		)
+		if artifactErr == nil {
+			return nil, &v2RelayExecutionError{artifact: artifact}
+		}
 		return nil, ErrV2IntendedExecutorUnavailable
 	}
 
 	relayRequest, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, relayURL, bytes.NewReader(requestBody))
 	if reqErr != nil {
+		relayAddress := s.resolveV2LocalParticipantAddress()
+		artifact, artifactErr := s.buildSignedV2RelayErrorArtifact( //nolint:contextcheck
+			requestHeaders.Get(utils.XEscrowIDHeader),
+			requestID,
+			intendedExecutorAddress,
+			relayAddress,
+			"relay_transport_failure",
+		)
+		if artifactErr == nil {
+			return nil, &v2RelayExecutionError{artifact: artifact}
+		}
 		return nil, ErrV2IntendedExecutorUnavailable
 	}
 	relayRequest.Header = cloneHeader(requestHeaders)
@@ -342,6 +382,32 @@ func (s *Server) relayV2CompletionToIntended(
 			"intended_executor", intendedExecutorAddress,
 			"error", relayErr,
 		)
+		relayAddress := s.resolveV2LocalParticipantAddress()
+		artifact, artifactErr := s.buildSignedV2RelayErrorArtifact( //nolint:contextcheck
+			requestHeaders.Get(utils.XEscrowIDHeader),
+			requestID,
+			intendedExecutorAddress,
+			relayAddress,
+			"relay_transport_failure",
+		)
+		if artifactErr == nil {
+			return nil, &v2RelayExecutionError{artifact: artifact}
+		}
+		return nil, ErrV2IntendedExecutorUnavailable
+	}
+	if relayResponse.StatusCode == http.StatusServiceUnavailable || relayResponse.StatusCode == http.StatusGatewayTimeout || relayResponse.StatusCode == http.StatusBadGateway {
+		_ = relayResponse.Body.Close()
+		relayAddress := s.resolveV2LocalParticipantAddress()
+		artifact, artifactErr := s.buildSignedV2RelayErrorArtifact(
+			requestHeaders.Get(utils.XEscrowIDHeader),
+			requestID,
+			intendedExecutorAddress,
+			relayAddress,
+			"intended_executor_unavailable",
+		)
+		if artifactErr == nil {
+			return nil, &v2RelayExecutionError{artifact: artifact}
+		}
 		return nil, ErrV2IntendedExecutorUnavailable
 	}
 	return relayResponse, nil

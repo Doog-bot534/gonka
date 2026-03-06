@@ -384,8 +384,6 @@ Consume Step 14.2 proof metadata on the developer side, persist it into `FinishI
 
 Detect developer equivocation for the same block identity and finalize invalidation on-chain via `MsgInvalidateEscrow` carrying conflict evidence.
 
-Status: implemented.
-
 ### Step 15 Requirements
 
 - Define conflict identity key explicitly as `(developer_address, escrow_id, block_sequence)`.
@@ -411,7 +409,7 @@ Status: implemented.
 
 ### Step 16 Summary
 
-When relay to intended executor fails or times out, return a signed relay-error artifact. Developer aggregates these signed errors and, once majority-by-weight threshold is met, appends a `MissedInference` message in the next block.
+When relay to intended executor fails or times out, return a signed relay-error artifact. Developer aggregates these signed errors and, once majority-by-count threshold is met, appends a `MissedInference` message in the next block.
 
 ### Step 16 Requirements
 
@@ -423,12 +421,12 @@ When relay to intended executor fails or times out, return a signed relay-error 
   - relay identity,
   - failure reason code/class.
 - Developer must collect signed relay-error artifacts for a request and verify signatures/participant authorization before counting them.
-- Define quorum rule as majority-by-weight over responsible participants for the request.
+- Define quorum rule as simple majority-by-count over responsible participants for the request (equal vote per selected participant).
 - Once quorum is reached, developer must append `MissedInference` message to the next developer block for that `request_id`.
 - API/executor/relay ingest must validate `MissedInference` message structure and quorum evidence deterministically.
 - Add tests for:
-  - insufficient signed-error weight (no `MissedInference` allowed),
-  - sufficient signed-error weight (valid `MissedInference` accepted),
+  - insufficient signed-error count (no `MissedInference` allowed),
+  - sufficient signed-error count (valid `MissedInference` accepted),
   - malformed/forged relay-error signatures rejected.
 
 ## Step 17: Deterministic Executor State and Per-Block State Hash
@@ -557,6 +555,60 @@ Replace raw store-key reads for active participant metadata with a typed gRPC qu
   - cold-key and warm-key signer proof validation using gRPC-provided signer set,
   - deterministic failure when signer is missing from authorized set.
 
+## Step 24: Token-Count-Bound Executor Proof + Invalid Payload Dispute
+
+### Step 24 Summary
+
+Strengthen v2 `FinishInference` integrity by binding token counts into executor proof signatures, and add a deterministic dispute path when developer-observed payload/token data is invalid.
+
+### Step 24 Requirements
+
+- Extend executor proof signing preimage/domain to include:
+  - `response_payload_hash`,
+  - `input_token_count`,
+  - `output_token_count`.
+- Update executor-proof validation on API/relay/executor ingest to verify token-count-bound signatures (not payload hash alone).
+- If developer detects invalid payload/token data from intended executor, developer must submit an on-chain invalid-payload dispute transaction (message name TBD) containing:
+  - request identity (`escrow_id`, `request_id`),
+  - contested payload hash/token counts,
+  - executor proof/signature evidence.
+- Responsible participants for that request must revalidate deterministically and return signed revalidation verdicts.
+- Developer must fan out dispute evidence to all responsible participants and aggregate returned signatures.
+- Quorum rule for dispute verdict signatures must be deterministic and explicitly specified (majority-by-count over responsible participants unless superseded).
+- Add tests for:
+  - token-count signature mismatch rejection,
+  - valid token-count-bound proof acceptance,
+  - developer invalid-payload dispute submission flow,
+  - participant revalidation signature aggregation and quorum behavior.
+
+### Step 24 Canonical Signing Bytes (Normative)
+
+- Executor proof sign domain string: `v2_exec_finish_sig_v2`.
+- Executor proof signing preimage (in exact order):
+  1. `len_prefix(domain)` + `domain`,
+  2. `len_prefix(developer_request_block_signature)` + `developer_request_block_signature`,
+  3. `len_prefix(response_payload_hash)` + `response_payload_hash`,
+  4. `uint64_be(input_token_count)`,
+  5. `uint64_be(output_token_count)`.
+- `len_prefix(x)` is 4-byte big-endian length followed by raw UTF-8 bytes.
+- Signing payload is lowercase hex of `sha256(preimage)` (same convention as current v2 proof signing).
+- Signature algorithm/encoding remains secp256k1 with existing base64 transport.
+
+Validation requirements (API/relay/executor ingest):
+
+- Reject if any required proof field is missing:
+  - `executor_address`,
+  - `executor_signer_address`,
+  - `executor_signer_pubkey`,
+  - `executor_signature`,
+  - `response_payload_hash`,
+  - `input_token_count`,
+  - `output_token_count`.
+- Recompute signing payload using the exact canonical bytes above.
+- Verify signer authorization for `executor_signer_address` against executor identity scope (same policy as Step 14.3, unless superseded).
+- Accept only if cryptographic verification succeeds for the recomputed payload.
+- Any mismatch in `response_payload_hash` or token counts must fail signature verification and be rejected deterministically.
+
 ## Step-to-Test Mapping (Current Status)
 
 - **Step 1**: v2 endpoint added in parallel with v1; covered by `post_chat_v2_handler` tests and existing v1 tests in same service.
@@ -631,10 +683,20 @@ Replace raw store-key reads for active participant metadata with a typed gRPC qu
   - chain emits `escrow_invalidated` event, and decentralized-api nodes ingest this event to mark escrow invalidated locally,
   - all nodes reject subsequent requests for invalidated escrow with deterministic conflict error (`Escrow is invalidated due to conflicting signed blocks`),
   - Testermint E2E scenario added for conflict -> on-chain invalidation -> cluster-wide rejection.
+- **Step 16 (implemented)**:
+  - relay failure path now returns a signed relay-error artifact (`escrow_id`, `request_id`, intended executor, relay identity, failure code, signer address/pubkey/signature),
+  - `MissedInference` is now a first-class v2 chain message type with deterministic evidence payload transport (`missed_inference_evidence`),
+  - API ingest validates `MissedInference` evidence signatures, signer authorization, responsible-participant membership, and simple majority-by-count quorum.
+- **Step 17 (implemented)**:
+  - developer blocks now include deterministic post-apply `state_hash` and signatures commit to it (`state_hash` included in block signing preimage),
+  - API ingest deterministically applies `StartInference`/`FinishInference`/`MissedInference` accounting and rejects `state_hash` mismatches,
+  - deterministic state schema tracks per-executor processed count, input/output token totals, and missed-inference count.
 - **Step 22 (planned)**:
   - move signer-authorization source from per-request authz lookup to epoch-pinned active-participant signer snapshots for deterministic warm-key verification across replays/boundaries.
 - **Step 23 (planned)**:
   - add typed gRPC query for active participants with authorized signer sets and migrate cache prewarm off raw store-key queries.
+- **Step 24 (planned)**:
+  - bind `input_token_count`/`output_token_count` into executor proof signatures and add invalid payload/token dispute transaction + group revalidation signatures.
 
 ## End-to-End v2 Flow (Initial)
 
@@ -669,14 +731,15 @@ Replace raw store-key reads for active participant metadata with a typed gRPC qu
 - [x] Step 14.2: add/validate executor `FinishInference` signatures and response transport.
 - [x] Step 14.3: ingest executor proofs into `FinishInference` and validate on executor/relay ingest.
 - [x] Step 15: conflicting signed block evidence + on-chain `MsgInvalidateEscrow`.
-- [ ] Step 16: signed relay non-response errors + majority-by-weight `MissedInference`.
-- [ ] Step 17: deterministic per-executor state accounting + per-block `state_hash`.
+- [x] Step 16: signed relay non-response errors + majority-by-count `MissedInference`.
+- [x] Step 17: deterministic per-executor state accounting + per-block `state_hash`.
 - [ ] Step 18: streaming replay hub hardening (backpressure, limits, and cache eviction).
 - [ ] Step 19: persist v2 request/response payloads locally (v1-parity behavior).
 - [ ] Step 20: pin v2 routing to explicit `epoch_id` for epoch/model-group lookups.
 - [ ] Step 21: close `MsgCreateEscrow` lifecycle after epoch end and add `MsgSettleEscrow`.
 - [ ] Step 22: refactor signer authority into epoch-pinned active-participant snapshots.
 - [ ] Step 23: migrate active-participant/signer prewarm to typed gRPC query response.
+- [ ] Step 24: token-count-bound executor proof + invalid payload/token dispute flow.
 - [ ] Add tests proving:
   - [ ] v1 and v2 parallel operation,
   - [x] v2 authorization enforcement,
@@ -694,7 +757,7 @@ Replace raw store-key reads for active participant metadata with a typed gRPC qu
   - [x] streaming terminal-proof ingestion and signature verification in Testermint stream flow.
   - [x] deterministic escrow invalidation on conflicting signed blocks.
   - [x] on-chain rejection for malformed/invalid conflict evidence (hash/signature mismatch).
-  - [ ] relay signed-error quorum path resulting in valid `MissedInference`.
+  - [x] relay signed-error quorum path resulting in valid `MissedInference`.
   - [ ] deterministic state-hash convergence across developer/executor nodes.
   - [ ] streaming replay backpressure handling and cleanup/eviction behavior.
   - [ ] epoch-pinned v2 routing correctness across epoch boundaries.

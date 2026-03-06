@@ -70,6 +70,7 @@ func TestReadV2Request_SupportsQuotedNumericChainFields(t *testing.T) {
 				{
 					"block_sequence":"1",
 					"escrow_id":"escrow-1",
+					"state_hash":"state-hash-1",
 					"messages":[
 						{
 							"type":"StartInference",
@@ -1528,6 +1529,55 @@ func TestPostChatV2_RejectsInvalidDeveloperBlockSignature(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
 }
 
+func TestPostChatV2_ReturnsSignedRelayErrorArtifactWhenRelayFails(t *testing.T) {
+	e := echo.New()
+	cfg := &apiconfig.ConfigManager{}
+	cfg.UpsertEscrowAccessRecord(apiconfig.EscrowAccessRecord{
+		EscrowID:         "escrow-1",
+		DeveloperAddress: "gonka1dev",
+		ModelID:          "model-1",
+	})
+
+	expectedArtifact := &v2RelayErrorArtifact{
+		EscrowID:                "escrow-1",
+		RequestID:               "escrow-1:1",
+		IntendedExecutorAddress: "gonka1intended",
+		RelayAddress:            "gonka1relay",
+		FailureCode:             "relay_transport_failure",
+		RelaySignerAddress:      "gonka1relaywarm",
+		RelaySignerPubKey:       "pubkey",
+		RelaySignature:          "signature",
+		Timestamp:               1710000000,
+	}
+	s := &Server{
+		configManager: cfg,
+		v2ParticipantSelector: func(_ context.Context, _ string, _ string, _ uint64) ([]string, error) {
+			return []string{"gonka1intended", "gonka1relay"}, nil
+		},
+		v2ParticipantAddressResolver: func() string {
+			return "gonka1relay"
+		},
+		v2RelayProxy: func(_ context.Context, _ []byte, _ string, _ http.Header, _ string, _ string) (*http.Response, error) {
+			return nil, &v2RelayExecutionError{artifact: expectedArtifact}
+		},
+	}
+
+	body := mustMarshalV2Envelope(
+		t,
+		defaultV2OpenAIRequest("model-1"),
+		validV2ChainDelta("model-1", "escrow-1", "escrow-1:1", 0, 1),
+	)
+	ctx, _ := newV2RequestContext(e, body, "gonka1dev", "escrow-1", "1")
+	err := s.postChatV2(ctx)
+	require.Error(t, err)
+	httpErr, ok := err.(*echo.HTTPError)
+	require.True(t, ok)
+	require.Equal(t, http.StatusServiceUnavailable, httpErr.Code)
+	actualArtifact, ok := httpErr.Message.(*v2RelayErrorArtifact)
+	require.True(t, ok)
+	require.Equal(t, expectedArtifact, actualArtifact)
+}
+
 func defaultV2OpenAIRequest(model string) OpenAiRequest {
 	return OpenAiRequest{
 		Model:    model,
@@ -1606,8 +1656,20 @@ func mustMarshalV2EnvelopeWithoutAutoSign(t *testing.T, openAIRequest OpenAiRequ
 
 func signMissingV2DeveloperBlockSignaturesForTests(t *testing.T, developerChainDelta *DeveloperChainDelta) {
 	t.Helper()
+	state := v2DeterministicChainState{}
 	for blockIdx := range developerChainDelta.Blocks {
 		block := &developerChainDelta.Blocks[blockIdx]
+		if err := applyV2DeterministicStateBlock(&state, block.Messages); err == nil {
+			if strings.TrimSpace(block.StateHash) == "" {
+				block.StateHash = computeV2DeterministicStateHashHex(state)
+			}
+		} else if strings.TrimSpace(block.StateHash) == "" {
+			// Keep malformed-block tests focused on their targeted validation path.
+			block.StateHash = "invalid-state-hash-for-malformed-block"
+		}
+		if strings.TrimSpace(block.StateHash) == "" {
+			block.StateHash = computeV2DeterministicStateHashHex(state)
+		}
 		if strings.TrimSpace(block.Signature) != "" {
 			continue
 		}
@@ -1637,7 +1699,7 @@ func signV2DeveloperBlockForTests(
 ) {
 	t.Helper()
 	blockMessagesHash := computeV2DeveloperBlockMessagesHash(block.Messages)
-	preimage := buildV2DeveloperBlockSigningPreimage(chainID, escrowID, block.BlockSequence, blockMessagesHash)
+	preimage := buildV2DeveloperBlockSigningPreimage(chainID, escrowID, block.BlockSequence, blockMessagesHash, block.StateHash)
 	preimageHash := sha256.Sum256(preimage)
 	signingPayload := []byte(fmt.Sprintf("%x", preimageHash[:]))
 
