@@ -3,21 +3,21 @@ package keeper
 import (
 	"context"
 	"encoding/binary"
-	"encoding/json"
 
+	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/productscience/inference/x/inference/types"
 )
 
 type epochDataTransientParticipantCache struct {
-	Weight     int64 `json:"weight"`
-	Reputation int32 `json:"reputation"`
+	Weight     int64
+	Reputation int32
 }
 
 type epochDataTransientModelMetaCacheEntry struct {
-	EpochPolicy         string         `json:"epoch_policy"`
-	TotalWeight         int64          `json:"total_weight"`
-	ValidationThreshold *types.Decimal `json:"validation_threshold,omitempty"`
-	SubGroupModels      []string       `json:"sub_group_models,omitempty"`
+	EpochPolicy         string
+	TotalWeight         int64
+	ValidationThreshold *types.Decimal
+	SubGroupModels      []string
 }
 
 func (k Keeper) BuildEpochDataTransientCache(ctx context.Context) error {
@@ -32,7 +32,7 @@ func (k Keeper) BuildEpochDataTransientCache(ctx context.Context) error {
 			continue
 		}
 		transientStore := k.transientStoreService.OpenTransientStore(ctx)
-		if err := setModelTransientCacheEntries(transientStore, epochIndex, "", rootGroupData); err != nil {
+		if err := setModelTransientCacheEntries(transientStore, k.cdc, epochIndex, "", rootGroupData); err != nil {
 			return err
 		}
 
@@ -41,7 +41,7 @@ func (k Keeper) BuildEpochDataTransientCache(ctx context.Context) error {
 			if !found {
 				continue
 			}
-			if err := setModelTransientCacheEntries(transientStore, epochIndex, modelID, modelGroupData); err != nil {
+			if err := setModelTransientCacheEntries(transientStore, k.cdc, epochIndex, modelID, modelGroupData); err != nil {
 				return err
 			}
 		}
@@ -62,9 +62,17 @@ func (k Keeper) GetCachedEpochDataModelMeta(
 		return epochDataTransientModelMetaCacheEntry{}, false, err
 	}
 
-	var entry epochDataTransientModelMetaCacheEntry
-	if err := json.Unmarshal(bz, &entry); err != nil {
+	var cachedGroupData types.EpochGroupData
+	if err := k.cdc.Unmarshal(bz, &cachedGroupData); err != nil {
 		return epochDataTransientModelMetaCacheEntry{}, false, err
+	}
+	entry := epochDataTransientModelMetaCacheEntry{
+		EpochPolicy:    cachedGroupData.EpochPolicy,
+		TotalWeight:    cachedGroupData.TotalWeight,
+		SubGroupModels: cachedGroupData.SubGroupModels,
+	}
+	if cachedGroupData.ModelSnapshot != nil {
+		entry.ValidationThreshold = cachedGroupData.ModelSnapshot.ValidationThreshold
 	}
 	return entry, true, nil
 }
@@ -82,9 +90,13 @@ func (k Keeper) GetCachedEpochDataModelWeight(
 		return epochDataTransientParticipantCache{}, false, err
 	}
 
-	var entry epochDataTransientParticipantCache
-	if err := json.Unmarshal(bz, &entry); err != nil {
+	var cachedWeight types.ValidationWeight
+	if err := k.cdc.Unmarshal(bz, &cachedWeight); err != nil {
 		return epochDataTransientParticipantCache{}, false, err
+	}
+	entry := epochDataTransientParticipantCache{
+		Weight:     cachedWeight.Weight,
+		Reputation: cachedWeight.Reputation,
 	}
 	return entry, true, nil
 }
@@ -121,19 +133,22 @@ func epochDataModelWeightCacheKey(epochIndex uint64, modelID, validator string) 
 
 func setModelTransientCacheEntries(
 	transientStore transientStoreSetter,
+	cdc codec.BinaryCodec,
 	epochIndex uint64,
 	modelID string,
 	groupData types.EpochGroupData,
 ) error {
-	metaEntry := epochDataTransientModelMetaCacheEntry{
+	metaGroupData := types.EpochGroupData{
 		EpochPolicy:    groupData.EpochPolicy,
 		TotalWeight:    groupData.TotalWeight,
 		SubGroupModels: groupData.SubGroupModels,
 	}
 	if groupData.ModelSnapshot != nil {
-		metaEntry.ValidationThreshold = groupData.ModelSnapshot.ValidationThreshold
+		metaGroupData.ModelSnapshot = &types.Model{
+			ValidationThreshold: groupData.ModelSnapshot.ValidationThreshold,
+		}
 	}
-	metaBz, err := json.Marshal(metaEntry)
+	metaBz, err := cdc.Marshal(&metaGroupData)
 	if err != nil {
 		return err
 	}
@@ -145,11 +160,11 @@ func setModelTransientCacheEntries(
 		if weight == nil {
 			continue
 		}
-		validationEntry := epochDataTransientParticipantCache{
+		validationEntry := types.ValidationWeight{
 			Weight:     weight.Weight,
 			Reputation: weight.Reputation,
 		}
-		validationBz, err := json.Marshal(validationEntry)
+		validationBz, err := cdc.Marshal(&validationEntry)
 		if err != nil {
 			return err
 		}

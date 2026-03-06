@@ -2,7 +2,6 @@ package keeper
 
 import (
 	"context"
-	"slices"
 
 	"cosmossdk.io/collections"
 	"github.com/productscience/inference/x/inference/types"
@@ -46,40 +45,11 @@ func (k Keeper) GetEpochGroupValidations(
 	if len(validatedInferences) == 0 {
 		return val, false
 	}
-	slices.Sort(validatedInferences)
 	return types.EpochGroupValidations{
 		Participant:         participant,
 		EpochIndex:          epochIndex,
 		ValidatedInferences: validatedInferences,
 	}, true
-}
-
-// GetAllEpochGroupValidations returns all epochGroupValidations
-func (k Keeper) GetAllEpochGroupValidations(ctx context.Context) (list []types.EpochGroupValidations) {
-	iter, err := k.EpochGroupValidationEntry.Iterate(ctx, nil)
-	if err != nil {
-		return nil
-	}
-	defer iter.Close()
-	aggregated := make(map[collections.Pair[uint64, string]][]string)
-	for ; iter.Valid(); iter.Next() {
-		key, keyErr := iter.Key()
-		if keyErr != nil {
-			return nil
-		}
-		pair := collections.Join(key.K1(), key.K2())
-		aggregated[pair] = append(aggregated[pair], key.K3())
-	}
-	list = make([]types.EpochGroupValidations, 0, len(aggregated))
-	for pair, ids := range aggregated {
-		slices.Sort(ids)
-		list = append(list, types.EpochGroupValidations{
-			Participant:         pair.K2(),
-			EpochIndex:          pair.K1(),
-			ValidatedInferences: ids,
-		})
-	}
-	return list
 }
 
 // TODO(v0.2.11-cleanup): delete this migration helper after the v0.2.11 upgrade
@@ -105,14 +75,8 @@ func (k Keeper) MigrateEpochGroupValidationsToEntries(ctx context.Context) error
 		return err
 	}
 	defer iter.Close()
-	keysToDelete := make([]collections.Pair[uint64, string], 0)
 
 	for ; iter.Valid(); iter.Next() {
-		key, keyErr := iter.Key()
-		if keyErr != nil {
-			return keyErr
-		}
-		keysToDelete = append(keysToDelete, key)
 		v, valueErr := iter.Value()
 		if valueErr != nil {
 			return valueErr
@@ -135,10 +99,7 @@ func (k Keeper) MigrateEpochGroupValidationsToEntries(ctx context.Context) error
 			}
 		}
 	}
-	for _, key := range keysToDelete {
-		if err := k.EpochGroupValidationsMap.Remove(ctx, key); err != nil {
-			return err
-		}
-	}
-	return nil
+
+	// Clear legacy aggregate storage in bulk after migrating the subset we need.
+	return k.EpochGroupValidationsMap.Clear(ctx, nil)
 }

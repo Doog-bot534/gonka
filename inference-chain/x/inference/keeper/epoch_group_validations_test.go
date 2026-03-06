@@ -41,11 +41,3 @@ func TestEpochGroupValidationsGet(t *testing.T) {
 		)
 	}
 }
-func TestEpochGroupValidationsGetAll(t *testing.T) {
-	keeper, ctx := keepertest.InferenceKeeper(t)
-	items := createNEpochGroupValidations(keeper, ctx, 10)
-	require.ElementsMatch(t,
-		nullify.Fill(items),
-		nullify.Fill(keeper.GetAllEpochGroupValidations(ctx)),
-	)
-}

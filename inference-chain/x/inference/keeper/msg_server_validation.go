@@ -46,7 +46,7 @@ func (k msgServer) Validation(goCtx context.Context, msg *types.MsgValidation) (
 
 	currentEpochIndex, found := k.GetEffectiveEpochIndex(ctx)
 	if !found {
-		k.LogError("Failed to get current epoch", types.Validation, "error", err)
+		k.LogError("Failed to get current epoch", types.Validation)
 		return nil, types.ErrEffectiveEpochNotFound
 	}
 
