@@ -44,9 +44,9 @@ type InferenceResponse struct {
 
 // VerifyTimeoutRequest is the JSON body for POST /sessions/:id/verify-timeout.
 type VerifyTimeoutRequest struct {
-	InferenceID uint64 `json:"inference_id"`
-	Reason      string `json:"reason"` // "refused" or "execution"
-	PromptData  []byte `json:"prompt_data,omitempty"`
+	InferenceID uint64       `json:"inference_id"`
+	Reason      string       `json:"reason"` // "refused" or "execution"
+	Payload     *PayloadJSON `json:"payload,omitempty"`
 }
 
 // VerifyTimeoutResponse is returned by the timeout verification endpoint.
@@ -54,6 +54,18 @@ type VerifyTimeoutResponse struct {
 	Accept    bool   `json:"accept"`
 	Signature []byte `json:"signature,omitempty"` // signed TimeoutVoteContent
 	VoterSlot uint32 `json:"voter_slot"`
+}
+
+// ChallengeReceiptRequest is the JSON body for POST /sessions/:id/challenge-receipt.
+type ChallengeReceiptRequest struct {
+	InferenceID uint64       `json:"inference_id"`
+	Payload     *PayloadJSON `json:"payload"`
+	Diffs       []DiffJSON   `json:"diffs"`
+}
+
+// ChallengeReceiptResponse is returned by the challenge-receipt endpoint.
+type ChallengeReceiptResponse struct {
+	Receipt []byte `json:"receipt,omitempty"`
 }
 
 // GossipNonceRequest is the JSON body for POST /sessions/:id/gossip/nonce.

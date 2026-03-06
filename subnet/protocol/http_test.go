@@ -261,6 +261,10 @@ func TestHTTP_TimeoutRefused(t *testing.T) {
 	_, err := env.session.SendInference(ctx, params)
 	require.NoError(t, err)
 
+	// Shut down executor (host 1) to simulate refusal (unreachable).
+	// ChallengeReceipt will fail, so verifying hosts accept the timeout.
+	env.httpServers[1].Close()
+
 	// Build timeout verifiers from HTTP clients (non-executor hosts).
 	verifiers := make(map[int]user.TimeoutVerifier)
 	for i := range env.clients {
@@ -280,7 +284,13 @@ func TestHTTP_TimeoutRefused(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	votes, err := env.session.CollectTimeoutVotes(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_REFUSED, testutil.TestPrompt, verifiers)
+	votes, err := env.session.CollectTimeoutVotes(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_REFUSED, &host.InferencePayload{
+		Prompt:      testutil.TestPrompt,
+		Model:       "llama",
+		InputLength: 100,
+		MaxTokens:   50,
+		StartedAt:   1000,
+	}, verifiers)
 	require.NoError(t, err)
 	require.True(t, len(votes) > int(env.config.VoteThreshold), "need >%d votes, got %d", env.config.VoteThreshold, len(votes))
 
@@ -344,7 +354,7 @@ func TestHTTP_TimeoutExecution(t *testing.T) {
 		verifiers[i] = &httpTimeoutVerifier{client: env.clients[i]}
 	}
 
-	votes, err := env.session.CollectTimeoutVotes(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_EXECUTION, nil, verifiers)
+	votes, err := env.session.CollectTimeoutVotes(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_EXECUTION, nil, verifiers) // nil payload for execution timeout
 	require.NoError(t, err)
 	require.True(t, len(votes) > int(env.config.VoteThreshold),
 		"need >%d votes, got %d", env.config.VoteThreshold, len(votes))
@@ -374,9 +384,51 @@ func TestHTTP_TimeoutRejected(t *testing.T) {
 
 	// Try timeout verification -- should fail because inference is finished.
 	verifier := &httpTimeoutVerifier{client: env.clients[2]}
-	accept, _, _, err := verifier.VerifyTimeout(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_REFUSED, nil)
+	accept, _, _, err := verifier.VerifyTimeout(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_REFUSED, nil) // nil payload, inference already finished
 	require.Error(t, err)
 	require.False(t, accept)
+}
+
+func TestHTTP_ChallengeReceipt_RejectsTimeout(t *testing.T) {
+	// Scenario: user withholds prompt from executor, verifying host challenges
+	// executor via ChallengeReceipt, executor produces receipt -> timeout rejected.
+	env := setupHTTPEnv(t, 5, 1000000, 100)
+	ctx := context.Background()
+	params := defaultParams()
+
+	// Send inference. Executor is host 1 (nonce 1 % 5 = 1).
+	_, err := env.session.SendInference(ctx, params)
+	require.NoError(t, err)
+
+	// Catch up non-executor hosts.
+	allDiffs := env.session.Diffs()
+	for i, h := range env.hosts {
+		if i == 1 {
+			continue
+		}
+		_, err := h.HandleRequest(ctx, host.HostRequest{Diffs: allDiffs, Nonce: allDiffs[len(allDiffs)-1].Nonce})
+		require.NoError(t, err)
+	}
+
+	// Executor (host 1) is alive. Verifying hosts challenge it via ChallengeReceipt.
+	// Timeout should be rejected because executor produces a receipt.
+	verifiers := make(map[int]user.TimeoutVerifier)
+	for i := range env.clients {
+		if i == 1 {
+			continue
+		}
+		verifiers[i] = &httpTimeoutVerifier{client: env.clients[i]}
+	}
+
+	votes, err := env.session.CollectTimeoutVotes(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_REFUSED, &host.InferencePayload{
+		Prompt:      testutil.TestPrompt,
+		Model:       "llama",
+		InputLength: 100,
+		MaxTokens:   50,
+		StartedAt:   1000,
+	}, verifiers)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(votes), "all hosts should reject timeout because executor is alive and produced receipt")
 }
 
 func TestHTTP_StateRecovery(t *testing.T) {
@@ -745,11 +797,21 @@ type httpTimeoutVerifier struct {
 	client *transport.HTTPClient
 }
 
-func (v *httpTimeoutVerifier) VerifyTimeout(ctx context.Context, inferenceID uint64, reason types.TimeoutReason, promptData []byte) (bool, []byte, uint32, error) {
+func (v *httpTimeoutVerifier) VerifyTimeout(ctx context.Context, inferenceID uint64, reason types.TimeoutReason, payload *host.InferencePayload) (bool, []byte, uint32, error) {
+	var pj *transport.PayloadJSON
+	if payload != nil {
+		pj = &transport.PayloadJSON{
+			Prompt:      payload.Prompt,
+			Model:       payload.Model,
+			InputLength: payload.InputLength,
+			MaxTokens:   payload.MaxTokens,
+			StartedAt:   payload.StartedAt,
+		}
+	}
 	resp, err := v.client.VerifyTimeout(ctx, transport.VerifyTimeoutRequest{
 		InferenceID: inferenceID,
 		Reason:      transport.TimeoutReasonToString(reason),
-		PromptData:  promptData,
+		Payload:     pj,
 	})
 	if err != nil {
 		return false, nil, 0, err

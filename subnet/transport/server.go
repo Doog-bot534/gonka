@@ -93,6 +93,7 @@ func (s *Server) Register(g *echo.Group) {
 	}
 	g.POST("/sessions/:id/chat/completions", s.handleInference)
 	g.POST("/sessions/:id/verify-timeout", s.handleVerifyTimeout)
+	g.POST("/sessions/:id/challenge-receipt", s.handleChallengeReceipt)
 	g.POST("/sessions/:id/gossip/nonce", s.handleGossipNonce)
 	g.POST("/sessions/:id/gossip/txs", s.handleGossipTxs)
 	// TODO: GET endpoints are intentionally unauthenticated for now.
@@ -255,7 +256,28 @@ func (s *Server) handleVerifyTimeout(c echo.Context) error {
 	var accept bool
 	switch reason {
 	case types.TimeoutReason_TIMEOUT_REASON_REFUSED:
-		accept, err = host.VerifyRefusedTimeout(c.Request().Context(), st, req.InferenceID, req.PromptData, localMempool, executorClient, st.Config, nowUnix)
+		// Fetch stored diffs to forward to executor during challenge.
+		var storedDiffs []types.Diff
+		if s.store != nil && st.LatestNonce > 0 {
+			records, dErr := s.store.GetDiffs(s.escrowID, 1, st.LatestNonce)
+			if dErr == nil {
+				storedDiffs = make([]types.Diff, len(records))
+				for i, r := range records {
+					storedDiffs[i] = r.Diff
+				}
+			}
+		}
+		var payload *host.InferencePayload
+		if req.Payload != nil {
+			payload = &host.InferencePayload{
+				Prompt:      req.Payload.Prompt,
+				Model:       req.Payload.Model,
+				InputLength: req.Payload.InputLength,
+				MaxTokens:   req.Payload.MaxTokens,
+				StartedAt:   req.Payload.StartedAt,
+			}
+		}
+		accept, err = host.VerifyRefusedTimeout(c.Request().Context(), st, req.InferenceID, payload, storedDiffs, localMempool, executorClient, st.Config, nowUnix)
 	case types.TimeoutReason_TIMEOUT_REASON_EXECUTION:
 		accept, err = host.VerifyExecutionTimeout(c.Request().Context(), st, req.InferenceID, localMempool, executorClient, st.Config, nowUnix)
 	default:
@@ -295,6 +317,42 @@ func (s *Server) handleVerifyTimeout(c echo.Context) error {
 	}
 
 	return writeJSON(c, http.StatusOK, resp)
+}
+
+func (s *Server) handleChallengeReceipt(c echo.Context) error {
+	body := c.Get("body").([]byte)
+
+	var req ChallengeReceiptRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return errJSON(c, http.StatusBadRequest, "invalid json")
+	}
+
+	diffs := make([]types.Diff, len(req.Diffs))
+	for i, dj := range req.Diffs {
+		d, err := DiffFromJSON(dj)
+		if err != nil {
+			return errJSON(c, http.StatusBadRequest, fmt.Sprintf("decode diff %d: %v", i, err))
+		}
+		diffs[i] = d
+	}
+
+	var payload *host.InferencePayload
+	if req.Payload != nil {
+		payload = &host.InferencePayload{
+			Prompt:      req.Payload.Prompt,
+			Model:       req.Payload.Model,
+			InputLength: req.Payload.InputLength,
+			MaxTokens:   req.Payload.MaxTokens,
+			StartedAt:   req.Payload.StartedAt,
+		}
+	}
+
+	receipt, err := s.host.ChallengeReceipt(c.Request().Context(), req.InferenceID, payload, diffs)
+	if err != nil {
+		return errJSON(c, http.StatusInternalServerError, err.Error())
+	}
+
+	return writeJSON(c, http.StatusOK, ChallengeReceiptResponse{Receipt: receipt})
 }
 
 func (s *Server) handleGossipNonce(c echo.Context) error {

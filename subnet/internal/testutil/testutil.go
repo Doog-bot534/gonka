@@ -99,6 +99,30 @@ func SignTimeoutVote(t *testing.T, signer signing.Signer, escrowID string, infer
 	}
 }
 
+// MakeMultiSlotGroup creates a group where some signers own multiple slots.
+// slotsPerSigner[i] is the number of slots assigned to signers[i].
+// SlotIDs are assigned sequentially starting from 0.
+func MakeMultiSlotGroup(signers []*signing.Secp256k1Signer, slotsPerSigner []int) []types.SlotAssignment {
+	var group []types.SlotAssignment
+	slotID := uint32(0)
+	for i, s := range signers {
+		n := 1
+		if i < len(slotsPerSigner) {
+			n = slotsPerSigner[i]
+		}
+		for j := 0; j < n; j++ {
+			group = append(group, types.SlotAssignment{
+				SlotID:           slotID,
+				ValidatorAddress: s.Address(),
+				PublicKey:        s.PublicKeyBytes(),
+				Weight:           1,
+			})
+			slotID++
+		}
+	}
+	return group
+}
+
 func StartTx(inferenceID uint64) *types.SubnetTx {
 	return &types.SubnetTx{Tx: &types.SubnetTx_StartInference{StartInference: &types.MsgStartInference{
 		InferenceId: inferenceID,

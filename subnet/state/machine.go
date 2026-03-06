@@ -37,10 +37,11 @@ type StateMachine struct {
 	userAddress string
 
 	// Lookup maps derived from group at construction time.
-	slotToAddress  map[uint32]string
-	slotToPubKey   map[uint32][]byte
-	addressInGroup map[string]bool
-	totalSlots     uint32
+	slotToAddress      map[uint32]string
+	slotToPubKey       map[uint32][]byte
+	addressInGroup     map[string]bool
+	addressToSlotCount map[string]uint32
+	totalSlots         uint32
 }
 
 func NewStateMachine(
@@ -54,10 +55,12 @@ func NewStateMachine(
 	slotToAddr := make(map[uint32]string, len(group))
 	slotToPub := make(map[uint32][]byte, len(group))
 	addrInGroup := make(map[string]bool, len(group))
+	addrToSlotCount := make(map[string]uint32, len(group))
 	for _, s := range group {
 		slotToAddr[s.SlotID] = s.ValidatorAddress
 		slotToPub[s.SlotID] = s.PublicKey
 		addrInGroup[s.ValidatorAddress] = true
+		addrToSlotCount[s.ValidatorAddress]++
 	}
 
 	groupCopy := make([]types.SlotAssignment, len(group))
@@ -77,12 +80,13 @@ func NewStateMachine(
 			Inferences: make(map[uint64]*types.InferenceRecord),
 			HostStats:  hostStats,
 		},
-		verifier:       verifier,
-		userAddress:    userAddress,
-		slotToAddress:  slotToAddr,
-		slotToPubKey:   slotToPub,
-		addressInGroup: addrInGroup,
-		totalSlots:     uint32(len(group)),
+		verifier:           verifier,
+		userAddress:        userAddress,
+		slotToAddress:      slotToAddr,
+		slotToPubKey:       slotToPub,
+		addressInGroup:     addrInGroup,
+		addressToSlotCount: addrToSlotCount,
+		totalSlots:         uint32(len(group)),
 	}
 }
 
@@ -519,20 +523,22 @@ func (sm *StateMachine) applyTimeout(msg *types.MsgTimeoutInference) error {
 		return fmt.Errorf("%w: unknown reason %v", types.ErrInvalidTimeoutReason, msg.Reason)
 	}
 
-	// Count accept votes and verify each signature.
+	// Count accept votes, weighted by slots per address.
+	// One signature from a multi-slot validator counts for all its slots.
 	acceptCount := uint32(0)
-	seenSlots := make(map[uint32]bool, len(msg.Votes))
+	seenAddrs := make(map[string]bool, len(msg.Votes))
 	for _, vote := range msg.Votes {
 		// Group membership check.
-		if _, ok := sm.slotToAddress[vote.VoterSlot]; !ok {
+		voterAddr, ok := sm.slotToAddress[vote.VoterSlot]
+		if !ok {
 			return fmt.Errorf("%w: slot %d", types.ErrSlotNotInGroup, vote.VoterSlot)
 		}
 
-		// Duplicate voter slot detection.
-		if seenSlots[vote.VoterSlot] {
+		// Duplicate voter address detection (one vote per address).
+		if seenAddrs[voterAddr] {
 			return fmt.Errorf("%w: slot %d", types.ErrDuplicateVote, vote.VoterSlot)
 		}
-		seenSlots[vote.VoterSlot] = true
+		seenAddrs[voterAddr] = true
 
 		voteContent := &types.TimeoutVoteContent{
 			EscrowId:    sm.state.EscrowID,
@@ -550,14 +556,13 @@ func (sm *StateMachine) applyTimeout(msg *types.MsgTimeoutInference) error {
 			return fmt.Errorf("%w: vote from slot %d: %v", types.ErrInvalidVoteSig, vote.VoterSlot, err)
 		}
 
-		expectedAddr := sm.slotToAddress[vote.VoterSlot]
-		if recovered != expectedAddr {
+		if recovered != voterAddr {
 			return fmt.Errorf("%w: vote from slot %d: expected %s, got %s",
-				types.ErrInvalidVoteSig, vote.VoterSlot, expectedAddr, recovered)
+				types.ErrInvalidVoteSig, vote.VoterSlot, voterAddr, recovered)
 		}
 
 		if vote.Accept {
-			acceptCount++
+			acceptCount += sm.addressToSlotCount[voterAddr]
 		}
 	}
 

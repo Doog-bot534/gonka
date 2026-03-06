@@ -151,6 +151,51 @@ func (c *HTTPClient) VerifyTimeout(ctx context.Context, req VerifyTimeoutRequest
 	return &resp, nil
 }
 
+// ChallengeReceipt forwards diffs + payload to the executor and returns the receipt.
+func (c *HTTPClient) ChallengeReceipt(ctx context.Context, inferenceID uint64, payload *host.InferencePayload, diffs []types.Diff) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.config.VerifyTimeout)
+	defer cancel()
+
+	djList := make([]DiffJSON, len(diffs))
+	for i, d := range diffs {
+		dj, err := DiffToJSON(d)
+		if err != nil {
+			return nil, fmt.Errorf("encode diff %d: %w", i, err)
+		}
+		djList[i] = dj
+	}
+
+	var pj *PayloadJSON
+	if payload != nil {
+		pj = &PayloadJSON{
+			Prompt:      payload.Prompt,
+			Model:       payload.Model,
+			InputLength: payload.InputLength,
+			MaxTokens:   payload.MaxTokens,
+			StartedAt:   payload.StartedAt,
+		}
+	}
+
+	req := ChallengeReceiptRequest{
+		InferenceID: inferenceID,
+		Payload:     pj,
+		Diffs:       djList,
+	}
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("marshal: %w", err)
+	}
+	respBody, err := c.doPost(ctx, "/sessions/"+c.escrowID+"/challenge-receipt", body)
+	if err != nil {
+		return nil, err
+	}
+	var resp ChallengeReceiptResponse
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal: %w", err)
+	}
+	return resp.Receipt, nil
+}
+
 // GetDiffs fetches stored diffs from a peer.
 func (c *HTTPClient) GetDiffs(ctx context.Context, from, to uint64) ([]types.Diff, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.config.QueryTimeout)

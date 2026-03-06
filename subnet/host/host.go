@@ -66,6 +66,10 @@ type Host struct {
 	checker  AcceptanceChecker
 	store    storage.Storage  // optional, nil = no persistence
 	gsp      *gossip.Gossip   // optional, nil = no gossip pruning
+
+	// Lookup maps built from group at construction time.
+	slotToAddr  map[uint32]string   // slotID -> validator address
+	addrToSlots map[string][]uint32 // address -> all slotIDs owned
 }
 
 func NewHost(
@@ -79,7 +83,11 @@ func NewHost(
 ) (*Host, error) {
 	addr := signer.Address()
 	slotIDs := make(map[uint32]bool)
+	slotToAddr := make(map[uint32]string, len(group))
+	addrToSlots := make(map[string][]uint32, len(group))
 	for _, s := range group {
+		slotToAddr[s.SlotID] = s.ValidatorAddress
+		addrToSlots[s.ValidatorAddress] = append(addrToSlots[s.ValidatorAddress], s.SlotID)
 		if s.ValidatorAddress == addr {
 			slotIDs[s.SlotID] = true
 		}
@@ -88,14 +96,16 @@ func NewHost(
 		return nil, fmt.Errorf("%w: %s", types.ErrHostNotInGroup, addr)
 	}
 	h := &Host{
-		sm:       sm,
-		signer:   signer,
-		engine:   engine,
-		escrowID: escrowID,
-		slotIDs:  slotIDs,
-		group:    group,
-		mempool:  NewMempool(),
-		checker:  checker,
+		sm:          sm,
+		signer:      signer,
+		engine:      engine,
+		escrowID:    escrowID,
+		slotIDs:     slotIDs,
+		group:       group,
+		mempool:     NewMempool(),
+		checker:     checker,
+		slotToAddr:  slotToAddr,
+		addrToSlots: addrToSlots,
 	}
 	for _, opt := range opts {
 		opt(h)
@@ -314,7 +324,7 @@ func (h *Host) signReceipt(req HostRequest) ([]byte, *executeJob, error) {
 		}
 
 		// Verify payload matches signed diff.
-		if err := h.verifyPayload(req.Payload, start); err != nil {
+		if err := VerifyPayload(req.Payload, start.PromptHash, start.Model, start.InputLength, start.MaxTokens, start.StartedAt); err != nil {
 			return nil, nil, err
 		}
 
@@ -406,8 +416,9 @@ func (h *Host) AccumulateGossipSig(nonce uint64, stateHash, sig []byte, senderSl
 		return fmt.Errorf("host not configured for sig accumulation (verifier=%v, store=%v)", h.verifier != nil, h.store != nil)
 	}
 
-	if int(senderSlot) >= len(h.group) {
-		return fmt.Errorf("sender slot %d out of range (group size %d)", senderSlot, len(h.group))
+	expected, ok := h.slotToAddr[senderSlot]
+	if !ok {
+		return fmt.Errorf("sender slot %d not in group", senderSlot)
 	}
 
 	// Verify sig recovers to the expected address.
@@ -424,7 +435,6 @@ func (h *Host) AccumulateGossipSig(nonce uint64, stateHash, sig []byte, senderSl
 	if err != nil {
 		return fmt.Errorf("recover address: %w", err)
 	}
-	expected := h.group[senderSlot].ValidatorAddress
 	if addr != expected {
 		return fmt.Errorf("sig from slot %d: expected %s, got %s", senderSlot, expected, addr)
 	}
@@ -438,8 +448,11 @@ func (h *Host) AccumulateGossipSig(nonce uint64, stateHash, sig []byte, senderSl
 		return fmt.Errorf("state hash mismatch at nonce %d: stored %x, gossip %x", nonce, records[0].StateHash, stateHash)
 	}
 
-	if err := h.store.AddSignature(h.escrowID, nonce, senderSlot, sig); err != nil {
-		return err
+	// Store sig for all slots owned by this validator address.
+	for _, slot := range h.addrToSlots[addr] {
+		if err := h.store.AddSignature(h.escrowID, nonce, slot, sig); err != nil {
+			return err
+		}
 	}
 	h.checkFinalization(nonce)
 	return nil
@@ -477,6 +490,98 @@ func (h *Host) ApplyRecoveredDiffs(ctx context.Context, diffs []types.Diff) ([]g
 	}
 
 	return sigs, nil
+}
+
+// ChallengeReceipt is called by a verifying host to challenge the executor.
+// It applies missing diffs, checks if this host is the executor for the given
+// inference, verifies the payload fields, signs an executor receipt, and triggers
+// async execution. Returns the receipt signature or nil if this host cannot
+// produce a receipt (not executor, inference not pending, etc).
+//
+// On payload validation error, returns (nil, nil) -- not an error, because the
+// executor IS reachable. The verifier should already have caught bad payloads
+// before forwarding (defense-in-depth).
+func (h *Host) ChallengeReceipt(ctx context.Context, inferenceID uint64, payload *InferencePayload, diffs []types.Diff) ([]byte, error) {
+	h.mu.Lock()
+
+	// Apply any missing diffs.
+	for _, diff := range diffs {
+		if err := h.applyAndPersist(diff); err != nil {
+			h.mu.Unlock()
+			return nil, fmt.Errorf("apply challenge diff nonce %d: %w", diff.Nonce, err)
+		}
+	}
+
+	// Check mempool for existing receipt (MsgConfirmStart).
+	for _, tx := range h.mempool.Txs() {
+		if cs := tx.GetConfirmStart(); cs != nil && cs.InferenceId == inferenceID {
+			h.mu.Unlock()
+			return cs.ExecutorSig, nil
+		}
+	}
+
+	// Look up the inference record.
+	st := h.sm.SnapshotState()
+	rec, ok := st.Inferences[inferenceID]
+	if !ok || rec.Status != types.StatusPending {
+		h.mu.Unlock()
+		return nil, nil
+	}
+
+	// Check if this host is the executor.
+	if !h.slotIDs[rec.ExecutorSlot] {
+		h.mu.Unlock()
+		return nil, nil
+	}
+
+	// Verify payload against on-chain record.
+	if payload == nil {
+		h.mu.Unlock()
+		return nil, nil
+	}
+	if err := VerifyPayload(payload, rec.PromptHash, rec.Model, rec.InputLength, rec.MaxTokens, rec.StartedAt); err != nil {
+		h.mu.Unlock()
+		return nil, nil
+	}
+
+	// Sign executor receipt.
+	receiptContent := &types.ExecutorReceiptContent{
+		InferenceId: inferenceID,
+		PromptHash:  rec.PromptHash,
+		Model:       rec.Model,
+		InputLength: rec.InputLength,
+		MaxTokens:   rec.MaxTokens,
+		StartedAt:   rec.StartedAt,
+		EscrowId:    h.escrowID,
+	}
+	receiptData, err := proto.Marshal(receiptContent)
+	if err != nil {
+		h.mu.Unlock()
+		return nil, fmt.Errorf("marshal executor receipt: %w", err)
+	}
+	sig, err := h.signer.Sign(receiptData)
+	if err != nil {
+		h.mu.Unlock()
+		return nil, fmt.Errorf("sign executor receipt: %w", err)
+	}
+
+	job := &executeJob{
+		inferenceID:  inferenceID,
+		model:        rec.Model,
+		prompt:       payload.Prompt,
+		promptHash:   rec.PromptHash,
+		inputLength:  rec.InputLength,
+		maxTokens:    rec.MaxTokens,
+		executorSlot: rec.ExecutorSlot,
+		diffNonce:    h.sm.LatestNonce(),
+	}
+
+	h.mu.Unlock()
+
+	// Execute outside mutex.
+	h.executeAsync(ctx, job)
+
+	return sig, nil
 }
 
 // LatestNonce returns the latest applied nonce from the state machine.
@@ -537,22 +642,24 @@ func (h *Host) signState(nonce uint64, root []byte) ([]byte, error) {
 	return h.signer.Sign(sigData)
 }
 
-func (h *Host) verifyPayload(p *InferencePayload, start *types.MsgStartInference) error {
+// VerifyPayload checks that an InferencePayload matches the expected on-chain fields.
+// Used by both executor (signReceipt) and verifier (VerifyRefusedTimeout) paths.
+func VerifyPayload(p *InferencePayload, promptHash []byte, model string, inputLength, maxTokens uint64, startedAt int64) error {
 	hash := sha256.Sum256(p.Prompt)
-	if !bytes.Equal(hash[:], start.PromptHash) {
+	if !bytes.Equal(hash[:], promptHash) {
 		return types.ErrPromptHashMismatch
 	}
-	if p.InputLength != start.InputLength {
-		return fmt.Errorf("%w: input_length %d vs %d", types.ErrPayloadMismatch, p.InputLength, start.InputLength)
+	if p.InputLength != inputLength {
+		return fmt.Errorf("%w: input_length %d vs %d", types.ErrPayloadMismatch, p.InputLength, inputLength)
 	}
-	if p.MaxTokens != start.MaxTokens {
-		return fmt.Errorf("%w: max_tokens %d vs %d", types.ErrPayloadMismatch, p.MaxTokens, start.MaxTokens)
+	if p.MaxTokens != maxTokens {
+		return fmt.Errorf("%w: max_tokens %d vs %d", types.ErrPayloadMismatch, p.MaxTokens, maxTokens)
 	}
-	if p.StartedAt != start.StartedAt {
-		return fmt.Errorf("%w: started_at %d vs %d", types.ErrPayloadMismatch, p.StartedAt, start.StartedAt)
+	if p.StartedAt != startedAt {
+		return fmt.Errorf("%w: started_at %d vs %d", types.ErrPayloadMismatch, p.StartedAt, startedAt)
 	}
-	if p.Model != start.Model {
-		return fmt.Errorf("%w: model %s vs %s", types.ErrPayloadMismatch, p.Model, start.Model)
+	if p.Model != model {
+		return fmt.Errorf("%w: model %s vs %s", types.ErrPayloadMismatch, p.Model, model)
 	}
 	return nil
 }

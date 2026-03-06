@@ -488,6 +488,56 @@ func TestApplyDiff_Timeout_AfterFinish(t *testing.T) {
 	require.ErrorIs(t, err, types.ErrInvalidTimeoutReason)
 }
 
+func TestApplyDiff_Timeout_MultiSlotWeight(t *testing.T) {
+	// 3 signers: signer0 owns 3 slots (0,1,2), signer1 owns 1 slot (3), signer2 owns 1 slot (4).
+	// Total 5 slots. VoteThreshold = 5/2 = 2. Need >2 accept weight.
+	// One vote from signer0 (slot 0) should count as weight=3.
+	signers := []*signing.Secp256k1Signer{
+		testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t),
+	}
+	user := testutil.MustGenerateKey(t)
+	group := testutil.MakeMultiSlotGroup(signers, []int{3, 1, 1})
+	config := testutil.DefaultConfig(len(group)) // VoteThreshold = 5/2 = 2
+	verifier := signing.NewSecp256k1Verifier()
+	sm := NewStateMachine("escrow-1", config, group, 10000, user.Address(), verifier)
+
+	// Start inference. Executor slot = group[1%5].SlotID = 1 (owned by signer0).
+	diff := testutil.SignDiff(t, user, "escrow-1", 1, []*types.SubnetTx{txStart(&types.MsgStartInference{
+		InferenceId: 1, PromptHash: []byte("prompt"), Model: "llama",
+		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
+	})})
+	_, err := sm.ApplyDiff(diff)
+	require.NoError(t, err)
+
+	// One accept vote from signer2 (slot 4, weight=1) -- not enough alone.
+	// But signer1 (slot 3, weight=1) also votes accept -> total weight=2, still not >2.
+	// Need signer0 to vote (weight=3) for >2.
+	vote := testutil.SignTimeoutVote(t, signers[2], "escrow-1", 1, types.TimeoutReason_TIMEOUT_REASON_REFUSED, true)
+	vote.VoterSlot = 4 // signer2's slot
+
+	// Single vote with weight=1 should fail (need >2).
+	diff = testutil.SignDiff(t, user, "escrow-1", 2, []*types.SubnetTx{txTimeout(&types.MsgTimeoutInference{
+		InferenceId: 1, Reason: types.TimeoutReason_TIMEOUT_REASON_REFUSED,
+		Votes: []*types.TimeoutVote{vote},
+	})})
+	_, err = sm.ApplyDiff(diff)
+	require.ErrorIs(t, err, types.ErrInsufficientVotes)
+
+	// Now add signer0's vote (slot 0, weight=3). Total = 1+3 = 4 > 2.
+	vote0 := testutil.SignTimeoutVote(t, signers[0], "escrow-1", 1, types.TimeoutReason_TIMEOUT_REASON_REFUSED, true)
+	vote0.VoterSlot = 0
+
+	diff = testutil.SignDiff(t, user, "escrow-1", 2, []*types.SubnetTx{txTimeout(&types.MsgTimeoutInference{
+		InferenceId: 1, Reason: types.TimeoutReason_TIMEOUT_REASON_REFUSED,
+		Votes: []*types.TimeoutVote{vote, vote0},
+	})})
+	_, err = sm.ApplyDiff(diff)
+	require.NoError(t, err)
+
+	state := sm.SnapshotState()
+	require.Equal(t, types.StatusTimedOut, state.Inferences[1].Status)
+}
+
 func TestApplyDiff_NonceSequential(t *testing.T) {
 	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
 	sm, user := newTestSM(t, hosts, 10000)

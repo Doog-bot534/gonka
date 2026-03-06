@@ -454,33 +454,53 @@ func (s *Session) StateMachine() *state.StateMachine { return s.sm }
 
 // TimeoutVerifier contacts a host for timeout verification votes.
 type TimeoutVerifier interface {
-	VerifyTimeout(ctx context.Context, inferenceID uint64, reason types.TimeoutReason, promptData []byte) (accept bool, sig []byte, voterSlot uint32, err error)
+	VerifyTimeout(ctx context.Context, inferenceID uint64, reason types.TimeoutReason, payload *host.InferencePayload) (accept bool, sig []byte, voterSlot uint32, err error)
 }
 
 // CollectTimeoutVotes contacts non-executor hosts to collect signed votes.
 // Returns votes for inclusion in MsgTimeoutInference.
+// Deduplicates verifiers by validator address to avoid duplicate votes
+// when the same validator occupies multiple slots.
 func (s *Session) CollectTimeoutVotes(
 	ctx context.Context,
 	inferenceID uint64,
 	reason types.TimeoutReason,
-	promptData []byte,
+	payload *host.InferencePayload,
 	verifiers map[int]TimeoutVerifier, // hostIdx -> verifier
 ) ([]*types.TimeoutVote, error) {
-	// Determine executor slot.
+	// Determine executor slot and resolve its validator address.
 	executorIdx := int(inferenceID % uint64(len(s.group)))
+	executorAddr := s.group[executorIdx].ValidatorAddress
+
+	// Dedup verifiers by address to avoid duplicate votes from multi-slot validators.
+	// Pre-seed the executor's address so ALL slots owned by that validator are excluded,
+	// not just the single executor index. This prevents a multi-slot executor from
+	// voting on its own timeout through a different slot.
+	type addrVerifier struct {
+		idx      int
+		verifier TimeoutVerifier
+	}
+	seen := make(map[string]bool)
+	seen[executorAddr] = true
+	var deduped []addrVerifier
+	for idx, v := range verifiers {
+		addr := s.group[idx].ValidatorAddress
+		if seen[addr] {
+			continue
+		}
+		seen[addr] = true
+		deduped = append(deduped, addrVerifier{idx, v})
+	}
 
 	type voteResult struct {
 		vote *types.TimeoutVote
 		err  error
 	}
 
-	results := make(chan voteResult, len(verifiers))
-	for idx, v := range verifiers {
-		if idx == executorIdx {
-			continue // skip executor
-		}
+	results := make(chan voteResult, len(deduped))
+	for _, av := range deduped {
 		go func(verifier TimeoutVerifier) {
-			accept, sig, voterSlot, err := verifier.VerifyTimeout(ctx, inferenceID, reason, promptData)
+			accept, sig, voterSlot, err := verifier.VerifyTimeout(ctx, inferenceID, reason, payload)
 			if err != nil {
 				results <- voteResult{err: err}
 				return
@@ -494,17 +514,11 @@ func (s *Session) CollectTimeoutVotes(
 				Accept:    true,
 				Signature: sig,
 			}}
-		}(v)
+		}(av.verifier)
 	}
 
 	var votes []*types.TimeoutVote
-	// Count expected responses (non-executor verifiers).
-	expected := 0
-	for idx := range verifiers {
-		if idx != executorIdx {
-			expected++
-		}
-	}
+	expected := len(deduped)
 
 	voteThreshold := s.sm.SnapshotState().Config.VoteThreshold
 	for i := 0; i < expected; i++ {
