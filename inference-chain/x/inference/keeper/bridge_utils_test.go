@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"encoding/hex"
+	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -49,6 +50,16 @@ func TestChainIdToBytes32(t *testing.T) {
 	// 3. Invalid chain ID (non-numeric string)
 	_, err = chainIdToBytes32("eth")
 	require.ErrorContains(t, err, "invalid chain ID format")
+
+	// 4. Invalid chain ID (negative)
+	_, err = chainIdToBytes32("-1")
+	require.ErrorContains(t, err, "chain ID cannot be negative")
+
+	// 5. Invalid chain ID (> 256 bits)
+	// Create string for 2^256
+	tooBig := new(big.Int).Lsh(big.NewInt(1), 256)
+	_, err = chainIdToBytes32(tooBig.String())
+	require.Error(t, err) // Either invalid format or exceeds 256 bits depending on math.Int bounds
 }
 
 func TestAmountToBytes32(t *testing.T) {
@@ -67,4 +78,13 @@ func TestAmountToBytes32(t *testing.T) {
 	// 3. Invalid amount (non-numeric string)
 	_, err = amountToBytes32("abc")
 	require.ErrorContains(t, err, "invalid amount format")
+
+	// 4. Invalid amount (negative)
+	_, err = amountToBytes32("-100")
+	require.ErrorContains(t, err, "amount cannot be negative")
+
+	// 5. Invalid amount (> 256 bits)
+	tooBig := new(big.Int).Lsh(big.NewInt(1), 256)
+	_, err = amountToBytes32(tooBig.String())
+	require.Error(t, err) // Either invalid format or exceeds 256 bits depending on math.Int bounds
 }
