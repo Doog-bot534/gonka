@@ -94,11 +94,19 @@ func (k msgServer) RequestBridgeMint(goCtx context.Context, msg *types.MsgReques
 
 	// Prepare BLS signature data for WGNK mint command
 	// Only prepare the data portion - BLS system will prepend epochId, gonkaChainId, requestId
-	blsData := k.prepareBridgeMintSignatureData(
+	blsData, err := k.prepareBridgeMintSignatureData(
 		destinationChainId,     // Numeric chain ID (e.g., "1", "137")
 		msg.DestinationAddress, // Ethereum address to receive WGNK
 		msg.Amount,             // Amount as string
 	)
+	if err != nil {
+		// Rollback the escrow transfer
+		rollbackErr := k.ReleaseFromEscrow(ctx, userAddr, nativeCoins)
+		if rollbackErr != nil {
+			k.LogError("Bridge mint: Failed to rollback escrow transfer", types.Messages, "rollbackError", rollbackErr)
+		}
+		return nil, fmt.Errorf("failed to prepare bridge mint signature data: %v", err)
+	}
 
 	// 8. Request BLS threshold signature for WGNK minting
 	// Use the actual Gonka chain ID from context (source chain)
@@ -159,15 +167,24 @@ func (k msgServer) RequestBridgeMint(goCtx context.Context, msg *types.MsgReques
 }
 
 // prepareBridgeMintSignatureData prepares the data for BLS signature according to Ethereum bridge format
-func (k Keeper) prepareBridgeMintSignatureData(chainId, recipient, amount string) [][]byte {
+func (k Keeper) prepareBridgeMintSignatureData(chainId, recipient, amount string) ([][]byte, error) {
 	// This function only prepares the data that comes AFTER epochId, gonkaChainId, and requestId
 	// Final message format: [epochId, gonkaChainId, requestId, ethereumChainId, MINT_OPERATION, recipient, amount]
 	// BLS system will prepend: epochId (8 bytes) + gonkaChainId (32 bytes) + requestId (32 bytes)
 
 	// Use helper functions for consistent encoding
-	ethereumChainIdBytes := chainIdToBytes32(chainId)
-	recipientBytes := ethereumAddressToBytes(recipient)
-	amountBytes := amountToBytes32(amount)
+	ethereumChainIdBytes, err := chainIdToBytes32(chainId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode chain ID: %w", err)
+	}
+	recipientBytes, err := ethereumAddressToBytes(recipient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode recipient address: %w", err)
+	}
+	amountBytes, err := amountToBytes32(amount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode amount: %w", err)
+	}
 
 	// Return the data fields that come after epochId, gonkaChainId, requestId
 	// Order: ethereumChainId (32 bytes) + MINT_OPERATION (32 bytes) + recipient (20 bytes) + amount (32 bytes)
@@ -178,5 +195,5 @@ func (k Keeper) prepareBridgeMintSignatureData(chainId, recipient, amount string
 		amountBytes,          // Amount as uint256 (32 bytes)
 	}
 
-	return data
+	return data, nil
 }
