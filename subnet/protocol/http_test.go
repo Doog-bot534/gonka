@@ -896,3 +896,39 @@ func TestAttack_GossipUnverifiedNonce(t *testing.T) {
 	require.NoError(t, err, "real gossip must not be rejected after fake was blocked")
 }
 
+func TestAttack_GossipEmptySigBypass(t *testing.T) {
+	env := setupHTTPEnv(t, 3, 100000, 100)
+	ctx := context.Background()
+
+	// Send real inference to host 0 to get a legitimate state.
+	diff := testutil.SignDiff(t, env.userSigner, "escrow-1", 1, []*types.SubnetTx{testutil.StartTx(1)})
+	resp, err := env.clients[0].Send(ctx, host.HostRequest{
+		Diffs: []types.Diff{diff},
+		Nonce: 1,
+		Payload: &host.InferencePayload{
+			Prompt:      testutil.TestPrompt,
+			Model:       "llama",
+			InputLength: 100,
+			MaxTokens:   50,
+			StartedAt:   1000,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, resp.StateHash)
+
+	// Attacker (group member host 2) sends gossip with empty StateSig to bypass
+	// signature verification. Must be rejected.
+	hostClient := transport.NewHTTPClient(env.httpServers[1].URL, "escrow-1", env.signers[2])
+	err = hostClient.GossipNonce(ctx, 1, []byte("fake-hash"), nil, 2)
+	require.Error(t, err, "gossip with empty sig must be rejected")
+
+	// Also test with out-of-range SlotID.
+	err = hostClient.GossipNonce(ctx, 1, []byte("fake-hash"), []byte("some-sig"), 99)
+	require.Error(t, err, "gossip with invalid slot id must be rejected")
+
+	// Real gossip must still work after the rejected attempts.
+	hostClient1 := transport.NewHTTPClient(env.httpServers[1].URL, "escrow-1", env.signers[0])
+	err = hostClient1.GossipNonce(ctx, 1, resp.StateHash, resp.StateSig, 0)
+	require.NoError(t, err, "real gossip must succeed after rejected bypass attempts")
+}
+

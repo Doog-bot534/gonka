@@ -373,31 +373,40 @@ func (s *Server) handleGossipNonce(c echo.Context) error {
 		return errJSON(c, http.StatusBadRequest, "invalid json")
 	}
 
-	// Verify stateSig before storing in seen map. Without this, an attacker
+	// Reject empty sig or invalid slot upfront. Without this, an attacker
 	// can poison the seen map with a fake (nonce, hash) and cause false
 	// equivocation detection against an honest host.
-	if len(req.StateSig) > 0 && req.SlotID < uint32(len(s.group)) {
-		expectedAddr := ""
-		for _, slot := range s.group {
-			if slot.SlotID == req.SlotID {
-				expectedAddr = slot.ValidatorAddress
-				break
-			}
+	if len(req.StateSig) == 0 {
+		return errJSON(c, http.StatusBadRequest, "missing state signature")
+	}
+	if req.SlotID >= uint32(len(s.group)) {
+		return errJSON(c, http.StatusBadRequest, "invalid slot id")
+	}
+
+	// Verify stateSig recovers to the claimed slot's address.
+	expectedAddr := ""
+	for _, slot := range s.group {
+		if slot.SlotID == req.SlotID {
+			expectedAddr = slot.ValidatorAddress
+			break
 		}
-		if expectedAddr != "" {
-			sigContent := &types.StateSignatureContent{
-				StateRoot: req.StateHash,
-				EscrowId:  s.escrowID,
-				Nonce:     req.Nonce,
-			}
-			sigData, err := proto.Marshal(sigContent)
-			if err == nil {
-				addr, err := s.verifier.RecoverAddress(sigData, req.StateSig)
-				if err != nil || addr != expectedAddr {
-					return errJSON(c, http.StatusBadRequest, "invalid gossip state signature")
-				}
-			}
-		}
+	}
+	if expectedAddr == "" {
+		return errJSON(c, http.StatusBadRequest, "slot not found in group")
+	}
+
+	sigContent := &types.StateSignatureContent{
+		StateRoot: req.StateHash,
+		EscrowId:  s.escrowID,
+		Nonce:     req.Nonce,
+	}
+	sigData, err := proto.Marshal(sigContent)
+	if err != nil {
+		return errJSON(c, http.StatusInternalServerError, "marshal sig content")
+	}
+	addr, err := s.verifier.RecoverAddress(sigData, req.StateSig)
+	if err != nil || addr != expectedAddr {
+		return errJSON(c, http.StatusBadRequest, "invalid gossip state signature")
 	}
 
 	if s.gossip != nil {
