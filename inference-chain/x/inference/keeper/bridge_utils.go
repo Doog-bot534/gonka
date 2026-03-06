@@ -52,7 +52,14 @@ func chainIdToBytes32(chainId string) ([]byte, error) {
 	if !ok {
 		return nil, fmt.Errorf("invalid chain ID format: %s", chainId)
 	}
-	chainIdInt.BigInt().FillBytes(chainIdBytes) // Big endian format
+	if chainIdInt.IsNegative() {
+		return nil, fmt.Errorf("chain ID cannot be negative: %s", chainId)
+	}
+	bigInt := chainIdInt.BigInt()
+	if bigInt.BitLen() > 256 {
+		return nil, fmt.Errorf("chain ID exceeds 256 bits: %s", chainId)
+	}
+	bigInt.FillBytes(chainIdBytes) // Big endian format
 	return chainIdBytes, nil
 }
 
@@ -63,7 +70,14 @@ func amountToBytes32(amount string) ([]byte, error) {
 	if !ok {
 		return nil, fmt.Errorf("invalid amount format: %s", amount)
 	}
-	amountInt.BigInt().FillBytes(amountBytes) // Big endian format
+	if amountInt.IsNegative() {
+		return nil, fmt.Errorf("amount cannot be negative: %s", amount)
+	}
+	bigInt := amountInt.BigInt()
+	if bigInt.BitLen() > 256 {
+		return nil, fmt.Errorf("amount exceeds 256 bits: %s", amount)
+	}
+	bigInt.FillBytes(amountBytes) // Big endian format
 	return amountBytes, nil
 }
 
