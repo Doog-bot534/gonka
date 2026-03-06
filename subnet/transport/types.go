@@ -12,9 +12,10 @@ import (
 // DiffJSON is the JSON wire format for a single diff.
 // Proto-serialized fields travel as base64 to preserve signature integrity.
 type DiffJSON struct {
-	Nonce   uint64 `json:"nonce"`
-	Txs     []byte `json:"txs"`      // proto bytes of DiffContent.Txs wrapper
-	UserSig []byte `json:"user_sig"` // raw sig bytes
+	Nonce         uint64 `json:"nonce"`
+	Txs           []byte `json:"txs"`                        // proto bytes of DiffContent.Txs wrapper
+	UserSig       []byte `json:"user_sig"`                   // raw sig bytes
+	PostStateRoot []byte `json:"post_state_root,omitempty"`  // state root after applying txs
 }
 
 // PayloadJSON is the JSON wire format for inference payload.
@@ -97,9 +98,10 @@ func DiffToJSON(d types.Diff) (DiffJSON, error) {
 		return DiffJSON{}, fmt.Errorf("marshal diff content: %w", err)
 	}
 	return DiffJSON{
-		Nonce:   d.Nonce,
-		Txs:     txsBytes,
-		UserSig: d.UserSig,
+		Nonce:         d.Nonce,
+		Txs:           txsBytes,
+		UserSig:       d.UserSig,
+		PostStateRoot: d.PostStateRoot,
 	}, nil
 }
 
@@ -110,9 +112,10 @@ func DiffFromJSON(dj DiffJSON) (types.Diff, error) {
 		return types.Diff{}, fmt.Errorf("unmarshal diff content: %w", err)
 	}
 	return types.Diff{
-		Nonce:   dj.Nonce,
-		Txs:     content.Txs,
-		UserSig: dj.UserSig,
+		Nonce:         dj.Nonce,
+		Txs:           content.Txs,
+		UserSig:       dj.UserSig,
+		PostStateRoot: dj.PostStateRoot,
 	}, nil
 }
 

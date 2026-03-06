@@ -825,9 +825,10 @@ func TestHTTP_StateHashVerification(t *testing.T) {
 	params := defaultParams()
 
 	// First inference goes to host 1 (nonce 1 % 3 = 1) which has wrong balance.
+	// The host's computed state root won't match the user's signed post_state_root.
 	_, err = session.SendInference(ctx, params)
 	require.Error(t, err)
-	require.ErrorIs(t, err, types.ErrStateHashMismatch)
+	require.ErrorIs(t, err, types.ErrPostStateRootMismatch)
 }
 
 func TestHTTP_GetSignatures(t *testing.T) {

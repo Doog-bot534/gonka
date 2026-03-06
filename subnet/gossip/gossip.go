@@ -131,6 +131,7 @@ func (g *Gossip) OnNonceReceived(nonce uint64, stateHash, stateSig []byte, sende
 	if ok {
 		if !bytes.Equal(existing.stateHash, stateHash) {
 			g.mu.Unlock()
+			g.checkStateConflict(nonce, existing.stateHash, stateHash, existing.slotID, senderSlot)
 			return fmt.Errorf("equivocation at nonce %d: hash %x vs %x (slots %d vs %d)",
 				nonce, existing.stateHash, stateHash, existing.slotID, senderSlot)
 		}
@@ -387,6 +388,20 @@ func (g *Gossip) tryRecovery(ctx context.Context) {
 	for _, sig := range sigs {
 		g.sendNonceToPeers(ctx, peers, sig.Nonce, sig.StateHash, sig.Sig, sig.SlotID)
 	}
+}
+
+// checkStateConflict is called when two different state hashes are observed
+// for the same nonce. This means a host computed a divergent state.
+// TODO: submit slashing evidence to chain, alert operator, or trigger session abort.
+func (g *Gossip) checkStateConflict(nonce uint64, hashA, hashB []byte, slotA, slotB uint32) {
+	logging.Debug("state conflict detected",
+		"subsystem", "gossip",
+		"nonce", nonce,
+		"hash_a", fmt.Sprintf("%x", hashA),
+		"hash_b", fmt.Sprintf("%x", hashB),
+		"slot_a", slotA,
+		"slot_b", slotB,
+	)
 }
 
 func (g *Gossip) pickPeers() []PeerClient {

@@ -656,3 +656,17 @@ Scope:
 Tests: testermint integration tests using user client library from Phase 7 against full local cluster (chain nodes + dapi + mock ML nodes).
 
 Testable deliverable: complete system works end-to-end. Settlement produces correct on-chain state.
+
+
+## Further Work
+
+Items identified during review that are not blockers for current phases but should be addressed before production.
+
+### Equivocation response
+
+Equivocation detection (same nonce, different state hash from different slots) currently logs a debug message and returns HTTP 409 to the gossip sender. No further action is taken. `checkStateConflict()` in `gossip/gossip.go` is a stub.
+
+Needed:
+- Submit slashing evidence to chain (requires on-chain slashing msg)
+- Escalate to operator (structured log at error/warn level, optional webhook)
+- Consider session abort if conflict involves the local host's own state

@@ -27,6 +27,7 @@ type DiffContent struct {
 	Nonce         uint64                 `protobuf:"varint,1,opt,name=nonce,proto3" json:"nonce,omitempty"`
 	Txs           []*SubnetTx            `protobuf:"bytes,2,rep,name=txs,proto3" json:"txs,omitempty"`
 	EscrowId      string                 `protobuf:"bytes,3,opt,name=escrow_id,json=escrowId,proto3" json:"escrow_id,omitempty"`
+	PostStateRoot []byte                 `protobuf:"bytes,4,opt,name=post_state_root,json=postStateRoot,proto3" json:"post_state_root,omitempty"` // state root AFTER applying this diff's txs
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -80,6 +81,13 @@ func (x *DiffContent) GetEscrowId() string {
 		return x.EscrowId
 	}
 	return ""
+}
+
+func (x *DiffContent) GetPostStateRoot() []byte {
+	if x != nil {
+		return x.PostStateRoot
+	}
+	return nil
 }
 
 // SubnetTx wraps all 8 tx types in a oneof for deterministic serialization.
@@ -496,11 +504,12 @@ var File_subnet_v1_diff_proto protoreflect.FileDescriptor
 
 const file_subnet_v1_diff_proto_rawDesc = "" +
 	"\n" +
-	"\x14subnet/v1/diff.proto\x12\tsubnet.v1\x1a\x12subnet/v1/tx.proto\"g\n" +
+	"\x14subnet/v1/diff.proto\x12\tsubnet.v1\x1a\x12subnet/v1/tx.proto\"\x8f\x01\n" +
 	"\vDiffContent\x12\x14\n" +
 	"\x05nonce\x18\x01 \x01(\x04R\x05nonce\x12%\n" +
 	"\x03txs\x18\x02 \x03(\v2\x13.subnet.v1.SubnetTxR\x03txs\x12\x1b\n" +
-	"\tescrow_id\x18\x03 \x01(\tR\bescrowId\"\xbf\x04\n" +
+	"\tescrow_id\x18\x03 \x01(\tR\bescrowId\x12&\n" +
+	"\x0fpost_state_root\x18\x04 \x01(\fR\rpostStateRoot\"\xbf\x04\n" +
 	"\bSubnetTx\x12G\n" +
 	"\x0fstart_inference\x18\x01 \x01(\v2\x1c.subnet.v1.MsgStartInferenceH\x00R\x0estartInference\x12A\n" +
 	"\rconfirm_start\x18\x02 \x01(\v2\x1a.subnet.v1.MsgConfirmStartH\x00R\fconfirmStart\x12J\n" +

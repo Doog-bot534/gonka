@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"fmt"
 	"slices"
 
@@ -90,10 +91,11 @@ func NewStateMachine(
 	}
 }
 
-// ApplyDiff validates and applies a diff, returning the state root.
+// ApplyDiff validates user signature and post_state_root, then applies the diff.
+// Returns the computed state root.
 func (sm *StateMachine) ApplyDiff(diff types.Diff) ([]byte, error) {
-	// 1. Verify user signature.
-	diffContent := BuildDiffContent(sm.state.EscrowID, diff.Nonce, diff.Txs)
+	// 1. Verify user signature (covers nonce, txs, escrow_id, post_state_root).
+	diffContent := BuildDiffContent(sm.state.EscrowID, diff.Nonce, diff.Txs, diff.PostStateRoot)
 	data, err := proto.Marshal(diffContent)
 	if err != nil {
 		return nil, fmt.Errorf("marshal diff content: %w", err)
@@ -107,18 +109,40 @@ func (sm *StateMachine) ApplyDiff(diff types.Diff) ([]byte, error) {
 		return nil, fmt.Errorf("%w: expected %s, got %s", types.ErrInvalidUserSig, sm.userAddress, recovered)
 	}
 
-	// 2. Validate nonce.
-	expectedNonce := sm.state.LatestNonce + 1
-	if diff.Nonce != expectedNonce {
-		return nil, fmt.Errorf("%w: expected %d, got %d", types.ErrInvalidNonce, expectedNonce, diff.Nonce)
+	// 2. Apply txs.
+	root, err := sm.applyCore(diff.Nonce, diff.Txs)
+	if err != nil {
+		return nil, err
 	}
 
-	// 3. Validate at most one MsgStartInference per diff, and inference_id == nonce.
+	// 3. Verify post_state_root if present.
+	if len(diff.PostStateRoot) > 0 && !bytes.Equal(root, diff.PostStateRoot) {
+		return nil, fmt.Errorf("%w: diff %x, computed %x", types.ErrPostStateRootMismatch, diff.PostStateRoot, root)
+	}
+
+	return root, nil
+}
+
+// ApplyLocal applies txs without signature verification. Used by the user
+// to compute the post_state_root before signing the diff.
+func (sm *StateMachine) ApplyLocal(nonce uint64, txs []*types.SubnetTx) ([]byte, error) {
+	return sm.applyCore(nonce, txs)
+}
+
+// applyCore validates nonce, applies txs, updates nonce, and returns the state root.
+func (sm *StateMachine) applyCore(nonce uint64, txs []*types.SubnetTx) ([]byte, error) {
+	// 1. Validate nonce.
+	expectedNonce := sm.state.LatestNonce + 1
+	if nonce != expectedNonce {
+		return nil, fmt.Errorf("%w: expected %d, got %d", types.ErrInvalidNonce, expectedNonce, nonce)
+	}
+
+	// 2. Validate at most one MsgStartInference per diff, and inference_id == nonce.
 	startCount := 0
-	for _, tx := range diff.Txs {
+	for _, tx := range txs {
 		if start := tx.GetStartInference(); start != nil {
 			startCount++
-			if start.InferenceId != diff.Nonce {
+			if start.InferenceId != nonce {
 				return nil, types.ErrInvalidInferenceID
 			}
 		}
@@ -127,28 +151,28 @@ func (sm *StateMachine) ApplyDiff(diff types.Diff) ([]byte, error) {
 		return nil, types.ErrMultipleStartMsgs
 	}
 
-	// 4. Snapshot mutable state for rollback on error.
+	// 3. Snapshot mutable state for rollback on error.
 	snap := sm.snapshotMutable()
 
-	// 5. Apply each tx.
-	for _, tx := range diff.Txs {
+	// 4. Apply each tx.
+	for _, tx := range txs {
 		if err := sm.applyTx(tx); err != nil {
 			sm.restoreMutable(snap)
 			return nil, err
 		}
 	}
 
-	// 6. Update nonce.
-	sm.state.LatestNonce = diff.Nonce
+	// 5. Update nonce.
+	sm.state.LatestNonce = nonce
 
-	// 7. Compute state root.
+	// 6. Compute state root.
 	// TODO: optimize for sure
 	root, err := ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences)
 	if err != nil {
 		return nil, fmt.Errorf("compute state root: %w", err)
 	}
 
-	logging.Debug("applied diff", "subsystem", "state", "nonce", diff.Nonce, "txs", len(diff.Txs))
+	logging.Debug("applied diff", "subsystem", "state", "nonce", nonce, "txs", len(txs))
 	return root, nil
 }
 
@@ -624,13 +648,13 @@ func (sm *StateMachine) applyFinalizeRound() error {
 	return nil
 }
 
-// BuildDiffContent creates the proto DiffContent from nonce, txs, and escrowID for signing.
-// Since Diff.Txs is already []*SubnetTx, no conversion is needed.
-func BuildDiffContent(escrowID string, nonce uint64, txs []*types.SubnetTx) *types.DiffContent {
+// BuildDiffContent creates the proto DiffContent from nonce, txs, escrowID, and postStateRoot for signing.
+func BuildDiffContent(escrowID string, nonce uint64, txs []*types.SubnetTx, postStateRoot []byte) *types.DiffContent {
 	return &types.DiffContent{
-		Nonce:    nonce,
-		Txs:      txs,
-		EscrowId: escrowID,
+		Nonce:         nonce,
+		Txs:           txs,
+		EscrowId:      escrowID,
+		PostStateRoot: postStateRoot,
 	}
 }
 

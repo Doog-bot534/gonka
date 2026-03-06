@@ -46,12 +46,17 @@ func DefaultConfig(numHosts int) types.SessionConfig {
 
 func SignDiff(t *testing.T, signer signing.Signer, escrowID string, nonce uint64, txs []*types.SubnetTx) types.Diff {
 	t.Helper()
-	content := &types.DiffContent{Nonce: nonce, Txs: txs, EscrowId: escrowID}
+	return SignDiffWithRoot(t, signer, escrowID, nonce, txs, nil)
+}
+
+func SignDiffWithRoot(t *testing.T, signer signing.Signer, escrowID string, nonce uint64, txs []*types.SubnetTx, postStateRoot []byte) types.Diff {
+	t.Helper()
+	content := &types.DiffContent{Nonce: nonce, Txs: txs, EscrowId: escrowID, PostStateRoot: postStateRoot}
 	data, err := proto.Marshal(content)
 	require.NoError(t, err)
 	sig, err := signer.Sign(data)
 	require.NoError(t, err)
-	return types.Diff{Nonce: nonce, Txs: txs, UserSig: sig}
+	return types.Diff{Nonce: nonce, Txs: txs, UserSig: sig, PostStateRoot: postStateRoot}
 }
 
 func SignProposerTx(t *testing.T, signer signing.Signer, msg proto.Message) []byte {

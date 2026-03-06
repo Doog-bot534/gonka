@@ -9,6 +9,7 @@ message DiffContent {
   uint64 nonce = 1;
   repeated SubnetTx txs = 2;
   string escrow_id = 3;
+  bytes post_state_root = 4;  // state root AFTER applying this diff's txs
 }
 
 // SubnetTx wraps all 8 tx types in a oneof for deterministic serialization.

@@ -69,9 +69,10 @@ type EscrowState struct {
 // Txs uses the proto-generated SubnetTx with its oneof discriminator,
 // which structurally guarantees exactly one tx type per entry.
 type Diff struct {
-	Nonce   uint64
-	Txs     []*SubnetTx
-	UserSig []byte
+	Nonce         uint64
+	Txs           []*SubnetTx
+	UserSig       []byte
+	PostStateRoot []byte
 }
 
 // DiffRecord is the storage representation: Diff + computed metadata.

@@ -86,10 +86,9 @@ func NewSession(
 	}, nil
 }
 
-// NextDiff composes a diff with pending txs + new MsgStartInference.
-// Returns the diff and target host index. Does NOT send.
+// composeDiffTxs builds the txs for the next diff (no side effects).
 // Caller must hold s.mu.
-func (s *Session) nextDiff(params InferenceParams) (types.Diff, int, error) {
+func (s *Session) composeDiffTxs(params InferenceParams) (uint64, int, []*types.SubnetTx) {
 	nonce := s.nonce + 1
 	hostIdx := int(nonce % uint64(len(s.group)))
 
@@ -111,19 +110,7 @@ func (s *Session) nextDiff(params InferenceParams) (types.Diff, int, error) {
 		},
 	}})
 
-	// Sign the diff.
-	content := state.BuildDiffContent(s.escrowID, nonce, txs)
-	data, err := proto.Marshal(content)
-	if err != nil {
-		return types.Diff{}, 0, fmt.Errorf("marshal diff content: %w", err)
-	}
-	sig, err := s.signer.Sign(data)
-	if err != nil {
-		return types.Diff{}, 0, fmt.Errorf("sign diff: %w", err)
-	}
-
-	diff := types.Diff{Nonce: nonce, Txs: txs, UserSig: sig}
-	return diff, hostIdx, nil
+	return nonce, hostIdx, txs
 }
 
 // diffsForHost returns catch-up diffs for a host (from its last sync nonce to current).
@@ -199,11 +186,17 @@ func (s *Session) DiffsForHost(hostIdx int) []types.Diff {
 	return s.diffsForHost(hostIdx)
 }
 
-// NextDiff composes a diff with pending txs + new MsgStartInference. Thread-safe.
+// NextDiff composes a diff with pending txs + new MsgStartInference.
+// Does NOT apply state or advance nonce (peek-only). Thread-safe.
 func (s *Session) NextDiff(params InferenceParams) (types.Diff, int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.nextDiff(params)
+	nonce, hostIdx, txs := s.composeDiffTxs(params)
+	diff, err := s.signDiff(nonce, txs, nil)
+	if err != nil {
+		return types.Diff{}, 0, err
+	}
+	return diff, hostIdx, nil
 }
 
 // preparedInference holds the data prepared under lock for an inference send.
@@ -220,13 +213,16 @@ func (s *Session) PrepareInference(params InferenceParams) (*preparedInference, 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	diff, hostIdx, err := s.nextDiff(params)
+	nonce, hostIdx, txs := s.composeDiffTxs(params)
+
+	// Apply locally to compute post_state_root, then sign.
+	postStateRoot, err := s.sm.ApplyLocal(nonce, txs)
+	if err != nil {
+		return nil, fmt.Errorf("local apply: %w", err)
+	}
+	diff, err := s.signDiff(nonce, txs, postStateRoot)
 	if err != nil {
 		return nil, err
-	}
-
-	if _, err := s.sm.ApplyDiff(diff); err != nil {
-		return nil, fmt.Errorf("local apply: %w", err)
 	}
 
 	s.diffs = append(s.diffs, diff)
@@ -313,14 +309,15 @@ func (s *Session) Finalize(ctx context.Context) error {
 			}})
 		}
 
-		diff, err := s.signDiff(nonce, txs)
+		postStateRoot, err := s.sm.ApplyLocal(nonce, txs)
+		if err != nil {
+			s.mu.Unlock()
+			return fmt.Errorf("local apply: %w", err)
+		}
+		diff, err := s.signDiff(nonce, txs, postStateRoot)
 		if err != nil {
 			s.mu.Unlock()
 			return err
-		}
-		if _, err := s.sm.ApplyDiff(diff); err != nil {
-			s.mu.Unlock()
-			return fmt.Errorf("local apply: %w", err)
 		}
 		s.diffs = append(s.diffs, diff)
 		s.nonce = nonce
@@ -347,14 +344,15 @@ func (s *Session) Finalize(ctx context.Context) error {
 		nonce := s.nonce + 1
 		hostIdx := int(nonce % uint64(n))
 
-		diff, err := s.signDiff(nonce, nil)
+		postStateRoot, err := s.sm.ApplyLocal(nonce, nil)
+		if err != nil {
+			s.mu.Unlock()
+			return fmt.Errorf("local apply: %w", err)
+		}
+		diff, err := s.signDiff(nonce, nil, postStateRoot)
 		if err != nil {
 			s.mu.Unlock()
 			return err
-		}
-		if _, err := s.sm.ApplyDiff(diff); err != nil {
-			s.mu.Unlock()
-			return fmt.Errorf("local apply: %w", err)
 		}
 		s.diffs = append(s.diffs, diff)
 		s.nonce = nonce
@@ -378,9 +376,9 @@ func (s *Session) Finalize(ctx context.Context) error {
 }
 
 
-// signDiff builds and signs a diff with the given nonce and txs.
-func (s *Session) signDiff(nonce uint64, txs []*types.SubnetTx) (types.Diff, error) {
-	content := state.BuildDiffContent(s.escrowID, nonce, txs)
+// signDiff builds and signs a diff with the given nonce, txs, and post_state_root.
+func (s *Session) signDiff(nonce uint64, txs []*types.SubnetTx, postStateRoot []byte) (types.Diff, error) {
+	content := state.BuildDiffContent(s.escrowID, nonce, txs, postStateRoot)
 	data, err := proto.Marshal(content)
 	if err != nil {
 		return types.Diff{}, fmt.Errorf("marshal diff content: %w", err)
@@ -389,7 +387,7 @@ func (s *Session) signDiff(nonce uint64, txs []*types.SubnetTx) (types.Diff, err
 	if err != nil {
 		return types.Diff{}, fmt.Errorf("sign diff: %w", err)
 	}
-	return types.Diff{Nonce: nonce, Txs: txs, UserSig: sig}, nil
+	return types.Diff{Nonce: nonce, Txs: txs, UserSig: sig, PostStateRoot: postStateRoot}, nil
 }
 
 // subnetTxKey returns a dedup key for host-proposed txs.

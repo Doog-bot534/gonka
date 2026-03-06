@@ -1341,6 +1341,56 @@ func applyStartConfirmFinishMultiSlot(t *testing.T, sm *StateMachine, user *sign
 	require.NoError(t, err)
 }
 
+func TestApplyDiff_PostStateRoot_Valid(t *testing.T) {
+	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
+	sm, user := newTestSM(t, hosts, 10000)
+
+	// Use a second SM to compute the correct post_state_root.
+	verifier := signing.NewSecp256k1Verifier()
+	group := testutil.MakeGroup(hosts)
+	config := testutil.DefaultConfig(len(hosts))
+	sm2 := NewStateMachine("escrow-1", config, group, 10000, user.Address(), verifier)
+
+	txs := []*types.SubnetTx{txStart(&types.MsgStartInference{
+		InferenceId: 1, PromptHash: []byte("prompt"), Model: "llama",
+		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
+	})}
+
+	// Compute root from the replica.
+	root, err := sm2.ApplyLocal(1, txs)
+	require.NoError(t, err)
+
+	// Sign diff with correct post_state_root.
+	diff := testutil.SignDiffWithRoot(t, user, "escrow-1", 1, txs, root)
+	_, err = sm.ApplyDiff(diff)
+	require.NoError(t, err)
+}
+
+func TestApplyDiff_PostStateRoot_Mismatch(t *testing.T) {
+	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
+	sm, user := newTestSM(t, hosts, 10000)
+
+	txs := []*types.SubnetTx{txStart(&types.MsgStartInference{
+		InferenceId: 1, PromptHash: []byte("prompt"), Model: "llama",
+		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
+	})}
+
+	// Sign diff with wrong post_state_root.
+	diff := testutil.SignDiffWithRoot(t, user, "escrow-1", 1, txs, []byte("wrong-root"))
+	_, err := sm.ApplyDiff(diff)
+	require.ErrorIs(t, err, types.ErrPostStateRootMismatch)
+}
+
+func TestApplyDiff_PostStateRoot_Empty_Accepted(t *testing.T) {
+	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
+	sm, user := newTestSM(t, hosts, 10000)
+
+	// Diff without post_state_root (backwards-compatible).
+	diff := testutil.SignDiff(t, user, "escrow-1", 1, nil)
+	_, err := sm.ApplyDiff(diff)
+	require.NoError(t, err)
+}
+
 // applyStartConfirmFinish_Setup applies start + confirm only (no finish).
 // Used when we need to test finish with specific proposer.
 func applyStartConfirmFinish_Setup(t *testing.T, sm *StateMachine, user *signing.Secp256k1Signer, hosts []*signing.Secp256k1Signer, inferenceID uint64) {
