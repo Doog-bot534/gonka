@@ -1,0 +1,30 @@
+name: Remote Test Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_selector:
+        description: 'Gradle --tests selector, e.g. InvalidationTests.test valid with invalid validator gets validated or InvalidationTests.*'
+        required: true
+        type: string
+      enable_upgrades:
+        description: 'Build upgrade artifacts for upgrade-related tests'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  remote-test:
+    uses: ./.github/workflows/test-workflow.yml
+    secrets: inherit
+
+    permissions:
+      contents: read
+      checks: write
+
+    with:
+      test_name: "Remote Test Run"
+      test_command: "run-tests"
+      use_matrix: false
+      enable_upgrades: ${{ inputs.enable_upgrades }}
+      test_selector: ${{ inputs.test_selector }}

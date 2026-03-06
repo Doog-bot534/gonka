@@ -30,6 +30,11 @@ on:
         type: boolean
         default: true
         description: 'Whether to use matrix strategy for parallel execution'
+      test_selector:
+        required: false
+        type: string
+        default: ''
+        description: 'Optional Gradle --tests selector for running a specific test class, method, or wildcard'
 
 jobs:
   # This job dynamically scans for test classes and sets up the matrix for parallel test execution
@@ -83,23 +88,33 @@ jobs:
         id: set-matrix
         run: |
           cd testermint
-          if [[ "${{ inputs.test_command }}" == "run-tests" ]]; then
-            echo "Running listAllTestClasses task for integration tests"
-            # This uses the custom Gradle task that scans for all test classes
-            # The actual tag filtering (excluding unstable,exclude) happens at test runtime
-            TEST_CLASSES=$(./gradlew -q listAllTestClasses)
-          elif [[ "${{ inputs.test_command }}" == "run-sanity" ]]; then
-            echo "Running findSanityTestClasses task for sanity tests"
-            # This uses the custom Gradle task that scans for classes containing sanity-tagged tests
-            TEST_CLASSES=$(./gradlew -q findSanityTestClasses)
+          if [[ -n "${{ inputs.test_selector }}" ]]; then
+            echo "Using explicit test selector: ${{ inputs.test_selector }}"
+            echo 'matrix={"test_group":["custom"]}' >> $GITHUB_OUTPUT
+            echo 'Generated matrix: {"test_group":["custom"]}'
+          elif [[ "${{ inputs.use_matrix }}" != "true" ]]; then
+            echo "Matrix disabled; using a single test group"
+            echo 'matrix={"test_group":["all"]}' >> $GITHUB_OUTPUT
+            echo 'Generated matrix: {"test_group":["all"]}'
           else
-            echo "Unknown test command: ${{ inputs.test_command }}"
-            exit 1
+            if [[ "${{ inputs.test_command }}" == "run-tests" ]]; then
+              echo "Running listAllTestClasses task for integration tests"
+              # This uses the custom Gradle task that scans for all test classes
+              # The actual tag filtering (excluding unstable,exclude) happens at test runtime
+              TEST_CLASSES=$(./gradlew -q listAllTestClasses)
+            elif [[ "${{ inputs.test_command }}" == "run-sanity" ]]; then
+              echo "Running findSanityTestClasses task for sanity tests"
+              # This uses the custom Gradle task that scans for classes containing sanity-tagged tests
+              TEST_CLASSES=$(./gradlew -q findSanityTestClasses)
+            else
+              echo "Unknown test command: ${{ inputs.test_command }}"
+              exit 1
+            fi
+            
+            # Format the output as a JSON array for the matrix
+            echo "matrix={\"test_group\":[${TEST_CLASSES}]}" >> $GITHUB_OUTPUT
+            echo "Generated matrix: {\"test_group\":[${TEST_CLASSES}]}"
           fi
-          
-          # Format the output as a JSON array for the matrix
-          echo "matrix={\"test_group\":[${TEST_CLASSES}]}" >> $GITHUB_OUTPUT
-          echo "Generated matrix: {\"test_group\":[${TEST_CLASSES}]}"
 
   build-images:
     runs-on: ubuntu-latest
@@ -202,6 +217,9 @@ jobs:
   run-tests:
     needs: [setup-test-matrix, build-images]
     runs-on: ubuntu-latest
+    env:
+      TEST_GROUP: ${{ matrix.test_group }}
+      TEST_SELECTOR: ${{ inputs.test_selector != '' && inputs.test_selector || matrix.test_group }}
     strategy:
       fail-fast: false
       # Use the dynamically generated matrix from the setup-test-matrix job
@@ -264,25 +282,33 @@ jobs:
         run: sudo ./launch.sh
 
       - name: Run Tests (Matrix - Integration)
-        if: ${{ inputs.use_matrix && inputs.test_command == 'run-tests' }}
+        if: ${{ inputs.use_matrix && inputs.test_selector == '' && inputs.test_command == 'run-tests' }}
         run: |
-          echo "Running test group: ${{ matrix.test_group }}"
-          sudo make run-tests TESTS="${{ matrix.test_group }}"
+          echo "Running test group: ${TEST_GROUP}"
+          sudo make run-tests TESTS="${TEST_GROUP}"
 
       - name: Run Tests (Matrix - Sanity)
-        if: ${{ inputs.use_matrix && inputs.test_command == 'run-sanity' }}
+        if: ${{ inputs.use_matrix && inputs.test_selector == '' && inputs.test_command == 'run-sanity' }}
         run: |
-          echo "Running sanity test group: ${{ matrix.test_group }}"
-          sudo make run-sanity TESTS="${{ matrix.test_group }}"
+          echo "Running sanity test group: ${TEST_GROUP}"
+          sudo make run-sanity TESTS="${TEST_GROUP}"
+
+      - name: Run Selected Tests
+        if: ${{ inputs.test_selector != '' }}
+        run: |
+          echo "Running explicit selector: ${TEST_SELECTOR}"
+          sudo make run-tests TESTS="${TEST_SELECTOR}"
 
       - name: Run Tests (Non-Matrix)
-        if: ${{ !inputs.use_matrix }}
-        run: sudo make ${{ inputs.test_command }}
+        if: ${{ !inputs.use_matrix && inputs.test_selector == '' }}
+        run: |
+          echo "Running non-matrix command: ${{ inputs.test_command }}"
+          sudo make ${{ inputs.test_command }}
       - name: Archive Test Results XML
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-xml-${{ matrix.test_group }}
+          name: test-results-xml-${{ env.TEST_GROUP }}
           path: ./testermint/build/test-results/**/*.xml
           retention-days: 30
 
@@ -291,7 +317,7 @@ jobs:
         uses: actions/upload-artifact@v4
         id: archive-logs
         with:
-          name: test-logs-${{ matrix.test_group }}
+          name: test-logs-${{ env.TEST_GROUP }}
           path: ./testermint/logs
           retention-days: 7  # Keep test logs for 1 week only
 
@@ -346,7 +372,7 @@ jobs:
           GITHUB_HEAD_REF: ${{ github.head_ref }}
           GITHUB_BASE_REF: ${{ github.base_ref }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          MATRIX_TEST_GROUP: ${{ matrix.test_group }}
+          MATRIX_TEST_GROUP: ${{ env.TEST_GROUP }}
           PR_NUMBER: ${{ inputs.pr_number }}
           TEST_REPORT_URL: ${{ steps.test-reporter.outputs.url_html }}
           LOGS_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/${{ steps.archive-logs.outputs.artifact-id || 'N/A' }}
@@ -418,29 +444,29 @@ jobs:
 
           # Save to file with unique name
           {
-            echo "${{ matrix.test_group }}: $PASSED passed, $FAILED failed, $SKIPPED skipped"
+            echo "${TEST_GROUP}: $PASSED passed, $FAILED failed, $SKIPPED skipped"
             echo "TEST_REPORT_URL: $TEST_REPORT_URL"
             echo "LOGS_URL: $LOGS_ARTIFACT_URL"
             if [ ! -z "$FAILED_TESTS" ]; then
               echo "FAILED_TESTS: $FAILED_TESTS"
             fi
-          } > test-counts-${{ matrix.test_group }}.txt
+          } > test-counts-${TEST_GROUP}.txt
           
-          echo "##[debug]${{ matrix.test_group }}: P=$PASSED, F=$FAILED, S=$SKIPPED"
+          echo "##[debug]${TEST_GROUP}: P=$PASSED, F=$FAILED, S=$SKIPPED"
           if [ ! -z "$FAILED_TESTS" ]; then
             echo "##[debug]Failed tests: $FAILED_TESTS"
           fi
           
           # Show contents of the generated file for debugging
           echo "##[debug]Generated file contents:"
-          cat test-counts-${{ matrix.test_group }}.txt
+          cat test-counts-${TEST_GROUP}.txt
 
       - name: Upload Test Counts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-counts-${{ matrix.test_group }}
-          path: test-counts-${{ matrix.test_group }}.txt
+          name: test-counts-${{ env.TEST_GROUP }}
+          path: test-counts-${{ env.TEST_GROUP }}.txt
           retention-days: 1
 
   # Simple summary job
@@ -555,4 +581,3 @@ jobs:
           echo "*Individual test reports are available in the Checks tab above*" >> $GITHUB_STEP_SUMMARY
           
           echo "##[debug]FINAL TOTALS: Passed=$TOTAL_PASSED, Failed=$TOTAL_FAILED, Skipped=$TOTAL_SKIPPED"
-
