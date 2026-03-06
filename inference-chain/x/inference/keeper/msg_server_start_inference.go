@@ -84,7 +84,7 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 		}
 		k.LogDebug("StartInference: cryptographic signature verification skipped; dev and TA components compared for consistency", types.Inferences, "inferenceId", msg.InferenceId)
 	} else {
-		err := k.verifyStartFirstMessageKeys(ctx, msg, dev)
+		err := k.verifyStartFirstMessageKeys(ctx, msg, &dev)
 		if err != nil {
 			k.LogError("StartInference: verifyStartFirstMessageKeys failed", types.Inferences, "error", err)
 			return failedStart(ctx, sdkerrors.Wrap(types.ErrInvalidSignature, err.Error()), msg), nil
@@ -154,7 +154,7 @@ func failedStart(ctx sdk.Context, error error, message *types.MsgStartInference)
 	}
 }
 
-func (k msgServer) verifyStartFirstMessageKeys(ctx sdk.Context, msg *types.MsgStartInference, dev types.Participant) error {
+func (k msgServer) verifyStartFirstMessageKeys(ctx sdk.Context, msg *types.MsgStartInference, dev *types.Participant) error {
 	devComponents := getDevSignatureComponents(msg)
 
 	if err := k.validateTimestamp(ctx, devComponents, msg.InferenceId, 60); err != nil {
@@ -163,7 +163,7 @@ func (k msgServer) verifyStartFirstMessageKeys(ctx sdk.Context, msg *types.MsgSt
 
 	// Verify dev signature (original_prompt_hash)
 	if err := calculations.VerifyKeys(ctx, devComponents, calculations.SignatureData{
-		DevSignature: msg.InferenceId, Dev: &dev,
+		DevSignature: msg.InferenceId, Dev: dev,
 	}, k); err != nil {
 		k.LogError("StartInference: dev signature failed", types.Inferences, "error", err)
 		return err
