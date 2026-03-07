@@ -40,6 +40,10 @@ data class V2InferenceStreamConnection(
     val streamConnection: StreamConnection,
 )
 
+interface LineReadableStream : AutoCloseable {
+    fun readLine(): String?
+}
+
 data class ApplicationAPI(
     val urls: Map<String, String>,
     override val config: ApplicationConfig,
@@ -150,52 +154,6 @@ data class ApplicationAPI(
             response.third.get()
         }
 
-    fun makeInferenceRequestV2(
-        request: String,
-        requesterAddress: String,
-        escrowId: String,
-        sequence: Long,
-        epochId: Long,
-    ): V2InferenceResponse =
-        wrapLog("MakeInferenceRequestV2", true) {
-            val url = urlFor(SERVER_TYPE_PUBLIC)
-            val response = Fuel.post((url + "/v2/chat/completions"))
-                .jsonBody(request)
-                .header("X-Requester-Address", requesterAddress)
-                .header("X-Escrow-Id", escrowId)
-                .header("X-Escrow-Sequence", sequence)
-                .header("X-Epoch-Id", epochId)
-                .timeout(1000 * 60)
-                .timeoutRead(1000 * 60)
-                .responseString()
-            logResponse(response)
-            val rawResponseBody = response.third.get()
-            val openAIResponse = cosmosJson.fromJson(rawResponseBody, OpenAIResponse::class.java)
-            val latestBlockSequence = response.second.headers["X-Latest-Block-Sequence"]
-                ?.lastOrNull()
-                ?.toLongOrNull()
-                ?: error("Missing or invalid X-Latest-Block-Sequence header in v2 response")
-            val executorAddress = response.second.headers["X-V2-Executor-Address"]?.lastOrNull()
-            val executorSignerAddress = response.second.headers["X-V2-Executor-Signer-Address"]?.lastOrNull()
-            val executorSignerPubKey = response.second.headers["X-V2-Executor-Signer-PubKey"]?.lastOrNull()
-            val executorSignature = response.second.headers["X-V2-Executor-Signature"]?.lastOrNull()
-            val responsePayloadHash = sha256Hex(rawResponseBody.toByteArray(Charsets.UTF_8))
-            V2InferenceResponse(
-                openAIResponse = openAIResponse,
-                latestBlockSequence = latestBlockSequence,
-                responsePayloadHash = responsePayloadHash,
-                executorAddress = executorAddress,
-                executorSignerAddress = executorSignerAddress,
-                executorSignerPubKey = executorSignerPubKey,
-                executorSignature = executorSignature,
-            )
-        }
-
-    private fun sha256Hex(input: ByteArray): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        return digest.digest(input).joinToString("") { "%02x".format(it) }
-    }
-
     fun makeStreamedInferenceRequest(
         request: String,
         address: String,
@@ -228,25 +186,6 @@ data class ApplicationAPI(
                 signature = signature,
                 jsonBody = request,
                 timestamp = timestamp
-            )
-        }
-
-    fun createInferenceStreamConnectionV2(
-        request: String,
-        requesterAddress: String,
-        escrowId: String,
-        sequence: Long,
-        epochId: Long,
-    ): V2InferenceStreamConnection =
-        wrapLog("CreateInferenceStreamConnectionV2", true) {
-            val url = urlFor(SERVER_TYPE_PUBLIC)
-            createV2StreamConnection(
-                url = "$url/v2/chat/completions",
-                requesterAddress = requesterAddress,
-                escrowId = escrowId,
-                sequence = sequence,
-                epochId = epochId,
-                jsonBody = request,
             )
         }
 
@@ -709,7 +648,7 @@ fun createV2StreamConnection(
 class StreamConnection(
     private val connection: HttpURLConnection,
     private val reader: BufferedReader
-) : AutoCloseable {
+) : LineReadableStream {
     private var closed = false
 
     /**
@@ -717,7 +656,7 @@ class StreamConnection(
      *
      * @return The next line, or null if the stream is closed or has reached the end
      */
-    fun readLine(): String? {
+    override fun readLine(): String? {
         if (closed) return null
         return try {
             reader.readLine()

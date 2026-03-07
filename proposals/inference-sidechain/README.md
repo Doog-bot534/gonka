@@ -529,10 +529,15 @@ Refactor signer authorization lookup so warm/cold signer material needed for v2 
 - Keep epoch-pinned routing semantics: signer authorization must resolve against the escrow-assigned epoch snapshot.
 - Replace per-request signer authz queries in v2 `FinishInference` proof validation with snapshot-backed lookup (with deterministic fallback policy if snapshot data is missing).
 - Ensure relay and intended-executor nodes use the same snapshot-backed signer-authority source.
+- Ensure the developer client can access the same epoch-pinned signer-authorization snapshot so it can validate:
+  - executor proof signer address/pubkey against executor identity,
+  - relay-error artifact signer address/pubkey against relay identity,
+  - signer authorization deterministically before counting relay-failure quorum or appending local `FinishInference` / `MissedInference`.
 - Add tests for:
   - warm-key signer proof accepted via snapshot data,
   - unauthorized signer rejected deterministically,
-  - epoch-boundary replay still validates against escrow-pinned epoch signer set.
+  - epoch-boundary replay still validates against escrow-pinned epoch signer set,
+  - developer client rejects proofs/artifacts signed by unauthorized keys even when the embedded signature is otherwise cryptographically valid.
 
 ## Step 23: gRPC ActiveParticipants + Authorized Signer Set Query
 
@@ -547,13 +552,18 @@ Replace raw store-key reads for active participant metadata with a typed gRPC qu
   - participant address/index,
   - inference URL,
   - validator (cold) pubkey,
-  - authorized signer set for `MsgFinishInference` (address + pubkey; cold + warm keys).
+  - authorized signer set for v2 participant evidence signing (address + pubkey; cold + warm keys), including at minimum executor-proof / `MsgFinishInference` validation and relay-error artifact signer validation.
 - Update `decentralized-api` epoch cache prewarm to use this gRPC query instead of raw `QueryByKey` for active participants.
 - Remove dependency on passing chain RPC URL into pubkey/URL prewarm lookup paths once gRPC response is the source of truth.
+- Ensure the response shape is sufficient for the developer client to use directly for local verification of:
+  - executor proof signer authorization,
+  - relay-error artifact signer authorization,
+  - participant identity to signer-pubkey mapping without separate ad-hoc authz queries.
 - Add tests for:
   - parity with existing active participant routing behavior,
   - cold-key and warm-key signer proof validation using gRPC-provided signer set,
-  - deterministic failure when signer is missing from authorized set.
+  - deterministic failure when signer is missing from authorized set,
+  - developer client parity with backend signer-authorization decisions for the same epoch-pinned participant snapshot.
 
 ## Step 24: Token-Count-Bound Executor Proof + Invalid Payload Dispute
 

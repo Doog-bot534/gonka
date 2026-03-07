@@ -2,6 +2,20 @@ import com.productscience.LocalInferencePair
 import com.productscience.V2InferenceResponse
 import com.productscience.V2InferenceStreamConnection
 import com.productscience.InferenceRequestPayload
+import com.productscience.ClientFailure
+import com.productscience.ClientSuccess
+import com.productscience.CreateEscrowRequest
+import com.productscience.EscrowSessionClient
+import com.productscience.InferenceV2ClientConfig
+import com.productscience.RequestOptions
+import com.productscience.RetryCompletion
+import com.productscience.RetryOptions
+import com.productscience.RetryStream
+import com.productscience.EnvelopeResignMode
+import com.productscience.TestableEscrowSessionClient
+import com.productscience.TestermintInferenceV2Client
+import com.productscience.V2DeveloperBlockSigner
+import com.productscience.V2WeightedParticipant
 import com.productscience.cosmosJson
 import com.productscience.defaultInferenceResponseObject
 import com.productscience.defaultModel
@@ -47,97 +61,44 @@ class V2EscrowFlowTest : TestermintTest() {
     fun `developer uses v2 api with escrow across 3 participants`() {
         logSection("V2 escrow flow test setup")
         val fixture = setupV2EscrowFixture()
-        val allPairs = fixture.allPairs
-        val genesis = fixture.genesis
         val pairByAddress = fixture.pairByAddress
         val weightedParticipants = fixture.weightedParticipants
-        val participantPubKeyByAddress = fixture.participantPubKeyByAddress
-        val developerAddress = fixture.developerAddress
         val developerBlockSigner = fixture.developerBlockSigner
+        val client = createV2DeveloperClient(fixture)
 
         logSection("Developer creates escrow")
-        val escrowContext = createEscrowAndWaitForIndexing(genesis, allPairs, developerAddress)
+        val session = client.createEscrow(CreateEscrowRequest(modelId = defaultModel))
+        val escrowContext = session.snapshot().context
         val escrowId = escrowContext.escrowId
         val epochId = escrowContext.epochId
         Logger.info(
             "V2_ESCROW_TEST created escrow_id={} developer={} participants={}",
             escrowId,
-            developerAddress,
+            fixture.developerAddress,
             pairByAddress.keys.sorted(),
         )
 
         logSection("Sending 10 v2 requests with deterministic executor choice")
-        val planController = DeveloperChainController(
-            escrowId = escrowId,
-            modelId = defaultModel,
-            weightedParticipants = weightedParticipants,
-            participantPubKeyByAddress = participantPubKeyByAddress,
-            developerBlockSigner = developerBlockSigner,
-        )
         repeat(10) { requestIndex ->
             val openAiRequest = buildOpenAiRequest(sequence = requestIndex + 1L, stream = false)
-            val plan = planController.reserveStartInference(
-                requestPayloadHash = computeV2RequestPayloadHash(openAiRequest),
-                timestampSeconds = System.currentTimeMillis() / 1000,
-            )
-            if (plan.sequence > 1L) {
-                val expectedPreviousRequestId = buildV2RequestId(escrowId, plan.sequence - 1L)
-                val finishMessages = plan.developerChainDelta.blocks
-                    .last()
-                    .messages
-                    .filter { it.type == FINISH_INFERENCE_MESSAGE_TYPE }
-                assertThat(finishMessages.any { it.requestId == expectedPreviousRequestId }).isTrue()
-            }
-
-            val chosenExecutorAddress = plan.recipientAddress
-            val targetPair = requireNotNull(pairByAddress[chosenExecutorAddress]) {
-                "Missing pair for executor address=$chosenExecutorAddress"
-            }
-
-            val request = buildV2RequestEnvelope(
-                openAiRequest = openAiRequest,
-                developerChainDelta = plan.developerChainDelta,
-            )
-
-            val response = sendV2Request(
-                pair = targetPair,
-                request = request,
-                requesterAddress = developerAddress,
-                escrowId = escrowId,
-                sequence = plan.sequence,
-                epochId = epochId,
-            )
+            val outcome = session.complete(openAiRequest)
+            assertThat(outcome).isInstanceOf(ClientSuccess::class.java)
+            val result = (outcome as ClientSuccess).result
 
             Logger.info(
                 "V2_ESCROW_TEST sequence={} chosen_executor={} responsible_participants={} response_id={}",
-                plan.sequence,
-                chosenExecutorAddress,
-                selectResponsibleParticipantsDeterministic(
-                    participants = weightedParticipants,
-                    selectionCount = EXPECTED_RESPONSIBLE_PARTICIPANTS,
-                    escrowId = escrowId,
-                    sequence = plan.sequence,
-                ),
-                response.openAIResponse.id,
+                result.sequence,
+                result.recipientAddress,
+                result.responsibleParticipants,
+                result.value.id,
             )
 
-            assertThat(response.openAIResponse.id).isNotBlank()
-            assertThat(response.openAIResponse.model).isEqualTo(defaultModel)
-            assertThat(response.openAIResponse.choices).isNotEmpty()
-            assertThat(response.latestBlockSequence).isEqualTo(plan.sequence)
-            planController.recordReceiverAcknowledgment(chosenExecutorAddress, response.latestBlockSequence)
-            val responsePayloadHash = response.responsePayloadHash
-                ?: computeV2ResponsePayloadHash(response.openAIResponse)
-            planController.recordFinishInference(
-                requestSequence = plan.sequence,
-                openAiResponse = response.openAIResponse,
-                responsePayloadHash = responsePayloadHash,
-                executorAddress = response.executorAddress,
-                executorSignerAddress = response.executorSignerAddress,
-                executorSignerPubKey = response.executorSignerPubKey,
-                executorSignature = response.executorSignature,
-                timestampSeconds = System.currentTimeMillis() / 1000,
-            )
+            assertThat(result.sequence).isEqualTo(requestIndex + 1L)
+            assertThat(result.recipientAddress).isEqualTo(result.responsibleParticipants.first())
+            assertThat(result.value.id).isNotBlank()
+            assertThat(result.value.model).isEqualTo(defaultModel)
+            assertThat(result.value.choices).isNotEmpty()
+            assertThat(result.latestBlockSequence).isEqualTo(result.sequence)
         }
 
         logSection("Sending stale base_block_sequence request and expecting rejection")
@@ -148,50 +109,124 @@ class V2EscrowFlowTest : TestermintTest() {
             escrowId = escrowId,
             sequence = invalidSequence,
         )
+        val acknowledgedByRecipient = session.snapshot().acknowledgedByRecipient
         val invalidTargetAddress = invalidResponsibleParticipants
-            .maxByOrNull { planController.getReceiverAcknowledgedBlockSequence(it) }
+            .maxByOrNull { acknowledgedByRecipient[it] ?: 0L }
             ?: invalidResponsibleParticipants.first()
         val invalidTargetPair = requireNotNull(pairByAddress[invalidTargetAddress]) {
             "Missing pair for invalid continuity request"
         }
-        val receiverLatestBlockSequence = planController.getReceiverAcknowledgedBlockSequence(invalidTargetAddress)
+        val receiverLatestBlockSequence = acknowledgedByRecipient[invalidTargetAddress] ?: 0L
         assertThat(receiverLatestBlockSequence).isGreaterThan(0L)
         val staleBaseBlockSequence = receiverLatestBlockSequence - 1
         val invalidOpenAiRequest = buildOpenAiRequest(sequence = invalidSequence, stream = false)
-        val invalidRequest = buildV2RequestEnvelope(
-            openAiRequest = invalidOpenAiRequest,
-            developerChainDelta = DeveloperChainDelta(
-                baseBlockSequence = staleBaseBlockSequence,
-                blocks = listOf(
-                    signDeveloperChainBlock(
-                        blockSequence = staleBaseBlockSequence + 1,
-                        escrowId = escrowId,
-                        messages = listOf(
-                            DeveloperChainMessage(
-                                type = START_INFERENCE_MESSAGE_TYPE,
-                                requestId = buildV2RequestId(escrowId, invalidSequence),
-                                modelId = defaultModel,
-                                requestPayloadHash = computeV2RequestPayloadHash(invalidOpenAiRequest),
-                                timestamp = System.currentTimeMillis() / 1000,
-                            )
-                        ),
-                        developerBlockSigner = developerBlockSigner,
-                    ),
-                ),
-                latestBlockSequence = staleBaseBlockSequence + 1,
-            )
+        val invalidHandle = (session as TestableEscrowSessionClient).reserveHandleForTesting(invalidOpenAiRequest)
+        val invalidOutcome = session.retryWithModifiedEnvelopeForTesting(
+            handle = invalidHandle,
+            options = RetryOptions(preferredInitialRecipient = invalidTargetAddress),
+            resignMode = EnvelopeResignMode.RECOMPUTE_STATE_AND_SIGN,
+        ) { envelope ->
+            val developerChainDelta = envelope.getAsJsonObject("developerChainDelta")
+                ?: envelope.getAsJsonObject("developer_chain_delta")
+                ?: error("Missing developerChainDelta in envelope")
+            val mutatedBlock = com.google.gson.JsonObject().apply {
+                addProperty("block_sequence", staleBaseBlockSequence + 1)
+                addProperty("escrow_id", escrowId)
+                addProperty("state_hash", "")
+                add("messages", com.google.gson.JsonArray().apply {
+                    add(com.google.gson.JsonObject().apply {
+                        addProperty("type", START_INFERENCE_MESSAGE_TYPE)
+                        addProperty("request_id", buildV2RequestId(escrowId, invalidSequence))
+                        addProperty("model_id", defaultModel)
+                        addProperty("request_payload_hash", computeV2RequestPayloadHash(invalidOpenAiRequest))
+                        addProperty("timestamp", System.currentTimeMillis() / 1000)
+                    })
+                })
+                addProperty("signature", "")
+            }
+            developerChainDelta.addProperty("base_block_sequence", staleBaseBlockSequence)
+            developerChainDelta.add("blocks", com.google.gson.JsonArray().apply { add(mutatedBlock) })
+            developerChainDelta.addProperty("latest_block_sequence", staleBaseBlockSequence + 1)
+        }
+        assertThat(invalidOutcome).isInstanceOf(ClientFailure::class.java)
+        val invalidFailure = invalidOutcome as ClientFailure
+        assertThat(invalidFailure.error.message).contains("409")
+    }
+
+    @Test
+    fun `developer client creates escrow and completes non-streaming request`() {
+        logSection("V2 developer client happy-path setup")
+        val fixture = setupV2EscrowFixture()
+        val client = createV2DeveloperClient(fixture)
+        val session = client.createEscrow(CreateEscrowRequest(modelId = defaultModel))
+
+        val outcome = session.complete(
+            request = buildOpenAiRequest(sequence = 1L, stream = false),
         )
 
-        assertThatThrownBy {
-            sendV2Request(
-                pair = invalidTargetPair,
-                request = invalidRequest,
-                requesterAddress = developerAddress,
-                escrowId = escrowId,
-                sequence = invalidSequence,
-                epochId = epochId,
+        assertThat(outcome).isInstanceOf(ClientSuccess::class.java)
+        val success = outcome as ClientSuccess
+        assertThat(success.result.sequence).isEqualTo(1L)
+        assertThat(success.result.requestId).isEqualTo("${session.snapshot().context.escrowId}:1")
+        assertThat(success.result.value.id).isNotBlank()
+        assertThat(success.result.value.model).isEqualTo(defaultModel)
+        assertThat(success.result.latestBlockSequence).isEqualTo(1L)
+        assertThat(session.snapshot().latestReservedSequence).isEqualTo(1L)
+        assertThat(session.snapshot().chainTipSequence).isEqualTo(1L)
+    }
+
+    @Test
+    fun `developer client returns retry handle and retries same logical request through all responsible participants`() {
+        logSection("V2 developer client retry handle setup")
+        val fixture = setupV2EscrowFixture()
+        val client = createV2DeveloperClient(fixture)
+        val session = client.createEscrow(CreateEscrowRequest(modelId = defaultModel))
+        val escrowId = session.snapshot().context.escrowId
+        val responsibleParticipants = selectResponsibleParticipantsDeterministic(
+            participants = fixture.weightedParticipants,
+            selectionCount = EXPECTED_RESPONSIBLE_PARTICIPANTS,
+            escrowId = escrowId,
+            sequence = 1L,
+        )
+        val failingRecipient = responsibleParticipants[1]
+        val failingPair = requireNotNull(fixture.pairByAddress[failingRecipient]) {
+            "Missing pair for failing participant=$failingRecipient"
+        }
+
+        setApiContainerRunning(failingPair, running = false)
+        try {
+            val failureOutcome = session.complete(
+                request = buildOpenAiRequest(sequence = 1L, stream = false),
+                options = RequestOptions(
+                    preferredInitialRecipient = failingRecipient,
+                    allowFanoutOnTimeout = false,
+                ),
             )
-        }.hasMessageContaining("409")
+
+            assertThat(failureOutcome).isInstanceOf(ClientFailure::class.java)
+            val failure = failureOutcome as ClientFailure
+            assertThat(failure.retryHandle).isNotNull()
+            assertThat(failure.retryHandle?.sequence).isEqualTo(1L)
+            assertThat(failure.attempts).hasSize(1)
+            assertThat(failure.attempts.single().recipientAddress).isEqualTo(failingRecipient)
+
+            val retryOutcome = session.retry(
+                handle = requireNotNull(failure.retryHandle),
+                options = RetryOptions(resendToAllResponsible = true),
+            )
+
+            assertThat(retryOutcome).isInstanceOf(ClientSuccess::class.java)
+            val retrySuccess = retryOutcome as ClientSuccess
+            val retryResult = retrySuccess.result
+            assertThat(retryResult).isInstanceOf(RetryCompletion::class.java)
+            val completion = (retryResult as RetryCompletion).result
+            assertThat(completion.sequence).isEqualTo(1L)
+            assertThat(completion.requestId).isEqualTo("$escrowId:1")
+            assertThat(completion.value.id).isNotBlank()
+            assertThat(completion.attempts.map { it.recipientAddress }).containsAll(responsibleParticipants)
+        } finally {
+            setApiContainerRunning(failingPair, running = true)
+        }
     }
 
     @Test
@@ -199,12 +234,7 @@ class V2EscrowFlowTest : TestermintTest() {
         logSection("V2 parallel streaming overlap test setup")
         val fixture = setupV2EscrowFixture()
         val allPairs = fixture.allPairs
-        val genesis = fixture.genesis
-        val pairByAddress = fixture.pairByAddress
-        val weightedParticipants = fixture.weightedParticipants
-        val participantPubKeyByAddress = fixture.participantPubKeyByAddress
-        val developerAddress = fixture.developerAddress
-        val developerBlockSigner = fixture.developerBlockSigner
+        val client = createV2DeveloperClient(fixture)
 
         allPairs.forEach { pair ->
             pair.mock?.setInferenceResponse(
@@ -215,17 +245,7 @@ class V2EscrowFlowTest : TestermintTest() {
             )
         }
 
-        val escrowContext = createEscrowAndWaitForIndexing(genesis, allPairs, developerAddress)
-        val escrowId = escrowContext.escrowId
-        val epochId = escrowContext.epochId
-
-        val planController = DeveloperChainController(
-            escrowId = escrowId,
-            modelId = defaultModel,
-            weightedParticipants = weightedParticipants,
-            participantPubKeyByAddress = participantPubKeyByAddress,
-            developerBlockSigner = developerBlockSigner,
-        )
+        val session = client.createEscrow(CreateEscrowRequest(modelId = defaultModel))
         val requestCount = 12
 
         val executor = Executors.newFixedThreadPool(requestCount)
@@ -234,35 +254,16 @@ class V2EscrowFlowTest : TestermintTest() {
             val futures = (1..requestCount).map {
                 executor.submit<V2StreamAcceptanceResult> {
                     startGate.await()
-                    val openAiRequest = inferenceRequestObject.copy(stream = true)
-                    val requestPayloadHash = computeV2RequestPayloadHash(openAiRequest)
-                    val plan = planController.reserveStartInference(
-                        requestPayloadHash = requestPayloadHash,
-                        timestampSeconds = System.currentTimeMillis() / 1000,
-                    )
-                    val targetPair = requireNotNull(pairByAddress[plan.recipientAddress]) {
-                        "Missing pair for recipient=${plan.recipientAddress}"
-                    }
-                    val request = buildV2RequestEnvelope(
-                        openAiRequest = openAiRequest,
-                        developerChainDelta = plan.developerChainDelta,
-                    )
-                    val streamConnection = openV2Stream(
-                        pair = targetPair,
-                        request = request,
-                        requesterAddress = developerAddress,
-                        escrowId = escrowId,
-                        sequence = plan.sequence,
-                        epochId = epochId,
-                    )
-                    planController.recordReceiverAcknowledgment(plan.recipientAddress, streamConnection.latestBlockSequence)
+                    val outcome = session.stream(inferenceRequestObject.copy(stream = true))
+                    assertThat(outcome).isInstanceOf(ClientSuccess::class.java)
+                    val result = (outcome as ClientSuccess).result
                     try {
                         V2StreamAcceptanceResult(
-                            sequence = plan.sequence,
-                            latestBlockSequence = streamConnection.latestBlockSequence,
+                            sequence = result.sequence,
+                            latestBlockSequence = result.latestBlockSequence,
                         )
                     } finally {
-                        streamConnection.streamConnection.close()
+                        result.stream.close()
                     }
                 }
             }
@@ -286,71 +287,26 @@ class V2EscrowFlowTest : TestermintTest() {
     fun `developer rejects invalid executor proof before appending finish inference`() {
         logSection("V2 invalid executor proof rejection setup")
         val fixture = setupV2EscrowFixture()
-        val allPairs = fixture.allPairs
-        val genesis = fixture.genesis
-        val pairByAddress = fixture.pairByAddress
-        val weightedParticipants = fixture.weightedParticipants
-        val participantPubKeyByAddress = fixture.participantPubKeyByAddress
-        val developerAddress = fixture.developerAddress
-        val developerBlockSigner = fixture.developerBlockSigner
-
-        val escrowContext = createEscrowAndWaitForIndexing(genesis, allPairs, developerAddress)
-        val escrowId = escrowContext.escrowId
-        val epochId = escrowContext.epochId
-
-        val planController = DeveloperChainController(
-            escrowId = escrowId,
-            modelId = defaultModel,
-            weightedParticipants = weightedParticipants,
-            participantPubKeyByAddress = participantPubKeyByAddress,
-            developerBlockSigner = developerBlockSigner,
-        )
-
-        val openAiRequest = buildOpenAiRequest(sequence = 1L, stream = false)
-        val requestPayloadHash = computeV2RequestPayloadHash(openAiRequest)
-        val plan = planController.reserveStartInference(
-            requestPayloadHash = requestPayloadHash,
-            timestampSeconds = System.currentTimeMillis() / 1000,
-        )
-        val sequence = plan.sequence
-        val request = buildV2RequestEnvelope(
-            openAiRequest = openAiRequest,
-            developerChainDelta = plan.developerChainDelta,
-        )
-
-        val intendedExecutor = selectResponsibleParticipantsDeterministic(
-            participants = weightedParticipants,
-            selectionCount = EXPECTED_RESPONSIBLE_PARTICIPANTS,
-            escrowId = escrowId,
-            sequence = sequence,
-        ).first()
-        val intendedPair = requireNotNull(pairByAddress[intendedExecutor]) {
-            "Missing pair for intended executor=$intendedExecutor"
-        }
-
-        val response = sendV2Request(
-            pair = intendedPair,
-            request = request,
-            requesterAddress = developerAddress,
-            escrowId = escrowId,
-            sequence = sequence,
-            epochId = epochId,
-        )
-
-        val tamperedSignature = tamperBase64Signature(response.executorSignature!!)
+        val client = createV2DeveloperClient(fixture)
+        val session = client.createEscrow(CreateEscrowRequest(modelId = defaultModel))
+        val outcome = session.complete(buildOpenAiRequest(sequence = 1L, stream = false))
+        assertThat(outcome).isInstanceOf(ClientSuccess::class.java)
+        val result = (outcome as ClientSuccess).result
+        val testSession = session as TestableEscrowSessionClient
+        val handle = testSession.retryHandleForSequence(1L)
+        val tamperedSignature = tamperBase64Signature(requireNotNull(result.executorSignature))
         assertThatThrownBy {
-            planController.recordFinishInference(
-                requestSequence = sequence,
-                openAiResponse = response.openAIResponse,
-                responsePayloadHash = response.responsePayloadHash
-                    ?: computeV2ResponsePayloadHash(response.openAIResponse),
-                executorAddress = response.executorAddress,
-                executorSignerAddress = response.executorSignerAddress,
-                executorSignerPubKey = response.executorSignerPubKey,
+            testSession.recordFinishForTesting(
+                handle = handle,
+                openAiResponse = result.value,
+                responsePayloadHash = result.responsePayloadHash
+                    ?: computeV2ResponsePayloadHash(result.value),
+                executorAddress = result.executorAddress,
+                executorSignerAddress = result.executorSignerAddress,
+                executorSignerPubKey = result.executorSignerPubKey,
                 executorSignature = tamperedSignature,
-                timestampSeconds = System.currentTimeMillis() / 1000,
             )
-        }.isInstanceOf(AssertionError::class.java)
+        }.isInstanceOf(IllegalStateException::class.java)
     }
 
     @Test
@@ -358,30 +314,23 @@ class V2EscrowFlowTest : TestermintTest() {
         logSection("V2 relay retry/fanout test setup")
         val fixture = setupV2EscrowFixture()
         val allPairs = fixture.allPairs
-        val genesis = fixture.genesis
-        val pairByAddress = fixture.pairByAddress
-        val weightedParticipants = fixture.weightedParticipants
-        val developerAddress = fixture.developerAddress
-        val developerBlockSigner = fixture.developerBlockSigner
-
-        val escrowContext = createEscrowAndWaitForIndexing(genesis, allPairs, developerAddress)
-        val escrowId = escrowContext.escrowId
-        val epochId = escrowContext.epochId
+        val client = createV2DeveloperClient(fixture)
+        val session = client.createEscrow(CreateEscrowRequest(modelId = defaultModel))
+        val escrowId = session.snapshot().context.escrowId
 
         val sequence = 1L
         val openAiRequest = buildOpenAiRequest(sequence = sequence, stream = false)
-        val requestPayloadHash = computeV2RequestPayloadHash(openAiRequest)
         val requestId = buildV2RequestId(escrowId, sequence)
 
         val responsibleParticipants = selectResponsibleParticipantsDeterministic(
-            participants = weightedParticipants,
+            participants = fixture.weightedParticipants,
             selectionCount = EXPECTED_RESPONSIBLE_PARTICIPANTS,
             escrowId = escrowId,
             sequence = sequence,
         )
         assertThat(responsibleParticipants).hasSize(3)
         val intendedExecutor = responsibleParticipants.first()
-        val intendedPair = requireNotNull(pairByAddress[intendedExecutor]) {
+        val intendedPair = requireNotNull(fixture.pairByAddress[intendedExecutor]) {
             "Missing pair for intended executor=$intendedExecutor"
         }
         intendedPair.mock?.setInferenceResponse(
@@ -390,74 +339,41 @@ class V2EscrowFlowTest : TestermintTest() {
             streamDelay = Duration.ofMillis(50),
             model = defaultModel,
         )
-
-        val request = buildSingleStartEnvelope(
-            openAiRequest = openAiRequest,
-            escrowId = escrowId,
-            sequence = sequence,
-            developerBlockSigner = developerBlockSigner,
-            requestPayloadHashOverride = requestPayloadHash,
+        val outcome = session.complete(
+            request = openAiRequest,
+            options = RequestOptions(sendToAllResponsible = true),
         )
-        val requestEnvelope = cosmosJson.fromJson(request, DeveloperChainEnvelope::class.java)
-        val requestBlockSignature = requestEnvelope.developerChainDelta.blocks
-            .firstOrNull { block ->
-                block.messages.any { it.type == START_INFERENCE_MESSAGE_TYPE && it.requestId == buildV2RequestId(escrowId, sequence) }
-            }
-            ?.signature
-            ?: error("Missing request block signature in stream request envelope")
-
-        val pool = Executors.newFixedThreadPool(responsibleParticipants.size)
-        val startGate = CountDownLatch(1)
-        try {
-            val futures = responsibleParticipants.map { participantAddress ->
-                val pair = requireNotNull(pairByAddress[participantAddress]) {
-                    "Missing pair for responsible participant=$participantAddress"
-                }
-                pool.submit<V2InferenceResponse> {
-                    startGate.await()
-                    sendV2Request(
-                        pair = pair,
-                        request = request,
-                        requesterAddress = developerAddress,
-                        escrowId = escrowId,
-                        sequence = sequence,
-                        epochId = epochId,
-                    )
-                }
-            }
-            startGate.countDown()
-
-            val responses = futures.map { it.get(60, TimeUnit.SECONDS) }
-            assertThat(responses).hasSize(responsibleParticipants.size)
-            assertThat(responses.map { it.openAIResponse.id }.distinct()).hasSize(1)
-            responses.forEach { response ->
-                assertThat(response.latestBlockSequence).isEqualTo(sequence)
-                assertThat(response.openAIResponse.id).isNotBlank()
-            }
-
-            // Replay after acceptance should remain deterministic for the same logical request identity.
-            val replayResponse = requireNotNull(pairByAddress[responsibleParticipants[1]])
-                .let { replayPair ->
-                    sendV2Request(
-                        pair = replayPair,
-                        request = request,
-                        requesterAddress = developerAddress,
-                        escrowId = escrowId,
-                        sequence = sequence,
-                        epochId = epochId,
-                    )
-                }
-            assertThat(replayResponse.openAIResponse.id).isEqualTo(responses.first().openAIResponse.id)
-            assertThat(replayResponse.latestBlockSequence).isEqualTo(sequence)
-            Logger.info(
-                "V2_STEP11 fanout completed request_id={} intended_executor={} recipients={}",
-                requestId,
-                intendedExecutor,
-                responsibleParticipants,
-            )
-        } finally {
-            pool.shutdownNow()
+        assertThat(outcome).isInstanceOf(ClientSuccess::class.java)
+        val completion = (outcome as ClientSuccess).result
+        val successResponseIds = completion.attempts
+            .mapNotNull { attempt -> attempt.responseId }
+        assertThat(successResponseIds).hasSize(responsibleParticipants.size)
+        assertThat(successResponseIds.distinct()).hasSize(1)
+        completion.attempts.forEach { attempt ->
+            assertThat(attempt.latestBlockSequence).isEqualTo(sequence)
         }
+        assertThat(completion.sequence).isEqualTo(sequence)
+        assertThat(completion.requestId).isEqualTo(requestId)
+        assertThat(completion.value.id).isNotBlank()
+
+        // Replay after acceptance should remain deterministic for the same logical request identity.
+        val replayHandle = (session as TestableEscrowSessionClient).retryHandleForSequence(sequence)
+        val replayOutcome = session.retry(
+            handle = replayHandle,
+            options = RetryOptions(preferredInitialRecipient = responsibleParticipants[1]),
+        )
+        assertThat(replayOutcome).isInstanceOf(ClientSuccess::class.java)
+        val replayResult = (replayOutcome as ClientSuccess).result
+        assertThat(replayResult).isInstanceOf(RetryCompletion::class.java)
+        val replayCompletion = (replayResult as RetryCompletion).result
+        assertThat(replayCompletion.value.id).isEqualTo(completion.value.id)
+        assertThat(replayCompletion.latestBlockSequence).isEqualTo(sequence)
+        Logger.info(
+            "V2_STEP11 fanout completed request_id={} intended_executor={} recipients={}",
+            requestId,
+            intendedExecutor,
+            responsibleParticipants,
+        )
     }
 
     @Test
@@ -465,12 +381,7 @@ class V2EscrowFlowTest : TestermintTest() {
         logSection("V2 streaming fanout replay test setup")
         val fixture = setupV2EscrowFixture()
         val allPairs = fixture.allPairs
-        val genesis = fixture.genesis
-        val pairByAddress = fixture.pairByAddress
-        val weightedParticipants = fixture.weightedParticipants
-        val participantPubKeyByAddress = fixture.participantPubKeyByAddress
-        val developerAddress = fixture.developerAddress
-        val developerBlockSigner = fixture.developerBlockSigner
+        val client = createV2DeveloperClient(fixture)
         allPairs.forEach { pair ->
             pair.mock?.setInferenceResponse(
                 openAIResponse = defaultInferenceResponseObject,
@@ -480,64 +391,34 @@ class V2EscrowFlowTest : TestermintTest() {
             )
         }
 
-        val escrowContext = createEscrowAndWaitForIndexing(genesis, allPairs, developerAddress)
-        val escrowId = escrowContext.escrowId
-        val epochId = escrowContext.epochId
-
-        val planController = DeveloperChainController(
-            escrowId = escrowId,
-            modelId = defaultModel,
-            weightedParticipants = weightedParticipants,
-            participantPubKeyByAddress = participantPubKeyByAddress,
-            developerBlockSigner = developerBlockSigner,
-        )
+        val session = client.createEscrow(CreateEscrowRequest(modelId = defaultModel))
+        val testSession = session as TestableEscrowSessionClient
+        val escrowId = session.snapshot().context.escrowId
         val sequence = 1L
-        val openAiRequest = buildOpenAiRequest(sequence = sequence, stream = true)
-        val requestPayloadHash = computeV2RequestPayloadHash(openAiRequest)
-        val plan = planController.reserveStartInference(
-            requestPayloadHash = requestPayloadHash,
-            timestampSeconds = System.currentTimeMillis() / 1000,
-        )
-        assertThat(plan.sequence).isEqualTo(sequence)
-        val request = buildV2RequestEnvelope(
-            openAiRequest = openAiRequest,
-            developerChainDelta = plan.developerChainDelta,
-        )
-        val requestEnvelope = cosmosJson.fromJson(request, DeveloperChainEnvelope::class.java)
-        val requestBlockSignature = requestEnvelope.developerChainDelta.blocks
-            .firstOrNull { block ->
-                block.messages.any { it.type == START_INFERENCE_MESSAGE_TYPE && it.requestId == buildV2RequestId(escrowId, sequence) }
-            }
-            ?.signature
-            ?: error("Missing request block signature in stream request envelope")
+        val leaderOutcome = session.stream(buildOpenAiRequest(sequence = sequence, stream = true))
+        assertThat(leaderOutcome).isInstanceOf(ClientSuccess::class.java)
+        val leaderConnection = (leaderOutcome as ClientSuccess).result
+        assertThat(leaderConnection.sequence).isEqualTo(sequence)
+        val responsibleParticipants = leaderConnection.responsibleParticipants
+        val requestBlockSignature = cosmosJson.fromJson(
+            testSession.blockJsonForSequence(sequence),
+            com.google.gson.JsonObject::class.java,
+        ).get("signature").asString
 
-        val responsibleParticipants = selectResponsibleParticipantsDeterministic(
-            participants = weightedParticipants,
-            selectionCount = EXPECTED_RESPONSIBLE_PARTICIPANTS,
-            escrowId = escrowId,
-            sequence = sequence,
-        )
-        assertThat(responsibleParticipants).hasSize(3)
-
-        val pool = Executors.newFixedThreadPool(responsibleParticipants.size)
-        val startGate = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(responsibleParticipants.size - 1)
         try {
-            val futures = responsibleParticipants.map { participantAddress ->
-                val pair = requireNotNull(pairByAddress[participantAddress]) {
-                    "Missing pair for responsible participant=$participantAddress"
-                }
+            val futures = responsibleParticipants.drop(1).map { participantAddress ->
                 pool.submit<StreamFanoutResult> {
-                    startGate.await()
-                    val connection = openV2Stream(
-                        pair = pair,
-                        request = request,
-                        requesterAddress = developerAddress,
-                        escrowId = escrowId,
-                        sequence = sequence,
-                        epochId = epochId,
+                    val retryOutcome = session.retry(
+                        handle = leaderConnection.retryHandle,
+                        options = RetryOptions(preferredInitialRecipient = participantAddress),
                     )
+                    assertThat(retryOutcome).isInstanceOf(ClientSuccess::class.java)
+                    val retryResult = (retryOutcome as ClientSuccess).result
+                    assertThat(retryResult).isInstanceOf(RetryStream::class.java)
+                    val connection = (retryResult as RetryStream).result
                     try {
-                        val streamResult = readV2StreamDataAndProof(connection.streamConnection)
+                        val streamResult = readV2StreamDataAndProof(connection.stream)
                         StreamFanoutResult(
                             participantAddress = participantAddress,
                             latestBlockSequence = connection.latestBlockSequence,
@@ -546,13 +427,23 @@ class V2EscrowFlowTest : TestermintTest() {
                             responsePayloadHash = streamResult.responsePayloadHash,
                         )
                     } finally {
-                        connection.streamConnection.close()
+                        connection.stream.close()
                     }
                 }
             }
-
-            startGate.countDown()
-            val results = futures.map { it.get(60, TimeUnit.SECONDS) }
+            val leaderResult = try {
+                val streamResult = readV2StreamDataAndProof(leaderConnection.stream)
+                StreamFanoutResult(
+                    participantAddress = leaderConnection.recipientAddress,
+                    latestBlockSequence = leaderConnection.latestBlockSequence,
+                    dataLines = streamResult.dataLines,
+                    executorProof = streamResult.executorProof,
+                    responsePayloadHash = streamResult.responsePayloadHash,
+                )
+            } finally {
+                leaderConnection.stream.close()
+            }
+            val results = listOf(leaderResult) + futures.map { it.get(60, TimeUnit.SECONDS) }
             assertThat(results).hasSize(responsibleParticipants.size)
             results.forEach { result ->
                 assertThat(result.latestBlockSequence).isEqualTo(sequence)
@@ -590,31 +481,36 @@ class V2EscrowFlowTest : TestermintTest() {
             val firstResult = results.first()
             val firstProof = firstResult.executorProof!!
             val firstHash = firstResult.responsePayloadHash!!
-            planController.recordFinishInference(
-                requestSequence = sequence,
-                openAiResponse = null,
-                responsePayloadHash = firstHash,
-                executorAddress = firstProof.executorAddress,
-                executorSignerAddress = firstProof.executorSignerAddress,
-                executorSignerPubKey = firstProof.executorSignerPubKey,
-                executorSignature = firstProof.executorSignature,
-                timestampSeconds = System.currentTimeMillis() / 1000,
-            )
-            val nextOpenAiRequest = buildOpenAiRequest(sequence = sequence + 1, stream = false)
-            val nextPlan = planController.reserveStartInference(
-                requestPayloadHash = computeV2RequestPayloadHash(nextOpenAiRequest),
-                timestampSeconds = System.currentTimeMillis() / 1000,
-            )
             val finishRequestId = buildV2RequestId(escrowId, sequence)
-            val persistedFinish = nextPlan.developerChainDelta.blocks
-                .flatMap { it.messages }
-                .firstOrNull { it.type == FINISH_INFERENCE_MESSAGE_TYPE && it.requestId == finishRequestId }
+            val nextOutcome = session.complete(buildOpenAiRequest(sequence = sequence + 1, stream = false))
+            assertThat(nextOutcome).isInstanceOf(ClientSuccess::class.java)
+            val block2 = cosmosJson.fromJson(
+                testSession.blockJsonForSequence(sequence + 1L),
+                com.google.gson.JsonObject::class.java,
+            )
+            val messages = block2.getAsJsonArray("messages")
+            val persistedFinish = messages
+                .map { it.asJsonObject }
+                .firstOrNull { message ->
+                    val requestIdField = message.get("requestId") ?: message.get("request_id")
+                    message.get("type").asString == FINISH_INFERENCE_MESSAGE_TYPE &&
+                        requestIdField?.asString == finishRequestId
+                }
             assertThat(persistedFinish).isNotNull()
-            assertThat(persistedFinish?.responsePayloadHash).isEqualTo(firstHash)
-            assertThat(persistedFinish?.executorAddress).isEqualTo(firstProof.executorAddress)
-            assertThat(persistedFinish?.executorSignerAddress).isEqualTo(firstProof.executorSignerAddress)
-            assertThat(persistedFinish?.executorSignerPubKey).isEqualTo(firstProof.executorSignerPubKey)
-            assertThat(persistedFinish?.executorSignature).isEqualTo(firstProof.executorSignature)
+            assertThat((persistedFinish?.get("responsePayloadHash") ?: persistedFinish?.get("response_payload_hash"))?.asString)
+                .isEqualTo(firstHash)
+            assertThat((persistedFinish?.get("executorAddress") ?: persistedFinish?.get("executor_address"))?.asString)
+                .isEqualTo(firstProof.executorAddress)
+            assertThat((persistedFinish?.get("executorSignerAddress") ?: persistedFinish?.get("executor_signer_address"))?.asString)
+                .isEqualTo(firstProof.executorSignerAddress)
+            assertThat((persistedFinish?.get("executorSignerPubKey") ?: persistedFinish?.get("executor_signer_pubkey"))?.asString)
+                .isEqualTo(firstProof.executorSignerPubKey)
+            assertThat((persistedFinish?.get("executorSignature") ?: persistedFinish?.get("executor_signature"))?.asString)
+                .isEqualTo(firstProof.executorSignature)
+            assertThat((persistedFinish?.get("inputTokenCount") ?: persistedFinish?.get("input_token_count"))?.asLong)
+                .isEqualTo(defaultInferenceResponseObject.usage.promptTokens.toLong())
+            assertThat((persistedFinish?.get("outputTokenCount") ?: persistedFinish?.get("output_token_count"))?.asLong)
+                .isEqualTo(defaultInferenceResponseObject.usage.completionTokens.toLong())
 
             val normalizedStreams = results.map { it.dataLines }
             assertThat(normalizedStreams.distinct()).hasSize(1)
@@ -627,52 +523,32 @@ class V2EscrowFlowTest : TestermintTest() {
     fun `developer gets streamed response when sending through non intended responsible participant`() {
         logSection("V2 relay streaming test setup")
         val fixture = setupV2EscrowFixture()
-        val allPairs = fixture.allPairs
-        val pairByAddress = fixture.pairByAddress
-        val weightedParticipants = fixture.weightedParticipants
-        val developerAddress = fixture.developerAddress
-        val developerBlockSigner = fixture.developerBlockSigner
-        val genesis = fixture.genesis
-        val escrowContext = createEscrowAndWaitForIndexing(genesis, allPairs, developerAddress)
-        val escrowId = escrowContext.escrowId
-        val epochId = escrowContext.epochId
+        val client = createV2DeveloperClient(fixture)
+        val session = client.createEscrow(CreateEscrowRequest(modelId = defaultModel))
+        val escrowId = session.snapshot().context.escrowId
 
         val sequence = 1L
         val responsibleParticipants = selectResponsibleParticipantsDeterministic(
-            participants = weightedParticipants,
+            participants = fixture.weightedParticipants,
             selectionCount = EXPECTED_RESPONSIBLE_PARTICIPANTS,
             escrowId = escrowId,
             sequence = sequence,
         )
         assertThat(responsibleParticipants).hasSize(3)
         val nonIntendedParticipant = responsibleParticipants[1]
-        val nonIntendedPair = requireNotNull(pairByAddress[nonIntendedParticipant]) {
-            "Missing pair for non-intended participant=$nonIntendedParticipant"
-        }
-
-        val openAiRequest = buildOpenAiRequest(sequence = sequence, stream = true)
-        val request = buildSingleStartEnvelope(
-            openAiRequest = openAiRequest,
-            escrowId = escrowId,
-            sequence = sequence,
-            developerBlockSigner = developerBlockSigner,
+        val outcome = session.stream(
+            request = buildOpenAiRequest(sequence = sequence, stream = true),
+            options = RequestOptions(preferredInitialRecipient = nonIntendedParticipant),
         )
-
-        val streamConnection = openV2Stream(
-            pair = nonIntendedPair,
-            request = request,
-            requesterAddress = developerAddress,
-            escrowId = escrowId,
-            sequence = sequence,
-            epochId = epochId,
-        )
+        assertThat(outcome).isInstanceOf(ClientSuccess::class.java)
+        val streamConnection = (outcome as ClientSuccess).result
         try {
             assertThat(streamConnection.latestBlockSequence).isEqualTo(sequence)
-            val firstLine = streamConnection.streamConnection.readLine()
+            val firstLine = streamConnection.stream.readLine()
             assertThat(firstLine).isNotNull
             assertThat(firstLine).contains("data:")
         } finally {
-            streamConnection.streamConnection.close()
+            streamConnection.stream.close()
         }
     }
 
@@ -681,11 +557,9 @@ class V2EscrowFlowTest : TestermintTest() {
         logSection("V2 step13 streaming disconnect resilience test setup")
         val fixture = setupV2EscrowFixture()
         val allPairs = fixture.allPairs
-        val genesis = fixture.genesis
         val pairByAddress = fixture.pairByAddress
         val weightedParticipants = fixture.weightedParticipants
-        val developerAddress = fixture.developerAddress
-        val developerBlockSigner = fixture.developerBlockSigner
+        val client = createV2DeveloperClient(fixture)
         allPairs.forEach { pair ->
             pair.mock?.setInferenceResponse(
                 openAIResponse = defaultInferenceResponseObject,
@@ -695,9 +569,8 @@ class V2EscrowFlowTest : TestermintTest() {
             )
         }
 
-        val escrowContext = createEscrowAndWaitForIndexing(genesis, allPairs, developerAddress)
-        val escrowId = escrowContext.escrowId
-        val epochId = escrowContext.epochId
+        val session = client.createEscrow(CreateEscrowRequest(modelId = defaultModel))
+        val escrowId = session.snapshot().context.escrowId
 
         val sequence = 1L
         val responsibleParticipants = selectResponsibleParticipantsDeterministic(
@@ -714,42 +587,32 @@ class V2EscrowFlowTest : TestermintTest() {
             "Missing pair for follower participant=${responsibleParticipants[1]}"
         }
 
-        val openAiRequest = buildOpenAiRequest(sequence = sequence, stream = true)
-        val request = buildSingleStartEnvelope(
-            openAiRequest = openAiRequest,
-            escrowId = escrowId,
-            sequence = sequence,
-            developerBlockSigner = developerBlockSigner,
+        val leaderOutcome = session.stream(
+            request = buildOpenAiRequest(sequence = sequence, stream = true),
+            options = RequestOptions(preferredInitialRecipient = intendedExecutor),
         )
-
-        // Leader opens stream and disconnects early.
-        val leaderConnection = openV2Stream(
-            pair = intendedPair,
-            request = request,
-            requesterAddress = developerAddress,
-            escrowId = escrowId,
-            sequence = sequence,
-            epochId = epochId,
-        )
+        assertThat(leaderOutcome).isInstanceOf(ClientSuccess::class.java)
+        val leaderConnection = (leaderOutcome as ClientSuccess).result
         assertThat(leaderConnection.latestBlockSequence).isEqualTo(sequence)
-        leaderConnection.streamConnection.readLine() // consume one line to ensure stream started
-        leaderConnection.streamConnection.close()
+        leaderConnection.stream.readLine() // consume one line to ensure stream started
+        leaderConnection.stream.close()
 
         // Follower should still receive replay/history for same request identity.
-        val followerConnection = openV2Stream(
-            pair = followerPair,
-            request = request,
-            requesterAddress = developerAddress,
-            escrowId = escrowId,
-            sequence = sequence,
-            epochId = epochId,
+        val followerOutcome = session.retry(
+            handle = leaderConnection.retryHandle,
+            options = RetryOptions(preferredInitialRecipient = responsibleParticipants[1]),
         )
+        assertThat(followerOutcome).isInstanceOf(ClientSuccess::class.java)
+        val followerResult = (followerOutcome as ClientSuccess).result
+        // Retry over a stream request returns RetryStream.
+        assertThat(followerResult).isInstanceOf(com.productscience.RetryStream::class.java)
+        val followerConnection = (followerResult as com.productscience.RetryStream).result
         try {
-            val replayData = readSSEDataLines(followerConnection.streamConnection)
+            val replayData = readSSEDataLines(followerConnection.stream)
             assertThat(replayData).isNotEmpty()
             assertThat(followerConnection.latestBlockSequence).isEqualTo(sequence)
         } finally {
-            followerConnection.streamConnection.close()
+            followerConnection.stream.close()
         }
     }
 
@@ -757,15 +620,11 @@ class V2EscrowFlowTest : TestermintTest() {
     fun `leader timeout on non-streaming and follower still gets completed replay`() {
         logSection("V2 step13 non-streaming disconnect resilience test setup")
         val fixture = setupV2EscrowFixture()
-        val allPairs = fixture.allPairs
         val pairByAddress = fixture.pairByAddress
         val weightedParticipants = fixture.weightedParticipants
-        val developerAddress = fixture.developerAddress
-        val developerBlockSigner = fixture.developerBlockSigner
-        val genesis = fixture.genesis
-        val escrowContext = createEscrowAndWaitForIndexing(genesis, allPairs, developerAddress)
-        val escrowId = escrowContext.escrowId
-        val epochId = escrowContext.epochId
+        val client = createV2DeveloperClient(fixture)
+        val session = client.createEscrow(CreateEscrowRequest(modelId = defaultModel))
+        val escrowId = session.snapshot().context.escrowId
 
         val sequence = 1L
         val responsibleParticipants = selectResponsibleParticipantsDeterministic(
@@ -788,51 +647,42 @@ class V2EscrowFlowTest : TestermintTest() {
             model = defaultModel,
         )
 
-        val openAiRequest = buildOpenAiRequest(sequence = sequence, stream = false)
-        val request = buildSingleStartEnvelope(
-            openAiRequest = openAiRequest,
-            escrowId = escrowId,
-            sequence = sequence,
-            developerBlockSigner = developerBlockSigner,
+        val failureOutcome = session.complete(
+            request = buildOpenAiRequest(sequence = sequence, stream = false),
+            options = RequestOptions(
+                preferredInitialRecipient = intendedExecutor,
+                leaderTimeout = Duration.ofMillis(150),
+                allowFanoutOnTimeout = false,
+            ),
         )
+        assertThat(failureOutcome).isInstanceOf(ClientFailure::class.java)
+        val failure = failureOutcome as ClientFailure
+        assertThat(failure.retryHandle).isNotNull()
+        assertThat(failure.attempts).hasSize(1)
+        assertThat(failure.attempts.single().recipientAddress).isEqualTo(intendedExecutor)
 
-        assertThatThrownBy {
-            makeV2RequestWithShortReadTimeout(
-                publicURL = intendedPair.api.getPublicUrl(),
-                request = request,
-                requesterAddress = developerAddress,
-                escrowId = escrowId,
-                sequence = sequence,
-                epochId = epochId,
-                readTimeoutMs = 150,
-            )
-        }.isInstanceOf(SocketTimeoutException::class.java)
-
-        val followerResponse = sendV2Request(
-            pair = followerPair,
-            request = request,
-            requesterAddress = developerAddress,
-            escrowId = escrowId,
-            sequence = sequence,
-            epochId = epochId,
+        val followerOutcome = session.retry(
+            handle = requireNotNull(failure.retryHandle),
+            options = RetryOptions(preferredInitialRecipient = responsibleParticipants[1]),
         )
+        assertThat(followerOutcome).isInstanceOf(ClientSuccess::class.java)
+        val retryResult = (followerOutcome as ClientSuccess).result
+        assertThat(retryResult).isInstanceOf(RetryCompletion::class.java)
+        val followerResponse = (retryResult as RetryCompletion).result
         assertThat(followerResponse.latestBlockSequence).isEqualTo(sequence)
-        assertThat(followerResponse.openAIResponse.id).isNotBlank()
+        assertThat(followerResponse.value.id).isNotBlank()
     }
 
     @Test
     fun `relay participant ingests chain and rejects overlap mismatch before forwarding`() {
         logSection("V2 relay-side chain ingestion test setup")
         val fixture = setupV2EscrowFixture()
-        val allPairs = fixture.allPairs
-        val genesis = fixture.genesis
         val pairByAddress = fixture.pairByAddress
         val weightedParticipants = fixture.weightedParticipants
-        val developerAddress = fixture.developerAddress
-        val developerBlockSigner = fixture.developerBlockSigner
-        val escrowContext = createEscrowAndWaitForIndexing(genesis, allPairs, developerAddress)
-        val escrowId = escrowContext.escrowId
-        val epochId = escrowContext.epochId
+        val client = createV2DeveloperClient(fixture)
+        val session = client.createEscrow(CreateEscrowRequest(modelId = defaultModel))
+        val testSession = session as TestableEscrowSessionClient
+        val escrowId = session.snapshot().context.escrowId
 
         val sequence1 = 1L
         val responsibleForSeq1 = selectResponsibleParticipantsDeterministic(
@@ -846,95 +696,74 @@ class V2EscrowFlowTest : TestermintTest() {
             "Missing pair for relay participant=$relayParticipant"
         }
 
-        val request1 = buildOpenAiRequest(sequence = sequence1, stream = false)
-        val request1Envelope = buildSingleStartEnvelope(
-            openAiRequest = request1,
-            escrowId = escrowId,
-            sequence = sequence1,
-            developerBlockSigner = developerBlockSigner,
+        val handle1 = testSession.reserveHandleForTesting(buildOpenAiRequest(sequence = sequence1, stream = false))
+        val request1Outcome = testSession.retryForTesting(
+            handle = handle1,
+            options = RetryOptions(preferredInitialRecipient = relayParticipant),
+            recordFinishOnSuccess = false,
         )
-        val response1 = sendV2Request(
-            pair = relayPair,
-            request = request1Envelope,
-            requesterAddress = developerAddress,
-            escrowId = escrowId,
-            sequence = sequence1,
-            epochId = epochId,
-        )
+        assertThat(request1Outcome).isInstanceOf(ClientSuccess::class.java)
+        val response1 = ((request1Outcome as ClientSuccess).result as RetryCompletion).result
         assertThat(response1.latestBlockSequence).isEqualTo(sequence1)
+        // Give the relay node a block to durably ingest the forwarded chain update before the next request.
+        fixture.genesis.node.waitForNextBlock(1)
 
         val sequence2 = 2L
-        val request2 = buildOpenAiRequest(sequence = sequence2, stream = false)
-        val request2Envelope = buildSingleStartEnvelope(
-            openAiRequest = request2,
-            escrowId = escrowId,
-            sequence = sequence2,
-            developerBlockSigner = developerBlockSigner,
+        val handle2 = testSession.reserveHandleForTesting(buildOpenAiRequest(sequence = sequence2, stream = false))
+        val request2Outcome = testSession.retryForTesting(
+            handle = handle2,
+            options = RetryOptions(preferredInitialRecipient = relayParticipant),
+            recordFinishOnSuccess = false,
         )
-        val response2 = sendV2Request(
-            pair = relayPair,
-            request = request2Envelope,
-            requesterAddress = developerAddress,
-            escrowId = escrowId,
-            sequence = sequence2,
-            epochId = epochId,
-        )
+        assertThat(request2Outcome).isInstanceOf(ClientSuccess::class.java)
+        val response2 = ((request2Outcome as ClientSuccess).result as RetryCompletion).result
         assertThat(response2.latestBlockSequence).isEqualTo(sequence2)
 
         val sequence3 = 3L
         val request3 = buildOpenAiRequest(sequence = sequence3, stream = false)
-        val mismatchedOverlapBlock2 = buildStartInferenceBlock(
-            blockSequence = 2,
-            escrowId = escrowId,
-            modelId = defaultModel,
-            requestPayloadHash = "deadbeef", // Deliberately mismatched overlap block content.
-            timestampSeconds = (System.currentTimeMillis() / 1000) + 77,
-            developerBlockSigner = developerBlockSigner,
-        )
-        val request3Envelope = buildV2RequestEnvelope(
-            openAiRequest = request3,
-            developerChainDelta = DeveloperChainDelta(
-                baseBlockSequence = 1,
-                blocks = listOf(
-                    mismatchedOverlapBlock2,
-                    buildStartInferenceBlock(
-                        blockSequence = sequence3,
-                        escrowId = escrowId,
-                        modelId = defaultModel,
-                        requestPayloadHash = computeV2RequestPayloadHash(request3),
-                        timestampSeconds = System.currentTimeMillis() / 1000,
-                        developerBlockSigner = developerBlockSigner,
-                    )
-                ),
-                latestBlockSequence = sequence3,
+        val request3Handle = testSession.reserveHandleForTesting(request3)
+        val request3Outcome = session.retryWithModifiedEnvelopeForTesting(
+            handle = request3Handle,
+            options = RetryOptions(preferredInitialRecipient = relayParticipant),
+            resignMode = EnvelopeResignMode.RECOMPUTE_STATE_AND_SIGN,
+        ) { envelope ->
+            val developerChainDelta = envelope.getAsJsonObject("developerChainDelta")
+                ?: envelope.getAsJsonObject("developer_chain_delta")
+                ?: error("Missing developerChainDelta in envelope")
+            val block2 = cosmosJson.fromJson(
+                testSession.blockJsonForSequence(2L),
+                com.google.gson.JsonObject::class.java,
             )
-        )
-
-        assertThatThrownBy {
-            sendV2Request(
-                pair = relayPair,
-                request = request3Envelope,
-                requesterAddress = developerAddress,
-                escrowId = escrowId,
-                sequence = sequence3,
-                epochId = epochId,
+            val block2Messages = block2.getAsJsonArray("messages")
+            val block2Start = block2Messages.first().asJsonObject
+            block2Start.addProperty("request_payload_hash", "deadbeef")
+            block2Start.addProperty("timestamp", (System.currentTimeMillis() / 1000) + 77)
+            val block3 = cosmosJson.fromJson(
+                testSession.blockJsonForSequence(3L),
+                com.google.gson.JsonObject::class.java,
             )
-        }.hasMessageContaining("409")
+            developerChainDelta.addProperty("base_block_sequence", 1)
+            developerChainDelta.add("blocks", com.google.gson.JsonArray().apply {
+                add(block2)
+                add(block3)
+            })
+            developerChainDelta.addProperty("latest_block_sequence", 3)
+        }
+        assertThat(request3Outcome).isInstanceOf(ClientFailure::class.java)
+        val request3Failure = request3Outcome as ClientFailure
+        assertThat(request3Failure.error.message).contains("409")
     }
 
     @Test
     fun `relay failures return signed artifacts from distinct relays`() {
         logSection("V2 Step16 relay signed-error quorum test setup")
         val fixture = setupV2EscrowFixture()
-        val allPairs = fixture.allPairs
-        val genesis = fixture.genesis
         val pairByAddress = fixture.pairByAddress
         val weightedParticipants = fixture.weightedParticipants
-        val developerAddress = fixture.developerAddress
-        val developerBlockSigner = fixture.developerBlockSigner
-        val escrowContext = createEscrowAndWaitForIndexing(genesis, allPairs, developerAddress)
-        val escrowId = escrowContext.escrowId
-        val epochId = escrowContext.epochId
+        val client = createV2DeveloperClient(fixture)
+        val session = client.createEscrow(CreateEscrowRequest(modelId = defaultModel))
+        val testSession = session as TestableEscrowSessionClient
+        val escrowId = session.snapshot().context.escrowId
 
         val sequence1 = 1L
         val responsibleForSeq1 = selectResponsibleParticipantsDeterministic(
@@ -951,33 +780,19 @@ class V2EscrowFlowTest : TestermintTest() {
         val intendedPair = requireNotNull(pairByAddress[intendedExecutorAddress]) {
             "Missing pair for intended executor=$intendedExecutorAddress"
         }
-        val relayPairA = requireNotNull(pairByAddress[relayAddressA]) {
-            "Missing pair for relay participant=$relayAddressA"
-        }
-        val relayPairB = requireNotNull(pairByAddress[relayAddressB]) {
-            "Missing pair for relay participant=$relayAddressB"
-        }
-
         val openAiRequest1 = buildOpenAiRequest(sequence = sequence1, stream = false)
-        val request1EnvelopeJson = buildSingleStartEnvelope(
-            openAiRequest = openAiRequest1,
-            escrowId = escrowId,
-            sequence = sequence1,
-            developerBlockSigner = developerBlockSigner,
-        )
         val requestId1 = buildV2RequestId(escrowId, sequence1)
+        val handle = testSession.reserveHandleForTesting(openAiRequest1)
 
         setApiContainerRunning(intendedPair, running = false)
         try {
-            val artifacts = collectRelayErrorArtifactsForRequest(
-                request = request1EnvelopeJson,
-                requesterAddress = developerAddress,
-                escrowId = escrowId,
-                sequence = sequence1,
-                epochId = epochId,
-                responsibleParticipants = responsibleForSeq1,
-                pairByAddress = pairByAddress,
+            val failureOutcome = session.retry(
+                handle = handle,
+                options = RetryOptions(resendToAllResponsible = true),
             )
+            assertThat(failureOutcome).isInstanceOf(ClientFailure::class.java)
+            val failure = failureOutcome as ClientFailure
+            val artifacts = failure.relayArtifacts
             assertThat(artifacts).hasSize(2)
             val artifactA = artifacts.first { it.relayAddress == relayAddressA }
             val artifactB = artifacts.first { it.relayAddress == relayAddressB }
@@ -992,11 +807,39 @@ class V2EscrowFlowTest : TestermintTest() {
             assertThat(artifactB.relayAddress).isEqualTo(relayAddressB)
             assertThat(artifactA.relaySignature).isNotBlank()
             assertThat(artifactB.relaySignature).isNotBlank()
-            assertThat(verifyV2RelayErrorArtifactSignature(artifactA)).isTrue()
-            assertThat(verifyV2RelayErrorArtifactSignature(artifactB)).isTrue()
+            assertThat(com.productscience.verifyV2RelayErrorArtifactSignature(artifactA)).isTrue()
+            assertThat(com.productscience.verifyV2RelayErrorArtifactSignature(artifactB)).isTrue()
             assertThat(setOf(artifactA.relayAddress, artifactB.relayAddress)).hasSize(2)
             assertThat(artifactA.failureCode).isNotBlank()
             assertThat(artifactB.failureCode).isNotBlank()
+            assertThat(failure.missedInferenceQueued).isTrue()
+
+            setApiContainerRunning(intendedPair, running = true)
+            intendedPair.node.waitForNextBlock(1)
+            val nextOutcome = session.complete(buildOpenAiRequest(sequence = 2L, stream = false))
+            assertThat(nextOutcome).isInstanceOf(ClientSuccess::class.java)
+            val block2 = cosmosJson.fromJson(
+                testSession.blockJsonForSequence(2L),
+                com.google.gson.JsonObject::class.java,
+            )
+            val messages = block2.getAsJsonArray("messages")
+            val missed = messages
+                .map { it.asJsonObject }
+                .firstOrNull { message ->
+                    val requestIdField = message.get("requestId") ?: message.get("request_id")
+                    message.get("type").asString == MISSED_INFERENCE_MESSAGE_TYPE &&
+                        requestIdField?.asString == requestId1
+                }
+            assertThat(missed).isNotNull()
+            val evidenceJson = (missed?.get("missedInferenceEvidence") ?: missed?.get("missed_inference_evidence"))?.asString
+            assertThat(evidenceJson).isNotBlank()
+            val evidence = cosmosJson.fromJson(
+                evidenceJson,
+                com.google.gson.JsonObject::class.java,
+            )
+            val relayErrors = evidence.getAsJsonArray("relay_errors")
+            assertThat(relayErrors.map { it.asJsonObject.get("relay_address").asString }.toSet())
+                .containsExactlyInAnyOrder(relayAddressA, relayAddressB)
         } finally {
             setApiContainerRunning(intendedPair, running = true)
         }
@@ -1006,154 +849,64 @@ class V2EscrowFlowTest : TestermintTest() {
     fun `state hash converges across responsible participants and mismatched signed state hash is rejected`() {
         logSection("V2 Step17 deterministic state hash convergence test setup")
         val fixture = setupV2EscrowFixture()
-        val allPairs = fixture.allPairs
-        val genesis = fixture.genesis
-        val pairByAddress = fixture.pairByAddress
         val weightedParticipants = fixture.weightedParticipants
-        val developerAddress = fixture.developerAddress
-        val developerBlockSigner = fixture.developerBlockSigner
-        val escrowContext = createEscrowAndWaitForIndexing(genesis, allPairs, developerAddress)
-        val escrowId = escrowContext.escrowId
-        val epochId = escrowContext.epochId
+        val client = createV2DeveloperClient(fixture)
+        val session = client.createEscrow(CreateEscrowRequest(modelId = defaultModel))
+        val testSession = session as TestableEscrowSessionClient
+        val escrowId = session.snapshot().context.escrowId
 
         val sequence1 = 1L
-        val request1 = buildOpenAiRequest(sequence = sequence1, stream = false)
-        val request1Envelope = buildSingleStartEnvelope(
-            openAiRequest = request1,
-            escrowId = escrowId,
-            sequence = sequence1,
-            developerBlockSigner = developerBlockSigner,
-        )
-        val request1Delta = cosmosJson.fromJson(request1Envelope, DeveloperChainEnvelope::class.java).developerChainDelta
-        val block1 = request1Delta.blocks.single()
-        val responsibleForSeq1 = selectResponsibleParticipantsDeterministic(
-            participants = weightedParticipants,
-            selectionCount = EXPECTED_RESPONSIBLE_PARTICIPANTS,
-            escrowId = escrowId,
-            sequence = sequence1,
-        )
-        val intendedSeq1 = requireNotNull(pairByAddress[responsibleForSeq1.first()]) {
-            "Missing pair for sequence=$sequence1"
-        }
-        val response1 = sendV2Request(
-            pair = intendedSeq1,
-            request = request1Envelope,
-            requesterAddress = developerAddress,
-            escrowId = escrowId,
-            sequence = sequence1,
-            epochId = epochId,
-        )
+        val outcome1 = session.complete(buildOpenAiRequest(sequence = sequence1, stream = false))
+        assertThat(outcome1).isInstanceOf(ClientSuccess::class.java)
+        val response1 = (outcome1 as ClientSuccess).result
         assertThat(response1.latestBlockSequence).isEqualTo(sequence1)
 
-        val stateAfterBlock1 = applyDeterministicState(DeterministicChainState(), block1.messages)
         val sequence2 = 2L
-        val request2 = buildOpenAiRequest(sequence = sequence2, stream = false)
-        val block2Messages = listOf(
-            DeveloperChainMessage(
-                type = FINISH_INFERENCE_MESSAGE_TYPE,
-                requestId = buildV2RequestId(escrowId, sequence1),
-                status = "finished",
-                responsePayloadHash = response1.responsePayloadHash,
-                executorAddress = response1.executorAddress,
-                executorSignerAddress = response1.executorSignerAddress,
-                executorSignerPubKey = response1.executorSignerPubKey,
-                executorSignature = response1.executorSignature,
-                inputTokenCount = extractInputTokens(response1.openAIResponse),
-                outputTokenCount = extractOutputTokens(response1.openAIResponse),
-                timestamp = System.currentTimeMillis() / 1000,
-            ),
-            DeveloperChainMessage(
-                type = START_INFERENCE_MESSAGE_TYPE,
-                requestId = buildV2RequestId(escrowId, sequence2),
-                modelId = defaultModel,
-                requestPayloadHash = computeV2RequestPayloadHash(request2),
-                timestamp = System.currentTimeMillis() / 1000,
-            ),
-        )
-        val signedBlock2 = signDeveloperChainBlockWithState(
-            blockSequence = sequence2,
-            escrowId = escrowId,
-            messages = block2Messages,
-            developerBlockSigner = developerBlockSigner,
-            baseState = stateAfterBlock1,
-        )
-        val request2Envelope = buildV2RequestEnvelope(
-            openAiRequest = request2,
-            developerChainDelta = DeveloperChainDelta(
-                baseBlockSequence = 0,
-                blocks = listOf(block1, signedBlock2.block),
-                latestBlockSequence = sequence2,
-            ),
-        )
         val responsibleForSeq2 = selectResponsibleParticipantsDeterministic(
             participants = weightedParticipants,
             selectionCount = EXPECTED_RESPONSIBLE_PARTICIPANTS,
             escrowId = escrowId,
             sequence = sequence2,
         )
-        // Every responsible participant should converge on the same signed state and accept overlap.
-        responsibleForSeq2.forEach { participantAddress ->
-            val pair = requireNotNull(pairByAddress[participantAddress]) {
-                "Missing pair for participant=$participantAddress"
-            }
-            val response = sendV2Request(
-                pair = pair,
-                request = request2Envelope,
-                requesterAddress = developerAddress,
-                escrowId = escrowId,
-                sequence = sequence2,
-                epochId = epochId,
-            )
-            assertThat(response.latestBlockSequence).isEqualTo(sequence2)
+        val outcome2 = session.complete(
+            request = buildOpenAiRequest(sequence = sequence2, stream = false),
+            options = RequestOptions(sendToAllResponsible = true),
+        )
+        assertThat(outcome2).isInstanceOf(ClientSuccess::class.java)
+        val response2 = (outcome2 as ClientSuccess).result
+        assertThat(response2.attempts.mapNotNull { it.responseId }).hasSize(responsibleForSeq2.size)
+        response2.attempts.forEach { attempt ->
+            assertThat(attempt.latestBlockSequence).isEqualTo(sequence2)
         }
 
-        val stateAfterBlock2 = signedBlock2.nextState
         val sequence3 = 3L
-        val request3 = buildOpenAiRequest(sequence = sequence3, stream = false)
-        val block3Messages = listOf(
-            DeveloperChainMessage(
-                type = START_INFERENCE_MESSAGE_TYPE,
-                requestId = buildV2RequestId(escrowId, sequence3),
-                modelId = defaultModel,
-                requestPayloadHash = computeV2RequestPayloadHash(request3),
-                timestamp = System.currentTimeMillis() / 1000,
-            )
-        )
-        val tamperedBlock3 = signDeveloperChainBlockWithExplicitStateHash(
-            blockSequence = sequence3,
-            escrowId = escrowId,
-            messages = block3Messages,
-            developerBlockSigner = developerBlockSigner,
-            stateHash = "deadbeef",
-        )
-        val request3Envelope = buildV2RequestEnvelope(
-            openAiRequest = request3,
-            developerChainDelta = DeveloperChainDelta(
-                baseBlockSequence = 2,
-                blocks = listOf(tamperedBlock3),
-                latestBlockSequence = sequence3,
-            ),
-        )
         val intendedForSeq3 = selectResponsibleParticipantsDeterministic(
             participants = weightedParticipants,
             selectionCount = EXPECTED_RESPONSIBLE_PARTICIPANTS,
             escrowId = escrowId,
             sequence = sequence3,
         ).first()
-        val intendedSeq3 = requireNotNull(pairByAddress[intendedForSeq3]) {
-            "Missing pair for sequence=$sequence3"
-        }
-        assertThat(stateAfterBlock2.executorStats).isNotEmpty()
-        assertThatThrownBy {
-            sendV2Request(
-                pair = intendedSeq3,
-                request = request3Envelope,
-                requesterAddress = developerAddress,
-                escrowId = escrowId,
-                sequence = sequence3,
-                epochId = epochId,
+        val handle3 = testSession.reserveHandleForTesting(buildOpenAiRequest(sequence = sequence3, stream = false))
+        val outcome3 = session.retryWithModifiedEnvelopeForTesting(
+            handle = handle3,
+            options = RetryOptions(preferredInitialRecipient = intendedForSeq3),
+            resignMode = EnvelopeResignMode.SIGN_USING_EXISTING_STATE_HASH,
+        ) { envelope ->
+            val developerChainDelta = envelope.getAsJsonObject("developerChainDelta")
+                ?: envelope.getAsJsonObject("developer_chain_delta")
+                ?: error("Missing developerChainDelta in envelope")
+            val block3 = cosmosJson.fromJson(
+                testSession.blockJsonForSequence(3L),
+                com.google.gson.JsonObject::class.java,
             )
-        }.hasMessageContaining("409")
+            block3.addProperty("state_hash", "deadbeef")
+            developerChainDelta.addProperty("base_block_sequence", 2)
+            developerChainDelta.add("blocks", com.google.gson.JsonArray().apply { add(block3) })
+            developerChainDelta.addProperty("latest_block_sequence", 3)
+        }
+        assertThat(outcome3).isInstanceOf(ClientFailure::class.java)
+        val failure3 = outcome3 as ClientFailure
+        assertThat(failure3.error.message).contains("409")
     }
 
     @Test
@@ -1161,14 +914,11 @@ class V2EscrowFlowTest : TestermintTest() {
         logSection("V2 Step15 escrow invalidation E2E setup")
         val fixture = setupV2EscrowFixture()
         val allPairs = fixture.allPairs
-        val genesis = fixture.genesis
-        val pairByAddress = fixture.pairByAddress
         val weightedParticipants = fixture.weightedParticipants
-        val developerAddress = fixture.developerAddress
-        val developerBlockSigner = fixture.developerBlockSigner
-        val escrowContext = createEscrowAndWaitForIndexing(genesis, allPairs, developerAddress)
-        val escrowId = escrowContext.escrowId
-        val epochId = escrowContext.epochId
+        val client = createV2DeveloperClient(fixture)
+        val session = client.createEscrow(CreateEscrowRequest(modelId = defaultModel))
+        val testSession = session as TestableEscrowSessionClient
+        val escrowId = session.snapshot().context.escrowId
 
         val intendedForSeq3 = selectResponsibleParticipantsDeterministic(
             participants = weightedParticipants,
@@ -1176,132 +926,70 @@ class V2EscrowFlowTest : TestermintTest() {
             escrowId = escrowId,
             sequence = 3L,
         ).first()
-        val intendedPair = requireNotNull(pairByAddress[intendedForSeq3]) {
-            "Missing pair for intended participant=$intendedForSeq3"
-        }
-
-        val request1 = buildOpenAiRequest(sequence = 1L, stream = false)
-        val block1 = buildStartInferenceBlock(
-            blockSequence = 1L,
-            escrowId = escrowId,
-            modelId = defaultModel,
-            requestPayloadHash = computeV2RequestPayloadHash(request1),
-            timestampSeconds = System.currentTimeMillis() / 1000,
-            developerBlockSigner = developerBlockSigner,
-        )
-        val request1Envelope = buildV2RequestEnvelope(
-            openAiRequest = request1,
-            developerChainDelta = DeveloperChainDelta(
-                baseBlockSequence = 0,
-                blocks = listOf(block1),
-                latestBlockSequence = 1,
-            )
-        )
-        val response1 = sendV2Request(
-            pair = intendedPair,
-            request = request1Envelope,
-            requesterAddress = developerAddress,
-            escrowId = escrowId,
-            sequence = 1L,
-            epochId = epochId,
-        )
+        val outcome1 = session.complete(buildOpenAiRequest(sequence = 1L, stream = false))
+        assertThat(outcome1).isInstanceOf(ClientSuccess::class.java)
+        val response1 = (outcome1 as ClientSuccess).result
         assertThat(response1.latestBlockSequence).isEqualTo(1L)
 
-        val request2 = buildOpenAiRequest(sequence = 2L, stream = false)
-        val block2 = buildStartInferenceBlock(
-            blockSequence = 2L,
-            escrowId = escrowId,
-            modelId = defaultModel,
-            requestPayloadHash = computeV2RequestPayloadHash(request2),
-            timestampSeconds = System.currentTimeMillis() / 1000,
-            developerBlockSigner = developerBlockSigner,
-        )
-        val request2Envelope = buildV2RequestEnvelope(
-            openAiRequest = request2,
-            developerChainDelta = DeveloperChainDelta(
-                baseBlockSequence = 0,
-                blocks = listOf(block1, block2),
-                latestBlockSequence = 2,
-            )
-        )
-        val response2 = sendV2Request(
-            pair = intendedPair,
-            request = request2Envelope,
-            requesterAddress = developerAddress,
-            escrowId = escrowId,
-            sequence = 2L,
-            epochId = epochId,
-        )
+        val outcome2 = session.complete(buildOpenAiRequest(sequence = 2L, stream = false))
+        assertThat(outcome2).isInstanceOf(ClientSuccess::class.java)
+        val response2 = (outcome2 as ClientSuccess).result
         assertThat(response2.latestBlockSequence).isEqualTo(2L)
 
-        val request3 = buildOpenAiRequest(sequence = 3L, stream = false)
-        val mismatchedOverlapBlock2 = buildStartInferenceBlock(
-            blockSequence = 2L,
-            escrowId = escrowId,
-            modelId = defaultModel,
-            requestPayloadHash = "deadbeef",
-            timestampSeconds = (System.currentTimeMillis() / 1000) + 77,
-            developerBlockSigner = developerBlockSigner,
-        )
-        val request3Envelope = buildV2RequestEnvelope(
-            openAiRequest = request3,
-            developerChainDelta = DeveloperChainDelta(
-                baseBlockSequence = 1,
-                blocks = listOf(
-                    mismatchedOverlapBlock2,
-                    buildStartInferenceBlock(
-                        blockSequence = 3L,
-                        escrowId = escrowId,
-                        modelId = defaultModel,
-                        requestPayloadHash = computeV2RequestPayloadHash(request3),
-                        timestampSeconds = System.currentTimeMillis() / 1000,
-                        developerBlockSigner = developerBlockSigner,
-                    )
-                ),
-                latestBlockSequence = 3,
+        val handle3 = testSession.reserveHandleForTesting(buildOpenAiRequest(sequence = 3L, stream = false))
+        val outcome3 = session.retryWithModifiedEnvelopeForTesting(
+            handle = handle3,
+            options = RetryOptions(preferredInitialRecipient = intendedForSeq3),
+            resignMode = EnvelopeResignMode.RECOMPUTE_STATE_AND_SIGN,
+        ) { envelope ->
+            val developerChainDelta = envelope.getAsJsonObject("developerChainDelta")
+                ?: envelope.getAsJsonObject("developer_chain_delta")
+                ?: error("Missing developerChainDelta in envelope")
+            val block2 = cosmosJson.fromJson(
+                testSession.blockJsonForSequence(2L),
+                com.google.gson.JsonObject::class.java,
             )
-        )
-        assertThatThrownBy {
-            sendV2Request(
-                pair = intendedPair,
-                request = request3Envelope,
-                requesterAddress = developerAddress,
-                escrowId = escrowId,
-                sequence = 3L,
-                epochId = epochId,
+            val block2Messages = block2.getAsJsonArray("messages")
+            val block2Start = block2Messages.first().asJsonObject
+            block2Start.addProperty("request_payload_hash", "deadbeef")
+            block2Start.addProperty("timestamp", (System.currentTimeMillis() / 1000) + 77)
+            val block3 = cosmosJson.fromJson(
+                testSession.blockJsonForSequence(3L),
+                com.google.gson.JsonObject::class.java,
             )
-        }.hasMessageContaining("409")
+            developerChainDelta.addProperty("base_block_sequence", 1)
+            developerChainDelta.add("blocks", com.google.gson.JsonArray().apply {
+                add(block2)
+                add(block3)
+            })
+            developerChainDelta.addProperty("latest_block_sequence", 3)
+        }
+        assertThat(outcome3).isInstanceOf(ClientFailure::class.java)
+        val failure3 = outcome3 as ClientFailure
+        assertThat(failure3.error.message).contains("409")
 
         // Wait until all API nodes ingest the on-chain escrow_invalidated event.
         allPairs.forEach { it.node.waitForNextBlock(2) }
+        // Full-class runs can drift into non-inference phases here; wait for the next inference window
+        // so subsequent rejections reflect escrow invalidation rather than temporary node unavailability.
+        fixture.genesis.waitForNextInferenceWindow()
+        fixture.allPairs.forEach { it.waitForMlNodesToLoad() }
 
-        val request4 = buildOpenAiRequest(sequence = 4L, stream = false)
-        val request4Envelope = buildSingleStartEnvelope(
-            openAiRequest = request4,
-            escrowId = escrowId,
-            sequence = 4L,
-            developerBlockSigner = developerBlockSigner,
-        )
         val responsibleForSeq4 = selectResponsibleParticipantsDeterministic(
             participants = weightedParticipants,
             selectionCount = EXPECTED_RESPONSIBLE_PARTICIPANTS,
             escrowId = escrowId,
             sequence = 4L,
         )
+        val handle4 = testSession.reserveHandleForTesting(buildOpenAiRequest(sequence = 4L, stream = false))
         responsibleForSeq4.forEach { participantAddress ->
-            val pair = requireNotNull(pairByAddress[participantAddress]) {
-                "Missing pair for participant=$participantAddress"
-            }
-            assertThatThrownBy {
-                sendV2Request(
-                    pair = pair,
-                    request = request4Envelope,
-                    requesterAddress = developerAddress,
-                    escrowId = escrowId,
-                    sequence = 4L,
-                    epochId = epochId,
-                )
-            }.hasMessageContaining("409")
+            val outcome4 = session.retry(
+                handle = handle4,
+                options = RetryOptions(preferredInitialRecipient = participantAddress),
+            )
+            assertThat(outcome4).isInstanceOf(ClientFailure::class.java)
+            val failure4 = outcome4 as ClientFailure
+            assertThat(failure4.error.message).contains("409")
         }
     }
 
@@ -1330,64 +1018,26 @@ class V2EscrowFlowTest : TestermintTest() {
         )
     }
 
-    private fun buildSingleStartEnvelope(
-        openAiRequest: InferenceRequestPayload,
-        escrowId: String,
-        sequence: Long,
-        developerBlockSigner: DeveloperBlockSigner,
-        baseBlockSequence: Long = sequence - 1,
-        timestampSeconds: Long = System.currentTimeMillis() / 1000,
-        requestPayloadHashOverride: String? = null,
-    ): String {
-        val block = buildStartInferenceBlock(
-            blockSequence = sequence,
-            escrowId = escrowId,
-            modelId = defaultModel,
-            requestPayloadHash = requestPayloadHashOverride ?: computeV2RequestPayloadHash(openAiRequest),
-            timestampSeconds = timestampSeconds,
-            developerBlockSigner = developerBlockSigner,
-        )
-        return buildV2RequestEnvelope(
-            openAiRequest = openAiRequest,
-            developerChainDelta = DeveloperChainDelta(
-                baseBlockSequence = baseBlockSequence,
-                blocks = listOf(block),
-                latestBlockSequence = sequence,
+    private fun createV2DeveloperClient(fixture: V2EscrowFixture): TestermintInferenceV2Client {
+        return TestermintInferenceV2Client(
+            InferenceV2ClientConfig(
+                genesis = fixture.genesis,
+                allPairs = fixture.allPairs,
+                developerAddress = fixture.developerAddress,
+                developerBlockSigner = V2DeveloperBlockSigner(
+                    signingAccountAddress = fixture.developerBlockSigner.signingAccountAddress,
+                    chainId = fixture.developerBlockSigner.chainId,
+                    signPayloadHex = fixture.developerBlockSigner.signPayloadHex,
+                ),
+                pairByAddress = fixture.pairByAddress,
+                weightedParticipants = fixture.weightedParticipants.map { participant ->
+                    V2WeightedParticipant(
+                        address = participant.address,
+                        weight = participant.weight,
+                    )
+                },
+                responsibleParticipantCount = EXPECTED_RESPONSIBLE_PARTICIPANTS,
             )
-        )
-    }
-
-    private fun sendV2Request(
-        pair: LocalInferencePair,
-        request: String,
-        requesterAddress: String,
-        escrowId: String,
-        sequence: Long,
-        epochId: Long,
-    ): V2InferenceResponse {
-        return pair.api.makeInferenceRequestV2(
-            request = request,
-            requesterAddress = requesterAddress,
-            escrowId = escrowId,
-            sequence = sequence,
-            epochId = epochId,
-        )
-    }
-
-    private fun openV2Stream(
-        pair: LocalInferencePair,
-        request: String,
-        requesterAddress: String,
-        escrowId: String,
-        sequence: Long,
-        epochId: Long,
-    ): V2InferenceStreamConnection {
-        return pair.api.createInferenceStreamConnectionV2(
-            request = request,
-            requesterAddress = requesterAddress,
-            escrowId = escrowId,
-            sequence = sequence,
-            epochId = epochId,
         )
     }
 
@@ -1417,44 +1067,6 @@ class V2EscrowFlowTest : TestermintTest() {
         return weightedParticipants to participantPubKeyByAddress
     }
 
-    private fun extractEscrowId(response: TxResponse): String? {
-        return response.events
-            .firstOrNull { it.type == "escrow_created" }
-            ?.attributes
-            ?.firstOrNull { attribute ->
-                attribute.key == "escrow_id" || attribute.key.endsWith(".escrow_id")
-            }
-            ?.value
-    }
-
-    private fun extractEscrowEpochId(response: TxResponse): Long? {
-        return response.events
-            .firstOrNull { it.type == "escrow_created" }
-            ?.attributes
-            ?.firstOrNull { attribute ->
-                attribute.key == "epoch_id" || attribute.key.endsWith(".epoch_id")
-            }
-            ?.value
-            ?.toLongOrNull()
-    }
-
-    private fun extractEscrowContext(response: TxResponse): EscrowContext? {
-        val escrowId = extractEscrowId(response) ?: return null
-        val epochId = extractEscrowEpochId(response) ?: return null
-        return EscrowContext(escrowId = escrowId, epochId = epochId)
-    }
-
-    private fun buildV2RequestEnvelope(
-        openAiRequest: InferenceRequestPayload,
-        developerChainDelta: DeveloperChainDelta,
-    ): String {
-        val envelope = DeveloperChainEnvelope(
-            openAiRequest = openAiRequest,
-            developerChainDelta = developerChainDelta,
-        )
-        return cosmosJson.toJson(envelope)
-    }
-
     private fun buildV2RequestId(escrowId: String, sequence: Long): String {
         return "$escrowId:$sequence"
     }
@@ -1476,58 +1088,11 @@ class V2EscrowFlowTest : TestermintTest() {
         )
     }
 
-    private fun buildStartInferenceBlock(
-        blockSequence: Long,
-        escrowId: String,
-        modelId: String,
-        requestPayloadHash: String,
-        timestampSeconds: Long,
-        developerBlockSigner: DeveloperBlockSigner,
-    ): DeveloperChainBlock {
-        val messages = listOf(
-            DeveloperChainMessage(
-                type = START_INFERENCE_MESSAGE_TYPE,
-                requestId = buildV2RequestId(escrowId, blockSequence),
-                modelId = modelId,
-                requestPayloadHash = requestPayloadHash,
-                timestamp = timestampSeconds,
-            )
-        )
-        return signDeveloperChainBlock(
-            blockSequence = blockSequence,
-            escrowId = escrowId,
-            messages = messages,
-            developerBlockSigner = developerBlockSigner,
-        )
-    }
-
-    private fun createEscrowAndWaitForIndexing(
-        genesis: LocalInferencePair,
-        allPairs: List<LocalInferencePair>,
-        developerAddress: String,
-    ): EscrowContext {
-        val createEscrowTx = genesis.submitMessage(
-            MsgCreateEscrow(
-                creator = developerAddress,
-                modelId = defaultModel,
-            )
-        )
-        assertThat(createEscrowTx.code).isEqualTo(0)
-        val escrowContext = requireNotNull(extractEscrowContext(createEscrowTx)) {
-            "Could not extract escrow context from tx events: ${createEscrowTx.events}"
-        }
-        val indexedHeightBarrier = createEscrowTx.height + 1
-        allPairs.forEach { pair ->
-            pair.node.waitForMinimumBlock(indexedHeightBarrier, "escrow indexing barrier")
-        }
-        return escrowContext
-    }
-
-    private fun readSSEDataLines(streamConnection: com.productscience.StreamConnection): List<String> {
+    private fun readSSEDataLines(streamConnection: com.productscience.LineReadableStream): List<String> {
         return readV2StreamDataAndProof(streamConnection).dataLines
     }
 
-    private fun readV2StreamDataAndProof(streamConnection: com.productscience.StreamConnection): V2StreamReadResult {
+    private fun readV2StreamDataAndProof(streamConnection: com.productscience.LineReadableStream): V2StreamReadResult {
         val dataLines = mutableListOf<String>()
         val hashedStream = ByteArrayOutputStream()
         var currentEvent = "message"
@@ -1579,100 +1144,6 @@ class V2EscrowFlowTest : TestermintTest() {
         )
     }
 
-    private fun makeV2RequestWithShortReadTimeout(
-        publicURL: String,
-        request: String,
-        requesterAddress: String,
-        escrowId: String,
-        sequence: Long,
-        epochId: Long,
-        readTimeoutMs: Int,
-    ) {
-        val endpoint = java.net.URI("$publicURL/v2/chat/completions").toURL()
-        val connection = endpoint.openConnection() as HttpURLConnection
-        connection.requestMethod = "POST"
-        connection.connectTimeout = 1_000
-        connection.readTimeout = readTimeoutMs
-        connection.setRequestProperty("X-Requester-Address", requesterAddress)
-        connection.setRequestProperty("X-Escrow-Id", escrowId)
-        connection.setRequestProperty("X-Escrow-Sequence", sequence.toString())
-        connection.setRequestProperty("X-Epoch-Id", epochId.toString())
-        connection.setRequestProperty("Content-Type", "application/json")
-        connection.doOutput = true
-        connection.outputStream.use { outputStream ->
-            outputStream.write(request.toByteArray(Charsets.UTF_8))
-            outputStream.flush()
-        }
-        try {
-            // Triggers blocking read for response headers/body; should timeout under delayed executor.
-            connection.responseCode
-        } finally {
-            connection.disconnect()
-        }
-    }
-
-    private fun makeV2RequestRaw(
-        publicURL: String,
-        request: String,
-        requesterAddress: String,
-        escrowId: String,
-        sequence: Long,
-        epochId: Long,
-    ): V2RawHttpResponse {
-        val endpoint = java.net.URI("$publicURL/v2/chat/completions").toURL()
-        val connection = endpoint.openConnection() as HttpURLConnection
-        connection.requestMethod = "POST"
-        connection.connectTimeout = 5_000
-        connection.readTimeout = 30_000
-        connection.setRequestProperty("X-Requester-Address", requesterAddress)
-        connection.setRequestProperty("X-Escrow-Id", escrowId)
-        connection.setRequestProperty("X-Escrow-Sequence", sequence.toString())
-        connection.setRequestProperty("X-Epoch-Id", epochId.toString())
-        connection.setRequestProperty("Content-Type", "application/json")
-        connection.doOutput = true
-        connection.outputStream.use { outputStream ->
-            outputStream.write(request.toByteArray(Charsets.UTF_8))
-            outputStream.flush()
-        }
-
-        val statusCode = connection.responseCode
-        val body = (if (statusCode in 200..299) connection.inputStream else connection.errorStream)
-            ?.bufferedReader()
-            ?.use { it.readText() }
-            .orEmpty()
-        connection.disconnect()
-        return V2RawHttpResponse(statusCode = statusCode, body = body)
-    }
-
-    private fun collectRelayErrorArtifactsForRequest(
-        request: String,
-        requesterAddress: String,
-        escrowId: String,
-        sequence: Long,
-        epochId: Long,
-        responsibleParticipants: List<String>,
-        pairByAddress: Map<String, LocalInferencePair>,
-    ): List<V2RelayErrorArtifact> {
-        val artifacts = mutableListOf<V2RelayErrorArtifact>()
-        responsibleParticipants.drop(1).forEach { relayAddress ->
-            val relayPair = requireNotNull(pairByAddress[relayAddress]) {
-                "Missing relay pair for participant=$relayAddress"
-            }
-            val relayResponse = makeV2RequestRaw(
-                publicURL = relayPair.api.getPublicUrl(),
-                request = request,
-                requesterAddress = requesterAddress,
-                escrowId = escrowId,
-                sequence = sequence,
-                epochId = epochId,
-            )
-            if (relayResponse.statusCode == HttpURLConnection.HTTP_UNAVAILABLE) {
-                artifacts += parseV2RelayErrorArtifact(relayResponse.body)
-            }
-        }
-        return artifacts
-    }
-
     private fun setApiContainerRunning(pair: LocalInferencePair, running: Boolean) {
         val dockerClient = DockerClientBuilder.getInstance().build()
         val containerName = pair.name.trimStart('/')
@@ -1696,174 +1167,6 @@ class V2EscrowFlowTest : TestermintTest() {
         }
     }
 
-    private inner class DeveloperChainController(
-        private val escrowId: String,
-        private val modelId: String,
-        private val weightedParticipants: List<WeightedParticipant>,
-        private val participantPubKeyByAddress: Map<String, String>,
-        private val developerBlockSigner: DeveloperBlockSigner,
-    ) {
-        private val lock = ReentrantLock()
-        private var latestReservedSequence = 0L
-        private val chainBlocks = mutableListOf<DeveloperChainBlock>()
-        private var deterministicState = DeterministicChainState()
-        private val pendingFinishMessagesByRequestSequence = linkedMapOf<Long, DeveloperChainMessage>()
-        private val pendingMissedMessagesByRequestSequence = linkedMapOf<Long, DeveloperChainMessage>()
-        private val acknowledgedByRecipient = mutableMapOf<String, Long>()
-
-        fun reserveStartInference(
-            requestPayloadHash: String,
-            timestampSeconds: Long,
-        ): ReservedStartInferencePlan = lock.withLock {
-            val sequence = latestReservedSequence + 1
-            latestReservedSequence = sequence
-            val requestId = buildV2RequestId(escrowId, sequence)
-            val recipientAddress = selectResponsibleParticipantsDeterministic(
-                participants = weightedParticipants,
-                selectionCount = EXPECTED_RESPONSIBLE_PARTICIPANTS,
-                escrowId = escrowId,
-                sequence = sequence,
-            ).first()
-
-            val finishMessages = pendingFinishMessagesByRequestSequence
-                .toSortedMap()
-                .values
-                .toList()
-            val missedMessages = pendingMissedMessagesByRequestSequence
-                .toSortedMap()
-                .values
-                .toList()
-            pendingFinishMessagesByRequestSequence.clear()
-            pendingMissedMessagesByRequestSequence.clear()
-
-            val blockMessages = finishMessages + missedMessages + listOf(
-                DeveloperChainMessage(
-                    type = START_INFERENCE_MESSAGE_TYPE,
-                    requestId = requestId,
-                    modelId = modelId,
-                    requestPayloadHash = requestPayloadHash,
-                    timestamp = timestampSeconds,
-                )
-            )
-            val signedBlock = signDeveloperChainBlockWithState(
-                blockSequence = sequence,
-                escrowId = escrowId,
-                messages = blockMessages,
-                developerBlockSigner = developerBlockSigner,
-                baseState = deterministicState,
-            )
-            deterministicState = signedBlock.nextState
-            chainBlocks += signedBlock.block
-
-            val recipientAcked = acknowledgedByRecipient[recipientAddress] ?: 0L
-            val deltaBlocks = chainBlocks.filter { it.blockSequence > recipientAcked }
-
-            ReservedStartInferencePlan(
-                sequence = sequence,
-                recipientAddress = recipientAddress,
-                developerChainDelta = DeveloperChainDelta(
-                    baseBlockSequence = recipientAcked,
-                    blocks = deltaBlocks,
-                    latestBlockSequence = sequence,
-                ),
-            )
-        }
-
-        fun recordReceiverAcknowledgment(recipientAddress: String, latestBlockSequence: Long) = lock.withLock {
-            val current = acknowledgedByRecipient[recipientAddress] ?: 0L
-            if (latestBlockSequence > current) {
-                acknowledgedByRecipient[recipientAddress] = latestBlockSequence
-            }
-        }
-
-        fun getReceiverAcknowledgedBlockSequence(recipientAddress: String): Long = lock.withLock {
-            acknowledgedByRecipient[recipientAddress] ?: 0L
-        }
-
-        fun recordFinishInference(
-            requestSequence: Long,
-            openAiResponse: Any?,
-            responsePayloadHash: String,
-            executorAddress: String?,
-            executorSignerAddress: String?,
-            executorSignerPubKey: String?,
-            executorSignature: String?,
-            timestampSeconds: Long,
-            status: String = "finished",
-        ) = lock.withLock {
-            // Non-streaming executor proof is signed over SHA256(raw response bytes), not JSON re-serialization.
-            // Keep only a non-empty guard here; cryptographic proof check is performed below.
-            assertThat(responsePayloadHash).isNotBlank()
-            assertThat(executorAddress).isNotBlank()
-            assertThat(executorSignerAddress).isNotBlank()
-            assertThat(executorSignerPubKey).isNotBlank()
-            assertThat(executorSignature).isNotBlank()
-            val requestBlockSignature = chainBlocks
-                .firstOrNull { it.blockSequence == requestSequence }
-                ?.signature
-                ?: error("Missing request block signature for sequence=$requestSequence")
-            verifyExecutorProof(
-                requestBlockSignature = requestBlockSignature,
-                responsePayloadHash = responsePayloadHash,
-                executorAddress = executorAddress!!,
-                executorSignerAddress = executorSignerAddress!!,
-                executorSignerPubKey = executorSignerPubKey!!,
-                executorSignature = executorSignature!!,
-            )
-            val requestId = buildV2RequestId(escrowId, requestSequence)
-            pendingFinishMessagesByRequestSequence[requestSequence] = DeveloperChainMessage(
-                type = FINISH_INFERENCE_MESSAGE_TYPE,
-                requestId = requestId,
-                status = status,
-                responsePayloadHash = responsePayloadHash,
-                executorAddress = executorAddress,
-                executorSignerAddress = executorSignerAddress,
-                executorSignerPubKey = executorSignerPubKey,
-                executorSignature = executorSignature,
-                inputTokenCount = extractInputTokens(openAiResponse),
-                outputTokenCount = extractOutputTokens(openAiResponse),
-                timestamp = timestampSeconds,
-            )
-        }
-
-        fun recordMissedInference(
-            requestSequence: Long,
-            relayErrors: List<V2RelayErrorArtifact>,
-            timestampSeconds: Long,
-        ) = lock.withLock {
-            require(relayErrors.isNotEmpty()) { "MissedInference relay_errors must not be empty" }
-            val requestId = buildV2RequestId(escrowId, requestSequence)
-            val evidence = cosmosJson.toJson(
-                V2MissedInferenceEvidencePayload(relayErrors = relayErrors)
-            )
-            pendingFinishMessagesByRequestSequence.remove(requestSequence)
-            pendingMissedMessagesByRequestSequence[requestSequence] = DeveloperChainMessage(
-                type = MISSED_INFERENCE_MESSAGE_TYPE,
-                requestId = requestId,
-                missedInferenceEvidence = evidence,
-                timestamp = timestampSeconds,
-            )
-        }
-
-        private fun verifyExecutorProof(
-            requestBlockSignature: String,
-            responsePayloadHash: String,
-            executorAddress: String,
-            executorSignerAddress: String,
-            executorSignerPubKey: String,
-            executorSignature: String,
-        ) {
-            val signingPayload = buildExecutorProofSigningPayload(
-                developerRequestBlockSignature = requestBlockSignature,
-                responsePayloadHash = responsePayloadHash,
-            )
-            val pubKeyBytes = Base64.getDecoder().decode(executorSignerPubKey)
-            val signatureBytes = Base64.getDecoder().decode(executorSignature)
-            val signatureValid = verifySecp256k1Signature(signingPayload, pubKeyBytes, signatureBytes)
-            assertThat(signatureValid).isTrue()
-        }
-    }
-
     private fun buildOpenAiRequest(sequence: Long, stream: Boolean): InferenceRequestPayload {
         return inferenceRequestObject.copy(
             seed = inferenceRequestObject.seed + sequence.toInt(),
@@ -1881,189 +1184,6 @@ class V2EscrowFlowTest : TestermintTest() {
         val openAiResponseJson = cosmosJson.toJson(openAiResponse)
         val digest = MessageDigest.getInstance("SHA-256").digest(openAiResponseJson.toByteArray(Charsets.UTF_8))
         return digest.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xFF) }
-    }
-
-    private fun signDeveloperChainBlockWithState(
-        blockSequence: Long,
-        escrowId: String,
-        messages: List<DeveloperChainMessage>,
-        developerBlockSigner: DeveloperBlockSigner,
-        baseState: DeterministicChainState = DeterministicChainState(),
-    ): SignedDeveloperChainBlock {
-        val nextState = applyDeterministicState(baseState, messages)
-        val stateHash = computeDeterministicStateHash(nextState)
-        val blockMessagesHash = computeDeveloperBlockMessagesHash(messages)
-        val preimage = buildDeveloperBlockSigningPreimage(
-            chainId = developerBlockSigner.chainId,
-            escrowId = escrowId,
-            blockSequence = blockSequence,
-            blockMessagesHash = blockMessagesHash,
-            stateHash = stateHash,
-        )
-        val preimageHashHex = sha256Hex(preimage)
-        val signature = developerBlockSigner.signPayloadHex(preimageHashHex)
-        return SignedDeveloperChainBlock(
-            block = DeveloperChainBlock(
-                blockSequence = blockSequence,
-                escrowId = escrowId,
-                stateHash = stateHash,
-                messages = messages,
-                signature = signature,
-            ),
-            nextState = nextState,
-        )
-    }
-
-    private fun signDeveloperChainBlock(
-        blockSequence: Long,
-        escrowId: String,
-        messages: List<DeveloperChainMessage>,
-        developerBlockSigner: DeveloperBlockSigner,
-    ): DeveloperChainBlock {
-        return signDeveloperChainBlockWithState(
-            blockSequence = blockSequence,
-            escrowId = escrowId,
-            messages = messages,
-            developerBlockSigner = developerBlockSigner,
-            baseState = DeterministicChainState(),
-        ).block
-    }
-
-    private fun signDeveloperChainBlockWithExplicitStateHash(
-        blockSequence: Long,
-        escrowId: String,
-        messages: List<DeveloperChainMessage>,
-        developerBlockSigner: DeveloperBlockSigner,
-        stateHash: String,
-    ): DeveloperChainBlock {
-        val blockMessagesHash = computeDeveloperBlockMessagesHash(messages)
-        val preimage = buildDeveloperBlockSigningPreimage(
-            chainId = developerBlockSigner.chainId,
-            escrowId = escrowId,
-            blockSequence = blockSequence,
-            blockMessagesHash = blockMessagesHash,
-            stateHash = stateHash,
-        )
-        val preimageHashHex = sha256Hex(preimage)
-        val signature = developerBlockSigner.signPayloadHex(preimageHashHex)
-        return DeveloperChainBlock(
-            blockSequence = blockSequence,
-            escrowId = escrowId,
-            stateHash = stateHash,
-            messages = messages,
-            signature = signature,
-        )
-    }
-
-    private fun extractInputTokens(openAiResponse: Any?): Long {
-        val usage = (openAiResponse as? com.productscience.data.OpenAIResponse)?.usage
-        return usage?.promptTokens?.toLong() ?: 0L
-    }
-
-    private fun extractOutputTokens(openAiResponse: Any?): Long {
-        val usage = (openAiResponse as? com.productscience.data.OpenAIResponse)?.usage
-        return usage?.completionTokens?.toLong() ?: 0L
-    }
-
-    private fun applyDeterministicState(
-        baseState: DeterministicChainState,
-        messages: List<DeveloperChainMessage>,
-    ): DeterministicChainState {
-        val nextState = baseState.copy(executorStats = baseState.executorStats.toMutableMap())
-        messages.forEach { message ->
-            when (message.type) {
-                START_INFERENCE_MESSAGE_TYPE -> {
-                    // StartInference does not mutate deterministic executor accounting.
-                }
-                FINISH_INFERENCE_MESSAGE_TYPE -> {
-                    val executor = message.executorAddress ?: return@forEach
-                    val current = nextState.executorStats[executor] ?: DeterministicExecutorStats()
-                    nextState.executorStats[executor] = current.copy(
-                        processedInferences = current.processedInferences + 1L,
-                        inputTokenTotal = current.inputTokenTotal + (message.inputTokenCount ?: 0L),
-                        outputTokenTotal = current.outputTokenTotal + (message.outputTokenCount ?: 0L),
-                    )
-                }
-                MISSED_INFERENCE_MESSAGE_TYPE -> {
-                    val intendedExecutor = extractMissedInferenceIntendedExecutor(message.missedInferenceEvidence ?: "")
-                    if (intendedExecutor.isNotBlank()) {
-                        val current = nextState.executorStats[intendedExecutor] ?: DeterministicExecutorStats()
-                        nextState.executorStats[intendedExecutor] = current.copy(
-                            missedInferences = current.missedInferences + 1L,
-                        )
-                    }
-                }
-            }
-        }
-        return nextState
-    }
-
-    private fun extractMissedInferenceIntendedExecutor(rawEvidence: String): String {
-        return runCatching {
-            val evidence = cosmosJson.fromJson(rawEvidence, V2MissedInferenceEvidencePayload::class.java)
-            evidence.relayErrors.firstOrNull()?.intendedExecutorAddress.orEmpty()
-        }.getOrDefault("")
-    }
-
-    private fun computeDeterministicStateHash(state: DeterministicChainState): String {
-        val output = ByteArrayOutputStream()
-        writeLengthPrefixedString(output, DEV_STATE_HASH_DOMAIN)
-        val ordered = state.executorStats.toSortedMap()
-        writeInt64(output, ordered.size.toLong())
-        ordered.forEach { (executorAddress, stats) ->
-            writeLengthPrefixedString(output, executorAddress)
-            writeInt64(output, stats.processedInferences)
-            writeInt64(output, stats.inputTokenTotal)
-            writeInt64(output, stats.outputTokenTotal)
-            writeInt64(output, stats.missedInferences)
-        }
-        return sha256Hex(output.toByteArray())
-    }
-
-    private fun computeDeveloperBlockMessagesHash(messages: List<DeveloperChainMessage>): ByteArray {
-        val aggregate = ByteArrayOutputStream()
-        messages.forEach { message ->
-            val messageHash = sha256Bytes(canonicalDeveloperChainMessageBytes(message))
-            aggregate.write(messageHash)
-        }
-        return sha256Bytes(aggregate.toByteArray())
-    }
-
-    private fun canonicalDeveloperChainMessageBytes(message: DeveloperChainMessage): ByteArray {
-        val output = ByteArrayOutputStream()
-        writeLengthPrefixedString(output, DEV_BLOCK_MESSAGE_DOMAIN)
-        writeLengthPrefixedString(output, message.type)
-        writeLengthPrefixedString(output, message.requestId)
-        writeLengthPrefixedString(output, message.modelId ?: "")
-        writeLengthPrefixedString(output, message.requestPayloadHash ?: "")
-        writeLengthPrefixedString(output, message.responsePayloadHash ?: "")
-        writeLengthPrefixedString(output, message.executorAddress ?: "")
-        writeLengthPrefixedString(output, message.executorSignerAddress ?: "")
-        writeLengthPrefixedString(output, message.executorSignerPubKey ?: "")
-        writeLengthPrefixedString(output, message.executorSignature ?: "")
-        writeInt64(output, message.inputTokenCount ?: 0L)
-        writeInt64(output, message.outputTokenCount ?: 0L)
-        writeLengthPrefixedString(output, message.missedInferenceEvidence ?: "")
-        writeLengthPrefixedString(output, message.status ?: "")
-        writeInt64(output, message.timestamp)
-        return output.toByteArray()
-    }
-
-    private fun buildDeveloperBlockSigningPreimage(
-        chainId: String,
-        escrowId: String,
-        blockSequence: Long,
-        blockMessagesHash: ByteArray,
-        stateHash: String,
-    ): ByteArray {
-        val output = ByteArrayOutputStream()
-        writeLengthPrefixedString(output, DEV_BLOCK_SIGN_DOMAIN)
-        writeLengthPrefixedString(output, chainId)
-        writeLengthPrefixedString(output, escrowId)
-        writeInt64(output, blockSequence)
-        output.write(blockMessagesHash)
-        writeLengthPrefixedString(output, stateHash)
-        return output.toByteArray()
     }
 
     private fun buildExecutorProofSigningPayload(
@@ -2226,12 +1346,6 @@ class V2EscrowFlowTest : TestermintTest() {
         val latestBlockSequence: Long,
     )
 
-    data class ReservedStartInferencePlan(
-        val sequence: Long,
-        val recipientAddress: String,
-        val developerChainDelta: DeveloperChainDelta,
-    )
-
     data class StreamFanoutResult(
         val participantAddress: String,
         val latestBlockSequence: Long,
@@ -2257,11 +1371,6 @@ class V2EscrowFlowTest : TestermintTest() {
         val executorSignature: String,
     )
 
-    data class V2RawHttpResponse(
-        val statusCode: Int,
-        val body: String,
-    )
-
     data class V2EscrowFixture(
         val genesis: LocalInferencePair,
         val allPairs: List<LocalInferencePair>,
@@ -2283,74 +1392,11 @@ class V2EscrowFlowTest : TestermintTest() {
         val signPayloadHex: (String) -> String,
     )
 
-    data class DeveloperChainEnvelope(
-        @SerializedName("openai_request")
-        val openAiRequest: InferenceRequestPayload,
-        val developerChainDelta: DeveloperChainDelta,
-    )
-
-    data class DeveloperChainDelta(
-        val baseBlockSequence: Long,
-        val blocks: List<DeveloperChainBlock>,
-        val latestBlockSequence: Long,
-    )
-
-    data class SignedDeveloperChainBlock(
-        val block: DeveloperChainBlock,
-        val nextState: DeterministicChainState,
-    )
-
-    data class DeterministicChainState(
-        val executorStats: MutableMap<String, DeterministicExecutorStats> = mutableMapOf(),
-    )
-
-    data class DeterministicExecutorStats(
-        val processedInferences: Long = 0L,
-        val inputTokenTotal: Long = 0L,
-        val outputTokenTotal: Long = 0L,
-        val missedInferences: Long = 0L,
-    )
-
-    data class V2MissedInferenceEvidencePayload(
-        @SerializedName("relay_errors")
-        val relayErrors: List<V2RelayErrorArtifact> = emptyList(),
-    )
-
-    data class DeveloperChainBlock(
-        val blockSequence: Long,
-        val escrowId: String,
-        @SerializedName("state_hash")
-        val stateHash: String,
-        val messages: List<DeveloperChainMessage>,
-        val signature: String,
-    )
-
-    data class DeveloperChainMessage(
-        val type: String,
-        val requestId: String,
-        val modelId: String? = null,
-        val requestPayloadHash: String? = null,
-        val responsePayloadHash: String? = null,
-        val executorAddress: String? = null,
-        val executorSignerAddress: String? = null,
-        @SerializedName("executor_signer_pubkey")
-        val executorSignerPubKey: String? = null,
-        val executorSignature: String? = null,
-        val inputTokenCount: Long? = null,
-        val outputTokenCount: Long? = null,
-        val missedInferenceEvidence: String? = null,
-        val status: String? = null,
-        val timestamp: Long,
-    )
-
     companion object {
         private const val EXPECTED_RESPONSIBLE_PARTICIPANTS = 3
         private const val START_INFERENCE_MESSAGE_TYPE = "StartInference"
         private const val FINISH_INFERENCE_MESSAGE_TYPE = "FinishInference"
         private const val MISSED_INFERENCE_MESSAGE_TYPE = "MissedInference"
-        private const val DEV_BLOCK_MESSAGE_DOMAIN = "v2_dev_block_msg_v1"
-        private const val DEV_BLOCK_SIGN_DOMAIN = "v2_dev_block_sig_v1"
-        private const val DEV_STATE_HASH_DOMAIN = "v2_dev_state_hash_v1"
         private const val EXEC_FINISH_SIGN_DOMAIN = "v2_exec_finish_sig_v1"
         private const val V2_EXECUTOR_PROOF_EVENT = "v2_executor_proof"
     }
