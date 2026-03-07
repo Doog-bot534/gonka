@@ -432,6 +432,7 @@ fun initializeCluster(joinCount: Int = 0, config: ApplicationConfig, currentClus
         Logger.info("Initializing cluster with {} nodes", allGroups.size)
         allGroups.forEach { it.tearDownExisting() }
         genesisGroup.init()
+        Thread.sleep(Duration.ofSeconds(30L))
         val genesisNode = getRawContainers(config).getCli(genesisGroup.pairName)
             ?: error("Could not find node container for keyName=${genesisGroup.pairName}")
         Logger.info("Waiting for genesis RPC readiness", "")
@@ -449,6 +450,11 @@ fun initializeCluster(joinCount: Int = 0, config: ApplicationConfig, currentClus
             }
             Thread.sleep(1000)
         }
+        val genesisPair = getLocalInferencePairs(config)
+            .firstOrNull { it.name == genesisGroup.pairName || it.name == "/${genesisGroup.pairName}" }
+            ?: error("Could not find local inference pair for keyName=${genesisGroup.pairName}")
+        Logger.info("Waiting for genesis API and ML nodes readiness", "")
+        genesisPair.waitForMlNodesToLoad(maxWaitAttempts = 18)
         joinGroups.forEach { it.init() }
         return allGroups
     } finally {
