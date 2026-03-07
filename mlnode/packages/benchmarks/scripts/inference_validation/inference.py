@@ -1,4 +1,22 @@
 #!/usr/bin/env python3
+"""
+Inference-only runner for OpenAI-compatible vLLM endpoints.
+
+Multilingual mixed run template (uses script defaults for sampling/retry/workers):
+    python scripts/inference_validation/inference.py \
+      --exp-name <experiment_name> \
+      --url <vllm_base_url> \
+      --model <served_model_id> \
+      --n-prompts 1000 \
+      --multilingual \
+      --langs en ch hi ar sp
+
+Notes:
+- Keep `--multilingual --langs ...` to force mixed-language prompts.
+- Keep `--n-prompts` as desired total (for 5 langs and 1000 prompts => 200/lang).
+- Do not pass sampling flags (`--temperature`, `--top-p`, `--top-k`,
+  `--repetition-penalty`) if you want pure script defaults.
+"""
 from __future__ import annotations
 
 import argparse
@@ -27,7 +45,12 @@ def _add_repo_paths() -> None:
 _add_repo_paths()
 
 from validation.data import ModelInfo, RequestParams, Result  # noqa: E402
-from validation.prompts import get_squad_data_questions  # noqa: E402
+from validation.prompts import (  # noqa: E402
+    get_squad_data_questions,
+    preload_all_language_prompts,
+    slice_mixed_language_prompts_with_langs,
+    DATASET_HANDLES,
+)
 from validation.utils import _extract_logprobs, inference  # noqa: E402
 
 
@@ -126,7 +149,13 @@ def _make_exp_dir(out_base: Path, exp_name: str) -> Path:
     return exp_dir
 
 
-def _load_prompts(prompts_file: Optional[Path], n_prompts: int) -> List[str]:
+def _load_prompts(
+    prompts_file: Optional[Path],
+    n_prompts: int,
+    multilingual: bool = False,
+    langs: Optional[List[str]] = None,
+) -> tuple:
+    """Return (prompts, languages) where languages is a list of lang codes per prompt."""
     if prompts_file:
         prompts: List[str] = []
         for line in prompts_file.read_text(encoding="utf-8").splitlines():
@@ -135,8 +164,20 @@ def _load_prompts(prompts_file: Optional[Path], n_prompts: int) -> List[str]:
                 prompts.append(t)
         if not prompts:
             raise RuntimeError(f"No prompts found in file: {prompts_file}")
-        return prompts[:n_prompts]
-    return get_squad_data_questions()[:n_prompts]
+        prompts = prompts[:n_prompts]
+        return prompts, ["en"] * len(prompts)
+
+    if multilingual:
+        lang_tuple = tuple(langs) if langs else ("en", "ch", "hi", "ar")
+        n_per_lang = max(1, n_prompts // len(lang_tuple))
+        all_prompts_by_lang = preload_all_language_prompts(lang_tuple)
+        prompts, languages = slice_mixed_language_prompts_with_langs(
+            all_prompts_by_lang, per_language_n=n_per_lang, langs=lang_tuple
+        )
+        return prompts[:n_prompts], languages[:n_prompts]
+
+    prompts = get_squad_data_questions()[:n_prompts]
+    return prompts, ["en"] * len(prompts)
 
 
 def _run_with_retries(fn, max_attempts: int, backoff_start_s: float, backoff_mult: float):
@@ -165,7 +206,10 @@ def main() -> None:
     parser.add_argument("--model", default="", help="Model id to use; default: first served id from /v1/models.")
     parser.add_argument("--n-prompts", type=int, default=1000, help="Number of prompts to run.")
     parser.add_argument("--prompts-file", type=Path, default=None, help="Optional text file with one prompt per line.")
-    parser.add_argument("--language", default="en", help="Language tag to store in artifact rows.")
+    parser.add_argument("--language", default="en", help="Language tag to store in artifact rows (single-language mode).")
+    parser.add_argument("--multilingual", action="store_true", help="Use multilingual Alpaca prompts (en, ch, hi, ar by default).")
+    parser.add_argument("--langs", type=str, nargs="*", default=None,
+                        help=f"Languages to include with --multilingual. Available: {list(DATASET_HANDLES.keys())}")
     parser.add_argument("--max-workers", type=int, default=64, help="Concurrent workers.")
     parser.add_argument("--wait-timeout-s", type=int, default=120, help="Seconds to wait for /v1/models readiness.")
     parser.add_argument("--max-attempts", type=int, default=3, help="Retry attempts per prompt.")
@@ -175,6 +219,9 @@ def main() -> None:
     parser.add_argument("--temperature", type=float, default=0.99)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--top-logprobs", type=int, default=5)
+    parser.add_argument("--top-p", type=float, default=None, help="Nucleus sampling top-p (omitted from payload when None).")
+    parser.add_argument("--top-k", type=int, default=None, help="Top-k sampling (omitted from payload when None).")
+    parser.add_argument("--repetition-penalty", type=float, default=None, help="Repetition penalty (omitted from payload when None).")
     args = parser.parse_args()
 
     benchmarks_dir = Path(__file__).resolve().parents[2]
@@ -196,10 +243,18 @@ def main() -> None:
         temperature=float(args.temperature),
         seed=int(args.seed),
         top_logprobs=int(args.top_logprobs),
+        top_p=args.top_p,
+        top_k=args.top_k,
+        repetition_penalty=args.repetition_penalty,
         additional_params={},
     )
 
-    prompts = _load_prompts(args.prompts_file, n_prompts=int(args.n_prompts))
+    prompts, languages = _load_prompts(
+        args.prompts_file,
+        n_prompts=int(args.n_prompts),
+        multilingual=args.multilingual,
+        langs=args.langs,
+    )
 
     cfg = {
         "exp_name": str(args.exp_name),
@@ -207,7 +262,8 @@ def main() -> None:
         "artifact_dir": str(exp_dir),
         "inference_artifact": str(inference_artifact_path),
         "n_prompts": len(prompts),
-        "language": str(args.language),
+        "multilingual": args.multilingual,
+        "languages_used": sorted(set(languages)),
         "model_info": model_info.model_dump(),
         "request_params": request_params.model_dump(),
         "vllm_runtime_probe": asdict(probe),
@@ -225,11 +281,14 @@ def main() -> None:
             "temperature": args.temperature,
             "seed": args.seed,
             "top_logprobs": args.top_logprobs,
+            "top_p": args.top_p,
+            "top_k": args.top_k,
+            "repetition_penalty": args.repetition_penalty,
         },
     }
     inference_cfg_path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    def _work(prompt: str) -> str:
+    def _work(prompt: str, lang: str) -> str:
         def _call():
             return inference(model_info, request_params, prompt)
 
@@ -242,7 +301,7 @@ def main() -> None:
         inference_result = _extract_logprobs(resp)
         row = InferenceArtifactItem(
             prompt=prompt,
-            language=str(args.language),
+            language=lang,
             inference_result=inference_result,
             inference_model=model_info,
             request_params=request_params,
@@ -253,7 +312,7 @@ def main() -> None:
     with inference_artifact_path.open("w", encoding="utf-8") as f, ThreadPoolExecutor(
         max_workers=int(args.max_workers)
     ) as ex:
-        futures = [ex.submit(_work, prompt) for prompt in prompts]
+        futures = [ex.submit(_work, prompt, lang) for prompt, lang in zip(prompts, languages)]
         for fut in tqdm(as_completed(futures), total=len(futures), desc="Inference", smoothing=0):
             f.write(fut.result())
 
