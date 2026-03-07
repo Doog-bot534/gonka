@@ -12,7 +12,13 @@ class NodeAdminStateTests : TestermintTest() {
 
     @Test
     fun `test node disable during inference phase`() {
-        val (_, genesis) = initCluster(reboot = true)
+        val config = inferenceConfig.copy(
+            genesisSpec = createSpec(
+                epochLength = 25,
+                epochShift = 10
+            ),
+        )
+        val (_, genesis) = initCluster(config = config, reboot = true)
         genesis.waitForNextInferenceWindow()
 
         val genesisValidatorBeforeDisabled = genesis.node.getStakeValidator()
@@ -53,13 +59,14 @@ class NodeAdminStateTests : TestermintTest() {
         
         logSection("Waiting for PoC phase to verify node stops")
         genesis.waitForStage(EpochStage.START_OF_POC)
-        
-        // Give reconciliation some time to kick in
         genesis.node.waitForNextBlock(2)
-        
-        // At this point, the disabled node should not participate in PoC
-        // We can verify this by checking node states or attempting operations
-        
+
+        val nodesInNextPoc = genesis.api.getNodes()
+        val disabledNodeInNextPoc = nodesInNextPoc.first { it.node.id == nodeId }
+        assertThat(disabledNodeInNextPoc.state.intendedStatus).isEqualTo("INFERENCE")
+        assertThat(disabledNodeInNextPoc.state.currentStatus).isEqualTo("INFERENCE")
+        assertThat(disabledNodeInNextPoc.state.adminState?.enabled).isFalse()
+
         logSection("Re-enabling node")
         val enableResponse = genesis.api.enableNode(nodeId)
         assertThat(enableResponse.nodeId).isEqualTo(nodeId)
@@ -72,10 +79,17 @@ class NodeAdminStateTests : TestermintTest() {
             .isTrue()
             .`as`("Node should be enabled again")
 
-        genesis.waitForStage(EpochStage.SET_NEW_VALIDATORS, offset = 3)
-        val genesisValidatorAfterNodeIsDisabled = genesis.node.getStakeValidator()
-        assertThat(genesisValidatorAfterNodeIsDisabled.tokens).isEqualTo(0)
-        assertThat(genesisValidatorAfterNodeIsDisabled.status).contains("UNBONDING")
+        logSection("Waiting for next inference window after re-enable")
+        genesis.waitForNextInferenceWindow()
+
+        val nodesAfterReenableEpoch = genesis.api.getNodes()
+        val reenabledNode = nodesAfterReenableEpoch.first { it.node.id == nodeId }
+        assertThat(reenabledNode.state.adminState?.enabled).isTrue()
+        assertThat(reenabledNode.state.currentStatus).isEqualTo("INFERENCE")
+
+        val validatorAfterReenable = genesis.node.getStakeValidator()
+        assertThat(validatorAfterReenable.tokens).isEqualTo(10)
+        assertThat(validatorAfterReenable.status).contains("BONDED")
     }
 
     @Test
