@@ -66,11 +66,48 @@ def resolve_path(raw: str) -> Path:
     return p.resolve()
 
 
+def _select_validation_artifact(exp_dir: Path) -> Optional[Path]:
+    """Pick validation artifact from an experiment directory.
+
+    Supports both default and tagged filenames:
+    - inference_validation_results.jsonl
+    - inference_validation_results__<tag>.jsonl
+    """
+    default_path = exp_dir / "inference_validation_results.jsonl"
+    if default_path.exists():
+        return default_path
+
+    tagged = sorted(exp_dir.glob("inference_validation_results*.jsonl"))
+    if not tagged:
+        return None
+    # Most recent tagged artifact is typically the one we want.
+    tagged.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return tagged[0]
+
+
+def _select_validation_config(exp_dir: Path) -> Optional[Path]:
+    """Pick validation config from an experiment directory.
+
+    Supports both default and tagged filenames:
+    - validation_config.json
+    - validation_config__<tag>.json
+    """
+    default_path = exp_dir / "validation_config.json"
+    if default_path.exists():
+        return default_path
+
+    tagged = sorted(exp_dir.glob("validation_config*.json"))
+    if not tagged:
+        return None
+    tagged.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return tagged[0]
+
+
 def _is_honest(exp_dir: Path) -> Optional[bool]:
     """Determine honesty from validation_config + inference_config model names."""
     inf_cfg = exp_dir / "inference_config.json"
-    val_cfg = exp_dir / "validation_config.json"
-    if not inf_cfg.exists() or not val_cfg.exists():
+    val_cfg = _select_validation_config(exp_dir)
+    if not inf_cfg.exists() or val_cfg is None:
         return None
     try:
         inf = json.loads(inf_cfg.read_text())
@@ -96,8 +133,8 @@ def discover_experiments() -> Tuple[Dict[str, Path], Dict[str, Path]]:
     for d in sorted(DATA_ROOT.iterdir()):
         if not d.is_dir():
             continue
-        jsonl = d / "inference_validation_results.jsonl"
-        if not jsonl.exists():
+        jsonl = _select_validation_artifact(d)
+        if jsonl is None:
             continue
         h = _is_honest(d)
         label = _make_label(d)
@@ -111,9 +148,12 @@ def discover_experiments() -> Tuple[Dict[str, Path], Dict[str, Path]]:
 
 
 def load_experiment(
-    exp_dir: Path, n: Optional[int] = None
+    exp_dir: Path,
+    n: Optional[int] = None,
 ) -> Tuple[List[ValidationItem], List[float], List[float]]:
-    jsonl = exp_dir / "inference_validation_results.jsonl"
+    jsonl = _select_validation_artifact(exp_dir)
+    if jsonl is None:
+        raise RuntimeError(f"No validation artifact found in {exp_dir}")
     items = load_from_jsonl(str(jsonl), n=n)
     items, distances, topk = process_data(items)
     return items, distances, topk

@@ -204,14 +204,20 @@ def main() -> None:
     parser.add_argument("--max-attempts", type=int, default=3, help="Retry attempts per prompt.")
     parser.add_argument("--retry-backoff-start-s", type=float, default=1.0, help="Initial retry backoff in seconds.")
     parser.add_argument("--retry-backoff-mult", type=float, default=2.0, help="Retry backoff multiplier.")
+    parser.add_argument(
+        "--artifact-tag",
+        default="",
+        help="Optional suffix for output filenames, e.g. 'v09' -> inference_validation_results__v09.jsonl",
+    )
     args = parser.parse_args()
 
     if not args.inference_artifact.exists():
         raise RuntimeError(f"inference artifact not found: {args.inference_artifact}")
 
     exp_dir = args.inference_artifact.resolve().parent
-    output_path = exp_dir / "inference_validation_results.jsonl"
-    validation_cfg_path = exp_dir / "validation_config.json"
+    tag = f"__{args.artifact_tag}" if str(args.artifact_tag).strip() else ""
+    output_path = exp_dir / f"inference_validation_results{tag}.jsonl"
+    validation_cfg_path = exp_dir / f"validation_config{tag}.json"
 
     inference_items = _load_inference_items(args.inference_artifact)
     request_params = inference_items[0].request_params
@@ -252,6 +258,7 @@ def main() -> None:
             "max_attempts": args.max_attempts,
             "retry_backoff_start_s": args.retry_backoff_start_s,
             "retry_backoff_mult": args.retry_backoff_mult,
+            "artifact_tag": args.artifact_tag,
         },
     }
     validation_cfg_path.write_text(json.dumps(validation_cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -279,6 +286,7 @@ def main() -> None:
 
         out_item = ValidationItem(
             prompt=item.prompt,
+            language=item.language,
             inference_result=item.inference_result,
             validation_result=validation_result,
             inference_model=item.inference_model,
