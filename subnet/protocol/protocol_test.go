@@ -57,7 +57,7 @@ func setupEnv(t *testing.T, numHosts int, balance, grace uint64, engines ...subn
 	}
 
 	userSM := state.NewStateMachine("escrow-1", config, group, balance, userSigner.Address(), verifier)
-	session, err := user.NewSession(userSM, userSigner, "escrow-1", group, clients)
+	session, err := user.NewSession(userSM, userSigner, "escrow-1", group, clients, verifier)
 	require.NoError(t, err)
 
 	return &testEnv{

@@ -1,5 +1,7 @@
 package types
 
+import "fmt"
+
 // InferenceStatus represents the lifecycle state of an inference.
 type InferenceStatus uint8
 
@@ -87,9 +89,33 @@ type DiffRecord struct {
 }
 
 // SlotAssignment maps a slot to a validator in the session group.
+// SlotIDs must be compact indices 0..len(group)-1 (required by Bitmap128).
 type SlotAssignment struct {
 	SlotID           uint32
 	ValidatorAddress string
 	PublicKey        []byte
 	Weight           uint64
+}
+
+// ValidateGroup checks that group slot IDs form compact indices 0..n-1
+// with no gaps or duplicates, and that the group size is within bounds.
+func ValidateGroup(group []SlotAssignment) error {
+	n := len(group)
+	if n == 0 {
+		return fmt.Errorf("%w: empty", ErrInvalidGroup)
+	}
+	if n > MaxGroupSize {
+		return fmt.Errorf("%w: %d slots exceeds max %d", ErrInvalidGroup, n, MaxGroupSize)
+	}
+	seen := make(map[uint32]bool, n)
+	for _, s := range group {
+		if s.SlotID >= uint32(n) {
+			return fmt.Errorf("%w: slot %d out of range [0..%d)", ErrInvalidGroup, s.SlotID, n)
+		}
+		if seen[s.SlotID] {
+			return fmt.Errorf("%w: duplicate slot %d", ErrInvalidGroup, s.SlotID)
+		}
+		seen[s.SlotID] = true
+	}
+	return nil
 }

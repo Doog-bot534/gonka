@@ -1435,6 +1435,16 @@ func TestApplyDiff_PostStateRoot_Mismatch(t *testing.T) {
 	diff := testutil.SignDiffWithRoot(t, user, "escrow-1", 1, txs, []byte("wrong-root"))
 	_, err := sm.ApplyDiff(diff)
 	require.ErrorIs(t, err, types.ErrPostStateRootMismatch)
+
+	// Verify state was fully rolled back: nonce unchanged, balance unchanged.
+	require.Equal(t, uint64(0), sm.LatestNonce(), "nonce must be rolled back")
+	snap := sm.SnapshotState()
+	require.Equal(t, uint64(10000), snap.Balance, "balance must be rolled back")
+
+	// A subsequent diff with nonce=1 must succeed (proves nonce was restored).
+	diff2 := testutil.SignDiff(t, user, "escrow-1", 1, txs)
+	_, err = sm.ApplyDiff(diff2)
+	require.NoError(t, err)
 }
 
 func TestApplyDiff_PostStateRoot_Empty_Accepted(t *testing.T) {

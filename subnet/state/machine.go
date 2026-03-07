@@ -111,28 +111,20 @@ func (sm *StateMachine) ApplyDiff(diff types.Diff) ([]byte, error) {
 		return nil, fmt.Errorf("%w: expected %s, got %s", types.ErrInvalidUserSig, sm.userAddress, recovered)
 	}
 
-	// 2. Apply txs.
-	root, err := sm.applyCore(diff.Nonce, diff.Txs)
-	if err != nil {
-		return nil, err
-	}
-
-	// 3. Verify post_state_root if present.
-	if len(diff.PostStateRoot) > 0 && !bytes.Equal(root, diff.PostStateRoot) {
-		return nil, fmt.Errorf("%w: diff %x, computed %x", types.ErrPostStateRootMismatch, diff.PostStateRoot, root)
-	}
-
-	return root, nil
+	// 2. Apply txs and verify post_state_root atomically.
+	return sm.applyCore(diff.Nonce, diff.Txs, diff.PostStateRoot)
 }
 
 // ApplyLocal applies txs without signature verification. Used by the user
 // to compute the post_state_root before signing the diff.
 func (sm *StateMachine) ApplyLocal(nonce uint64, txs []*types.SubnetTx) ([]byte, error) {
-	return sm.applyCore(nonce, txs)
+	return sm.applyCore(nonce, txs, nil)
 }
 
 // applyCore validates nonce, applies txs, updates nonce, and returns the state root.
-func (sm *StateMachine) applyCore(nonce uint64, txs []*types.SubnetTx) ([]byte, error) {
+// If postStateRoot is non-nil, the computed root must match; on mismatch the entire
+// operation is rolled back (including nonce) and an error is returned.
+func (sm *StateMachine) applyCore(nonce uint64, txs []*types.SubnetTx, postStateRoot []byte) ([]byte, error) {
 	// 1. Validate nonce.
 	expectedNonce := sm.state.LatestNonce + 1
 	if nonce != expectedNonce {
@@ -172,6 +164,12 @@ func (sm *StateMachine) applyCore(nonce uint64, txs []*types.SubnetTx) ([]byte, 
 	root, err := ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences)
 	if err != nil {
 		return nil, fmt.Errorf("compute state root: %w", err)
+	}
+
+	// 7. Verify post_state_root if present. On mismatch, roll back everything.
+	if len(postStateRoot) > 0 && !bytes.Equal(root, postStateRoot) {
+		sm.restoreMutable(snap)
+		return nil, fmt.Errorf("%w: diff %x, computed %x", types.ErrPostStateRootMismatch, postStateRoot, root)
 	}
 
 	logging.Debug("applied diff", "subsystem", "state", "nonce", nonce, "txs", len(txs))
@@ -236,6 +234,7 @@ func (sm *StateMachine) SnapshotState() types.EscrowState {
 type mutableSnapshot struct {
 	Balance       uint64
 	Finalizing    bool
+	LatestNonce   uint64
 	Inferences    map[uint64]*types.InferenceRecord
 	HostStats     map[uint32]*types.HostStats
 	RevealedSeeds map[uint32]int64
@@ -268,6 +267,7 @@ func (sm *StateMachine) snapshotMutable() mutableSnapshot {
 	return mutableSnapshot{
 		Balance:       sm.state.Balance,
 		Finalizing:    sm.state.Finalizing,
+		LatestNonce:   sm.state.LatestNonce,
 		Inferences:    infCopy,
 		HostStats:     hsCopy,
 		RevealedSeeds: seedsCopy,
@@ -277,6 +277,7 @@ func (sm *StateMachine) snapshotMutable() mutableSnapshot {
 func (sm *StateMachine) restoreMutable(snap mutableSnapshot) {
 	sm.state.Balance = snap.Balance
 	sm.state.Finalizing = snap.Finalizing
+	sm.state.LatestNonce = snap.LatestNonce
 	sm.state.Inferences = snap.Inferences
 	sm.state.HostStats = snap.HostStats
 	sm.state.RevealedSeeds = snap.RevealedSeeds

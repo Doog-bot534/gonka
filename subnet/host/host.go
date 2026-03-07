@@ -85,6 +85,9 @@ func NewHost(
 	checker AcceptanceChecker,
 	opts ...HostOption,
 ) (*Host, error) {
+	if err := types.ValidateGroup(group); err != nil {
+		return nil, err
+	}
 	addr := signer.Address()
 	slotIDs := make(map[uint32]bool)
 	slotToAddr := make(map[uint32]string, len(group))

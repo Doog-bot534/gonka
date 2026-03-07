@@ -206,7 +206,7 @@ func runStress(t *testing.T, numHosts, rounds int) {
 	}
 
 	userSM := state.NewStateMachine("escrow-stress", config, group, stressBalance, userKey.Address(), verifier)
-	session, err := NewSession(userSM, userKey, "escrow-stress", group, clients)
+	session, err := NewSession(userSM, userKey, "escrow-stress", group, clients, verifier)
 	require.NoError(t, err)
 
 	ctx := context.Background()

@@ -87,7 +87,7 @@ func runFault(t *testing.T, failPct int) {
 	}
 
 	userSM := state.NewStateMachine("escrow-fault", config, group, faultBalance, userKey.Address(), verifier)
-	session, err := NewSession(userSM, userKey, "escrow-fault", group, clients)
+	session, err := NewSession(userSM, userKey, "escrow-fault", group, clients, verifier)
 	require.NoError(t, err)
 
 	ctx := context.Background()

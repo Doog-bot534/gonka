@@ -48,7 +48,8 @@ func setupServerEnv(t *testing.T) *serverTestEnv {
 	h, err := host.NewHost(sm, hostSigner, engine, "escrow-1", group, nil, host.WithGrace(100), host.WithStorage(store))
 	require.NoError(t, err)
 
-	srv := NewServer(h, store, "escrow-1", verifier, group, userSigner.Address())
+	srv, err := NewServer(h, store, "escrow-1", verifier, group, userSigner.Address())
+	require.NoError(t, err)
 
 	e := echo.New()
 	g := e.Group("/subnet/v1")
@@ -209,9 +210,10 @@ func TestServer_RateLimit(t *testing.T) {
 	env := setupServerEnv(t)
 
 	// Re-create server with a tight rate limit.
-	srv := NewServer(env.server.host, env.store, "escrow-1",
+	srv, err := NewServer(env.server.host, env.store, "escrow-1",
 		env.server.verifier, env.group, env.userSigner.Address(),
 		WithRateLimit(RateLimitConfig{RequestsPerSecond: 1, BurstSize: 1}))
+	require.NoError(t, err)
 
 	e := echo.New()
 	g := e.Group("/subnet/v1")

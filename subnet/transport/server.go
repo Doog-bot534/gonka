@@ -75,7 +75,10 @@ func NewServer(
 	group []types.SlotAssignment,
 	userAddr string,
 	opts ...ServerOption,
-) *Server {
+) (*Server, error) {
+	if err := types.ValidateGroup(group); err != nil {
+		return nil, err
+	}
 	s := &Server{
 		host:     h,
 		store:    store,
@@ -87,7 +90,7 @@ func NewServer(
 	for _, o := range opts {
 		o(s)
 	}
-	return s
+	return s, nil
 }
 
 // SetGossip attaches a gossip instance for nonce/tx propagation.
@@ -384,16 +387,8 @@ func (s *Server) handleGossipNonce(c echo.Context) error {
 	}
 
 	// Verify stateSig recovers to the claimed slot's address.
-	expectedAddr := ""
-	for _, slot := range s.group {
-		if slot.SlotID == req.SlotID {
-			expectedAddr = slot.ValidatorAddress
-			break
-		}
-	}
-	if expectedAddr == "" {
-		return errJSON(c, http.StatusBadRequest, "slot not found in group")
-	}
+	// SlotIDs are compact 0..len(group)-1 so direct index is safe after bounds check above.
+	expectedAddr := s.group[req.SlotID].ValidatorAddress
 
 	sigContent := &types.StateSignatureContent{
 		StateRoot: req.StateHash,

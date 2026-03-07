@@ -70,7 +70,8 @@ func setupHTTPEnv(t *testing.T, numHosts int, balance, grace uint64, cfgs ...typ
 		require.NoError(t, err)
 		hosts[i] = h
 
-		srv := transport.NewServer(h, store, "escrow-1", verifier, group, userSigner.Address())
+		srv, srvErr := transport.NewServer(h, store, "escrow-1", verifier, group, userSigner.Address())
+		require.NoError(t, srvErr)
 		servers[i] = srv
 
 		e := echo.New()
@@ -118,7 +119,7 @@ func setupHTTPEnv(t *testing.T, numHosts int, balance, grace uint64, cfgs ...typ
 	}
 
 	userSM := state.NewStateMachine("escrow-1", config, group, balance, userSigner.Address(), verifier)
-	session, err := user.NewSession(userSM, userSigner, "escrow-1", group, userClients)
+	session, err := user.NewSession(userSM, userSigner, "escrow-1", group, userClients, verifier)
 	require.NoError(t, err)
 
 	return &httpTestEnv{
@@ -818,7 +819,7 @@ func TestHTTP_StateHashVerification(t *testing.T) {
 	}
 
 	userSM := state.NewStateMachine("escrow-1", config, group, 100000, userSigner.Address(), verifier)
-	session, err := user.NewSession(userSM, userSigner, "escrow-1", group, clients)
+	session, err := user.NewSession(userSM, userSigner, "escrow-1", group, clients, verifier)
 	require.NoError(t, err)
 
 	ctx := context.Background()

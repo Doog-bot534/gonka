@@ -51,7 +51,7 @@ func setupSessionWithEngine(t *testing.T, numHosts int, balance uint64, grace ui
 
 	// Create user session.
 	userSM := state.NewStateMachine("escrow-1", config, group, balance, user.Address(), verifier)
-	session, err := NewSession(userSM, user, "escrow-1", group, clients)
+	session, err := NewSession(userSM, user, "escrow-1", group, clients, verifier)
 	require.NoError(t, err)
 
 	return session, hosts, user
@@ -168,7 +168,7 @@ func TestUser_HostError_StateConsistency(t *testing.T) {
 	}
 
 	userSM := state.NewStateMachine("escrow-1", config, group, 100000, userKey.Address(), verifier)
-	session, err := NewSession(userSM, userKey, "escrow-1", group, clients)
+	session, err := NewSession(userSM, userKey, "escrow-1", group, clients, verifier)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -332,7 +332,7 @@ func TestCollectTimeoutVotes_WeightEarlyExit(t *testing.T) {
 	}
 
 	userSM := state.NewStateMachine("escrow-1", config, group, 100000, userKey.Address(), verifier)
-	session, err := NewSession(userSM, userKey, "escrow-1", group, clients)
+	session, err := NewSession(userSM, userKey, "escrow-1", group, clients, verifier)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -442,7 +442,7 @@ func TestUser_Finalize_SeedRevealAndSettlement(t *testing.T) {
 	}
 
 	userSM := state.NewStateMachine("escrow-1", config, group, 100000, userKey.Address(), verifier)
-	session, err := NewSession(userSM, userKey, "escrow-1", group, clients)
+	session, err := NewSession(userSM, userKey, "escrow-1", group, clients, verifier)
 	require.NoError(t, err)
 
 	ctx := context.Background()

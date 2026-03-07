@@ -51,8 +51,10 @@ type Session struct {
 	mu            sync.Mutex
 	sm            *state.StateMachine
 	signer        signing.Signer
+	verifier      signing.Verifier
 	escrowID      string
 	group         []types.SlotAssignment
+	addrToSlots   map[string][]uint32          // validator address -> slot IDs
 	clients       []HostClient
 	nonce         uint64
 	diffs         []types.Diff                 // append-only log
@@ -69,16 +71,26 @@ func NewSession(
 	escrowID string,
 	group []types.SlotAssignment,
 	clients []HostClient,
+	verifier signing.Verifier,
 ) (*Session, error) {
+	if err := types.ValidateGroup(group); err != nil {
+		return nil, err
+	}
 	if len(clients) != len(group) {
 		return nil, fmt.Errorf("%w: got %d clients for %d slots",
 			types.ErrGroupSizeMismatch, len(clients), len(group))
 	}
+	addrToSlots := make(map[string][]uint32, len(group))
+	for _, s := range group {
+		addrToSlots[s.ValidatorAddress] = append(addrToSlots[s.ValidatorAddress], s.SlotID)
+	}
 	return &Session{
 		sm:            sm,
 		signer:        signer,
+		verifier:      verifier,
 		escrowID:      escrowID,
 		group:         group,
+		addrToSlots:   addrToSlots,
 		clients:       clients,
 		hostSyncNonce: make(map[int]uint64),
 		pendingTxKeys: make(map[string]struct{}),
@@ -141,13 +153,34 @@ func (s *Session) processResponse(hostIdx int, resp *host.HostResponse) error {
 		}
 	}
 
-	// Store signature.
+	// Verify and store state signature.
 	if resp.StateSig != nil {
-		slotID := s.group[hostIdx].SlotID
+		expectedAddr := s.group[hostIdx].ValidatorAddress
+		sigContent := &types.StateSignatureContent{
+			StateRoot: resp.StateHash,
+			EscrowId:  s.escrowID,
+			Nonce:     resp.Nonce,
+		}
+		sigData, err := proto.Marshal(sigContent)
+		if err != nil {
+			return fmt.Errorf("marshal state sig content: %w", err)
+		}
+		addr, err := s.verifier.RecoverAddress(sigData, resp.StateSig)
+		if err != nil {
+			return fmt.Errorf("%w: host %d: %v", types.ErrInvalidStateSig, hostIdx, err)
+		}
+		if addr != expectedAddr {
+			return fmt.Errorf("%w: host %d: expected %s, got %s",
+				types.ErrInvalidStateSig, hostIdx, expectedAddr, addr)
+		}
+
+		// Store for all slots owned by this validator address.
 		if _, ok := s.signatures[resp.Nonce]; !ok {
 			s.signatures[resp.Nonce] = make(map[uint32][]byte)
 		}
-		s.signatures[resp.Nonce][slotID] = resp.StateSig
+		for _, slot := range s.addrToSlots[expectedAddr] {
+			s.signatures[resp.Nonce][slot] = resp.StateSig
+		}
 	}
 
 	// Update sync nonce.
