@@ -86,7 +86,7 @@ class NodeAdminStateTests : TestermintTest() {
         val reenabledNode = nodesAfterReenableEpoch.first { it.node.id == nodeId }
         assertThat(reenabledNode.state.adminState?.enabled).isTrue()
         assertThat(reenabledNode.state.currentStatus).isEqualTo("INFERENCE")
-        assertThat(getInferenceResult(genesis)).isNotNull
+        assertThat(waitForSuccessfulInference(genesis)).isNotNull
     }
 
     @Test
@@ -221,4 +221,20 @@ class NodeAdminStateTests : TestermintTest() {
             .isFalse()
             .`as`("Node 2 should remain disabled")
     }
-} 
+
+    private fun waitForSuccessfulInference(
+        genesis: LocalInferencePair,
+        maxAttempts: Int = 6,
+    ): InferenceResult {
+        repeat(maxAttempts - 1) { attempt ->
+            try {
+                return getInferenceResult(genesis)
+            } catch (e: Exception) {
+                Logger.warn(e) { "Inference after re-enable not ready on attempt ${attempt + 1}, waiting a block" }
+                genesis.node.waitForNextBlock(1)
+            }
+        }
+
+        return getInferenceResult(genesis)
+    }
+}
