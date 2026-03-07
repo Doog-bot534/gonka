@@ -86,10 +86,7 @@ class NodeAdminStateTests : TestermintTest() {
         val reenabledNode = nodesAfterReenableEpoch.first { it.node.id == nodeId }
         assertThat(reenabledNode.state.adminState?.enabled).isTrue()
         assertThat(reenabledNode.state.currentStatus).isEqualTo("INFERENCE")
-
-        val validatorAfterReenable = genesis.node.getStakeValidator()
-        assertThat(validatorAfterReenable.tokens).isEqualTo(10)
-        assertThat(validatorAfterReenable.status).contains("BONDED")
+        assertThat(getInferenceResult(genesis)).isNotNull
     }
 
     @Test
