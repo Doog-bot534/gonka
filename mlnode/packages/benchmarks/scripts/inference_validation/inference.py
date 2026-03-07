@@ -202,7 +202,7 @@ def main() -> None:
         )
     )
     parser.add_argument("--exp-name", required=True, help="Experiment name (required).")
-    parser.add_argument("--url", required=True, help="vLLM base URL, e.g. http://86.38.238.108:8000")
+    parser.add_argument("--url", required=True, help="vLLM base URL, e.g. http://HOST:8000")
     parser.add_argument("--model", default="", help="Model id to use; default: first served id from /v1/models.")
     parser.add_argument("--n-prompts", type=int, default=1000, help="Number of prompts to run.")
     parser.add_argument("--prompts-file", type=Path, default=None, help="Optional text file with one prompt per line.")
