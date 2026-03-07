@@ -177,6 +177,11 @@ class BandwidthLimiterTests : TestermintTest() {
         val inferenceCountSpec = spec {
             this[AppState::inference] = spec<InferenceState> {
                 this[InferenceState::params] = spec<InferenceParams> {
+                    this[InferenceParams::validationParams] = spec<ValidationParams> {
+                        // The limiter uses a rolling average over expirationBlocks + 1 blocks.
+                        // Keep the window tight so the integration test reliably exceeds the limit.
+                        this[ValidationParams::expirationBlocks] = 1L
+                    }
                     this[InferenceParams::bandwidthLimitsParams] = spec<BandwidthLimitsParams> {
                         this[BandwidthLimitsParams::estimatedLimitsPerBlockKb] = 100_000L // High KB limit
                         this[BandwidthLimitsParams::maxInferencesPerBlock] = 5L // Low inference limit
@@ -260,4 +265,3 @@ class BandwidthLimiterTests : TestermintTest() {
         logSection("=== Inference Count Limiter Test Completed Successfully ===")
     }
 }
-
