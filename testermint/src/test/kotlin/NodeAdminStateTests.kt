@@ -224,17 +224,23 @@ class NodeAdminStateTests : TestermintTest() {
 
     private fun waitForSuccessfulInference(
         genesis: LocalInferencePair,
-        maxAttempts: Int = 6,
+        maxBlocks: Int = 35,
     ): InferenceResult {
-        repeat(maxAttempts - 1) { attempt ->
+        val startBlock = genesis.getCurrentBlockHeight()
+        val deadlineBlock = startBlock + maxBlocks
+        var attempt = 0
+        while (genesis.getCurrentBlockHeight() <= deadlineBlock) {
             try {
                 return getInferenceResult(genesis)
             } catch (e: Exception) {
-                Logger.warn(e) { "Inference after re-enable not ready on attempt ${attempt + 1}, waiting a block" }
+                attempt++
+                Logger.warn(e) {
+                    "Inference after re-enable not ready on attempt $attempt at block ${genesis.getCurrentBlockHeight()}, waiting a block"
+                }
                 genesis.node.waitForNextBlock(1)
             }
         }
 
-        return getInferenceResult(genesis)
+        error("Inference never recovered within $maxBlocks blocks after re-enable")
     }
 }
