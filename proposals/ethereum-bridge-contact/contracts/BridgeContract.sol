@@ -185,6 +185,7 @@ contract BridgeContract is ERC20, Ownable, ReentrancyGuard {
     error InvalidEpochSequence();
     error NoValidGenesisEpoch();
     error TimeoutNotReached();
+    error InvalidAmount();
 
     // =============================================================================
     // CONSTRUCTOR
@@ -328,6 +329,8 @@ contract BridgeContract is ERC20, Ownable, ReentrancyGuard {
      * @param cmd The withdrawal command containing all necessary data
      */
     function withdraw(WithdrawalCommand calldata cmd) external nonReentrant onlyNormalOperation {
+        if (cmd.amount == 0) revert InvalidAmount();
+
         // 1. Epoch Validation: Cache group key to avoid double SLOAD
         GroupKey memory groupKeyStruct = epochGroupKeys[cmd.epochId];
         if (_isGroupKeyEmpty(groupKeyStruct)) {
@@ -389,6 +392,8 @@ contract BridgeContract is ERC20, Ownable, ReentrancyGuard {
      * @param cmd The mint command containing all necessary data
      */
     function mintWithSignature(MintCommand calldata cmd) external nonReentrant onlyNormalOperation {
+        if (cmd.amount == 0) revert InvalidAmount();
+
         // 1. Epoch Validation: Cache group key to avoid double SLOAD
         GroupKey memory groupKeyStruct = epochGroupKeys[cmd.epochId];
         if (_isGroupKeyEmpty(groupKeyStruct)) {
