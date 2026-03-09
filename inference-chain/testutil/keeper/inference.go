@@ -2,9 +2,6 @@ package keeper
 
 import (
 	"context"
-	"os"
-	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -39,7 +36,6 @@ import (
 )
 
 func InferenceKeeper(t testing.TB) (keeper.Keeper, sdk.Context) {
-	configureTestSlogDefault()
 	ctrl := gomock.NewController(t)
 	bankKeeper := NewMockBookkeepingBankKeeper(ctrl)
 	bankViewKeeper := NewMockBankKeeper(ctrl)
@@ -59,7 +55,6 @@ func InferenceKeeper(t testing.TB) (keeper.Keeper, sdk.Context) {
 
 // InferenceKeeperWithUpgradeKeeper creates a test keeper with a specific UpgradeKeeper mock
 func InferenceKeeperWithUpgradeKeeper(t testing.TB, upgradeKeeper types.UpgradeKeeper) (keeper.Keeper, sdk.Context) {
-	configureTestSlogDefault()
 	ctrl := gomock.NewController(t)
 	bankKeeper := NewMockBookkeepingBankKeeper(ctrl)
 	bankViewKeeper := NewMockBankKeeper(ctrl)
@@ -149,7 +144,6 @@ func (mocks *InferenceMocks) StubGenesisState() types.GenesisState {
 }
 
 func InferenceKeeperReturningMocks(t testing.TB) (keeper.Keeper, sdk.Context, InferenceMocks) {
-	configureTestSlogDefault()
 	ctrl := gomock.NewController(t)
 	bankKeeper := NewMockBookkeepingBankKeeper(ctrl)
 	bankViewKeeper := NewMockBankKeeper(ctrl)
@@ -257,33 +251,19 @@ func InferenceKeeperWithMock(
 
 type PrintlnLogger struct{}
 
-var configureTestSlogOnce sync.Once
-
 func (PrintlnLogger) Info(msg string, keyVals ...any) {
-	if !testLogEnabledFor(slog.LevelInfo) {
-		return
-	}
 	slog.Info(msg, keyVals...)
 }
 
 func (PrintlnLogger) Warn(msg string, keyVals ...any) {
-	if !testLogEnabledFor(slog.LevelWarn) {
-		return
-	}
 	slog.Warn(msg, keyVals...)
 }
 
 func (PrintlnLogger) Error(msg string, keyVals ...any) {
-	if !testLogEnabledFor(slog.LevelError) {
-		return
-	}
 	slog.Error(msg, keyVals...)
 }
 
 func (PrintlnLogger) Debug(msg string, keyVals ...any) {
-	if !testLogEnabledFor(slog.LevelDebug) {
-		return
-	}
 	slog.Debug(msg, keyVals...)
 }
 
@@ -293,33 +273,4 @@ func (PrintlnLogger) With(keyVals ...any) log.Logger {
 
 func (PrintlnLogger) Impl() any {
 	return nil
-}
-
-func testLogEnabledFor(level slog.Level) bool {
-	return level >= testMinLogLevel()
-}
-
-func configureTestSlogDefault() {
-	configureTestSlogOnce.Do(func() {
-		handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-			Level: testMinLogLevel(),
-		})
-		slog.SetDefault(slog.New(handler))
-	})
-}
-
-func testMinLogLevel() slog.Level {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("LOG_LEVEL"))) {
-	case "debug":
-		return slog.LevelDebug
-	case "warn", "warning":
-		return slog.LevelWarn
-	case "error":
-		return slog.LevelError
-	case "info", "":
-		return slog.LevelInfo
-	default:
-		// Keep existing behavior for unknown values.
-		return slog.LevelInfo
-	}
 }
