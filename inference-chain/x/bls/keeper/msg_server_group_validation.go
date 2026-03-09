@@ -66,10 +66,12 @@ func (ms msgServer) SubmitGroupKeyValidationSignature(goCtx context.Context, msg
 		if errors.Is(err, types.ErrEpochBLSDataNotFound) {
 			// Emit a searchable event and continue using current epoch data as fallback
 			ms.Keeper.LogWarn("Previous epoch not found - using current epoch for validation", "previous_epoch_id", previousEpochId, "new_epoch_id", msg.NewEpochId)
-			ctx.EventManager().EmitTypedEvent(&types.EventGroupKeyValidationFailed{
+			if err := ctx.EventManager().EmitTypedEvent(&types.EventGroupKeyValidationFailed{
 				NewEpochId: msg.NewEpochId,
 				Reason:     fmt.Sprintf("previous_epoch_missing_fallback:%d", previousEpochId),
-			})
+			}); err != nil {
+				return nil, fmt.Errorf("failed to emit group key validation failed event for new epoch %d: %w", msg.NewEpochId, err)
+			}
 
 			previousEpochBLSData = newEpochBLSData
 		} else {
