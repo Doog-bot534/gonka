@@ -157,7 +157,7 @@ func (bm *BlsManager) GetOrRecoverVerificationResult(epochID uint64) (*Verificat
 	}
 
 	key := fmt.Sprintf("recover-%d", epochID)
-	_, err, _ := bm.recoverySF.Do(key, func() (interface{}, error) {
+	res, err, _ := bm.recoverySF.Do(key, func() (interface{}, error) {
 		if result := bm.cache.Get(epochID); result != nil {
 			return result, nil
 		}
@@ -178,7 +178,10 @@ func (bm *BlsManager) GetOrRecoverVerificationResult(epochID uint64) (*Verificat
 			return nil, fmt.Errorf("failed to recover: %w", err)
 		}
 		if !completed {
-			return nil, fmt.Errorf("not a participant in epoch %d", epochID)
+			return &VerificationResult{
+				EpochID:       epochID,
+				IsParticipant: false,
+			}, nil
 		}
 
 		return bm.cache.Get(epochID), nil
@@ -187,7 +190,7 @@ func (bm *BlsManager) GetOrRecoverVerificationResult(epochID uint64) (*Verificat
 	if err != nil {
 		return nil, err
 	}
-	return bm.cache.Get(epochID), nil
+	return res.(*VerificationResult), nil
 }
 
 // storeVerificationResult stores a verification result in the cache
