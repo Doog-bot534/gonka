@@ -727,7 +727,7 @@ func filterNodesForValidation(nodes []broker.NodeResponse, latestEpoch uint64, c
 
 		// Exclude nodes that are not operational for the current epoch/phase.
 		if !node.State.ShouldBeOperational(latestEpoch, currentPhase) {
-			logging.Debug("filterNodesForValidation: Skipping administratively disabled node", types.PoC,
+			logging.Debug("filterNodesForValidation: Skipping non-operational node", types.PoC,
 				"node_id", node.Node.Id,
 				"latest_epoch", latestEpoch,
 				"current_phase", currentPhase,

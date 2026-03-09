@@ -1,4 +1,3 @@
-import com.github.dockerjava.core.DockerClientBuilder
 import com.productscience.*
 import com.productscience.assertions.assertThat
 import com.productscience.data.getParticipant
@@ -73,10 +72,7 @@ class NodeDisableInferenceTests : TestermintTest() {
 
         genesis.markNeedsReboot()
         // Stop join-1 API so automatic reward recovery does not claim before the manual claim below.
-        val dockerClient = DockerClientBuilder.getInstance().build()
-        val join1ApiContainer = getRawContainers(config).getApi(join1.name)
-            ?: error("join1-api container not found")
-        dockerClient.stopContainerCmd(join1ApiContainer.id).exec()
+        join1.stopApiContainer()
         logSection("Stopped join1-api to prevent auto-claim before manual verification")
 
         // 5. Wait for claim rewards and verify join-1 can still claim rewards earned before disable took effect.

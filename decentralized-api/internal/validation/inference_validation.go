@@ -706,6 +706,7 @@ func (s *InferenceValidator) isAlreadyValidated(inferenceId string, epochId uint
 // For post-upgrade inferences, returns ErrPayloadUnavailable for caller to handle invalidation.
 // Returns ErrHashMismatch immediately (no retry) when executor serves wrong payload with valid signature.
 // Returns ErrEpochStale if inference epoch becomes too old during retries.
+// Retries use a short first backoff and longer subsequent backoffs, both with jitter.
 func (s *InferenceValidator) retrievePayloadsWithRetry(inf types.Inference) ([]byte, []byte, error) {
 	const maxRetries = 10
 	const firstRetryInterval = 10 * time.Second
@@ -756,8 +757,16 @@ func (s *InferenceValidator) retrievePayloadsWithRetry(inf types.Inference) ([]b
 				retryInterval = firstRetryInterval
 				jitterMaxSeconds = 10
 			}
-			jitter := time.Duration(1+rand.Intn(jitterMaxSeconds)) * time.Second
-			time.Sleep(retryInterval + jitter)
+			sleepDuration := retryInterval + time.Duration(1+rand.Intn(jitterMaxSeconds))*time.Second
+			timer := time.NewTimer(sleepDuration)
+			select {
+			case <-ctx.Done():
+				if !timer.Stop() {
+					<-timer.C
+				}
+				return nil, nil, ctx.Err()
+			case <-timer.C:
+			}
 		}
 	}
 
