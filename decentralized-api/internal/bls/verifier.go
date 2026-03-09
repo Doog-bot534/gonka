@@ -735,6 +735,8 @@ func (bm *BlsManager) parseEpochDataFromJSON(jsonStr string) (*types.EpochBLSDat
 			epochDataMap["dkg_phase"] = int32(3)
 		case "DKG_PHASE_FAILED":
 			epochDataMap["dkg_phase"] = int32(4)
+		case "DKG_PHASE_SIGNED":
+			epochDataMap["dkg_phase"] = int32(5)
 		default:
 			// Try to parse as number if it's a numeric string
 			if dkgPhaseNum, err := strconv.ParseUint(dkgPhaseStr, 10, 32); err == nil {
