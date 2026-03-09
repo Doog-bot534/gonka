@@ -5,8 +5,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"time"
 )
 
 // RESTBridge implements MainnetBridge query methods via the chain's grpc-gateway REST API.
@@ -25,7 +27,7 @@ func WithHTTPClient(c *http.Client) Option {
 func NewRESTBridge(baseURL string, opts ...Option) *RESTBridge {
 	b := &RESTBridge{
 		baseURL: baseURL,
-		client:  http.DefaultClient,
+		client:  &http.Client{Timeout: 10 * time.Second},
 	}
 	for _, o := range opts {
 		o(b)
@@ -78,6 +80,7 @@ func doGet[T any](client *http.Client, rawURL string) (*T, error) {
 		return nil, nil
 	}
 	if resp.StatusCode != http.StatusOK {
+		io.Copy(io.Discard, resp.Body)
 		return nil, fmt.Errorf("HTTP GET %s: status %d", rawURL, resp.StatusCode)
 	}
 
@@ -110,7 +113,6 @@ func (b *RESTBridge) GetEscrow(escrowID string) (*EscrowInfo, error) {
 		EscrowID:       escrowID,
 		Amount:         resp.Escrow.Amount,
 		CreatorAddress: resp.Escrow.Creator,
-		CreationHeight: 0,
 		AppHash:        appHash,
 		Slots:          resp.Escrow.Slots,
 	}, nil

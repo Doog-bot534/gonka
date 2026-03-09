@@ -21,8 +21,7 @@ type EscrowInfo struct {
 	EscrowID       string
 	Amount         uint64
 	CreatorAddress string
-	CreationHeight int64
-	AppHash        []byte
+	AppHash []byte
 	Slots          []string // validator addresses, len == SubnetGroupSize
 }
 

@@ -37,7 +37,6 @@ func TestGetEscrow_HappyPath(t *testing.T) {
 	assert.Equal(t, "inference1abc", info.CreatorAddress)
 	assert.Equal(t, []byte{0xde, 0xad, 0xbe, 0xef}, info.AppHash)
 	assert.Equal(t, []string{"valA", "valB", "valC"}, info.Slots)
-	assert.Equal(t, int64(0), info.CreationHeight)
 }
 
 func TestGetEscrow_NotFound(t *testing.T) {
