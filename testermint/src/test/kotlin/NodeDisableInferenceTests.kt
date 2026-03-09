@@ -60,12 +60,15 @@ class NodeDisableInferenceTests : TestermintTest() {
         // Make sure join-1 still serves at least one inference in this epoch and can later claim for it.
         val rewardSeed = join1.api.getConfig().currentSeed
         logSection("Waiting for an inference assigned to disabled join-1 in the current epoch")
+        val join1Address = join1.node.getColdAddress()
         val earnedInference = generateSequence { getInferenceResult(genesis) }
-            .take(10)
-            .firstOrNull { it.executorBefore.id == join1.node.getColdAddress() }
+            .take(20)
+            .firstOrNull { result ->
+                result.inference.assignedTo == join1Address || result.inference.executedBy == join1Address
+            }
             ?: error("Disabled join-1 did not receive an inference in the current epoch")
 
-        assertThat(earnedInference.inference.assignedTo).isEqualTo(join1.node.getColdAddress())
+        assertThat(earnedInference.inference.assignedTo).isEqualTo(join1Address)
         logSection("join-1 served inference ${earnedInference.inference.inferenceId} after disable")
 
         genesis.markNeedsReboot()
