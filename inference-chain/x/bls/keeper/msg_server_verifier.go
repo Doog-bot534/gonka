@@ -75,7 +75,9 @@ func (ms msgServer) SubmitVerificationVector(ctx context.Context, msg *types.Msg
 		ParticipantAddress: msg.Creator,
 	}
 
-	sdkCtx.EventManager().EmitTypedEvent(&event)
+	if err := sdkCtx.EventManager().EmitTypedEvent(&event); err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("failed to emit verification vector submitted event for epoch %d: %v", msg.EpochId, err))
+	}
 
 	ms.Logger().Info(
 		"Verification vector submitted",
