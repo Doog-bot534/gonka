@@ -15,7 +15,11 @@ import (
 const (
 	SubnetGroupSize      = 16
 	SubnetQuorumSlots    = 2*SubnetGroupSize/3 + 1
-	SubnetFinalizedPhase = byte(0x02)
+	// SubnetSettlementPhase is the phase byte appended to the state root preimage.
+	// The chain hardcodes 0x02 (Settlement) so only fully-finalized subnet states
+	// can pass verification. States at phase Active (0x00) or Finalizing (0x01)
+	// produce a different hash and are rejected by the state_root mismatch check.
+	SubnetSettlementPhase = byte(0x02)
 )
 
 // VerifySubnetSettlement verifies the settlement proof against the escrow.
@@ -38,7 +42,7 @@ func VerifySubnetSettlement(escrow types.SubnetEscrow, msg *types.MsgSettleSubne
 	rootInput := make([]byte, 0, len(hostStatsHash)+len(msg.RestHash)+1)
 	rootInput = append(rootInput, hostStatsHash...)
 	rootInput = append(rootInput, msg.RestHash...)
-	rootInput = append(rootInput, SubnetFinalizedPhase)
+	rootInput = append(rootInput, SubnetSettlementPhase)
 	expectedRoot := sha256.Sum256(rootInput)
 	if len(msg.StateRoot) != 32 {
 		return fmt.Errorf("state_root must be 32 bytes, got %d", len(msg.StateRoot))

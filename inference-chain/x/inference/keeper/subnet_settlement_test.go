@@ -342,6 +342,56 @@ func TestComputeSubnetHostStatsHash_GoldenValue(t *testing.T) {
 	require.Equal(t, "a3231da94dd50999b9f609263ab7b666431576806437944779c10f8124579fd1", actual, "golden hash mismatch: proto marshaling may have drifted")
 }
 
+func TestVerifySubnetSettlement_WrongPhaseRejected(t *testing.T) {
+	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
+
+	keys, slots := generateSubnetKeys(t, keeper.SubnetGroupSize)
+	escrow := types.SubnetEscrow{
+		Id: 1, Creator: "gonka1creator", Amount: 7_000_000_000, Slots: slots,
+	}
+	hostStats := makeHostStats(keeper.SubnetGroupSize, 100_000_000)
+
+	// Build a valid message first
+	msg := buildSettlementTestData(t, escrow, keys, hostStats)
+
+	// Recompute state root with wrong phase byte (Active=0x00 instead of Settlement=0x02).
+	// This simulates an attacker trying to settle a non-finalized session.
+	hostStatsHash, err := keeper.ComputeSubnetHostStatsHash(hostStats)
+	require.NoError(t, err)
+
+	rootInput := make([]byte, 0, 65)
+	rootInput = append(rootInput, hostStatsHash...)
+	rootInput = append(rootInput, msg.RestHash...)
+	rootInput = append(rootInput, 0x00) // Active phase, not Settlement
+	wrongRoot := sha256.Sum256(rootInput)
+
+	// Re-sign with the wrong state root
+	sigContent := &types.SubnetStateSignatureContent{
+		StateRoot: wrongRoot[:],
+		EscrowId:  fmt.Sprint(escrow.Id),
+		Nonce:     msg.Nonce,
+	}
+	sigData, err := sigContent.XXX_Marshal(nil, true)
+	require.NoError(t, err)
+	sigHash := sha256.Sum256(sigData)
+
+	var sigs []*types.SubnetSlotSignature
+	for i, key := range keys {
+		sig, err := signGoEthFormat(key, sigHash[:])
+		require.NoError(t, err)
+		sigs = append(sigs, &types.SubnetSlotSignature{
+			SlotId:    uint32(i),
+			Signature: sig,
+		})
+	}
+	msg.StateRoot = wrongRoot[:]
+	msg.Signatures = sigs
+
+	err = keeper.VerifySubnetSettlement(escrow, msg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "state_root mismatch")
+}
+
 // Verify signature format conversion roundtrip (go-ethereum <-> dcrd)
 func TestSignatureFormatConversion(t *testing.T) {
 	key, err := dcrdsecp.GeneratePrivateKey()
