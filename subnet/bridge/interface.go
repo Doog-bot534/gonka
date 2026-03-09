@@ -23,6 +23,7 @@ type EscrowInfo struct {
 	CreatorAddress string
 	CreationHeight int64
 	AppHash        []byte
+	Slots          []string // validator addresses, len == SubnetGroupSize
 }
 
 type ValidatorInfo struct {

@@ -684,29 +684,25 @@ Phase 6 does NOT include:
 Warm key authorization (verifying authz grants on chain) belongs to Phase 7 (MainnetBridge). Phase 6 only adds the SigningAddress field and updates signature verification to use it. In Phase 6 tests, SigningAddress is set directly in the test group.
 
 
-## Phase 7: Chain Adapter (MainnetBridge)
+## Phase 7: Chain Adapter (MainnetBridge) [PARTIAL]
 
 Goal: real mainnet communication via REST. Host discovery.
 
-Scope:
-- MainnetBridge implementation via chain's grpc-gateway REST endpoints
-- GetEscrow, GetValidatorInfo, VerifyWarmKey (authz grant check)
-- Host discovery: /v1/identity endpoint returns the host's warm key address (SigningAddress) along with DelegateTAs. Deterministic instance selection via `hash(escrow_id, app_hash) % len(DelegateTAs)`.
-- Warm key discovery: query /v1/identity on each host to obtain its SigningAddress. Populate `SlotAssignment.SigningAddress` from this response during session setup. This bridges Phase 6 (which introduced SigningAddress) with real mainnet data.
-- /v1/identity endpoint extension: add `signer_address` field to the response. This lets session initiators discover which warm key a host uses without querying chain grants directly. Chain grant check is still needed to verify authorization.
-- VerifyWarmKey flow at session setup:
-  1. For each slot, query `GranteesByMessageType(validator_address, msg_type)` on chain
-  2. Confirm the host's warm key address appears in the grantee list
-  3. Cache the `(validator_address -> warm_key_pubkey)` mapping for the session lifetime
-  4. Populate `SlotAssignment.SigningAddress` from the verified warm key
-- Warm key cache is session-scoped, not global. Existing dapi AuthzCache uses 2-min TTL, but subnet sessions can last longer. The subnet caches warm key verification per `(escrow_id, slot_id)` for the session duration. Different sessions may see different warm keys for the same validator.
-- Slot assignment derivation from (app_hash, escrow_id, validator_weights) using existing `GetSlotsFromSorted`
-- Notification handlers: OnEscrowCreated, OnSettlementProposed, OnSettlementFinalized
-- Event subscription: listen for escrow creation and settlement events from chain
+Implemented:
+- RESTBridge implementing MainnetBridge query methods via HTTP (GetEscrow, GetValidatorInfo, VerifyWarmKey)
+- BuildGroup helper: escrow -> []SlotAssignment using chain-stored slots (no re-derivation)
+- Unit tests (httptest) for all query methods and BuildGroup
+- Integration test (build tag: integration, env: CHAIN_REST_URL)
+- Stub methods (OnEscrowCreated, OnSettlementProposed, OnSettlementFinalized, SubmitDisputeState) return ErrNotImplemented
 
-Tests: integration tests against testnet chain for real data fetching. Mock bridge preserved for all prior test levels. Warm key verification tested with real authz grants. Warm key discovery tested: /v1/identity returns SigningAddress, session setup populates SlotAssignment correctly. Slot assignment verified against chain computation.
-
-Testable deliverable: bridge adapter correctly fetches escrow info, validator data, discovers warm key addresses via /v1/identity, verifies authz grants from a running chain. Slot assignment derivation matches chain-side result.
+Deferred:
+- /v1/identity endpoint and DelegateTAs discovery (needs dapi endpoint extension)
+- SigningAddress population from warm key discovery (depends on Phase 6)
+- Event subscription for escrow creation/settlement (OnEscrowCreated, OnSettlementProposed, OnSettlementFinalized)
+- SubmitDisputeState (needs tx submission)
+- GetSlotsFromSorted port (unnecessary -- chain stores pre-computed slots in SubnetEscrow)
+- Warm key cache (session-scoped, deferred until SigningAddress is wired)
+- Slot assignment derivation from (app_hash, escrow_id, validator_weights) -- chain does this at escrow creation
 
 ### Scope Boundary
 

@@ -1,0 +1,184 @@
+package bridge
+
+import (
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/url"
+)
+
+// RESTBridge implements MainnetBridge query methods via the chain's grpc-gateway REST API.
+// Notification and action methods return ErrNotImplemented.
+type RESTBridge struct {
+	baseURL string
+	client  *http.Client
+}
+
+type Option func(*RESTBridge)
+
+func WithHTTPClient(c *http.Client) Option {
+	return func(b *RESTBridge) { b.client = c }
+}
+
+func NewRESTBridge(baseURL string, opts ...Option) *RESTBridge {
+	b := &RESTBridge{
+		baseURL: baseURL,
+		client:  http.DefaultClient,
+	}
+	for _, o := range opts {
+		o(b)
+	}
+	return b
+}
+
+// -- response structs (unexported, match proto-JSON from grpc-gateway) --
+
+type escrowResponse struct {
+	Escrow struct {
+		ID         uint64   `json:"id,string"`
+		Creator    string   `json:"creator"`
+		Amount     uint64   `json:"amount,string"`
+		Slots      []string `json:"slots"`
+		EpochIndex uint64   `json:"epoch_index,string"`
+		AppHash    string   `json:"app_hash"`
+		Settled    bool     `json:"settled"`
+	} `json:"escrow"`
+	Found bool `json:"found"`
+}
+
+type participantResponse struct {
+	Participant struct {
+		Index        string `json:"index"`
+		Address      string `json:"address"`
+		Weight       int32  `json:"weight"`
+		InferenceURL string `json:"inference_url"`
+		ValidatorKey string `json:"validator_key"` // base64-encoded
+	} `json:"participant"`
+}
+
+type granteesResponse struct {
+	Grantees []struct {
+		Address string `json:"address"`
+		PubKey  string `json:"pub_key"`
+	} `json:"grantees"`
+}
+
+// -- helper --
+
+func doGet[T any](client *http.Client, rawURL string) (*T, error) {
+	resp, err := client.Get(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP GET %s: %w", rawURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP GET %s: status %d", rawURL, resp.StatusCode)
+	}
+
+	var result T
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode response from %s: %w", rawURL, err)
+	}
+	return &result, nil
+}
+
+// -- query methods --
+
+func (b *RESTBridge) GetEscrow(escrowID string) (*EscrowInfo, error) {
+	u := fmt.Sprintf("%s/productscience/inference/inference/subnet_escrow/%s", b.baseURL, escrowID)
+
+	resp, err := doGet[escrowResponse](b.client, u)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || !resp.Found {
+		return nil, ErrEscrowNotFound
+	}
+
+	appHash, err := hex.DecodeString(resp.Escrow.AppHash)
+	if err != nil {
+		return nil, fmt.Errorf("decode app_hash: %w", err)
+	}
+
+	return &EscrowInfo{
+		EscrowID:       escrowID,
+		Amount:         resp.Escrow.Amount,
+		CreatorAddress: resp.Escrow.Creator,
+		CreationHeight: 0,
+		AppHash:        appHash,
+		Slots:          resp.Escrow.Slots,
+	}, nil
+}
+
+func (b *RESTBridge) GetValidatorInfo(validatorAddress string) (*ValidatorInfo, error) {
+	u := fmt.Sprintf("%s/productscience/inference/inference/participant/%s", b.baseURL, validatorAddress)
+
+	resp, err := doGet[participantResponse](b.client, u)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, ErrParticipantNotFound
+	}
+
+	var pubKey []byte
+	if resp.Participant.ValidatorKey != "" {
+		pubKey, err = base64.StdEncoding.DecodeString(resp.Participant.ValidatorKey)
+		if err != nil {
+			return nil, fmt.Errorf("decode validator_key: %w", err)
+		}
+	}
+
+	return &ValidatorInfo{
+		Address:   resp.Participant.Address,
+		PublicKey: pubKey,
+		URL:       resp.Participant.InferenceURL,
+		Weight:    uint64(resp.Participant.Weight),
+	}, nil
+}
+
+const warmKeyMsgType = "/inference.inference.MsgStartInference"
+
+func (b *RESTBridge) VerifyWarmKey(warmAddress, validatorAddress string) (*WarmKeyInfo, error) {
+	u := fmt.Sprintf("%s/productscience/inference/inference/grantees_by_message_type/%s/%s",
+		b.baseURL, validatorAddress, url.PathEscape(warmKeyMsgType))
+
+	resp, err := doGet[granteesResponse](b.client, u)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, ErrWarmKeyNotAuthorized
+	}
+
+	for _, g := range resp.Grantees {
+		if g.Address == warmAddress {
+			return &WarmKeyInfo{ValidatorAddress: validatorAddress}, nil
+		}
+	}
+	return nil, ErrWarmKeyNotAuthorized
+}
+
+// -- stubs --
+
+func (b *RESTBridge) OnEscrowCreated(_ EscrowInfo) error {
+	return ErrNotImplemented
+}
+
+func (b *RESTBridge) OnSettlementProposed(_ string, _ []byte, _ uint64) error {
+	return ErrNotImplemented
+}
+
+func (b *RESTBridge) OnSettlementFinalized(_ string) error {
+	return ErrNotImplemented
+}
+
+func (b *RESTBridge) SubmitDisputeState(_ string, _ []byte, _ uint64, _ map[uint32][]byte) error {
+	return ErrNotImplemented
+}
