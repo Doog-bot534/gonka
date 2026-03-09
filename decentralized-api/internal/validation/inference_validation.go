@@ -761,9 +761,7 @@ func (s *InferenceValidator) retrievePayloadsWithRetry(inf types.Inference) ([]b
 			timer := time.NewTimer(sleepDuration)
 			select {
 			case <-ctx.Done():
-				if !timer.Stop() {
-					<-timer.C
-				}
+				timer.Stop()
 				return nil, nil, ctx.Err()
 			case <-timer.C:
 			}
