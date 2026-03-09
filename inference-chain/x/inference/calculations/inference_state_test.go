@@ -27,12 +27,12 @@ func TestStartProcessed(t *testing.T) {
 		expected  bool
 	}{
 		{
-			name:      "Empty inference",
+			name:      "Empty inference is not started",
 			inference: &types.Inference{},
 			expected:  false,
 		},
 		{
-			name: "Inference with AssignedTo",
+			name: "Inference with AssignedTo is started",
 			inference: &types.Inference{
 				AssignedTo: "executor",
 			},

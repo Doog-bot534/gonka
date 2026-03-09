@@ -541,7 +541,7 @@ func (s *Server) handleExecutorRequest(ctx echo.Context, request *ChatRequest, w
 		return echo.NewHTTPError(http.StatusBadRequest, "Failed to compute prompt hash")
 	}
 	if request.PromptHash == "" {
-		logging.Error("Empty prompt hash", types.Inferences, "error", err)
+		logging.Error("Empty prompt hash", types.Inferences)
 		return echo.NewHTTPError(http.StatusBadRequest, "Prompt hash is missing")
 	}
 	if computedPromptHash != request.PromptHash {
