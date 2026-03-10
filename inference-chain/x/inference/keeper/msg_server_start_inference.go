@@ -70,7 +70,7 @@ func (k msgServer) StartInference(goCtx context.Context, msg *types.MsgStartInfe
 	// - Finish first: start performs equality checks only (no TA/dev re-verification).
 	// - Executor signature verification is disabled by policy in both paths.
 	if existingInference.FinishedProcessed() {
-		if err := k.compareStartDevComponents(msg, &existingInference); err != nil {
+		if err := k.compareDevComponents(msg, &existingInference); err != nil {
 			k.LogError("StartInference: dev component mismatch", types.Inferences, "error", err, "inferenceId", msg.InferenceId)
 			return failedStart(ctx, err, msg), nil
 		}
@@ -172,36 +172,43 @@ func (k msgServer) verifyStartFirstMessageKeys(ctx sdk.Context, msg *types.MsgSt
 	return nil
 }
 
-func (k msgServer) compareStartDevComponents(msg *types.MsgStartInference, inference *types.Inference) error {
-	if inference.OriginalPromptHash != msg.OriginalPromptHash {
+type HasDevComponents interface {
+	GetOriginalPromptHash() string
+	GetRequestTimestamp() int64
+	GetRequestedBy() string
+	GetTransferredBy() string
+}
+
+func (k msgServer) compareDevComponents(msg HasDevComponents, inference *types.Inference) error {
+	if inference.OriginalPromptHash != msg.GetOriginalPromptHash() {
 		return sdkerrors.Wrapf(
 			types.ErrDevComponentMismatch,
-			"original_prompt_hash mismatch: start=%s finish=%s",
-			msg.OriginalPromptHash,
+			"original_prompt_hash mismatch: message=%s inference=%s",
+			msg.GetOriginalPromptHash(),
 			inference.OriginalPromptHash,
 		)
 	}
-	if inference.RequestTimestamp != msg.RequestTimestamp {
+	if inference.RequestTimestamp != msg.GetRequestTimestamp() {
 		return sdkerrors.Wrapf(
 			types.ErrDevComponentMismatch,
-			"request_timestamp mismatch: start=%d finish=%d",
-			msg.RequestTimestamp,
+			"request_timestamp mismatch: message=%d inference=%d",
+			msg.GetRequestTimestamp(),
 			inference.RequestTimestamp,
 		)
 	}
-	if inference.TransferredBy != msg.Creator {
+	if inference.TransferredBy != msg.GetTransferredBy() {
 		return sdkerrors.Wrapf(
 			types.ErrDevComponentMismatch,
-			"transfer agent mismatch: start=%s finish=%s",
-			msg.Creator,
+			"transfer agent mismatch: message=%s inference=%s",
+			msg.GetTransferredBy(),
 			inference.TransferredBy,
 		)
 	}
-	if inference.RequestedBy != msg.RequestedBy {
+	if inference.RequestedBy != msg.GetRequestedBy() {
 		return sdkerrors.Wrapf(
 			types.ErrDevComponentMismatch,
-			"requested_by mismatch: start=%s finish=%s",
-			msg.RequestedBy,
+			"requested_by mismatch: message=%s inference=%s",
+			msg.GetRequestedBy(),
 			inference.RequestedBy,
 		)
 	}

@@ -90,7 +90,7 @@ func (k msgServer) FinishInference(goCtx context.Context, msg *types.MsgFinishIn
 	// - Finish first: verify dev + TA signatures.
 	// - Executor signature verification is disabled by policy in both paths.
 	if existingInference.StartProcessed() {
-		if err := k.compareFinishDevComponents(msg, &existingInference); err != nil {
+		if err := k.compareDevComponents(msg, &existingInference); err != nil {
 			k.LogError("FinishInference: dev component mismatch", types.Inferences, "error", err, "inferenceId", msg.InferenceId)
 			return failedFinish(ctx, err, msg), nil
 		}
@@ -248,42 +248,6 @@ func getFinishTASignatureComponents(msg *types.MsgFinishInference) calculations.
 	}
 }
 
-func (k msgServer) compareFinishDevComponents(msg *types.MsgFinishInference, inference *types.Inference) error {
-	if inference.OriginalPromptHash != msg.OriginalPromptHash {
-		return sdkerrors.Wrapf(
-			types.ErrDevComponentMismatch,
-			"original_prompt_hash mismatch: finish=%s start=%s",
-			msg.OriginalPromptHash,
-			inference.OriginalPromptHash,
-		)
-	}
-	if inference.RequestTimestamp != msg.RequestTimestamp {
-		return sdkerrors.Wrapf(
-			types.ErrDevComponentMismatch,
-			"request_timestamp mismatch: finish=%d start=%d",
-			msg.RequestTimestamp,
-			inference.RequestTimestamp,
-		)
-	}
-	if inference.TransferredBy != msg.TransferredBy {
-		return sdkerrors.Wrapf(
-			types.ErrDevComponentMismatch,
-			"transfer agent mismatch: finish=%s start=%s",
-			msg.TransferredBy,
-			inference.TransferredBy,
-		)
-	}
-	if inference.RequestedBy != msg.RequestedBy {
-		return sdkerrors.Wrapf(
-			types.ErrDevComponentMismatch,
-			"requested_by mismatch: finish=%s start=%s",
-			msg.RequestedBy,
-			inference.RequestedBy,
-		)
-	}
-	return nil
-}
-
 func (k msgServer) compareFinishTAComponents(msg *types.MsgFinishInference, inference *types.Inference) error {
 	if inference.PromptHash != msg.PromptHash {
 		return sdkerrors.Wrapf(
@@ -321,6 +285,7 @@ func (k msgServer) compareFinishTAComponents(msg *types.MsgFinishInference, infe
 }
 
 func (k msgServer) compareFinishModelField(msg *types.MsgFinishInference, inference *types.Inference) error {
+	// inference.Model CANNOT be "" here, Model is a required field for StartInference message
 	if inference.Model != "" && inference.Model != msg.Model {
 		return sdkerrors.Wrapf(
 			types.ErrInferenceRoleMismatch,
