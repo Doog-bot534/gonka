@@ -61,6 +61,7 @@ type Host struct {
 	signer   signing.Signer
 	verifier signing.Verifier
 	engine   subnet.InferenceEngine
+	validator subnet.ValidationEngine // optional, nil = no validation
 	escrowID string
 	slotIDs  map[uint32]bool
 	group    []types.SlotAssignment
@@ -73,7 +74,9 @@ type Host struct {
 	slotToAddr  map[uint32]string   // slotID -> validator address
 	addrToSlots map[string][]uint32 // address -> all slotIDs owned
 
-	executing map[uint64]struct{} // inference IDs with in-flight execution
+	executing  map[uint64]struct{} // inference IDs with in-flight execution
+	validating map[uint64]struct{} // inference IDs with in-flight validation
+	ownSeed    int64               // deterministic seed derived from signer + escrowID
 }
 
 func NewHost(
@@ -113,6 +116,17 @@ func NewHost(
 	if len(slotIDs) == 0 {
 		return nil, fmt.Errorf("%w: %s", types.ErrHostNotInGroup, addr)
 	}
+
+	// Derive deterministic seed from signer + escrowID.
+	seedSig, err := signer.Sign([]byte(escrowID))
+	if err != nil {
+		return nil, fmt.Errorf("derive seed: %w", err)
+	}
+	ownSeed, err := state.DeriveSeed(seedSig)
+	if err != nil {
+		return nil, fmt.Errorf("derive seed: %w", err)
+	}
+
 	h := &Host{
 		sm:          sm,
 		signer:      signer,
@@ -125,6 +139,8 @@ func NewHost(
 		slotToAddr:  slotToAddr,
 		addrToSlots: addrToSlots,
 		executing:   make(map[uint64]struct{}),
+		validating:  make(map[uint64]struct{}),
+		ownSeed:     ownSeed,
 	}
 	for _, opt := range opts {
 		opt(h)
@@ -153,6 +169,11 @@ func WithVerifier(v signing.Verifier) HostOption {
 // WithGossip sets the gossip instance for pruning on finalization.
 func WithGossip(g *gossip.Gossip) HostOption {
 	return func(h *Host) { h.gsp = g }
+}
+
+// WithValidator sets the validation engine for validating other hosts' inferences.
+func WithValidator(v subnet.ValidationEngine) HostOption {
+	return func(h *Host) { h.validator = v }
 }
 
 // WithGrace adds a StalenessChecker to the host's acceptance chain.
@@ -231,11 +252,19 @@ func (h *Host) HandleRequest(ctx context.Context, req HostRequest) (*HostRespons
 	// (d) Produce MsgRevealSeed if finalizing and not already revealed.
 	h.maybeRevealSeed()
 
+	// (e) Collect validation candidates under mutex.
+	validationJobs := h.collectValidationJobs()
+
 	h.mu.Unlock()
 
-	// (e) Execute inference outside mutex.
+	// (f) Execute inference outside mutex.
 	if job != nil {
 		h.executeAsync(ctx, job)
+	}
+
+	// (g) Validate other hosts' inferences outside mutex.
+	for _, vj := range validationJobs {
+		go h.validateAsync(ctx, vj)
 	}
 
 	return &HostResponse{
@@ -510,6 +539,156 @@ func (h *Host) maybeRevealSeed() {
 	if h.gsp != nil {
 		go h.gsp.BroadcastTxs(context.Background(), []*types.SubnetTx{seedTx})
 	}
+}
+
+// validateJob captures data needed to run validateAsync outside the mutex.
+type validateJob struct {
+	inferenceID   uint64
+	validatorSlot uint32
+	model         string
+	promptHash    []byte
+	responseHash  []byte
+	inputTokens   uint64
+	outputTokens  uint64
+}
+
+// collectValidationJobs finds finished inferences that this host should validate.
+// Caller must hold h.mu.
+func (h *Host) collectValidationJobs() []validateJob {
+	if h.validator == nil {
+		return nil
+	}
+
+	st := h.sm.SnapshotState()
+	var jobs []validateJob
+
+	for infID, rec := range st.Inferences {
+		if rec.Status != types.StatusFinished {
+			continue
+		}
+
+		// Skip if this host is the executor (no self-validation).
+		if h.slotIDs[rec.ExecutorSlot] {
+			continue
+		}
+
+		// Skip if already validated by any of this host's slots.
+		alreadyValidated := false
+		for slot := range h.slotIDs {
+			if rec.ValidatedBy.IsSet(slot) {
+				alreadyValidated = true
+				break
+			}
+		}
+		if alreadyValidated {
+			continue
+		}
+
+		// Skip if already validating or has a validation in mempool.
+		if _, ok := h.validating[infID]; ok {
+			continue
+		}
+		if h.hasMempoolValidation(infID) {
+			continue
+		}
+
+		// Probabilistic check: should this host validate this inference?
+		mySlotCount := uint32(len(h.slotIDs))
+		executorAddr := h.slotToAddr[rec.ExecutorSlot]
+		executorSlotCount := h.sm.AddressSlotCount(executorAddr)
+		totalSlots := h.sm.TotalSlots()
+
+		if !state.ShouldValidate(h.ownSeed, infID, mySlotCount, executorSlotCount, totalSlots, st.Config.ValidationRate) {
+			continue
+		}
+
+		// Pick first owned slot as the validator slot.
+		var validatorSlot uint32
+		for slot := range h.slotIDs {
+			validatorSlot = slot
+			break
+		}
+
+		h.validating[infID] = struct{}{}
+		jobs = append(jobs, validateJob{
+			inferenceID:   infID,
+			validatorSlot: validatorSlot,
+			model:         rec.Model,
+			promptHash:    rec.PromptHash,
+			responseHash:  rec.ResponseHash,
+			inputTokens:   rec.InputTokens,
+			outputTokens:  rec.OutputTokens,
+		})
+	}
+
+	return jobs
+}
+
+// hasMempoolValidation returns true if a MsgValidation for infID from this host
+// is already in the mempool. Caller must hold h.mu.
+func (h *Host) hasMempoolValidation(infID uint64) bool {
+	for _, tx := range h.mempool.Txs() {
+		if v := tx.GetValidation(); v != nil && v.InferenceId == infID {
+			if h.slotIDs[v.ValidatorSlot] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// validateAsync runs validator.Validate, builds MsgValidation, signs it, and
+// adds it to the mempool. Called outside the mutex.
+func (h *Host) validateAsync(ctx context.Context, job validateJob) {
+	result, err := h.validator.Validate(ctx, subnet.ValidateRequest{
+		InferenceID:  job.inferenceID,
+		Model:        job.model,
+		PromptHash:   job.promptHash,
+		ResponseHash: job.responseHash,
+		InputTokens:  job.inputTokens,
+		OutputTokens: job.outputTokens,
+	})
+	if err != nil {
+		logging.Error("validate failed", "subsystem", "host", "inference_id", job.inferenceID, "error", err)
+		h.mu.Lock()
+		delete(h.validating, job.inferenceID)
+		h.mu.Unlock()
+		return
+	}
+
+	msg := &types.MsgValidation{
+		InferenceId:   job.inferenceID,
+		ValidatorSlot: job.validatorSlot,
+		Valid:         result.Valid,
+		EscrowId:      h.escrowID,
+	}
+	msgData, err := proto.Marshal(msg)
+	if err != nil {
+		logging.Error("marshal validation msg failed", "subsystem", "host", "inference_id", job.inferenceID, "error", err)
+		h.mu.Lock()
+		delete(h.validating, job.inferenceID)
+		h.mu.Unlock()
+		return
+	}
+	proposerSig, err := h.signer.Sign(msgData)
+	if err != nil {
+		logging.Error("sign validation msg failed", "subsystem", "host", "inference_id", job.inferenceID, "error", err)
+		h.mu.Lock()
+		delete(h.validating, job.inferenceID)
+		h.mu.Unlock()
+		return
+	}
+	msg.ProposerSig = proposerSig
+
+	h.mu.Lock()
+	h.mempool.Add(MempoolEntry{
+		Tx: &types.SubnetTx{Tx: &types.SubnetTx_Validation{
+			Validation: msg,
+		}},
+		ProposedAt: h.sm.LatestNonce(),
+	})
+	delete(h.validating, job.inferenceID)
+	h.mu.Unlock()
 }
 
 // AccumulateGossipSig verifies and stores a signature received via gossip.

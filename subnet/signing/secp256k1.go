@@ -5,8 +5,9 @@ import (
 	"crypto/sha256"
 	"fmt"
 
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/cosmos/btcutil/bech32"
 	"github.com/ethereum/go-ethereum/crypto"
+	"golang.org/x/crypto/ripemd160"
 )
 
 // Secp256k1Signer signs messages using a secp256k1 private key.
@@ -15,12 +16,16 @@ type Secp256k1Signer struct {
 	address string
 }
 
-func NewSecp256k1Signer(key *ecdsa.PrivateKey) *Secp256k1Signer {
-	addr := crypto.PubkeyToAddress(key.PublicKey)
+func NewSecp256k1Signer(key *ecdsa.PrivateKey) (*Secp256k1Signer, error) {
+	compressed := crypto.CompressPubkey(&key.PublicKey)
+	addr, err := addressFromCompressed(compressed)
+	if err != nil {
+		return nil, fmt.Errorf("derive address: %w", err)
+	}
 	return &Secp256k1Signer{
 		key:     key,
-		address: addr.Hex(),
-	}
+		address: addr,
+	}, nil
 }
 
 func (s *Secp256k1Signer) Sign(message []byte) ([]byte, error) {
@@ -48,12 +53,7 @@ func (v *Secp256k1Verifier) RecoverAddress(message []byte, sig []byte) (string, 
 	if err != nil {
 		return "", fmt.Errorf("ecrecover failed: %w", err)
 	}
-	pubkeyECDSA, err := crypto.UnmarshalPubkey(pubkey)
-	if err != nil {
-		return "", fmt.Errorf("unmarshal pubkey failed: %w", err)
-	}
-	addr := crypto.PubkeyToAddress(*pubkeyECDSA)
-	return addr.Hex(), nil
+	return addressFromUncompressedPubkey(pubkey)
 }
 
 func (s *Secp256k1Signer) PublicKeyBytes() []byte {
@@ -65,7 +65,7 @@ func GenerateKey() (*Secp256k1Signer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewSecp256k1Signer(key), nil
+	return NewSecp256k1Signer(key)
 }
 
 // SignerFromHex creates a signer from a hex-encoded private key.
@@ -74,9 +74,39 @@ func SignerFromHex(hexKey string) (*Secp256k1Signer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse hex key: %w", err)
 	}
-	return NewSecp256k1Signer(key), nil
+	return NewSecp256k1Signer(key)
 }
 
-func AddressFromPubKey(pubkey []byte) string {
-	return common.BytesToAddress(crypto.Keccak256(pubkey[1:])[12:]).Hex()
+// AddressFromPubKey derives a gonka bech32 address from a public key.
+// Accepts both compressed (33-byte) and uncompressed (65-byte) keys.
+func AddressFromPubKey(pubkey []byte) (string, error) {
+	switch len(pubkey) {
+	case 33:
+		return addressFromCompressed(pubkey)
+	case 65:
+		return addressFromUncompressedPubkey(pubkey)
+	default:
+		return "", fmt.Errorf("invalid pubkey length: %d (expected 33 or 65)", len(pubkey))
+	}
+}
+
+func addressFromUncompressedPubkey(pubkey []byte) (string, error) {
+	pub, err := crypto.UnmarshalPubkey(pubkey)
+	if err != nil {
+		return "", fmt.Errorf("unmarshal pubkey: %w", err)
+	}
+	compressed := crypto.CompressPubkey(pub)
+	return addressFromCompressed(compressed)
+}
+
+func addressFromCompressed(compressed []byte) (string, error) {
+	sha := sha256.Sum256(compressed)
+	rip := ripemd160.New() //nolint:gosec
+	rip.Write(sha[:])
+	addrBytes := rip.Sum(nil)
+	conv, err := bech32.ConvertBits(addrBytes, 8, 5, true)
+	if err != nil {
+		return "", fmt.Errorf("convert bits: %w", err)
+	}
+	return bech32.Encode("gonka", conv)
 }

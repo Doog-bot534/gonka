@@ -1,8 +1,11 @@
 package subnet
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
+	"io"
+	"net/http"
 	"testing"
 
 	"decentralized-api/completionapi"
@@ -12,21 +15,69 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestIsSSE(t *testing.T) {
-	assert.True(t, isSSE("text/event-stream"))
-	assert.True(t, isSSE("text/event-stream; charset=utf-8"))
-	assert.False(t, isSSE("application/json"))
-	assert.False(t, isSSE(""))
+func TestProcessHTTPResponse_SSE(t *testing.T) {
+	body := "data: {\"id\":\"1\",\"choices\":[]}\n\ndata: [DONE]\n"
+	resp := &http.Response{
+		Header: http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:   io.NopCloser(bytes.NewBufferString(body)),
+	}
+	processor := completionapi.NewExecutorResponseProcessor("")
+	err := completionapi.ProcessHTTPResponse(resp, processor)
+	require.NoError(t, err)
+
+	respBytes, err := processor.GetResponseBytes()
+	require.NoError(t, err)
+	assert.NotEmpty(t, respBytes)
 }
 
-func TestSplitSSELines(t *testing.T) {
-	data := []byte("data: {\"id\":\"1\"}\n\ndata: [DONE]\n")
-	lines := splitSSELines(data)
-	assert.Equal(t, []string{"data: {\"id\":\"1\"}", "data: [DONE]"}, lines)
+func TestProcessHTTPResponse_SSEWithCharset(t *testing.T) {
+	body := "data: {\"id\":\"1\",\"choices\":[]}\n\ndata: [DONE]\n"
+	resp := &http.Response{
+		Header: http.Header{"Content-Type": []string{"text/event-stream; charset=utf-8"}},
+		Body:   io.NopCloser(bytes.NewBufferString(body)),
+	}
+	processor := completionapi.NewExecutorResponseProcessor("")
+	err := completionapi.ProcessHTTPResponse(resp, processor)
+	require.NoError(t, err)
+
+	respBytes, err := processor.GetResponseBytes()
+	require.NoError(t, err)
+	assert.NotEmpty(t, respBytes)
+}
+
+func TestProcessHTTPResponse_JSON(t *testing.T) {
+	jsonBody := `{"id":"test","choices":[{"message":{"content":"hello"}}]}`
+	resp := &http.Response{
+		Header: http.Header{"Content-Type": []string{"application/json"}},
+		Body:   io.NopCloser(bytes.NewBufferString(jsonBody)),
+	}
+	processor := completionapi.NewExecutorResponseProcessor("")
+	err := completionapi.ProcessHTTPResponse(resp, processor)
+	require.NoError(t, err)
+
+	respBytes, err := processor.GetResponseBytes()
+	require.NoError(t, err)
+	assert.Contains(t, string(respBytes), "hello")
+}
+
+func TestSSEScanner(t *testing.T) {
+	// Verify bufio.Scanner correctly handles SSE bodies with blank lines.
+	body := "data: {\"id\":\"1\"}\n\ndata: {\"id\":\"2\"}\n\ndata: [DONE]\n"
+	resp := &http.Response{
+		Header: http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:   io.NopCloser(bytes.NewBufferString(body)),
+	}
+	processor := completionapi.NewExecutorResponseProcessor("")
+	err := completionapi.ProcessHTTPResponse(resp, processor)
+	require.NoError(t, err)
+
+	respBytes, err := processor.GetResponseBytes()
+	require.NoError(t, err)
+	// Should have captured the streamed lines.
+	assert.NotEmpty(t, respBytes)
 }
 
 func TestResponseHashComputation(t *testing.T) {
-	// Simulate the hash computation the engine does
 	responseJSON := `{"id":"test","choices":[{"message":{"content":"hello"},"logprobs":{"content":[{"token":"hello","logprob":-0.1,"top_logprobs":[{"token":"hello","logprob":-0.1}]}]}}],"usage":{"prompt_tokens":10,"completion_tokens":5}}`
 
 	resp, err := completionapi.NewCompletionResponseFromBytes([]byte(responseJSON))
@@ -49,7 +100,6 @@ func TestCanonicalizePrompt(t *testing.T) {
 	canonicalized, err := utils.CanonicalizeJSON(body)
 	require.NoError(t, err)
 
-	// Verify it's valid JSON and keys are sorted
 	var result map[string]interface{}
 	err = json.Unmarshal([]byte(canonicalized), &result)
 	require.NoError(t, err)

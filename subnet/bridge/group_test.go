@@ -29,6 +29,13 @@ func (m *mockBridge) GetValidatorInfo(addr string) (*ValidatorInfo, error) {
 	}
 	return info, nil
 }
+func (m *mockBridge) GetAccountPubKey(addr string) ([]byte, error) {
+	info, ok := m.validators[addr]
+	if !ok {
+		return nil, ErrParticipantNotFound
+	}
+	return info.PublicKey, nil
+}
 func (m *mockBridge) VerifyWarmKey(_, _ string) (bool, error) {
 	return false, ErrNotImplemented
 }
@@ -133,6 +140,9 @@ func (q *queryCountBridge) GetEscrow(id string) (*EscrowInfo, error) {
 func (q *queryCountBridge) GetValidatorInfo(addr string) (*ValidatorInfo, error) {
 	q.counts[addr]++
 	return q.inner.GetValidatorInfo(addr)
+}
+func (q *queryCountBridge) GetAccountPubKey(addr string) ([]byte, error) {
+	return q.inner.GetAccountPubKey(addr)
 }
 func (q *queryCountBridge) VerifyWarmKey(w, v string) (bool, error) {
 	return q.inner.VerifyWarmKey(w, v)

@@ -1,6 +1,7 @@
 package signing
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -59,4 +60,27 @@ func TestVerify_TamperedMessage(t *testing.T) {
 	recovered, err := verifier.RecoverAddress(tampered, sig)
 	require.NoError(t, err)
 	require.NotEqual(t, signer.Address(), recovered)
+}
+
+func TestAddress_GonkaBech32(t *testing.T) {
+	signer, err := GenerateKey()
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(signer.Address(), "gonka1"))
+}
+
+func TestAddressFromPubKey_Compressed(t *testing.T) {
+	signer, err := GenerateKey()
+	require.NoError(t, err)
+
+	// Uncompressed 65-byte key
+	uncompressed := signer.PublicKeyBytes()
+	addr, err := AddressFromPubKey(uncompressed)
+	require.NoError(t, err)
+	require.Equal(t, signer.Address(), addr)
+}
+
+func TestAddressFromPubKey_InvalidLength(t *testing.T) {
+	_, err := AddressFromPubKey([]byte{1, 2, 3})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid pubkey length")
 }

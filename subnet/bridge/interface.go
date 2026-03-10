@@ -11,6 +11,7 @@ type MainnetBridge interface {
 	// Queries: subnet -> mainnet
 	GetEscrow(escrowID string) (*EscrowInfo, error)
 	GetValidatorInfo(validatorAddress string) (*ValidatorInfo, error)
+	GetAccountPubKey(address string) ([]byte, error)
 	VerifyWarmKey(warmAddress, validatorAddress string) (bool, error)
 
 	// Actions: subnet -> mainnet

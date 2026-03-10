@@ -184,6 +184,17 @@ func (b *RESTBridge) VerifyWarmKey(warmAddress, validatorAddress string) (bool, 
 	return found, nil
 }
 
+func (b *RESTBridge) GetAccountPubKey(address string) ([]byte, error) {
+	info, err := b.GetValidatorInfo(address)
+	if err != nil {
+		return nil, err
+	}
+	if len(info.PublicKey) == 0 {
+		return nil, fmt.Errorf("no public key for %s", address)
+	}
+	return info.PublicKey, nil
+}
+
 // -- stubs --
 
 func (b *RESTBridge) OnEscrowCreated(_ EscrowInfo) error {

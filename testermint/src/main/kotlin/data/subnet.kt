@@ -18,3 +18,7 @@ data class SubnetEscrow(
     val appHash: String,
     val settled: Boolean
 )
+
+data class SubnetMempoolResponse(
+    val txs: List<Any>?
+)

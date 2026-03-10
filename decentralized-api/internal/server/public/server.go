@@ -149,6 +149,11 @@ func NewServer(
 	return s
 }
 
+// SubnetGroup returns an echo group for mounting subnet routes.
+func (s *Server) SubnetGroup() *echo.Group {
+	return s.e.Group("/subnet/v1")
+}
+
 func (s *Server) Start(addr string) {
 	go s.e.Start(addr)
 }

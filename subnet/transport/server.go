@@ -106,20 +106,20 @@ func (s *Server) SetGossip(g *gossip.Gossip) { s.gossip = g }
 // Register mounts all subnet routes on the given echo group.
 // The caller typically mounts this under /subnet/v1.
 func (s *Server) Register(g *echo.Group) {
-	g.Use(s.authMiddleware)
+	g.Use(s.AuthMiddleware)
 	if s.rateLimit != nil {
 		g.Use(rateLimitMiddleware(s.rateLimit))
 	}
-	g.POST("/sessions/:id/chat/completions", s.handleInference)
-	g.POST("/sessions/:id/verify-timeout", s.handleVerifyTimeout)
-	g.POST("/sessions/:id/challenge-receipt", s.handleChallengeReceipt)
-	g.POST("/sessions/:id/gossip/nonce", s.handleGossipNonce)
-	g.POST("/sessions/:id/gossip/txs", s.handleGossipTxs)
+	g.POST("/sessions/:id/chat/completions", s.HandleInference)
+	g.POST("/sessions/:id/verify-timeout", s.HandleVerifyTimeout)
+	g.POST("/sessions/:id/challenge-receipt", s.HandleChallengeReceipt)
+	g.POST("/sessions/:id/gossip/nonce", s.HandleGossipNonce)
+	g.POST("/sessions/:id/gossip/txs", s.HandleGossipTxs)
 	// TODO: GET endpoints are intentionally unauthenticated for now.
 	// Before production, restrict these to group members or add read-only auth.
-	g.GET("/sessions/:id/diffs", s.handleGetDiffs)
-	g.GET("/sessions/:id/mempool", s.handleGetMempool)
-	g.GET("/sessions/:id/signatures", s.handleGetSignatures)
+	g.GET("/sessions/:id/diffs", s.HandleGetDiffs)
+	g.GET("/sessions/:id/mempool", s.HandleGetMempool)
+	g.GET("/sessions/:id/signatures", s.HandleGetSignatures)
 }
 
 // writeJSON serializes v with goccy/go-json, bypassing Echo's default serializer.
@@ -189,7 +189,7 @@ func (s *Server) isGroupMember(addr string) bool {
 // authMiddleware reads the body, verifies the signature, checks group membership,
 // and stores the sender address in the echo context.
 // GET requests skip auth intentionally for now.
-func (s *Server) authMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
+func (s *Server) AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		if c.Request().Method == http.MethodGet {
 			// GET endpoints skip auth for now -- see Register comment.
@@ -239,7 +239,7 @@ func (s *Server) authMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
-func (s *Server) handleInference(c echo.Context) error {
+func (s *Server) HandleInference(c echo.Context) error {
 	body := c.Get("body").([]byte)
 
 	var ir InferenceRequest
@@ -282,7 +282,7 @@ func (s *Server) SetPeerClients(peers map[int]*HTTPClient) {
 	s.peerClients = peers
 }
 
-func (s *Server) handleVerifyTimeout(c echo.Context) error {
+func (s *Server) HandleVerifyTimeout(c echo.Context) error {
 	body := c.Get("body").([]byte)
 
 	var req VerifyTimeoutRequest
@@ -370,7 +370,7 @@ func signTimeoutVote(escrowID string, inferenceID uint64, reason types.TimeoutRe
 	return sig, voterSlot, nil
 }
 
-func (s *Server) handleChallengeReceipt(c echo.Context) error {
+func (s *Server) HandleChallengeReceipt(c echo.Context) error {
 	body := c.Get("body").([]byte)
 
 	var req ChallengeReceiptRequest
@@ -395,7 +395,7 @@ func (s *Server) handleChallengeReceipt(c echo.Context) error {
 	return writeJSON(c, http.StatusOK, ChallengeReceiptResponse{Receipt: receipt})
 }
 
-func (s *Server) handleGossipNonce(c echo.Context) error {
+func (s *Server) HandleGossipNonce(c echo.Context) error {
 	// Gossip is host-to-host only. Reject user-signed requests.
 	sender := c.Get(contextKeySender).(string)
 	if !s.isGroupMember(sender) {
@@ -451,7 +451,7 @@ func (s *Server) handleGossipNonce(c echo.Context) error {
 	return c.NoContent(http.StatusOK)
 }
 
-func (s *Server) handleGossipTxs(c echo.Context) error {
+func (s *Server) HandleGossipTxs(c echo.Context) error {
 	// Gossip is host-to-host only.
 	sender := c.Get(contextKeySender).(string)
 	if !s.isGroupMember(sender) {
@@ -476,7 +476,7 @@ func (s *Server) handleGossipTxs(c echo.Context) error {
 	return c.NoContent(http.StatusOK)
 }
 
-func (s *Server) handleGetSignatures(c echo.Context) error {
+func (s *Server) HandleGetSignatures(c echo.Context) error {
 	nonceStr := c.QueryParam("nonce")
 	if nonceStr == "" {
 		return errJSON(c, http.StatusBadRequest, "missing 'nonce' parameter")
@@ -494,7 +494,7 @@ func (s *Server) handleGetSignatures(c echo.Context) error {
 	return writeJSON(c, http.StatusOK, SignaturesResponse{Signatures: sigs})
 }
 
-func (s *Server) handleGetDiffs(c echo.Context) error {
+func (s *Server) HandleGetDiffs(c echo.Context) error {
 	if s.store == nil {
 		return errJSON(c, http.StatusNotFound, "no storage configured")
 	}
@@ -534,7 +534,7 @@ func (s *Server) handleGetDiffs(c echo.Context) error {
 	return writeJSON(c, http.StatusOK, result)
 }
 
-func (s *Server) handleGetMempool(c echo.Context) error {
+func (s *Server) HandleGetMempool(c echo.Context) error {
 	txs := s.host.MempoolTxs()
 	data, err := SubnetTxsToBytes(txs)
 	if err != nil {

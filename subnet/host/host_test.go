@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -824,4 +825,110 @@ func TestWarmKey_HostFindsSlotByWarmKey(t *testing.T) {
 	// Host should have found its slot via WarmKeys check.
 	require.True(t, h.SlotIDs()[uint32(executorIdx)], "host should own executor slot via warm key")
 	require.Len(t, h.SlotIDs(), 1)
+}
+
+// trackingValidationEngine records Validate calls for test assertions.
+type trackingValidationEngine struct {
+	calls []subnet.ValidateRequest
+	valid bool
+}
+
+func (e *trackingValidationEngine) Validate(_ context.Context, req subnet.ValidateRequest) (*subnet.ValidateResult, error) {
+	e.calls = append(e.calls, req)
+	return &subnet.ValidateResult{Valid: e.valid}, nil
+}
+
+func TestHost_ValidationTriggersOnFinishedInference(t *testing.T) {
+	// 3 hosts. Host 0 is the validator, host 1 is executor for inference 1.
+	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
+	user := testutil.MustGenerateKey(t)
+	group := testutil.MakeGroup(hosts)
+	// Use 100% validation rate so ShouldValidate always returns true.
+	config := types.SessionConfig{
+		RefusalTimeout:   60,
+		ExecutionTimeout: 1200,
+		TokenPrice:       1,
+		VoteThreshold:    1,
+		ValidationRate:   10000,
+	}
+	verifier := signing.NewSecp256k1Verifier()
+	sm := state.NewStateMachine("escrow-1", config, group, 100000, user.Address(), verifier)
+
+	valEngine := &trackingValidationEngine{valid: true}
+	engine := stub.NewInferenceEngine()
+	h, err := NewHost(sm, hosts[0], engine, "escrow-1", group, nil,
+		WithGrace(10), WithValidator(valEngine))
+	require.NoError(t, err)
+
+	// Nonce 1: StartInference (executor = slot 1, not host 0).
+	diff1 := testutil.SignDiff(t, user, "escrow-1", 1, []*types.SubnetTx{testutil.StartTx(1)})
+	_, err = h.HandleRequest(context.Background(), HostRequest{Diffs: []types.Diff{diff1}})
+	require.NoError(t, err)
+
+	// No validation yet -- inference is only Pending/Started, not Finished.
+	require.Empty(t, valEngine.calls, "should not validate pending inference")
+
+	// Nonce 2: ConfirmStart (to transition from Pending to Started).
+	execSig := testutil.SignExecutorReceipt(t, hosts[1], "escrow-1", 1, testutil.TestPromptHash[:], "llama", 100, 50, 1000, 2000)
+	confirmTx := &types.SubnetTx{Tx: &types.SubnetTx_ConfirmStart{ConfirmStart: &types.MsgConfirmStart{
+		InferenceId: 1, ExecutorSig: execSig, ConfirmedAt: 2000,
+	}}}
+	diff2 := testutil.SignDiff(t, user, "escrow-1", 2, []*types.SubnetTx{confirmTx})
+
+	// Nonce 3: FinishInference from executor.
+	finishMsg := &types.MsgFinishInference{
+		InferenceId:  1,
+		ResponseHash: engine.ResponseHash,
+		InputTokens:  80,
+		OutputTokens: 40,
+		ExecutorSlot: 1,
+		EscrowId:     "escrow-1",
+	}
+	finishData, err := proto.Marshal(finishMsg)
+	require.NoError(t, err)
+	finishSig, err := hosts[1].Sign(finishData)
+	require.NoError(t, err)
+	finishMsg.ProposerSig = finishSig
+	finishTx := &types.SubnetTx{Tx: &types.SubnetTx_FinishInference{FinishInference: finishMsg}}
+	diff3 := testutil.SignDiff(t, user, "escrow-1", 3, []*types.SubnetTx{finishTx})
+
+	resp, err := h.HandleRequest(context.Background(), HostRequest{Diffs: []types.Diff{diff2, diff3}})
+	require.NoError(t, err)
+
+	// Give async validation goroutine time to complete.
+	// In real code this is fast since the stub returns immediately.
+	require.Eventually(t, func() bool {
+		return len(valEngine.calls) > 0
+	}, 2*time.Second, 10*time.Millisecond, "validation should have been triggered")
+
+	require.Equal(t, uint64(1), valEngine.calls[0].InferenceID)
+
+	// MsgValidation should appear in mempool.
+	require.Eventually(t, func() bool {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		for _, tx := range h.mempool.Txs() {
+			if v := tx.GetValidation(); v != nil && v.InferenceId == 1 {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 10*time.Millisecond, "MsgValidation should be in mempool")
+
+	// Next HandleRequest should return mempool with validation.
+	diff4 := testutil.SignDiff(t, user, "escrow-1", 4, nil)
+	resp, err = h.HandleRequest(context.Background(), HostRequest{Diffs: []types.Diff{diff4}})
+	require.NoError(t, err)
+
+	var foundValidation bool
+	for _, tx := range resp.Mempool {
+		if v := tx.GetValidation(); v != nil && v.InferenceId == 1 {
+			foundValidation = true
+			require.Equal(t, uint32(0), v.ValidatorSlot)
+			require.True(t, v.Valid)
+			require.NotNil(t, v.ProposerSig)
+			break
+		}
+	}
+	require.True(t, foundValidation, "MsgValidation should be in response mempool")
 }

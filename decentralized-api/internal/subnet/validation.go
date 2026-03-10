@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"decentralized-api/broker"
+	"decentralized-api/chainphase"
 	"decentralized-api/completionapi"
 	"decentralized-api/internal/validation"
 	"decentralized-api/payloadstorage"
@@ -22,20 +23,31 @@ type ValidationAdapter struct {
 	broker       *broker.Broker
 	nodeVersion  string
 	payloadStore payloadstorage.PayloadStorage
+	phaseTracker *chainphase.ChainPhaseTracker
+	httpClient   *http.Client
 }
 
-func NewValidationAdapter(b *broker.Broker, nodeVersion string, ps payloadstorage.PayloadStorage) *ValidationAdapter {
+func NewValidationAdapter(
+	b *broker.Broker,
+	nodeVersion string,
+	ps payloadstorage.PayloadStorage,
+	phaseTracker *chainphase.ChainPhaseTracker,
+	httpClient *http.Client,
+) *ValidationAdapter {
 	return &ValidationAdapter{
 		broker:       b,
 		nodeVersion:  nodeVersion,
 		payloadStore: ps,
+		phaseTracker: phaseTracker,
+		httpClient:   httpClient,
 	}
 }
 
 func (v *ValidationAdapter) Validate(ctx context.Context, req subnet.ValidateRequest) (*subnet.ValidateResult, error) {
 	inferenceID := strconv.FormatUint(req.InferenceID, 10)
+	epochID := v.currentEpochID()
 
-	promptPayload, responsePayload, err := v.payloadStore.Retrieve(ctx, inferenceID, 0)
+	promptPayload, responsePayload, err := v.payloadStore.Retrieve(ctx, inferenceID, epochID)
 	if err != nil {
 		return nil, fmt.Errorf("retrieve payloads: %w", err)
 	}
@@ -68,7 +80,12 @@ func (v *ValidationAdapter) Validate(ctx context.Context, req subnet.ValidateReq
 	resp, err := broker.DoWithLockedNodeHTTPRetry(v.broker, req.Model, nil, 3,
 		func(node *broker.Node) (*http.Response, *broker.ActionError) {
 			url := node.InferenceUrlWithVersion(v.nodeVersion) + "/v1/chat/completions"
-			httpResp, postErr := http.Post(url, "application/json", bytes.NewReader(validationBody))
+			httpReq, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(validationBody))
+			if reqErr != nil {
+				return nil, broker.NewApplicationActionError(reqErr)
+			}
+			httpReq.Header.Set("Content-Type", "application/json")
+			httpResp, postErr := v.httpClient.Do(httpReq)
 			if postErr != nil {
 				return nil, broker.NewTransportActionError(postErr)
 			}
@@ -107,6 +124,14 @@ func (v *ValidationAdapter) Validate(ctx context.Context, req subnet.ValidateReq
 	result := validation.CompareLogits(originalLogits, validationLogits, base)
 
 	return &subnet.ValidateResult{Valid: result.IsSuccessful()}, nil
+}
+
+func (v *ValidationAdapter) currentEpochID() uint64 {
+	epochState := v.phaseTracker.GetCurrentEpochState()
+	if epochState != nil {
+		return epochState.LatestEpoch.EpochIndex
+	}
+	return 0
 }
 
 func readBody(resp *http.Response) ([]byte, error) {

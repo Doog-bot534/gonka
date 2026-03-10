@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
+	internalsubnet "decentralized-api/internal/subnet"
 	"decentralized-api/internal/validation"
 	"decentralized-api/logging"
 	"decentralized-api/participant"
@@ -193,7 +194,22 @@ func main() {
 	commitWorker := poc.NewCommitWorker(artifactStore, recorder, chainPhaseTracker, participantInfo.GetAddress(), commitInterval)
 	defer commitWorker.Close()
 
+	subnetSigner, subnetSignerErr := internalsubnet.NewSignerFromKeyring(*recorder.GetKeyring(), recorder.GetApiAccount().SignerAccount.Name)
+	if subnetSignerErr != nil {
+		logging.Error("subnet signer init failed", types.System, "error", subnetSignerErr)
+	}
+
 	publicServer := pserver.NewServer(nodeBroker, config, recorder, trainingExecutor, blockQueue, chainPhaseTracker, payloadStore, pserver.WithArtifactStore(artifactStore))
+
+	if subnetSigner != nil {
+		subnetBridge := internalsubnet.NewChainBridge(recorder)
+		httpClient := pserver.NewNoRedirectClient(5 * time.Minute)
+		subnetEngine := internalsubnet.NewEngineAdapter(nodeBroker, config.GetCurrentNodeVersion(), payloadStore, chainPhaseTracker, httpClient)
+		subnetValidator := internalsubnet.NewValidationAdapter(nodeBroker, config.GetCurrentNodeVersion(), payloadStore, chainPhaseTracker, httpClient)
+		hostManager := internalsubnet.NewHostManager(subnetSigner, subnetEngine, subnetValidator, subnetBridge)
+		hostManager.Register(publicServer.SubnetGroup())
+	}
+
 	publicServer.Start(addr)
 
 	addr = fmt.Sprintf(":%v", config.GetApiConfig().MLServerPort)

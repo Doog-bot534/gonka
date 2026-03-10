@@ -32,4 +32,22 @@ class SubnetTests : TestermintTest() {
         val balanceAfter = genesis.getBalance(creator)
         assertThat(balanceAfter).isEqualTo(initialBalance - escrowAmount)
     }
+
+    @Test
+    fun `create escrow and query subnet mempool`() {
+        val (cluster, genesis) = initCluster(reboot = true)
+
+        // Wait for first epoch so EffectiveEpochIndex is set.
+        genesis.waitForNextEpoch()
+
+        logSection("Creating subnet escrow")
+        val escrowAmount = 7_000_000_000L  // 7 GNK
+        val txResponse = genesis.createSubnetEscrow(escrowAmount)
+        assertThat(txResponse.code).isEqualTo(0)
+
+        logSection("Query subnet mempool -- triggers lazy session creation")
+        val mempool = genesis.api.getSubnetMempool(1)
+        assertThat(mempool.txs).isNotNull()
+        assertThat(mempool.txs).isEmpty()
+    }
 }

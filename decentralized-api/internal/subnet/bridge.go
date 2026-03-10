@@ -102,6 +102,17 @@ func (b *ChainBridge) VerifyWarmKey(warmAddress, validatorAddress string) (bool,
 	return false, nil
 }
 
+func (b *ChainBridge) GetAccountPubKey(address string) ([]byte, error) {
+	info, err := b.GetValidatorInfo(address)
+	if err != nil {
+		return nil, err
+	}
+	if len(info.PublicKey) == 0 {
+		return nil, fmt.Errorf("no public key for %s", address)
+	}
+	return info.PublicKey, nil
+}
+
 func (b *ChainBridge) OnEscrowCreated(_ bridge.EscrowInfo) error {
 	return bridge.ErrNotImplemented
 }
