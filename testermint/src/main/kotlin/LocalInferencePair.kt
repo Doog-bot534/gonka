@@ -1,5 +1,6 @@
 package com.productscience
 
+import com.google.gson.Gson
 import com.github.dockerjava.api.DockerClient
 import com.github.dockerjava.api.model.*
 import com.github.dockerjava.core.DockerClientBuilder
@@ -717,6 +718,54 @@ data class LocalInferencePair(
         File("reboot.txt").bufferedWriter().use { writer ->
             writer.write("true")
         }
+    }
+
+    data class SubnetctlResult(val parsed: SubnetSettlementData, val rawJson: String)
+
+    fun runSubnetctl(escrowId: Long, prompts: Int, model: String, keyName: String? = null): SubnetctlResult =
+        wrapLog("runSubnetctl", true) {
+            val privateKey = if (keyName != null) node.getPrivateKey(keyName) else node.getColdPrivateKey()
+            val command = listOf(
+                "sh", "-c",
+                "subnetctl --escrow-id $escrowId --chain-rest http://\$NODE_HOST:1317 --prompts $prompts --model $model --private-key $privateKey 2>/dev/null"
+            )
+            val raw = api.executor.exec(command, null).joinToString("\n")
+            // Docker exec merges stdout/stderr despite 2>/dev/null.
+            // Extract the top-level JSON object from the raw output.
+            val start = raw.indexOf('{')
+            val end = raw.lastIndexOf('}')
+            if (start < 0 || end < 0) {
+                error("subnetctl output contains no JSON object. Full output:\n$raw")
+            }
+            val json = raw.substring(start, end + 1)
+            val parsed = cosmosJson.fromJson(json, SubnetSettlementData::class.java)
+            // Re-serialize with a plain Gson (no Cosmos Long->String conversion)
+            // to produce valid JSON. Docker exec can split lines mid-value,
+            // injecting newlines inside JSON strings which Go rejects.
+            val cleanJson = Gson().toJson(parsed)
+            SubnetctlResult(parsed = parsed, rawJson = cleanJson)
+        }
+
+    fun settleSubnetEscrow(settlementJson: String, from: String? = null): TxResponse =
+        wrapLog("settleSubnetEscrow", true) {
+            node.writeFileToContainer(settlementJson, "settlement.json")
+            if (from != null) {
+                val txResp = node.sendTransactionDirectly(
+                    listOf("inference", "settle-subnet-escrow", "settlement.json"),
+                    from
+                )
+                node.waitForTxProcessed(txResp.txhash)
+            } else {
+                submitTransaction(listOf("inference", "settle-subnet-escrow", "settlement.json"))
+            }
+        }
+
+    fun createSubnetEscrow(amount: Long, from: String): TxResponse {
+        val txResp = node.sendTransactionDirectly(
+            listOf("inference", "create-subnet-escrow", amount.toString()),
+            from
+        )
+        return node.waitForTxProcessed(txResp.txhash)
     }
 
     fun waitForInference(inferenceId: String, finished: Boolean, blocks: Int = 5): InferencePayload? =

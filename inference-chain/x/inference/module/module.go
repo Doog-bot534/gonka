@@ -968,6 +968,7 @@ func GetTxCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(GrantMLOpsPermissionsCmd())
+	cmd.AddCommand(SettleSubnetEscrowCmd())
 
 	return cmd
 }

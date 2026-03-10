@@ -790,10 +790,11 @@ data class ApplicationCLI(
             )
         }
 
-    fun getColdPrivateKey(): String = wrapLog("getColdPrivateKey", infoLevel = false) {
-        val accountName = this.getColdAccountName()
+    fun getColdPrivateKey(): String = getPrivateKey(this.getColdAccountName())
+
+    fun getPrivateKey(keyName: String): String = wrapLog("getPrivateKey($keyName)", infoLevel = false) {
         exec(
-            listOf(config.execName, "keys", "export", accountName, "--unsafe", "--yes", "--unarmored-hex"),
+            listOf(config.execName, "keys", "export", keyName, "--unsafe", "--yes", "--unarmored-hex"),
             passwordInjection
         ).first()
     }

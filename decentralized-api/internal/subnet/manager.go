@@ -80,17 +80,16 @@ func (m *HostManager) createLocked(escrowID string) (*sessionEntry, error) {
 
 	creatorAddr := escrow.CreatorAddress
 
-	config := types.SessionConfig{
-		RefusalTimeout:   60,
-		ExecutionTimeout: 1200,
-		TokenPrice:       1,
-		VoteThreshold:    uint32(len(group)) / 2,
-		ValidationRate:   5000,
-	}
+	config := types.DefaultSessionConfig(len(group))
 
 	store := storage.NewMemory()
+	if err := store.CreateSession(escrowID, config, group, escrow.Amount); err != nil {
+		return nil, fmt.Errorf("init storage session: %w", err)
+	}
 
-	sm := state.NewStateMachine(escrowID, config, group, escrow.Amount, creatorAddr, m.verifier)
+	sm := state.NewStateMachine(escrowID, config, group, escrow.Amount, creatorAddr, m.verifier,
+		state.WithWarmKeyResolver(m.bridge.VerifyWarmKey),
+	)
 
 	h, err := host.NewHost(sm, m.signer, m.engine, escrowID, group, nil,
 		host.WithValidator(m.validator),

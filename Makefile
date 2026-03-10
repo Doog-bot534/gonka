@@ -87,6 +87,10 @@ api-local-build:
 	@echo "Building decentralized-api locally..."
 	@cd decentralized-api && go build -mod=mod -o ./build/dapi
 
+subnetctl-build:
+	@echo "Building subnetctl..."
+	@cd subnet && go build -o ../build/subnetctl ./cmd/subnetctl/
+
 node-local-build:
 	@echo "Building inference-chain locally..."
 	@make -C inference-chain build

@@ -967,6 +967,24 @@ func (sm *StateMachine) resolveWarmKey(slotID uint32, recovered, expected string
 	return true
 }
 
+// ResolveWarmKey checks if recovered is an authorized warm key for the given slot.
+// Returns true if the key is accepted (either cached or newly verified via bridge).
+// On first successful resolution the binding is cached in state.
+func (sm *StateMachine) ResolveWarmKey(slotID uint32, recovered, expected string) bool {
+	return sm.resolveWarmKey(slotID, recovered, expected)
+}
+
+// CheckWarmKey checks if warmAddr is authorized to act on behalf of coldAddr
+// without caching the result in state. Use for slot discovery at host startup
+// to avoid mutating state before any diffs are applied.
+func (sm *StateMachine) CheckWarmKey(warmAddr, coldAddr string) bool {
+	if sm.warmResolver == nil {
+		return false
+	}
+	ok, err := sm.warmResolver(warmAddr, coldAddr)
+	return err == nil && ok
+}
+
 func (sm *StateMachine) TotalSlots() uint32 {
 	return sm.totalSlots
 }

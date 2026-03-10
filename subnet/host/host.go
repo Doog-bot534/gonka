@@ -103,12 +103,21 @@ func NewHost(
 		}
 	}
 
-	// Check state's WarmKeys for existing bindings.
+	// Check state's WarmKeys for existing bindings, then try the warm key
+	// resolver directly (without caching in SM state, which would change
+	// the state root before any diffs are applied).
 	if len(slotIDs) == 0 {
 		warmKeys := sm.WarmKeys()
 		for slotID, warmAddr := range warmKeys {
 			if warmAddr == addr {
 				slotIDs[slotID] = true
+			}
+		}
+	}
+	if len(slotIDs) == 0 {
+		for _, s := range group {
+			if sm.CheckWarmKey(addr, s.ValidatorAddress) {
+				slotIDs[s.SlotID] = true
 			}
 		}
 	}

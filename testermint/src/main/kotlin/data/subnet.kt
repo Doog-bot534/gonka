@@ -22,3 +22,34 @@ data class SubnetEscrow(
 data class SubnetMempoolResponse(
     val txs: List<Any>?
 )
+
+data class SubnetSettlementData(
+    @SerializedName("escrow_id")
+    val escrowId: String,
+    @SerializedName("state_root")
+    val stateRoot: String,
+    val nonce: Long,
+    @SerializedName("rest_hash")
+    val restHash: String,
+    @SerializedName("host_stats")
+    val hostStats: List<SubnetHostStatsEntry>,
+    val signatures: List<SubnetSlotSignatureEntry>
+)
+
+data class SubnetHostStatsEntry(
+    @SerializedName("slot_id")
+    val slotId: Int,
+    val missed: Int,
+    val invalid: Int,
+    val cost: Long,
+    @SerializedName("required_validations")
+    val requiredValidations: Int,
+    @SerializedName("completed_validations")
+    val completedValidations: Int
+)
+
+data class SubnetSlotSignatureEntry(
+    @SerializedName("slot_id")
+    val slotId: Int,
+    val signature: String
+)

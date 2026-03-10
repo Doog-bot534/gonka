@@ -70,6 +70,12 @@ RUN --mount=type=cache,id=go-build-cache3,target=/root/.cache/go-build \
     -o ./build/inferenced ./cmd/inferenced/main.go \
     && patchelf --set-rpath '$ORIGIN:$ORIGIN/current:/root/.inference/cosmovisor/current' ./build/inferenced
 
+# Build subnetctl
+RUN --mount=type=cache,id=go-build-cache3,target=/root/.cache/go-build \
+    --mount=type=cache,id=go-mod-cache3,target=/go/pkg/mod \
+    cd /app/subnet && \
+    CGO_ENABLED=0 go build -o ./build/subnetctl ./cmd/subnetctl/
+
 RUN mkdir /build_output
 ################################################################################
 # Binary Exporter stage (for --output optimization)
@@ -105,6 +111,7 @@ ENV DAEMON_DOWNLOAD_RETRIES=-1
 # Copy over binaries from the build-env
 COPY --from=builder /app/decentralized-api/build/dapi /usr/bin/decentralized-api
 COPY --from=builder /app/inference-chain/build/inferenced /usr/bin/inferenced
+COPY --from=builder /app/subnet/build/subnetctl /usr/bin/subnetctl
 COPY ./decentralized-api/scripts/init-docker.sh /root/init-docker.sh
 COPY ./decentralized-api/config-prod.yaml /root/api-config.yaml
 COPY ./cosmovisor/v1.7.2/${GOOS}-${GOARCH}/cosmovisor /usr/bin/cosmovisor

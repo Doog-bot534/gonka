@@ -512,6 +512,10 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 					Short:          "Create a subnet escrow",
 					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "amount"}},
 				},
+				{
+					RpcMethod: "SettleSubnetEscrow",
+					Skip:      true,
+				},
 				// this line is used by ignite scaffolding # autocli/tx
 			},
 		},
