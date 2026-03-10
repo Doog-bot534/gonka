@@ -178,11 +178,14 @@ func (ec *InferenceExpiryContext) GetEpochForInference(ctx context.Context, keep
 	return ec.CurrentEpoch
 }
 
-// ShouldCheckPreserveNode determines if we should check for preserve nodes instead of regular mlnodes.
-// This must be based on the block where the inference was assigned, not the block where it later expired.
-// Expiration during PoC does not retroactively require the executor to have had a preserve node.
+// ShouldCheckPreserveNode determines if we should check for preserve nodes instead of regular mlnodes
+// This is true when the inference started or timed out inside a PoC/CPoC
 func (ec *InferenceExpiryContext) ShouldCheckPreserveNode(inference types.Inference) bool {
-	return ec.IsBlockInPoCRange(inference.StartBlockHeight)
+	startBlock := inference.StartBlockHeight
+	timeoutBlock := ec.CurrentBlockHeight
+
+	// Check if start or timeout is in PoC range
+	return ec.IsBlockInPoCRange(startBlock) || ec.IsBlockInPoCRange(timeoutBlock)
 }
 
 // HasNodeForModel checks if a participant has the required node for the model
