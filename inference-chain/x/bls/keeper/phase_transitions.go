@@ -102,31 +102,10 @@ func (k Keeper) TransitionToVerifyingPhase(ctx sdk.Context, epochBLSData *types.
 
 	} else {
 		// Insufficient participation - mark as FAILED
-		epochBLSData.DkgPhase = types.DKGPhase_DKG_PHASE_FAILED
-
-		// Store updated epoch data
-		if err := k.SetEpochBLSData(ctx, *epochBLSData); err != nil {
-			return fmt.Errorf("failed to set EpochBLSData for epoch %d: %w", epochBLSData.EpochId, err)
-		}
-
-		// Clear active epoch since DKG process is complete (failed)
-		k.ClearActiveEpochID(ctx)
-
-		// Emit event for DKG failure
 		failureReason := fmt.Sprintf("Insufficient participation in dealing phase: %d slots with dealer parts out of %d total slots (required: >%d)",
 			slotsWithDealerParts, epochBLSData.ITotalSlots, epochBLSData.ITotalSlots/2)
 
-		if err := ctx.EventManager().EmitTypedEvent(&types.EventDKGFailed{
-			EpochId:   epochBLSData.EpochId,
-			Reason:    failureReason,
-			EpochData: *epochBLSData,
-		}); err != nil {
-			return fmt.Errorf("failed to emit EventDKGFailed for epoch %d: %w", epochBLSData.EpochId, err)
-		}
-
-		k.Logger().Info("DKG marked as FAILED due to insufficient participation",
-			"epochId", epochBLSData.EpochId,
-			"reason", failureReason)
+		return k.MarkDKGAsFailed(ctx, epochBLSData, failureReason)
 	}
 
 	return nil
@@ -176,12 +155,14 @@ func (k Keeper) CompleteDKG(ctx sdk.Context, epochBLSData *types.EpochBLSData) e
 		// Sufficient verification participation - compute group public key using dealer consensus
 		validDealers, err := k.DetermineValidDealersWithConsensus(epochBLSData)
 		if err != nil {
-			return fmt.Errorf("failed to determine valid dealers for epoch %d: %w", epochBLSData.EpochId, err)
+			k.Logger().Error("DKG failed", "epochId", epochBLSData.EpochId, "error", err)
+			return k.MarkDKGAsFailed(ctx, epochBLSData, fmt.Sprintf("failed to determine valid dealers: %v", err))
 		}
 
 		groupPublicKey, err := k.ComputeGroupPublicKey(epochBLSData, validDealers)
 		if err != nil {
-			return fmt.Errorf("failed to compute group public key for epoch %d: %w", epochBLSData.EpochId, err)
+			k.Logger().Error("DKG failed", "epochId", epochBLSData.EpochId, "error", err)
+			return k.MarkDKGAsFailed(ctx, epochBLSData, fmt.Sprintf("failed to compute group public key: %v", err))
 		}
 
 		// Store group public key and mark as completed
@@ -194,7 +175,8 @@ func (k Keeper) CompleteDKG(ctx sdk.Context, epochBLSData *types.EpochBLSData) e
 		// Precompute per-slot public keys for faster validation later
 		slotPublicKeys, err := k.PrecomputeSlotPublicKeysBlst(epochBLSData)
 		if err != nil {
-			return fmt.Errorf("failed to precompute slot public keys for epoch %d: %w", epochBLSData.EpochId, err)
+			k.Logger().Error("DKG failed", "epochId", epochBLSData.EpochId, "error", err)
+			return k.MarkDKGAsFailed(ctx, epochBLSData, fmt.Sprintf("failed to precompute slot public keys: %v", err))
 		}
 		epochBLSData.SlotPublicKeys = slotPublicKeys
 
@@ -233,31 +215,10 @@ func (k Keeper) CompleteDKG(ctx sdk.Context, epochBLSData *types.EpochBLSData) e
 
 	} else {
 		// Insufficient verification participation - mark as FAILED
-		epochBLSData.DkgPhase = types.DKGPhase_DKG_PHASE_FAILED
-
-		// Store updated epoch data
-		if err := k.SetEpochBLSData(ctx, *epochBLSData); err != nil {
-			return fmt.Errorf("failed to set EpochBLSData for epoch %d: %w", epochBLSData.EpochId, err)
-		}
-
-		// Clear active epoch since DKG process is complete (failed)
-		k.ClearActiveEpochID(ctx)
-
-		// Emit event for DKG failure
 		failureReason := fmt.Sprintf("Insufficient participation in verification phase: %d slots with verification vectors out of %d total slots (required: >%d)",
 			slotsWithVerification, epochBLSData.ITotalSlots, epochBLSData.ITotalSlots/2)
 
-		if err := ctx.EventManager().EmitTypedEvent(&types.EventDKGFailed{
-			EpochId:   epochBLSData.EpochId,
-			Reason:    failureReason,
-			EpochData: *epochBLSData,
-		}); err != nil {
-			return fmt.Errorf("failed to emit EventDKGFailed for epoch %d: %w", epochBLSData.EpochId, err)
-		}
-
-		k.Logger().Info("DKG marked as FAILED due to insufficient verification participation",
-			"epochId", epochBLSData.EpochId,
-			"reason", failureReason)
+		return k.MarkDKGAsFailed(ctx, epochBLSData, failureReason)
 	}
 
 	return nil
@@ -378,4 +339,32 @@ func (k Keeper) ComputeGroupPublicKey(epochBLSData *types.EpochBLSData, validDea
 		"groupPublicKeySize", len(groupPublicKeyBytes))
 
 	return groupPublicKeyBytes, nil
+}
+
+// MarkDKGAsFailed marks the given epoch as failed, clears the active epoch ID, and emits a failure event.
+func (k Keeper) MarkDKGAsFailed(ctx sdk.Context, epochBLSData *types.EpochBLSData, failureReason string) error {
+	epochBLSData.DkgPhase = types.DKGPhase_DKG_PHASE_FAILED
+
+	// Store updated epoch data
+	if err := k.SetEpochBLSData(ctx, *epochBLSData); err != nil {
+		return fmt.Errorf("failed to set BLS Data for Epoch %d: %w", epochBLSData.EpochId, err)
+	}
+
+	// Clear active epoch since DKG process is complete (failed)
+	k.ClearActiveEpochID(ctx)
+
+	// Emit event for DKG failure
+	if err := ctx.EventManager().EmitTypedEvent(&types.EventDKGFailed{
+		EpochId:   epochBLSData.EpochId,
+		Reason:    failureReason,
+		EpochData: *epochBLSData,
+	}); err != nil {
+		return fmt.Errorf("failed to emit failed DKG event for Epoch %d: %w", epochBLSData.EpochId, err)
+	}
+
+	k.Logger().Error("DKG marked as FAILED",
+		"epochId", epochBLSData.EpochId,
+		"reason", failureReason)
+
+	return nil
 }
