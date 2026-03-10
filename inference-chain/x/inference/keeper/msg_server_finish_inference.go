@@ -285,6 +285,7 @@ func (k msgServer) compareFinishTAComponents(msg *types.MsgFinishInference, infe
 }
 
 func (k msgServer) compareFinishModelField(msg *types.MsgFinishInference, inference *types.Inference) error {
+	// inference.Model CANNOT be "" here, Model is a required field for StartInference message
 	if inference.Model != "" && inference.Model != msg.Model {
 		return sdkerrors.Wrapf(
 			types.ErrInferenceRoleMismatch,
