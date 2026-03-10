@@ -58,6 +58,8 @@ func (k Keeper) GetEpochGroupValidations(
 //
 // MigrateEpochGroupValidationsToEntries migrates legacy aggregate validation rows
 // from EpochGroupValidationsMap to per-inference validation entries.
+// Exploration of current data on the chain indicates this should be performant enough,
+// even though we iterate over the entirety of the EpochGroupValidationsMap
 func (k Keeper) MigrateEpochGroupValidationsToEntries(ctx context.Context) error {
 	currentEpochIndex, found := k.GetEffectiveEpochIndex(ctx)
 	if !found {

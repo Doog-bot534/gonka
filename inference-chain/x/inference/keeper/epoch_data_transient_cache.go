@@ -2,9 +2,9 @@ package keeper
 
 import (
 	"context"
-	"encoding/binary"
 
 	"github.com/cosmos/cosmos-sdk/codec"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/productscience/inference/x/inference/types"
 )
 
@@ -102,32 +102,28 @@ func (k Keeper) GetCachedEpochDataModelWeight(
 }
 
 func epochDataModelMetaCacheKey(epochIndex uint64, modelID string) []byte {
-	prefix := types.TransientEpochDataModelMetaKey
-	key := make([]byte, len(prefix)+8+1+len(modelID))
-	copy(key, prefix)
-	offset := len(prefix)
-	binary.BigEndian.PutUint64(key[offset:offset+8], epochIndex)
-	offset += 8
-	key[offset] = '|'
-	offset++
-	copy(key[offset:], modelID)
-	return key
+	return appendEpochDataTransientCacheKey(
+		types.TransientEpochDataModelMetaKey,
+		epochIndex,
+		modelID,
+	)
 }
 
 func epochDataModelWeightCacheKey(epochIndex uint64, modelID, validator string) []byte {
-	prefix := types.TransientEpochDataModelWeightKey
-	key := make([]byte, len(prefix)+8+1+len(modelID)+1+len(validator))
-	copy(key, prefix)
-	offset := len(prefix)
-	binary.BigEndian.PutUint64(key[offset:offset+8], epochIndex)
-	offset += 8
-	key[offset] = '|'
-	offset++
-	copy(key[offset:], modelID)
-	offset += len(modelID)
-	key[offset] = '|'
-	offset++
-	copy(key[offset:], validator)
+	return appendEpochDataTransientCacheKey(
+		types.TransientEpochDataModelWeightKey,
+		epochIndex,
+		modelID,
+		validator,
+	)
+}
+
+func appendEpochDataTransientCacheKey(prefix []byte, epochIndex uint64, parts ...string) []byte {
+	key := append([]byte{}, prefix...)
+	key = append(key, sdk.Uint64ToBigEndian(epochIndex)...)
+	for _, part := range parts {
+		key = sdk.AppendLengthPrefixedBytes(key, []byte(part))
+	}
 	return key
 }
 
