@@ -3,6 +3,7 @@ package host
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -829,18 +830,28 @@ func TestWarmKey_HostFindsSlotByWarmKey(t *testing.T) {
 
 // trackingValidationEngine records Validate calls for test assertions.
 type trackingValidationEngine struct {
+	mu    sync.Mutex
 	calls []subnet.ValidateRequest
 	valid bool
 }
 
 func (e *trackingValidationEngine) Validate(_ context.Context, req subnet.ValidateRequest) (*subnet.ValidateResult, error) {
+	e.mu.Lock()
 	e.calls = append(e.calls, req)
+	e.mu.Unlock()
 	return &subnet.ValidateResult{Valid: e.valid}, nil
 }
 
+func (e *trackingValidationEngine) getCalls() []subnet.ValidateRequest {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]subnet.ValidateRequest(nil), e.calls...)
+}
+
 func TestHost_ValidationTriggersOnFinishedInference(t *testing.T) {
-	// 3 hosts. Host 0 is the validator, host 1 is executor for inference 1.
-	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
+	// 2 hosts. Host 0 is the validator, host 1 is executor for inference 1.
+	// With 2 hosts and 100% ValidationRate, probability = 1/(2-1) = 1.0 (guaranteed).
+	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
 	user := testutil.MustGenerateKey(t)
 	group := testutil.MakeGroup(hosts)
 	// Use 100% validation rate so ShouldValidate always returns true.
@@ -866,7 +877,7 @@ func TestHost_ValidationTriggersOnFinishedInference(t *testing.T) {
 	require.NoError(t, err)
 
 	// No validation yet -- inference is only Pending/Started, not Finished.
-	require.Empty(t, valEngine.calls, "should not validate pending inference")
+	require.Empty(t, valEngine.getCalls(), "should not validate pending inference")
 
 	// Nonce 2: ConfirmStart (to transition from Pending to Started).
 	execSig := testutil.SignExecutorReceipt(t, hosts[1], "escrow-1", 1, testutil.TestPromptHash[:], "llama", 100, 50, 1000, 2000)
@@ -898,10 +909,10 @@ func TestHost_ValidationTriggersOnFinishedInference(t *testing.T) {
 	// Give async validation goroutine time to complete.
 	// In real code this is fast since the stub returns immediately.
 	require.Eventually(t, func() bool {
-		return len(valEngine.calls) > 0
+		return len(valEngine.getCalls()) > 0
 	}, 2*time.Second, 10*time.Millisecond, "validation should have been triggered")
 
-	require.Equal(t, uint64(1), valEngine.calls[0].InferenceID)
+	require.Equal(t, uint64(1), valEngine.getCalls()[0].InferenceID)
 
 	// MsgValidation should appear in mempool.
 	require.Eventually(t, func() bool {
