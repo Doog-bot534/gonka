@@ -32,8 +32,8 @@ func (ms msgServer) SubmitVerificationVector(ctx context.Context, msg *types.Msg
 
 	// Verify current block height is before verification deadline
 	currentHeight := sdkCtx.BlockHeight()
-	if currentHeight >= epochBLSData.VerifyingPhaseDeadlineBlock {
-		return nil, status.Error(codes.DeadlineExceeded, fmt.Sprintf("verification deadline passed: current height %d >= deadline %d", currentHeight, epochBLSData.VerifyingPhaseDeadlineBlock))
+	if currentHeight > epochBLSData.VerifyingPhaseDeadlineBlock {
+		return nil, status.Error(codes.DeadlineExceeded, fmt.Sprintf("verification deadline passed: current height %d > deadline %d", currentHeight, epochBLSData.VerifyingPhaseDeadlineBlock))
 	}
 
 	// Find the participant in the participants list
