@@ -159,6 +159,27 @@ func (k Keeper) CompleteDKG(ctx sdk.Context, epochBLSData *types.EpochBLSData) e
 			return k.MarkDKGAsFailed(ctx, epochBLSData, fmt.Sprintf("failed to determine valid dealers: %v", err))
 		}
 
+		// Calculate total slots covered by valid dealers
+		var validDealerSlots uint32 = 0
+		for i, participant := range epochBLSData.Participants {
+			if i < len(validDealers) && validDealers[i] {
+				participantSlots := participant.SlotEndIndex - participant.SlotStartIndex + 1
+				validDealerSlots += participantSlots
+			}
+		}
+
+		k.Logger().Info("Checking valid dealers slots",
+			"epochId", epochBLSData.EpochId,
+			"validDealerSlots", validDealerSlots,
+			"totalSlots", epochBLSData.ITotalSlots,
+			"requiredSlots", epochBLSData.ITotalSlots/2)
+
+		if validDealerSlots <= epochBLSData.ITotalSlots/2 {
+			failureReason := fmt.Sprintf("Insufficient valid dealer slots: %d slots out of %d total slots (required: >%d)",
+				validDealerSlots, epochBLSData.ITotalSlots, epochBLSData.ITotalSlots/2)
+			return k.MarkDKGAsFailed(ctx, epochBLSData, failureReason)
+		}
+
 		groupPublicKey, err := k.ComputeGroupPublicKey(epochBLSData, validDealers)
 		if err != nil {
 			k.Logger().Error("DKG failed", "epochId", epochBLSData.EpochId, "error", err)
