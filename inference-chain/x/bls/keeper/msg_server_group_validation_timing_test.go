@@ -178,7 +178,7 @@ func TestSubmitGroupKeyValidationSignature_Timing(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("SubmitGroupKeyValidationSignature (single slot): %s", time.Since(start))
 
-	requiredSlots := previousEpoch.ITotalSlots/2 + 1
+	requiredSlots := previousEpoch.TSlotsDegree + 1
 	slotsCovered := uint32(1)
 	perCallDurations := make([]time.Duration, 0, numParticipants)
 	totalStart := time.Now()
