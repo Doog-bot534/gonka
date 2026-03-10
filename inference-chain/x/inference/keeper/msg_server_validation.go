@@ -78,10 +78,6 @@ func (k msgServer) Validation(goCtx context.Context, msg *types.MsgValidation) (
 		k.LogError("Inference not finished", types.Validation, "status", inference.Status, "inference", inference)
 		return nil, types.ErrInferenceNotFinished
 	}
-	if inference.ProposalDetails == nil {
-		k.LogError("Inference proposal details not set", types.Validation, "inference", inference)
-		return nil, types.ErrInferenceNotFinished
-	}
 	previousStatus := inference.Status
 
 	executor, found := k.GetParticipant(ctx, inference.ExecutedBy)
@@ -150,6 +146,10 @@ func (k msgServer) Validation(goCtx context.Context, msg *types.MsgValidation) (
 
 	k.LogInfo("Validating inner loop", types.Validation, "inferenceId", inference.InferenceId, "validator", msg.Creator, "passed", passed, "revalidation", msg.Revalidation)
 	if msg.Revalidation {
+		if inference.ProposalDetails == nil {
+			k.LogError("Inference proposal details not set", types.Validation, "inference", inference)
+			return nil, types.ErrInferenceNotFinished
+		}
 		return k.revalidateInferenceVote(ctx, passed, inference, msg.Creator)
 	} else if passed {
 		inference.Status = types.InferenceStatus_VALIDATED
