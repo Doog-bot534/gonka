@@ -1,8 +1,13 @@
 import com.productscience.*
 import com.productscience.data.*
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.Duration
+import java.util.concurrent.Executors
 
 class SubnetTests : TestermintTest() {
 
@@ -159,6 +164,99 @@ class SubnetTests : TestermintTest() {
         logSection("Verifying user got refund")
         val balanceAfter = genesis.getBalance(userAddress)
         assertThat(balanceAfter).isGreaterThan(fundAmount - escrowAmount)
+    }
+
+    @Test
+    fun `parallel subnet sessions with isolated settlement`() {
+        val sessionCount = 10
+        val (cluster, genesis) = initCluster(config = noRestrictionsConfig, reboot = true)
+        genesis.waitForNextEpoch()
+
+        cluster.allPairs.forEach { pair ->
+            pair.mock?.setInferenceResponse(
+                """{"id":"test","object":"chat.completion","created":0,"model":"$defaultModel","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}"""
+            )
+        }
+
+        // Phase 1a: Create and fund all users first (20 txs, may span epochs).
+        data class UserInfo(val keyName: String, val address: String)
+        data class SessionSetup(val keyName: String, val address: String, val escrowId: Long)
+
+        val fundAmount = 10_000_000_000L   // 10 GNK
+        val escrowAmount = 7_000_000_000L  // 7 GNK
+
+        val users = (0 until sessionCount).map { i ->
+            logSection("Creating and funding user $i")
+            val keyName = "subnet-parallel-$i"
+            val key = genesis.node.createKey(keyName)
+            val transferResp = genesis.submitTransaction(
+                listOf("bank", "send", genesis.node.getColdAddress(), key.address, "${fundAmount}${genesis.config.denom}")
+            )
+            assertThat(transferResp.code).withFailMessage("Failed to fund user $i").isEqualTo(0)
+            UserInfo(keyName, key.address)
+        }
+
+        // Phase 1b: Wait for fresh epoch, then create all escrows in a tight batch.
+        // Escrows are pruned after 2 epochs, so they must land in the same epoch
+        // as the subsequent waitForNextInferenceWindow to avoid being pruned.
+        genesis.waitForNextEpoch()
+
+        val sessions = users.mapIndexed { i, user ->
+            logSection("Creating escrow for user $i")
+            val txResp = genesis.createSubnetEscrow(escrowAmount, from = user.keyName)
+            assertThat(txResp.code).withFailMessage("Failed to create escrow for user $i").isEqualTo(0)
+            val escrowId = txResp.getEscrowId()
+            assertThat(escrowId).withFailMessage("No escrow_id in tx events for user $i").isNotNull()
+            SessionSetup(user.keyName, user.address, escrowId!!)
+        }
+
+        genesis.waitForNextInferenceWindow()
+
+        // Phase 2: Parallel execution -- run subnetctl concurrently.
+        logSection("Running $sessionCount subnetctl sessions in parallel")
+        val dispatcher = Executors.newFixedThreadPool(sessionCount).asCoroutineDispatcher()
+        val results = runBlocking(dispatcher) {
+            sessions.map { session ->
+                async {
+                    genesis.runSubnetctl(
+                        escrowId = session.escrowId,
+                        prompts = 20,
+                        model = defaultModel,
+                        keyName = session.keyName
+                    )
+                }
+            }.awaitAll()
+        }
+
+        // Phase 3: Sequential settlement.
+        logSection("Settling $sessionCount escrows")
+        sessions.zip(results).forEach { (session, result) ->
+            assertThat(result.parsed.escrowId)
+                .withFailMessage("Escrow ID mismatch for ${session.keyName}")
+                .isEqualTo(session.escrowId.toString())
+            assertThat(result.parsed.hostStats).isNotEmpty()
+            assertThat(result.parsed.signatures).isNotEmpty()
+            assertThat(result.parsed.hostStats.sumOf { it.completedValidations }).isGreaterThan(0)
+
+            val settleResp = genesis.settleSubnetEscrow(result.rawJson, from = session.keyName)
+            assertThat(settleResp.code)
+                .withFailMessage("Settlement failed for escrow ${session.escrowId}")
+                .isEqualTo(0)
+        }
+
+        // Phase 4: Verify all escrows settled and refunds received.
+        logSection("Verifying settlement and refunds")
+        sessions.forEach { session ->
+            val escrow = genesis.node.querySubnetEscrow(session.escrowId)
+            assertThat(escrow.escrow!!.settled)
+                .withFailMessage("Escrow ${session.escrowId} not settled")
+                .isTrue()
+
+            val balance = genesis.getBalance(session.address)
+            assertThat(balance)
+                .withFailMessage("User ${session.keyName} did not receive refund")
+                .isGreaterThan(fundAmount - escrowAmount)
+        }
     }
 
     @Test

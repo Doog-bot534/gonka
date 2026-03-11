@@ -725,8 +725,8 @@ data class LocalInferencePair(
     fun runSubnetctl(escrowId: Long, prompts: Int, model: String, keyName: String? = null): SubnetctlResult =
         wrapLog("runSubnetctl", true) {
             val privateKey = (if (keyName != null) node.getPrivateKey(keyName) else node.getColdPrivateKey()).trim()
-            val settlementFile = "/tmp/subnetctl-settlement.json"
-            val stderrFile = "/tmp/subnetctl-stderr.log"
+            val settlementFile = "/tmp/subnetctl-settlement-${escrowId}.json"
+            val stderrFile = "/tmp/subnetctl-stderr-${escrowId}.log"
             // Run subnetctl: settlement -> file, stderr -> file, stdout -> /dev/null.
             val runCommand = listOf(
                 "sh", "-c",
