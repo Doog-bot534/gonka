@@ -727,23 +727,24 @@ data class LocalInferencePair(
             val privateKey = if (keyName != null) node.getPrivateKey(keyName) else node.getColdPrivateKey()
             val command = listOf(
                 "sh", "-c",
-                "subnetctl --escrow-id $escrowId --chain-rest http://\$NODE_HOST:1317 --prompts $prompts --model $model --private-key $privateKey 2>/dev/null"
+                "out=/tmp/subnetctl-settlement.json; " +
+                    "rm -f \"\$out\"; " +
+                    "subnetctl --escrow-id $escrowId --chain-rest http://\$NODE_HOST:1317 " +
+                    "--prompts $prompts --model $model --private-key $privateKey " +
+                    "--output \"\$out\" >/dev/null 2>&1; " +
+                    "cat \"\$out\""
             )
-            val raw = api.executor.exec(command, null).joinToString("\n")
-            // Docker exec merges stdout/stderr despite 2>/dev/null.
-            // Extract the top-level JSON object from the raw output.
+            // Docker exec returns arbitrary frame chunks. Concatenate them exactly
+            // instead of inserting separators, or we can corrupt JSON payloads.
+            val raw = api.executor.exec(command, null).joinToString("")
             val start = raw.indexOf('{')
             val end = raw.lastIndexOf('}')
             if (start < 0 || end < 0) {
                 error("subnetctl output contains no JSON object. Full output:\n$raw")
             }
             val json = raw.substring(start, end + 1)
-            val parsed = cosmosJson.fromJson(json, SubnetSettlementData::class.java)
-            // Re-serialize with a plain Gson (no Cosmos Long->String conversion)
-            // to produce valid JSON. Docker exec can split lines mid-value,
-            // injecting newlines inside JSON strings which Go rejects.
-            val cleanJson = Gson().toJson(parsed)
-            SubnetctlResult(parsed = parsed, rawJson = cleanJson)
+            val parsed = Gson().fromJson(json, SubnetSettlementData::class.java)
+            SubnetctlResult(parsed = parsed, rawJson = json)
         }
 
     fun settleSubnetEscrow(settlementJson: String, from: String? = null): TxResponse =
