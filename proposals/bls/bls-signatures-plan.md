@@ -80,7 +80,7 @@ This document outlines the step-by-step plan to develop the BLS Key Generation m
         *   `DealerPartStorage`: `dealer_address` (string), `commitments` (repeated bytes), `participant_shares` (repeated EncryptedSharesForParticipant) // Index i = shares for participants[i]
         *   `EncryptedSharesForParticipant`: `encrypted_shares` (repeated bytes) // Index i = share for slot (participant.slot_start_index + i)
     *   `verification_vectors_submitters` (repeated string) // list of addresses who submitted verification vectors
-*   Files: `proto/bls/types.proto`, `x/bls/types/types.pb.go`
+*   Files: `proto/inference/bls/types.proto`, `x/bls/types/types.pb.go`
 *   Important: All structures use deterministic repeated arrays with direct indexing. `dealer_parts` array index matches `participants` array index. `participant_shares` array index i contains shares for `participants[i]`.
 *   Note: ✅ Created complete protobuf definitions in `proto/inference/bls/types.proto` with simplified deterministic structures:
     *   `DKGPhase` enum with all phases (`UNDEFINED`, `DEALING`, `VERIFYING`, `COMPLETED`, `FAILED`)
@@ -93,7 +93,7 @@ This document outlines the step-by-step plan to develop the BLS Key Generation m
 ### III.2 [x] Proto Definition (`bls` module): `EventKeyGenerationInitiated`
 *   Action: Define `EventKeyGenerationInitiated` Protobuf message for events.
 *   Fields: `epoch_id` (uint64), `i_total_slots` (uint32), `t_slots_degree` (uint32), `participants` (repeated `BLSParticipantInfo`).
-*   Files: `proto/bls/events.proto`, `x/bls/types/events.pb.go`
+*   Files: `proto/inference/bls/events.proto`, `x/bls/types/events.pb.go`
 *   Status: ✅ **COMPLETED** Created `proto/inference/bls/events.proto` with `EventKeyGenerationInitiated` event containing:
     *   `epoch_id` (uint64) - unique DKG round identifier
     *   `i_total_slots` (uint32) - total number of DKG slots
@@ -303,7 +303,7 @@ This document outlines the step-by-step plan to develop the BLS Key Generation m
 ### V.1 [x] Proto Definition (`bls` module): `EventVerifyingPhaseStarted`
 *   Action: Define `EventVerifyingPhaseStarted` Protobuf message.
 *   Fields: `epoch_id` (uint64), `verifying_phase_deadline_block` (uint64).
-*   Files: `proto/bls/events.proto`, `x/bls/types/events.pb.go`
+*   Files: `proto/inference/bls/events.proto`, `x/bls/types/events.pb.go`
 *   Status: ✅ **COMPLETED** - Successfully implemented `EventVerifyingPhaseStarted` protobuf definition:
     *   ✅ Added `EventVerifyingPhaseStarted` message to `inference-chain/proto/inference/bls/events.proto`
     *   ✅ Fields: `epoch_id` (uint64), `verifying_phase_deadline_block` (uint64) with proper documentation
@@ -316,7 +316,7 @@ This document outlines the step-by-step plan to develop the BLS Key Generation m
 ### V.2 [x] Proto Definition (`bls` module): `EventDKGFailed`
 *   Action: Define `EventDKGFailed` Protobuf message.
 *   Fields: `epoch_id` (uint64), `reason` (string).
-*   Files: `proto/bls/events.proto`, `x/bls/types/events.pb.go`
+*   Files: `proto/inference/bls/events.proto`, `x/bls/types/events.pb.go`
 *   Status: ✅ **COMPLETED** - Successfully implemented `EventDKGFailed` protobuf definition:
     *   ✅ Added `EventDKGFailed` message to `inference-chain/proto/inference/bls/events.proto`
     *   ✅ Fields: `epoch_id` (uint64), `reason` (string) with proper documentation
@@ -327,7 +327,7 @@ This document outlines the step-by-step plan to develop the BLS Key Generation m
     *   ✅ Event ready for emission when DKG rounds fail due to insufficient participation or other failure conditions
 
 ### V.3 [x] Chain-Side Logic (`bls` module): `EndBlocker` for Phase Transition
-*   Action: Implement `EndBlocker` logic in `x/bls/abci.go` (or `module.go`).
+*   Action: Implement `EndBlocker` logic in `x/bls/module/module.go` (EndBlock calls `ProcessDKGPhaseTransitions`).
 *   Function: `TransitionToVerifyingPhase(ctx sdk.Context, epochBLSData types.EpochBLSData)` (called internally from EndBlocker).
 *   Logic (in `EndBlocker`):
     *   Iterate through active DKGs (e.g., `EpochBLSData` not `COMPLETED` or `FAILED`).
@@ -345,7 +345,7 @@ This document outlines the step-by-step plan to develop the BLS Key Generation m
                 *   Update `EpochBLSData.dkg_phase` to `FAILED`.
                 *   Store updated `EpochBLSData`.
                 *   Emit `EventDKGFailed` (reason: "Insufficient participation in dealing phase").
-*   Files: `x/bls/abci.go`, `x/bls/keeper/phase_transitions.go` (for the helper function).
+*   Files: `x/bls/module/module.go`, `x/bls/keeper/phase_transitions.go` (for the helper function).
 *   Status: ✅ **COMPLETED** - Successfully implemented EndBlocker phase transition logic:
     *   ✅ **EndBlocker Integration**: Updated `EndBlock` function in `x/bls/module/module.go` to call `ProcessDKGPhaseTransitions`
     *   ✅ **Phase Transition Logic**: Created `x/bls/keeper/phase_transitions.go` with comprehensive transition functions:
@@ -434,7 +434,7 @@ This document outlines the step-by-step plan to develop the BLS Key Generation m
 ### VI.3 [x] Proto Definition (`bls` module): `MsgSubmitVerificationVector`
 *   Action: Define `MsgSubmitVerificationVector`.
 *   Fields: `creator` (string, participant's address), `epoch_id` (uint64), `dealer_validity` (repeated bool, bitmap indicating which dealers provided valid shares).
-*   Files: `proto/bls/tx.proto`, `x/bls/types/tx.pb.go`
+*   Files: `proto/inference/bls/tx.proto`, `x/bls/types/tx.pb.go`
 *   Important: The `dealer_validity` field uses deterministic array indexing where index i corresponds to `EpochBLSData.participants[i]` as dealer. `true` = dealer's shares verified correctly against their commitments; `false` = dealer's shares failed verification or dealer didn't submit parts.
 *   Status: ✅ **COMPLETED** - Successfully implemented secure `MsgSubmitVerificationVector` with comprehensive DKG security:
     *   ✅ **Enhanced Security Model**: Added `dealer_validity` bitmap to track cryptographic verification results per dealer
@@ -454,7 +454,7 @@ This document outlines the step-by-step plan to develop the BLS Key Generation m
 ### VI.4 [x] Proto Definition (`bls` module): `EventVerificationVectorSubmitted`
 *   Action: Define `EventVerificationVectorSubmitted` Protobuf message.
 *   Fields: `epoch_id` (uint64), `participant_address` (string).
-*   Files: `proto/bls/events.proto`, `x/bls/types/events.pb.go`
+*   Files: `proto/inference/bls/events.proto`, `x/bls/types/events.pb.go`
 *   Status: ✅ **COMPLETED** - Successfully implemented `EventVerificationVectorSubmitted` protobuf definition:
     *   ✅ Added `EventVerificationVectorSubmitted` message to `inference-chain/proto/inference/bls/events.proto`
     *   ✅ Fields: `epoch_id` (uint64), `participant_address` (string) with proper cosmos address scalar annotation
@@ -605,7 +605,7 @@ done for controller post-DKG earlier, ensure consistency).
     *   ✅ Event ready for emission during successful DKG completion
 
 ### VII.2 [x] Chain-Side Logic (`bls` module): `EndBlocker` for DKG Completion
-*   Action: Extend `EndBlocker` logic in `x/bls/abci.go`.
+*   Action: Extend `EndBlocker` logic in `x/bls/module/module.go` (same EndBlock as V.3).
 *   Function: `CompleteDKG(ctx sdk.Context, epochBLSData types.EpochBLSData)` (called 
 internally from EndBlocker).
 *   Logic (in `EndBlocker`):
@@ -634,7 +634,7 @@ internally from EndBlocker).
                 *   Store updated `EpochBLSData`.
                 *   Emit `EventDKGFailed` (reason: "Insufficient participation in 
                 verification phase").
-*   Files: `x/bls/abci.go`, `x/bls/keeper/phase_transitions.go` (for `CompleteDKG`).
+*   Files: `x/bls/module/module.go`, `x/bls/keeper/phase_transitions.go` (for `CompleteDKG`).
 *   Additional BLS Operations: When implementing group public key computation, use 
 `github.com/Consensys/gnark-crypto` for G2 point addition to aggregate commitments: 
 `GroupPublicKey = sum(C_k0)`.

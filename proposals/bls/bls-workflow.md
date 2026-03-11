@@ -1,7 +1,7 @@
 ## Prerequisite Reading
 
 Before starting implementation, please read the following documents to understand the full context of the changes:
-- The main proposal: `proposals/bls/signatures-flow.md`
+- The main proposal: `proposals/bls/bls-signatures-flow.md`
 
 ## How to Use This Task List
 
