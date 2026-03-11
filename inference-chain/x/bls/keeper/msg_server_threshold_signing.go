@@ -42,6 +42,15 @@ func (ms msgServer) RequestThresholdSignature(ctx context.Context, msg *types.Ms
 	// Convert to SDK context
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
+	// External callers must request signatures against the current signing epoch only.
+	currentSigningEpochID, found := ms.GetCurrentSigningEpochID(sdkCtx)
+	if !found {
+		return nil, fmt.Errorf("current signing epoch is not set")
+	}
+	if msg.CurrentEpochId != currentSigningEpochID {
+		return nil, fmt.Errorf("current_epoch_id mismatch: expected %d, got %d", currentSigningEpochID, msg.CurrentEpochId)
+	}
+
 	// Add domain separation for external requests by prepending CUSTOM_SIGNATURE_DOMAIN
 	// This prevents unauthorized signatures from being created for unintended operations
 	customData := make([][]byte, 0, len(msg.Data)+1)
