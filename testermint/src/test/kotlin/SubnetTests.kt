@@ -238,7 +238,7 @@ class SubnetTests : TestermintTest() {
                 }.awaitAll()
             }
 
-            logSection("Finalizing and settling $sessionCount escrows")
+            logSection("Finalizing, settling, and verifying $sessionCount escrows")
             sessions.zip(handles).forEach { (session, handle) ->
                 val result = genesis.finalizeSubnetProxy(handle.proxyUrl)
                 assertThat(result.parsed.escrowId)
@@ -252,10 +252,7 @@ class SubnetTests : TestermintTest() {
                 assertThat(settleResp.code)
                     .withFailMessage("Settlement failed for escrow ${session.escrowId}")
                     .isEqualTo(0)
-            }
 
-            logSection("Verifying settlement and refunds")
-            sessions.forEach { session ->
                 val escrow = genesis.node.querySubnetEscrow(session.escrowId)
                 assertThat(escrow.escrow!!.settled)
                     .withFailMessage("Escrow ${session.escrowId} not settled")
