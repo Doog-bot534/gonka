@@ -14,10 +14,11 @@ import (
 
 // HTTPSessionConfig holds the parameters needed to create an HTTP-backed user session.
 type HTTPSessionConfig struct {
-	PrivateKeyHex string
-	EscrowID      string
-	Bridge        bridge.MainnetBridge
-	StoragePath   string // optional: path to SQLite DB for session persistence
+	PrivateKeyHex  string
+	EscrowID       string
+	Bridge         bridge.MainnetBridge
+	StoragePath    string              // optional: path to SQLite DB for session persistence
+	StreamCallback func(line string)   // optional: receives raw SSE data lines during inference
 }
 
 // NewHTTPSession creates a user Session wired with HTTP clients to real dapi hosts.
@@ -57,7 +58,13 @@ func NewHTTPSession(cfg HTTPSessionConfig) (*Session, *state.StateMachine, error
 		if err != nil {
 			return nil, nil, fmt.Errorf("get host info for %s: %w", slot.ValidatorAddress, err)
 		}
-		c := transport.NewHTTPClient(info.URL, cfg.EscrowID, signer)
+		var clientCfgs []transport.ClientConfig
+		if cfg.StreamCallback != nil {
+			cc := transport.DefaultClientConfig()
+			cc.StreamCallback = cfg.StreamCallback
+			clientCfgs = append(clientCfgs, cc)
+		}
+		c := transport.NewHTTPClient(info.URL, cfg.EscrowID, signer, clientCfgs...)
 		clientCache[slot.ValidatorAddress] = c
 		clients[i] = c
 	}

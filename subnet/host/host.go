@@ -45,6 +45,7 @@ type HostResponse struct {
 	Receipt     []byte // executor receipt sig, nil if not executor
 	ConfirmedAt int64  // executor wall-clock timestamp, 0 if not executor
 	Mempool     []*types.SubnetTx
+	ExecutionJob *subnet.ExecuteRequest // non-nil if this host is the executor and execution is deferred
 }
 
 // AcceptanceChecker is an optional hook that lets the host withhold its
@@ -284,9 +285,20 @@ func (h *Host) HandleRequest(ctx context.Context, req HostRequest) (*HostRespons
 
 	h.mu.Unlock()
 
-	// (f) Execute inference outside mutex.
+	// (f) Build execution job for caller to run via RunExecution.
+	// Execution is always deferred so the caller can send the receipt
+	// before inference starts (SSE flow).
+	var execJob *subnet.ExecuteRequest
 	if job != nil {
-		h.executeAsync(ctx, job)
+		execJob = &subnet.ExecuteRequest{
+			InferenceID: job.inferenceID,
+			Model:       job.model,
+			Prompt:      job.prompt,
+			PromptHash:  job.promptHash,
+			InputLength: job.inputLength,
+			MaxTokens:   job.maxTokens,
+			EscrowID:    h.escrowID,
+		}
 	}
 
 	// (g) Validate other hosts' inferences outside mutex.
@@ -295,12 +307,13 @@ func (h *Host) HandleRequest(ctx context.Context, req HostRequest) (*HostRespons
 	}
 
 	return &HostResponse{
-		StateSig:    stateSig,
-		StateHash:   root,
-		Nonce:       nonce,
-		Receipt:     receipt,
-		ConfirmedAt: confirmedAt,
-		Mempool:     h.mempool.Txs(),
+		StateSig:     stateSig,
+		StateHash:    root,
+		Nonce:        nonce,
+		Receipt:      receipt,
+		ConfirmedAt:  confirmedAt,
+		Mempool:      h.mempool.Txs(),
+		ExecutionJob: execJob,
 	}, nil
 }
 
@@ -498,6 +511,52 @@ func (h *Host) executeAsync(ctx context.Context, job *executeJob) {
 		}},
 		ProposedAt: job.diffNonce,
 	})
+}
+
+// RunExecution executes an inference job and adds MsgFinishInference to the mempool.
+// This is the deferred execution path -- used when DeferExecution=true in HandleRequest.
+// The caller typically streams results to the client before calling this.
+func (h *Host) RunExecution(ctx context.Context, job *subnet.ExecuteRequest) (*subnet.ExecuteResult, error) {
+	// Find the internal job metadata for cleanup/mempool.
+	inferenceID := job.InferenceID
+	executorSlot := h.group[inferenceID%uint64(len(h.group))].SlotID
+	diffNonce := h.LatestNonce()
+
+	defer func() {
+		h.mu.Lock()
+		delete(h.executing, inferenceID)
+		h.mu.Unlock()
+	}()
+
+	result, err := h.engine.Execute(ctx, *job)
+	if err != nil {
+		logging.Error("execute failed", "subsystem", "host", "inference_id", inferenceID, "error", err)
+		return nil, err
+	}
+
+	finishMsg := &types.MsgFinishInference{
+		InferenceId:  inferenceID,
+		ResponseHash: result.ResponseHash,
+		InputTokens:  result.InputTokens,
+		OutputTokens: result.OutputTokens,
+		ExecutorSlot: executorSlot,
+		EscrowId:     h.escrowID,
+	}
+	proposerSig, err := h.signProposer(finishMsg)
+	if err != nil {
+		logging.Error("sign finish msg failed", "subsystem", "host", "inference_id", inferenceID, "error", err)
+		return result, err
+	}
+	finishMsg.ProposerSig = proposerSig
+
+	h.mempool.Add(MempoolEntry{
+		Tx: &types.SubnetTx{Tx: &types.SubnetTx_FinishInference{
+			FinishInference: finishMsg,
+		}},
+		ProposedAt: diffNonce,
+	})
+
+	return result, nil
 }
 
 // maybeRevealSeed produces a MsgRevealSeed if the session is finalizing and

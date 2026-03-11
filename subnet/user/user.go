@@ -26,7 +26,19 @@ type InProcessClient struct {
 }
 
 func (c *InProcessClient) Send(ctx context.Context, req host.HostRequest) (*host.HostResponse, error) {
-	return c.Host.HandleRequest(ctx, req)
+	resp, err := c.Host.HandleRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.ExecutionJob != nil {
+		_, execErr := c.Host.RunExecution(ctx, resp.ExecutionJob)
+		if execErr != nil {
+			logging.Error("deferred execution failed", "subsystem", "in_process_client", "error", execErr)
+		}
+		// Re-fetch mempool after execution.
+		resp.Mempool = c.Host.MempoolTxs()
+	}
+	return resp, nil
 }
 
 // InferenceParams describes a new inference to send.

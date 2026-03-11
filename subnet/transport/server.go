@@ -260,23 +260,61 @@ func (s *Server) HandleInference(c echo.Context) error {
 		return errJSON(c, http.StatusInternalServerError, err.Error())
 	}
 
-	respJSON, err := HostResponseToJSON(resp)
-	if err != nil {
-		return errJSON(c, http.StatusInternalServerError, "encode response: "+err.Error())
+	// Always SSE response.
+	w := c.Response()
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	w.Flush()
+
+	// Event 1: receipt + protocol metadata.
+	receiptEvent := SubnetReceiptEvent{
+		StateSig:    resp.StateSig,
+		StateHash:   resp.StateHash,
+		Nonce:       resp.Nonce,
+		Receipt:     resp.Receipt,
+		ConfirmedAt: resp.ConfirmedAt,
+	}
+	receiptWrapper := map[string]interface{}{"subnet_receipt": receiptEvent}
+	writeSSEEvent(w, receiptWrapper)
+
+	// Event 2+: inference result (only if this host is executor).
+	if resp.ExecutionJob != nil {
+		resp.ExecutionJob.ResponseWriter = w
+		_, execErr := s.host.RunExecution(c.Request().Context(), resp.ExecutionJob)
+		if execErr != nil {
+			logging.Error("deferred execution failed", "subsystem", "server", "error", execErr)
+		}
 	}
 
-	// Fire gossip in background if configured.
+	// Final event: subnet_meta with updated mempool.
+	mempoolTxs := s.host.MempoolTxs()
+	mempoolBytes, _ := SubnetTxsToBytes(mempoolTxs)
+	metaWrapper := map[string]interface{}{"subnet_meta": SubnetMetaEvent{Mempool: mempoolBytes}}
+	writeSSEEvent(w, metaWrapper)
+
+	// Fire gossip in background.
 	if s.gossip != nil && resp.StateSig != nil {
 		go s.gossip.AfterRequest(context.Background(), resp.Nonce, resp.StateHash, resp.StateSig)
 	}
-
-	// Lazy tx gossip: if signature was withheld (stale mempool) and mempool
-	// is non-empty, broadcast txs so peers can include them.
 	if s.gossip != nil && resp.StateSig == nil && len(resp.Mempool) > 0 {
 		go s.gossip.BroadcastTxs(context.Background(), resp.Mempool)
 	}
 
-	return writeJSON(c, http.StatusOK, respJSON)
+	return nil
+}
+
+// writeSSEEvent writes a single SSE data line with JSON payload.
+func writeSSEEvent(w http.Flusher, data interface{}) {
+	b, err := json.Marshal(data)
+	if err != nil {
+		return
+	}
+	if rw, ok := w.(io.Writer); ok {
+		fmt.Fprintf(rw, "data: %s\n\n", b)
+	}
+	w.Flush()
 }
 
 // SetPeerClients sets the executor clients for timeout verification.

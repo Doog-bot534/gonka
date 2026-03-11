@@ -130,3 +130,44 @@ func TestHTTPClient_GetMempool(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, txs)
 }
+
+func TestHTTPClient_Send_SSE(t *testing.T) {
+	client, _, userSigner, _ := setupClientTestEnv(t)
+	ctx := context.Background()
+
+	// Configure a stream callback to collect data lines.
+	var streamLines []string
+	client.config.StreamCallback = func(line string) {
+		streamLines = append(streamLines, line)
+	}
+
+	diff := testutil.SignDiff(t, userSigner, "escrow-1", 1, []*types.SubnetTx{testutil.StartTx(1)})
+	resp, err := client.Send(ctx, host.HostRequest{
+		Diffs: []types.Diff{diff},
+		Nonce: 1,
+		Payload: &host.InferencePayload{
+			Prompt:      testutil.TestPrompt,
+			Model:       "llama",
+			InputLength: 100,
+			MaxTokens:   50,
+			StartedAt:   1000,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), resp.Nonce)
+	require.NotNil(t, resp.StateSig)
+	require.NotNil(t, resp.Receipt)
+	require.NotEmpty(t, resp.Mempool)
+
+	// StreamCallback should have received inference data lines.
+	require.NotEmpty(t, streamLines, "stream callback should receive inference data")
+
+	// Verify mempool contains MsgFinishInference.
+	var hasFinish bool
+	for _, tx := range resp.Mempool {
+		if tx.GetFinishInference() != nil {
+			hasFinish = true
+		}
+	}
+	require.True(t, hasFinish, "mempool should contain MsgFinishInference")
+}

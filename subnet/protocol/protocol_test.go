@@ -219,7 +219,12 @@ func TestProtocol_SignatureWithholding(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp.StateSig, "should sign at nonce 1")
 	require.NotNil(t, resp.Receipt)
-	require.Len(t, resp.Mempool, 1) // MsgFinishInference
+	require.NotNil(t, resp.ExecutionJob)
+
+	// Run deferred execution to populate mempool.
+	_, err = h.RunExecution(ctx, resp.ExecutionJob)
+	require.NoError(t, err)
+	require.Len(t, h.MempoolTxs(), 1) // MsgFinishInference
 
 	// Nonces 2-4: empty diffs, never including the finish.
 	// Grace=2, proposed at nonce 1.
@@ -268,7 +273,10 @@ func TestProtocol_SignatureResumesAfterInclusion(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	finishTx := resp.Mempool[0]
+	require.NotNil(t, resp.ExecutionJob)
+	_, err = h.RunExecution(ctx, resp.ExecutionJob)
+	require.NoError(t, err)
+	finishTx := h.MempoolTxs()[0]
 
 	// Nonce 2: confirm start.
 	receiptContent := &types.ExecutorReceiptContent{

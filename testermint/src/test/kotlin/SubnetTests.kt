@@ -2,6 +2,7 @@ import com.productscience.*
 import com.productscience.data.*
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import java.time.Duration
 
 class SubnetTests : TestermintTest() {
 
@@ -79,6 +80,65 @@ class SubnetTests : TestermintTest() {
 
         logSection("Running subnetctl as user")
         val result = genesis.runSubnetctl(escrowId = 1, prompts = 20, model = defaultModel, keyName = userKeyName)
+
+        logSection("Verifying settlement data")
+        assertThat(result.parsed.escrowId).isEqualTo("1")
+        assertThat(result.parsed.nonce).isGreaterThan(0)
+        assertThat(result.parsed.hostStats).isNotEmpty()
+        assertThat(result.parsed.signatures).isNotEmpty()
+        val totalCompletedValidations = result.parsed.hostStats.sumOf { it.completedValidations }
+        assertThat(totalCompletedValidations).isGreaterThan(0)
+
+        logSection("Submitting settlement from user account")
+        val settleResp = genesis.settleSubnetEscrow(result.rawJson, from = userKeyName)
+        assertThat(settleResp.code).isEqualTo(0)
+
+        logSection("Verifying escrow settled")
+        val escrow = genesis.node.querySubnetEscrow(1)
+        assertThat(escrow.escrow!!.settled).isTrue()
+
+        logSection("Verifying user got refund")
+        val balanceAfter = genesis.getBalance(userAddress)
+        assertThat(balanceAfter).isGreaterThan(fundAmount - escrowAmount)
+    }
+
+    @Test
+    fun `subnet streaming inference e2e with settlement`() {
+        val (cluster, genesis) = initCluster(config = noRestrictionsConfig, reboot = true)
+        genesis.waitForNextEpoch()
+
+        // Configure mock ML nodes with streaming response (streamDelay > 0 triggers SSE).
+        cluster.allPairs.forEach { pair ->
+            pair.mock?.setInferenceResponse(
+                """{"id":"test","object":"chat.completion","created":0,"model":"$defaultModel","choices":[{"index":0,"message":{"role":"assistant","content":"hello from stream"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}""",
+                streamDelay = Duration.ofMillis(50)
+            )
+        }
+
+        logSection("Creating separate user account")
+        val userKeyName = "subnet-stream-user"
+        val userKey = genesis.node.createKey(userKeyName)
+        val userAddress = userKey.address
+        val fundAmount = 10_000_000_000L
+        val transferResp = genesis.submitTransaction(
+            listOf("bank", "send", genesis.node.getColdAddress(), userAddress, "${fundAmount}${genesis.config.denom}")
+        )
+        assertThat(transferResp.code).isEqualTo(0)
+
+        logSection("Creating subnet escrow from user account")
+        val escrowAmount = 7_000_000_000L
+        val txResp = genesis.createSubnetEscrow(escrowAmount, from = userKeyName)
+        assertThat(txResp.code).isEqualTo(0)
+        genesis.waitForNextInferenceWindow()
+
+        logSection("Running subnetctl with streaming ML node")
+        val result = genesis.runSubnetctl(escrowId = 1, prompts = 20, model = defaultModel, keyName = userKeyName)
+
+        logSection("Verifying user received streamed inference data")
+        assertThat(result.stderr).isNotEmpty()
+        // StreamCallback prints each SSE data line to stderr.
+        // Verify actual inference output was streamed to the user.
+        assertThat(result.stderr).contains("choices")
 
         logSection("Verifying settlement data")
         assertThat(result.parsed.escrowId).isEqualTo("1")

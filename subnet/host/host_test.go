@@ -51,6 +51,25 @@ func newTestHostWithChecker(t *testing.T, hostIdx int, hosts []*signing.Secp256k
 	return h
 }
 
+// handleAndExecute calls HandleRequest and then RunExecution if there's a deferred job.
+// Returns the response with updated mempool.
+func handleAndExecute(t *testing.T, h *Host, ctx context.Context, req HostRequest) (*HostResponse, error) {
+	t.Helper()
+	resp, err := h.HandleRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.ExecutionJob != nil {
+		_, execErr := h.RunExecution(ctx, resp.ExecutionJob)
+		if execErr != nil {
+			// Log but don't fail -- matches old executeAsync behavior.
+			t.Logf("RunExecution error: %v", execErr)
+		}
+		resp.Mempool = h.MempoolTxs()
+	}
+	return resp, nil
+}
+
 // --- Tests ---
 
 func TestHost_AppliesDiffs(t *testing.T) {
@@ -150,7 +169,7 @@ func TestHost_ProducesMsgFinish(t *testing.T) {
 	h := newTestHost(t, 1, hosts, user, 10000, 10) // executor for inference 1
 
 	diff := testutil.SignDiff(t, user, "escrow-1", 1, []*types.SubnetTx{testutil.StartTx(1)})
-	resp, err := h.HandleRequest(context.Background(), HostRequest{
+	resp, err := handleAndExecute(t, h, context.Background(), HostRequest{
 		Diffs: []types.Diff{diff}, Nonce: 1, Payload: defaultPayload(),
 	})
 	require.NoError(t, err)
@@ -172,7 +191,7 @@ func TestHost_WithholdsOnStaleTx(t *testing.T) {
 
 	// Nonce 1: start inference 1, executor=slot 1 -> produces mempool entry at nonce 1.
 	diff := testutil.SignDiff(t, user, "escrow-1", 1, []*types.SubnetTx{testutil.StartTx(1)})
-	resp, err := h.HandleRequest(context.Background(), HostRequest{
+	resp, err := handleAndExecute(t, h, context.Background(), HostRequest{
 		Diffs: []types.Diff{diff}, Nonce: 1, Payload: defaultPayload(),
 	})
 	require.NoError(t, err)
@@ -202,7 +221,7 @@ func TestHost_SignsAfterIncluded(t *testing.T) {
 
 	// Nonce 1: start inference 1 -> executor, mempool entry.
 	diff1 := testutil.SignDiff(t, user, "escrow-1", 1, []*types.SubnetTx{testutil.StartTx(1)})
-	resp, err := h.HandleRequest(context.Background(), HostRequest{
+	resp, err := handleAndExecute(t, h, context.Background(), HostRequest{
 		Diffs: []types.Diff{diff1}, Nonce: 1, Payload: defaultPayload(),
 	})
 	require.NoError(t, err)
@@ -297,7 +316,7 @@ func TestHost_MultiSlotExecutor(t *testing.T) {
 	diff2 := testutil.SignDiff(t, user, "escrow-1", 2, nil)
 	diff3 := testutil.SignDiff(t, user, "escrow-1", 3, nil)
 	diff4 := testutil.SignDiff(t, user, "escrow-1", 4, []*types.SubnetTx{testutil.StartTx(4)})
-	resp, err := h.HandleRequest(context.Background(), HostRequest{
+	resp, err := handleAndExecute(t, h, context.Background(), HostRequest{
 		Diffs: []types.Diff{diff1, diff2, diff3, diff4},
 		Nonce: 4, Payload: defaultPayload(),
 	})
@@ -318,7 +337,7 @@ func TestHost_MultiSlotExecutor(t *testing.T) {
 
 	// nonce 7: executor = group[7%4]=group[3] -> slot 3 -> hosts[0] again.
 	diff7 := testutil.SignDiff(t, user, "escrow-1", 7, []*types.SubnetTx{testutil.StartTx(7)})
-	resp, err = h.HandleRequest(context.Background(), HostRequest{
+	resp, err = handleAndExecute(t, h, context.Background(), HostRequest{
 		Diffs: []types.Diff{diff7}, Nonce: 7, Payload: defaultPayload(),
 	})
 	require.NoError(t, err)
@@ -657,7 +676,12 @@ func TestHost_ExecuteFailure_ReturnsReceiptNoMempool(t *testing.T) {
 	})
 	require.NoError(t, err, "should not return error on engine failure")
 	require.NotNil(t, resp.Receipt, "receipt should still be present")
-	require.Empty(t, resp.Mempool, "mempool should be empty (no MsgFinishInference)")
+	require.NotNil(t, resp.ExecutionJob, "should have deferred execution job")
+
+	// RunExecution should fail but not crash.
+	_, execErr := h.RunExecution(context.Background(), resp.ExecutionJob)
+	require.Error(t, execErr, "engine failure should propagate")
+	require.Empty(t, h.MempoolTxs(), "mempool should be empty (no MsgFinishInference)")
 }
 
 // countingEngine wraps stub engine and counts Execute calls.
@@ -695,6 +719,7 @@ func TestHost_SignReceipt_NoDuplicateExecution(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp.Receipt, "should return receipt to prove executor alive")
+	require.Nil(t, resp.ExecutionJob, "should not produce execution job (already executing)")
 	require.Equal(t, 0, engine.calls, "engine should not be called (already executing)")
 }
 
@@ -710,9 +735,14 @@ func TestHost_ExecutingCleanup(t *testing.T) {
 	require.NoError(t, err)
 
 	diff := testutil.SignDiff(t, user, "escrow-1", 1, []*types.SubnetTx{testutil.StartTx(1)})
-	_, err = h.HandleRequest(context.Background(), HostRequest{
+	resp, err := h.HandleRequest(context.Background(), HostRequest{
 		Diffs: []types.Diff{diff}, Nonce: 1, Payload: defaultPayload(),
 	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.ExecutionJob)
+
+	// Execute via RunExecution.
+	_, err = h.RunExecution(context.Background(), resp.ExecutionJob)
 	require.NoError(t, err)
 
 	// After execute completes, executing map should be clean.
@@ -734,11 +764,14 @@ func TestHost_ChallengeReceipt_AlreadyExecuting(t *testing.T) {
 	require.NoError(t, err)
 
 	diff := testutil.SignDiff(t, user, "escrow-1", 1, []*types.SubnetTx{testutil.StartTx(1)})
-	// First: normal request triggers execution.
-	_, err = h.HandleRequest(context.Background(), HostRequest{
+	// First: normal request + execution.
+	resp, err := h.HandleRequest(context.Background(), HostRequest{
 		Diffs: []types.Diff{diff}, Nonce: 1, Payload: defaultPayload(),
 	})
 	require.NoError(t, err)
+	if resp.ExecutionJob != nil {
+		_, _ = h.RunExecution(context.Background(), resp.ExecutionJob)
+	}
 
 	// Simulate: manually mark inference as executing (it already completed above,
 	// so we re-add it to test the guard).
@@ -750,7 +783,7 @@ func TestHost_ChallengeReceipt_AlreadyExecuting(t *testing.T) {
 	receipt, _, err := h.ChallengeReceipt(context.Background(), 1, defaultPayload(), []types.Diff{diff})
 	require.NoError(t, err)
 	require.NotNil(t, receipt, "should return receipt to prove executor is alive")
-	// Engine was called once from HandleRequest, not again from ChallengeReceipt.
+	// Engine was called once from RunExecution, not again from ChallengeReceipt.
 	require.Equal(t, 1, engine.calls, "engine should not be called again")
 }
 
@@ -767,13 +800,18 @@ func TestHost_ChallengeReceipt_AlreadyFinished(t *testing.T) {
 
 	diff := testutil.SignDiff(t, user, "escrow-1", 1, []*types.SubnetTx{testutil.StartTx(1)})
 
-	// Normal request: produces receipt + finish in mempool.
+	// Normal request: produces receipt + deferred execution job.
 	resp, err := h.HandleRequest(context.Background(), HostRequest{
 		Diffs: []types.Diff{diff}, Nonce: 1, Payload: defaultPayload(),
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp.Receipt)
-	require.Len(t, resp.Mempool, 1, "should have MsgFinishInference in mempool")
+	require.NotNil(t, resp.ExecutionJob)
+
+	// Run execution to populate mempool with MsgFinishInference.
+	_, err = h.RunExecution(context.Background(), resp.ExecutionJob)
+	require.NoError(t, err)
+	require.Len(t, h.MempoolTxs(), 1, "should have MsgFinishInference in mempool")
 
 	// ChallengeReceipt returns receipt (proves executor is alive) but skips execution.
 	receipt, _, err := h.ChallengeReceipt(context.Background(), 1, defaultPayload(), []types.Diff{diff})

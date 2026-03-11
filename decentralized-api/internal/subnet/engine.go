@@ -6,10 +6,12 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"decentralized-api/broker"
 	"decentralized-api/chainphase"
 	"decentralized-api/completionapi"
+	"decentralized-api/internal/server/public"
 	"decentralized-api/payloadstorage"
 
 	"subnet"
@@ -42,6 +44,7 @@ func NewEngineAdapter(
 
 func (e *EngineAdapter) Execute(ctx context.Context, req subnet.ExecuteRequest) (*subnet.ExecuteResult, error) {
 	seed := int32(req.InferenceID)
+	inferenceId := fmt.Sprintf("subnet-%s-%d", req.EscrowID, req.InferenceID)
 
 	modified, err := completionapi.ModifyRequestBody(req.Prompt, seed)
 	if err != nil {
@@ -68,9 +71,21 @@ func (e *EngineAdapter) Execute(ctx context.Context, req subnet.ExecuteRequest) 
 	}
 	defer resp.Body.Close()
 
-	processor := completionapi.NewExecutorResponseProcessor("")
-	if err := completionapi.ProcessHTTPResponse(resp, processor); err != nil {
-		return nil, fmt.Errorf("process response: %w", err)
+	processor := completionapi.NewExecutorResponseProcessor(inferenceId)
+
+	contentType := resp.Header.Get("Content-Type")
+	isSSE := strings.HasPrefix(contentType, "text/event-stream")
+
+	if req.ResponseWriter != nil && isSSE {
+		// Streaming ML response: proxy SSE events directly to the client.
+		// ProxyResponse writes each SSE line with proper framing (data: prefix).
+		public.ProxyResponse(resp, req.ResponseWriter, true, processor, inferenceId)
+	} else {
+		// Non-streaming ML response or no client connection.
+		// Process body via processor only (no proxy to client yet).
+		if err := completionapi.ProcessHTTPResponse(resp, processor); err != nil {
+			return nil, fmt.Errorf("process response: %w", err)
+		}
 	}
 
 	completionResp, err := processor.GetResponse()
@@ -83,6 +98,16 @@ func (e *EngineAdapter) Execute(ctx context.Context, req subnet.ExecuteRequest) 
 		return nil, fmt.Errorf("get body bytes: %w", err)
 	}
 
+	// For non-streaming ML responses with a ResponseWriter (SSE transport),
+	// write the JSON body as a proper SSE data event. ProxyResponse/proxyJsonResponse
+	// would write raw bytes without SSE framing, corrupting the stream.
+	if req.ResponseWriter != nil && !isSSE {
+		fmt.Fprintf(req.ResponseWriter, "data: %s\n\ndata: [DONE]\n\n", bodyBytes)
+		if f, ok := req.ResponseWriter.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
 	hash := sha256.Sum256(bodyBytes)
 
 	usage, err := completionResp.GetUsage()
@@ -91,10 +116,6 @@ func (e *EngineAdapter) Execute(ctx context.Context, req subnet.ExecuteRequest) 
 	}
 
 	// Store the canonicalized ORIGINAL prompt (not the modified one with seed).
-	// The subnet's PromptHash = sha256(canonicalize(original)), so the validator
-	// must receive the canonical original to pass hash verification.
-	// The seed is deterministic (derived from InferenceID), so the validator
-	// can reconstruct it.
 	promptPayload, err := subnet.CanonicalizeJSON(req.Prompt)
 	if err != nil {
 		return nil, fmt.Errorf("canonicalize prompt: %w", err)
@@ -110,6 +131,7 @@ func (e *EngineAdapter) Execute(ctx context.Context, req subnet.ExecuteRequest) 
 		ResponseHash: hash[:],
 		InputTokens:  usage.PromptTokens,
 		OutputTokens: usage.CompletionTokens,
+		ResponseBody: bodyBytes,
 	}, nil
 }
 

@@ -32,6 +32,7 @@ type InferenceRequest struct {
 	Diffs   []DiffJSON   `json:"diffs"`
 	Nonce   uint64       `json:"nonce"`
 	Payload *PayloadJSON `json:"payload,omitempty"`
+	Stream  bool         `json:"stream,omitempty"` // hint: stream SSE deltas vs single JSON event
 }
 
 // InferenceResponse is the JSON body returned by the inference endpoint.
@@ -273,4 +274,18 @@ func TimeoutReasonFromString(s string) (types.TimeoutReason, error) {
 	default:
 		return 0, fmt.Errorf("unknown timeout reason: %s", s)
 	}
+}
+
+// SubnetReceiptEvent is the first SSE event, sent before execution starts.
+type SubnetReceiptEvent struct {
+	StateSig    []byte `json:"state_sig,omitempty"`
+	StateHash   []byte `json:"state_hash,omitempty"`
+	Nonce       uint64 `json:"nonce"`
+	Receipt     []byte `json:"receipt,omitempty"`
+	ConfirmedAt int64  `json:"confirmed_at,omitempty"`
+}
+
+// SubnetMetaEvent is the final SSE event, sent after execution completes.
+type SubnetMetaEvent struct {
+	Mempool [][]byte `json:"mempool,omitempty"`
 }

@@ -65,11 +65,16 @@ func main() {
 
 	br := bridge.NewRESTBridge(*chainREST)
 
-	session, sm, err := user.NewHTTPSession(user.HTTPSessionConfig{
+	cfg := user.HTTPSessionConfig{
 		PrivateKeyHex: keyHex,
 		EscrowID:      *escrowID,
 		Bridge:        br,
-	})
+		StreamCallback: func(line string) {
+			fmt.Fprintln(os.Stderr, line)
+		},
+	}
+
+	session, sm, err := user.NewHTTPSession(cfg)
 	if err != nil {
 		log.Fatalf("create session: %v", err)
 	}

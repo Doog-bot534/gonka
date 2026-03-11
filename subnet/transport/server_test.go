@@ -116,13 +116,36 @@ func TestServer_Inference_ValidAuth(t *testing.T) {
 
 	rec := env.doPost(t, "/subnet/v1/sessions/escrow-1/chat/completions", body)
 	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
 
-	var resp InferenceResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.Equal(t, uint64(1), resp.Nonce)
-	require.NotNil(t, resp.StateSig)
-	require.NotNil(t, resp.Receipt) // single host is always executor
-	require.NotEmpty(t, resp.Mempool)
+	// Parse SSE events.
+	var receipt SubnetReceiptEvent
+	var meta SubnetMetaEvent
+	lines := strings.Split(rec.Body.String(), "\n")
+	for _, line := range lines {
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			continue
+		}
+		var envelope map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(data), &envelope); err != nil {
+			continue
+		}
+		if raw, ok := envelope["subnet_receipt"]; ok {
+			require.NoError(t, json.Unmarshal(raw, &receipt))
+		}
+		if raw, ok := envelope["subnet_meta"]; ok {
+			require.NoError(t, json.Unmarshal(raw, &meta))
+		}
+	}
+
+	require.Equal(t, uint64(1), receipt.Nonce)
+	require.NotNil(t, receipt.StateSig)
+	require.NotNil(t, receipt.Receipt) // single host is always executor
+	require.NotEmpty(t, meta.Mempool)
 }
 
 func TestServer_Inference_NoAuth(t *testing.T) {
@@ -332,4 +355,139 @@ func TestHandleGossipNonce_WarmKey(t *testing.T) {
 	e.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code, "warm key gossip nonce should succeed, got: %s", rec.Body.String())
+}
+
+func TestServer_StreamingInference(t *testing.T) {
+	env := setupServerEnv(t)
+
+	diff := testutil.SignDiff(t, env.userSigner, "escrow-1", 1, []*types.SubnetTx{testutil.StartTx(1)})
+	dj, err := DiffToJSON(diff)
+	require.NoError(t, err)
+
+	ir := InferenceRequest{
+		Diffs: []DiffJSON{dj},
+		Nonce: 1,
+		Payload: &PayloadJSON{
+			Prompt:      testutil.TestPrompt,
+			Model:       "llama",
+			InputLength: 100,
+			MaxTokens:   50,
+			StartedAt:   1000,
+		},
+		Stream: true,
+	}
+	body, err := json.Marshal(ir)
+	require.NoError(t, err)
+
+	rec := env.doPost(t, "/subnet/v1/sessions/escrow-1/chat/completions", body)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+
+	// Parse all SSE events.
+	var hasReceipt, hasMeta, hasInferenceData bool
+	lines := strings.Split(rec.Body.String(), "\n")
+	for _, line := range lines {
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			hasInferenceData = true
+			continue
+		}
+		var envelope map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(data), &envelope); err != nil {
+			continue
+		}
+		if _, ok := envelope["subnet_receipt"]; ok {
+			hasReceipt = true
+		}
+		if _, ok := envelope["subnet_meta"]; ok {
+			hasMeta = true
+		}
+		if _, ok := envelope["choices"]; ok {
+			hasInferenceData = true
+		}
+	}
+	require.True(t, hasReceipt, "should have subnet_receipt event")
+	require.True(t, hasMeta, "should have subnet_meta event")
+	require.True(t, hasInferenceData, "should have inference data events")
+}
+
+func TestServer_NonExecutor_SSE(t *testing.T) {
+	// 3 hosts, request to non-executor.
+	hostSigners := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
+	userSigner := testutil.MustGenerateKey(t)
+	group := testutil.MakeGroup(hostSigners)
+	config := testutil.DefaultConfig(3)
+	verifier := signing.NewSecp256k1Verifier()
+
+	// Host at slot 0. Inference 1 maps to executor slot 1, so host 0 is NOT executor.
+	sm := state.NewStateMachine("escrow-1", config, group, 100000, userSigner.Address(), verifier)
+	engine := stub.NewInferenceEngine()
+	store := storage.NewMemory()
+	require.NoError(t, store.CreateSession(storage.CreateSessionParams{EscrowID: "escrow-1", Config: config, Group: group, InitialBalance: 100000}))
+
+	h, err := host.NewHost(sm, hostSigners[0], engine, "escrow-1", group, nil, host.WithGrace(100), host.WithStorage(store))
+	require.NoError(t, err)
+
+	srv, err := NewServer(h, store, "escrow-1", verifier, group, userSigner.Address())
+	require.NoError(t, err)
+
+	e := echo.New()
+	g := e.Group("/subnet/v1")
+	srv.Register(g)
+
+	diff := testutil.SignDiff(t, userSigner, "escrow-1", 1, []*types.SubnetTx{testutil.StartTx(1)})
+	dj, err := DiffToJSON(diff)
+	require.NoError(t, err)
+	ir := InferenceRequest{
+		Diffs:   []DiffJSON{dj},
+		Nonce:   1,
+		Payload: &PayloadJSON{Prompt: testutil.TestPrompt, Model: "llama", InputLength: 100, MaxTokens: 50, StartedAt: 1000},
+	}
+	body, _ := json.Marshal(ir)
+
+	ts := require.New(t)
+	reqTime := time.Now().Unix()
+	sig, sigErr := SignRequest(userSigner, "escrow-1", body, reqTime)
+	ts.NoError(sigErr)
+
+	req := httptest.NewRequest(http.MethodPost, "/subnet/v1/sessions/escrow-1/chat/completions", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(HeaderSignature, hex.EncodeToString(sig))
+	req.Header.Set(HeaderTimestamp, fmt.Sprintf("%d", reqTime))
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+
+	// Parse events: should have receipt but no inference data (not executor).
+	var receipt SubnetReceiptEvent
+	var hasInferenceData bool
+	lines := strings.Split(rec.Body.String(), "\n")
+	for _, line := range lines {
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			hasInferenceData = true
+			continue
+		}
+		var envelope map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(data), &envelope); err != nil {
+			continue
+		}
+		if raw, ok := envelope["subnet_receipt"]; ok {
+			json.Unmarshal(raw, &receipt)
+		}
+		if _, ok := envelope["choices"]; ok {
+			hasInferenceData = true
+		}
+	}
+
+	require.Nil(t, receipt.Receipt, "non-executor should not have receipt")
+	require.False(t, hasInferenceData, "non-executor should not have inference data")
 }

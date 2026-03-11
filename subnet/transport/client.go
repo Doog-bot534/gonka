@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/hex"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,10 +37,11 @@ func getTransport(baseURL string) *http.Transport {
 
 // ClientConfig holds per-endpoint timeout settings.
 type ClientConfig struct {
-	InferenceTimeout time.Duration // /chat/completions, default 20m
-	GossipTimeout    time.Duration // gossip/nonce, gossip/txs, default 10s
-	VerifyTimeout    time.Duration // verify-timeout, default 3m
-	QueryTimeout     time.Duration // diffs, mempool GETs, default 30s
+	InferenceTimeout time.Duration          // /chat/completions, default 20m
+	GossipTimeout    time.Duration          // gossip/nonce, gossip/txs, default 10s
+	VerifyTimeout    time.Duration          // verify-timeout, default 3m
+	QueryTimeout     time.Duration          // diffs, mempool GETs, default 30s
+	StreamCallback   func(line string)      // if set, receives raw SSE data lines during inference
 }
 
 func DefaultClientConfig() ClientConfig {
@@ -123,17 +126,90 @@ func (c *HTTPClient) Send(ctx context.Context, req host.HostRequest) (*host.Host
 		return nil, fmt.Errorf("marshal json: %w", err)
 	}
 
-	respBody, err := c.doPost(ctx, "/sessions/"+c.escrowID+"/chat/completions", body)
+	resp, err := c.doPostRaw(ctx, "/sessions/"+c.escrowID+"/chat/completions", body)
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
+	contentType := resp.Header.Get("Content-Type")
+	if strings.HasPrefix(contentType, "text/event-stream") {
+		return c.parseSSEResponse(resp.Body)
+	}
+
+	// Backward compat: JSON response.
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
 	var respJSON InferenceResponse
 	if err := json.Unmarshal(respBody, &respJSON); err != nil {
 		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
-
 	return HostResponseFromJSON(respJSON)
+}
+
+// parseSSEResponse reads an SSE stream and extracts subnet_receipt and subnet_meta events.
+// Non-protocol data lines are forwarded to StreamCallback if configured.
+func (c *HTTPClient) parseSSEResponse(r io.Reader) (*host.HostResponse, error) {
+	scanner := bufio.NewScanner(r)
+	var result host.HostResponse
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			if c.config.StreamCallback != nil {
+				c.config.StreamCallback(line)
+			}
+			continue
+		}
+
+		// Try to parse as subnet protocol envelope.
+		var envelope map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(data), &envelope); err != nil {
+			// Not JSON -- forward as-is.
+			if c.config.StreamCallback != nil {
+				c.config.StreamCallback(line)
+			}
+			continue
+		}
+
+		if raw, ok := envelope["subnet_receipt"]; ok {
+			var receipt SubnetReceiptEvent
+			if err := json.Unmarshal(raw, &receipt); err == nil {
+				result.StateSig = receipt.StateSig
+				result.StateHash = receipt.StateHash
+				result.Nonce = receipt.Nonce
+				result.Receipt = receipt.Receipt
+				result.ConfirmedAt = receipt.ConfirmedAt
+			}
+			continue
+		}
+
+		if raw, ok := envelope["subnet_meta"]; ok {
+			var meta SubnetMetaEvent
+			if err := json.Unmarshal(raw, &meta); err == nil {
+				txs, txErr := SubnetTxsFromBytes(meta.Mempool)
+				if txErr == nil {
+					result.Mempool = txs
+				}
+			}
+			continue
+		}
+
+		// Inference data line -- forward to callback.
+		if c.config.StreamCallback != nil {
+			c.config.StreamCallback(line)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read SSE stream: %w", err)
+	}
+	return &result, nil
 }
 
 // GossipNonce sends a nonce notification to a peer.
@@ -253,8 +329,9 @@ func (c *HTTPClient) GetMempool(ctx context.Context) ([]*types.SubnetTx, error) 
 	return SubnetTxsFromBytes(result.Txs)
 }
 
-// doPost sends a signed POST request and returns the response body.
-func (c *HTTPClient) doPost(ctx context.Context, path string, body []byte) ([]byte, error) {
+// doPostRaw sends a signed POST request and returns the raw http.Response.
+// Caller is responsible for closing resp.Body.
+func (c *HTTPClient) doPostRaw(ctx context.Context, path string, body []byte) (*http.Response, error) {
 	url := c.baseURL + "/subnet/v1" + path
 
 	ts := time.Now().Unix()
@@ -275,18 +352,24 @@ func (c *HTTPClient) doPost(ctx context.Context, path string, body []byte) ([]by
 	if err != nil {
 		return nil, fmt.Errorf("http post %s: %w", path, err)
 	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
 
 	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		return nil, fmt.Errorf("http %s: status %d: %s", path, resp.StatusCode, string(respBody))
 	}
 
-	return respBody, nil
+	return resp, nil
+}
+
+// doPost sends a signed POST request and returns the response body.
+func (c *HTTPClient) doPost(ctx context.Context, path string, body []byte) ([]byte, error) {
+	resp, err := c.doPostRaw(ctx, path, body)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
 }
 
 // doGet sends a GET request and returns the response body.

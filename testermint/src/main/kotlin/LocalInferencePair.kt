@@ -720,31 +720,41 @@ data class LocalInferencePair(
         }
     }
 
-    data class SubnetctlResult(val parsed: SubnetSettlementData, val rawJson: String)
+    data class SubnetctlResult(val parsed: SubnetSettlementData, val rawJson: String, val stderr: String)
 
     fun runSubnetctl(escrowId: Long, prompts: Int, model: String, keyName: String? = null): SubnetctlResult =
         wrapLog("runSubnetctl", true) {
-            val privateKey = if (keyName != null) node.getPrivateKey(keyName) else node.getColdPrivateKey()
-            val command = listOf(
+            val privateKey = (if (keyName != null) node.getPrivateKey(keyName) else node.getColdPrivateKey()).trim()
+            val settlementFile = "/tmp/subnetctl-settlement.json"
+            val stderrFile = "/tmp/subnetctl-stderr.log"
+            // Run subnetctl: settlement -> file, stderr -> file, stdout -> /dev/null.
+            val runCommand = listOf(
                 "sh", "-c",
-                "out=/tmp/subnetctl-settlement.json; " +
-                    "rm -f \"\$out\"; " +
-                    "subnetctl --escrow-id $escrowId --chain-rest http://\$NODE_HOST:1317 " +
-                    "--prompts $prompts --model $model --private-key $privateKey " +
-                    "--output \"\$out\" >/dev/null 2>&1; " +
-                    "cat \"\$out\""
+                "rm -f $settlementFile $stderrFile && " +
+                    "subnetctl" +
+                    " --escrow-id $escrowId" +
+                    " --chain-rest http://\$NODE_HOST:1317" +
+                    " --prompts $prompts" +
+                    " --model '$model'" +
+                    " --private-key '$privateKey'" +
+                    " --output $settlementFile" +
+                    " >/dev/null 2>$stderrFile"
             )
-            // Docker exec returns arbitrary frame chunks. Concatenate them exactly
-            // instead of inserting separators, or we can corrupt JSON payloads.
-            val raw = api.executor.exec(command, null).joinToString("")
+            api.executor.exec(runCommand, null)
+            // Read stderr (stream + log output).
+            val stderrOutput = try {
+                api.executor.exec(listOf("cat", stderrFile), null).joinToString("")
+            } catch (_: Exception) { "" }
+            // Read settlement JSON.
+            val raw = api.executor.exec(listOf("cat", settlementFile), null).joinToString("")
             val start = raw.indexOf('{')
             val end = raw.lastIndexOf('}')
             if (start < 0 || end < 0) {
-                error("subnetctl output contains no JSON object. Full output:\n$raw")
+                error("subnetctl output contains no JSON object. stderr:\n$stderrOutput\nraw:\n$raw")
             }
             val json = raw.substring(start, end + 1)
             val parsed = Gson().fromJson(json, SubnetSettlementData::class.java)
-            SubnetctlResult(parsed = parsed, rawJson = json)
+            SubnetctlResult(parsed = parsed, rawJson = json, stderr = stderrOutput)
         }
 
     fun settleSubnetEscrow(settlementJson: String, from: String? = null): TxResponse =
