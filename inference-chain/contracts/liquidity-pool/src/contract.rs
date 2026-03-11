@@ -982,13 +982,8 @@ fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
 }
 
 fn query_test_bridge_validation(deps: Deps, cw20_contract: String) -> StdResult<TestBridgeValidationResponse> {
-    // Accept either raw cw20 address or prefixed cw20:<addr>
-    let denom = if cw20_contract.starts_with("cw20:") {
-        cw20_contract
-    } else {
-        format!("cw20:{cw20_contract}")
-    };
-    let is_valid = validate_wrapped_token_for_trade(deps, &denom).unwrap_or(false);
+    // Pass directly to the validator which handles both prefixed and raw addresses
+    let is_valid = validate_wrapped_token_for_trade(deps, &cw20_contract).unwrap_or(false);
     Ok(TestBridgeValidationResponse { is_valid })
 }
 
