@@ -66,62 +66,7 @@ class SubnetTests : TestermintTest() {
         }
 
         logSection("Creating separate user account")
-        val userKeyName = "subnet-user"
-        val userKey = genesis.node.createKey(userKeyName)
-        val userAddress = userKey.address
-        val fundAmount = 10_000_000_000L  // 10 GNK
-        val transferResp = genesis.submitTransaction(
-            listOf("bank", "send", genesis.node.getColdAddress(), userAddress, "${fundAmount}${genesis.config.denom}")
-        )
-        assertThat(transferResp.code).isEqualTo(0)
-        val userBalance = genesis.getBalance(userAddress)
-        assertThat(userBalance).isEqualTo(fundAmount)
-
-        logSection("Creating subnet escrow from user account")
-        val escrowAmount = 7_000_000_000L
-        val txResp = genesis.createSubnetEscrow(escrowAmount, from = userKeyName)
-        assertThat(txResp.code).isEqualTo(0)
-        genesis.waitForNextInferenceWindow()
-
-        logSection("Running subnetctl as user")
-        val result = genesis.runSubnetctl(escrowId = 1, prompts = 20, model = defaultModel, keyName = userKeyName)
-
-        logSection("Verifying settlement data")
-        assertThat(result.parsed.escrowId).isEqualTo("1")
-        assertThat(result.parsed.nonce).isGreaterThan(0)
-        assertThat(result.parsed.hostStats).isNotEmpty()
-        assertThat(result.parsed.signatures).isNotEmpty()
-        val totalCompletedValidations = result.parsed.hostStats.sumOf { it.completedValidations }
-        assertThat(totalCompletedValidations).isGreaterThan(0)
-
-        logSection("Submitting settlement from user account")
-        val settleResp = genesis.settleSubnetEscrow(result.rawJson, from = userKeyName)
-        assertThat(settleResp.code).isEqualTo(0)
-
-        logSection("Verifying escrow settled")
-        val escrow = genesis.node.querySubnetEscrow(1)
-        assertThat(escrow.escrow!!.settled).isTrue()
-
-        logSection("Verifying user got refund")
-        val balanceAfter = genesis.getBalance(userAddress)
-        assertThat(balanceAfter).isGreaterThan(fundAmount - escrowAmount)
-    }
-
-    @Test
-    fun `subnet streaming inference e2e with settlement`() {
-        val (cluster, genesis) = initCluster(config = noRestrictionsConfig, reboot = true)
-        genesis.waitForNextEpoch()
-
-        // Configure mock ML nodes with streaming response (streamDelay > 0 triggers SSE).
-        cluster.allPairs.forEach { pair ->
-            pair.mock?.setInferenceResponse(
-                """{"id":"test","object":"chat.completion","created":0,"model":"$defaultModel","choices":[{"index":0,"message":{"role":"assistant","content":"hello from stream"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}""",
-                streamDelay = Duration.ofMillis(50)
-            )
-        }
-
-        logSection("Creating separate user account")
-        val userKeyName = "subnet-stream-user"
+        val userKeyName = "subnet-proxy-user"
         val userKey = genesis.node.createKey(userKeyName)
         val userAddress = userKey.address
         val fundAmount = 10_000_000_000L
@@ -136,34 +81,101 @@ class SubnetTests : TestermintTest() {
         assertThat(txResp.code).isEqualTo(0)
         genesis.waitForNextInferenceWindow()
 
-        logSection("Running subnetctl with streaming ML node")
-        val result = genesis.runSubnetctl(escrowId = 1, prompts = 20, model = defaultModel, keyName = userKeyName)
+        logSection("Starting subnet proxy")
+        val handle = genesis.startSubnetProxy(escrowId = 1, keyName = userKeyName)
 
-        logSection("Verifying user received streamed inference data")
-        assertThat(result.stderr).isNotEmpty()
-        // StreamCallback prints each SSE data line to stderr.
-        // Verify actual inference output was streamed to the user.
-        assertThat(result.stderr).contains("choices")
+        try {
+            logSection("Sending chat completions via proxy")
+            for (i in 0 until 20) {
+                val response = genesis.sendChatCompletion(handle.proxyUrl, defaultModel, "test prompt $i")
+                assertThat(response).isNotEmpty()
+            }
 
-        logSection("Verifying settlement data")
-        assertThat(result.parsed.escrowId).isEqualTo("1")
-        assertThat(result.parsed.nonce).isGreaterThan(0)
-        assertThat(result.parsed.hostStats).isNotEmpty()
-        assertThat(result.parsed.signatures).isNotEmpty()
-        val totalCompletedValidations = result.parsed.hostStats.sumOf { it.completedValidations }
-        assertThat(totalCompletedValidations).isGreaterThan(0)
+            logSection("Finalizing via proxy")
+            val result = genesis.finalizeSubnetProxy(handle.proxyUrl)
 
-        logSection("Submitting settlement from user account")
-        val settleResp = genesis.settleSubnetEscrow(result.rawJson, from = userKeyName)
-        assertThat(settleResp.code).isEqualTo(0)
+            logSection("Verifying settlement data")
+            assertThat(result.parsed.escrowId).isEqualTo("1")
+            assertThat(result.parsed.nonce).isGreaterThan(0)
+            assertThat(result.parsed.hostStats).isNotEmpty()
+            assertThat(result.parsed.signatures).isNotEmpty()
+            val totalCompletedValidations = result.parsed.hostStats.sumOf { it.completedValidations }
+            assertThat(totalCompletedValidations).isGreaterThan(0)
 
-        logSection("Verifying escrow settled")
-        val escrow = genesis.node.querySubnetEscrow(1)
-        assertThat(escrow.escrow!!.settled).isTrue()
+            logSection("Submitting settlement from user account")
+            val settleResp = genesis.settleSubnetEscrow(result.rawJson, from = userKeyName)
+            assertThat(settleResp.code).isEqualTo(0)
 
-        logSection("Verifying user got refund")
-        val balanceAfter = genesis.getBalance(userAddress)
-        assertThat(balanceAfter).isGreaterThan(fundAmount - escrowAmount)
+            logSection("Verifying escrow settled")
+            val escrow = genesis.node.querySubnetEscrow(1)
+            assertThat(escrow.escrow!!.settled).isTrue()
+
+            logSection("Verifying user got refund")
+            val balanceAfter = genesis.getBalance(userAddress)
+            assertThat(balanceAfter).isGreaterThan(fundAmount - escrowAmount)
+        } finally {
+            genesis.stopSubnetProxy(1)
+        }
+    }
+
+    @Test
+    fun `subnet streaming inference e2e with settlement`() {
+        val (cluster, genesis) = initCluster(config = noRestrictionsConfig, reboot = true)
+        genesis.waitForNextEpoch()
+
+        cluster.allPairs.forEach { pair ->
+            pair.mock?.setInferenceResponse(
+                """{"id":"test","object":"chat.completion","created":0,"model":"$defaultModel","choices":[{"index":0,"message":{"role":"assistant","content":"hello from stream"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}""",
+                streamDelay = Duration.ofMillis(50)
+            )
+        }
+
+        logSection("Creating separate user account")
+        val userKeyName = "subnet-proxy-stream-user"
+        val userKey = genesis.node.createKey(userKeyName)
+        val userAddress = userKey.address
+        val fundAmount = 10_000_000_000L
+        val transferResp = genesis.submitTransaction(
+            listOf("bank", "send", genesis.node.getColdAddress(), userAddress, "${fundAmount}${genesis.config.denom}")
+        )
+        assertThat(transferResp.code).isEqualTo(0)
+
+        logSection("Creating subnet escrow from user account")
+        val escrowAmount = 7_000_000_000L
+        val txResp = genesis.createSubnetEscrow(escrowAmount, from = userKeyName)
+        assertThat(txResp.code).isEqualTo(0)
+        genesis.waitForNextInferenceWindow()
+
+        logSection("Starting subnet proxy")
+        val handle = genesis.startSubnetProxy(escrowId = 1, keyName = userKeyName)
+
+        try {
+            logSection("Sending streaming chat completions via proxy")
+            for (i in 0 until 20) {
+                val response = genesis.sendChatCompletion(handle.proxyUrl, defaultModel, "test prompt $i", stream = true)
+                assertThat(response).isNotEmpty()
+                assertThat(response).contains("data:")
+            }
+
+            logSection("Finalizing via proxy")
+            val result = genesis.finalizeSubnetProxy(handle.proxyUrl)
+
+            logSection("Verifying settlement data")
+            assertThat(result.parsed.escrowId).isEqualTo("1")
+            assertThat(result.parsed.nonce).isGreaterThan(0)
+            assertThat(result.parsed.hostStats).isNotEmpty()
+            assertThat(result.parsed.signatures).isNotEmpty()
+
+            logSection("Submitting settlement from user account")
+            val settleResp = genesis.settleSubnetEscrow(result.rawJson, from = userKeyName)
+            assertThat(settleResp.code).isEqualTo(0)
+
+            logSection("Verifying escrow settled")
+            val escrow = genesis.node.querySubnetEscrow(1)
+            assertThat(escrow.escrow!!.settled).isTrue()
+        } finally {
+            genesis.stopSubnetProxy(1)
+        }
     }
 
     @Test
@@ -178,16 +190,15 @@ class SubnetTests : TestermintTest() {
             )
         }
 
-        // Phase 1a: Create and fund all users first (20 txs, may span epochs).
         data class UserInfo(val keyName: String, val address: String)
         data class SessionSetup(val keyName: String, val address: String, val escrowId: Long)
 
-        val fundAmount = 10_000_000_000L   // 10 GNK
-        val escrowAmount = 7_000_000_000L  // 7 GNK
+        val fundAmount = 10_000_000_000L
+        val escrowAmount = 7_000_000_000L
 
         val users = (0 until sessionCount).map { i ->
             logSection("Creating and funding user $i")
-            val keyName = "subnet-parallel-$i"
+            val keyName = "subnet-proxy-parallel-$i"
             val key = genesis.node.createKey(keyName)
             val transferResp = genesis.submitTransaction(
                 listOf("bank", "send", genesis.node.getColdAddress(), key.address, "${fundAmount}${genesis.config.denom}")
@@ -196,9 +207,6 @@ class SubnetTests : TestermintTest() {
             UserInfo(keyName, key.address)
         }
 
-        // Phase 1b: Wait for fresh epoch, then create all escrows in a tight batch.
-        // Escrows are pruned after 2 epochs, so they must land in the same epoch
-        // as the subsequent waitForNextInferenceWindow to avoid being pruned.
         genesis.waitForNextEpoch()
 
         val sessions = users.mapIndexed { i, user ->
@@ -212,50 +220,54 @@ class SubnetTests : TestermintTest() {
 
         genesis.waitForNextInferenceWindow()
 
-        // Phase 2: Parallel execution -- run subnetctl concurrently.
-        logSection("Running $sessionCount subnetctl sessions in parallel")
-        val dispatcher = Executors.newFixedThreadPool(sessionCount).asCoroutineDispatcher()
-        val results = runBlocking(dispatcher) {
-            sessions.map { session ->
-                async {
-                    genesis.runSubnetctl(
-                        escrowId = session.escrowId,
-                        prompts = 20,
-                        model = defaultModel,
-                        keyName = session.keyName
-                    )
-                }
-            }.awaitAll()
+        logSection("Starting $sessionCount subnet proxies")
+        val handles = sessions.map { session ->
+            genesis.startSubnetProxy(escrowId = session.escrowId, keyName = session.keyName)
         }
 
-        // Phase 3: Sequential settlement.
-        logSection("Settling $sessionCount escrows")
-        sessions.zip(results).forEach { (session, result) ->
-            assertThat(result.parsed.escrowId)
-                .withFailMessage("Escrow ID mismatch for ${session.keyName}")
-                .isEqualTo(session.escrowId.toString())
-            assertThat(result.parsed.hostStats).isNotEmpty()
-            assertThat(result.parsed.signatures).isNotEmpty()
-            assertThat(result.parsed.hostStats.sumOf { it.completedValidations }).isGreaterThan(0)
+        try {
+            logSection("Running $sessionCount proxy sessions in parallel")
+            val dispatcher = Executors.newFixedThreadPool(sessionCount).asCoroutineDispatcher()
+            runBlocking(dispatcher) {
+                handles.map { handle ->
+                    async {
+                        for (i in 0 until 20) {
+                            genesis.sendChatCompletion(handle.proxyUrl, defaultModel, "test prompt $i")
+                        }
+                    }
+                }.awaitAll()
+            }
 
-            val settleResp = genesis.settleSubnetEscrow(result.rawJson, from = session.keyName)
-            assertThat(settleResp.code)
-                .withFailMessage("Settlement failed for escrow ${session.escrowId}")
-                .isEqualTo(0)
-        }
+            logSection("Finalizing and settling $sessionCount escrows")
+            sessions.zip(handles).forEach { (session, handle) ->
+                val result = genesis.finalizeSubnetProxy(handle.proxyUrl)
+                assertThat(result.parsed.escrowId)
+                    .withFailMessage("Escrow ID mismatch for ${session.keyName}")
+                    .isEqualTo(session.escrowId.toString())
+                assertThat(result.parsed.hostStats).isNotEmpty()
+                assertThat(result.parsed.signatures).isNotEmpty()
+                assertThat(result.parsed.hostStats.sumOf { it.completedValidations }).isGreaterThan(0)
 
-        // Phase 4: Verify all escrows settled and refunds received.
-        logSection("Verifying settlement and refunds")
-        sessions.forEach { session ->
-            val escrow = genesis.node.querySubnetEscrow(session.escrowId)
-            assertThat(escrow.escrow!!.settled)
-                .withFailMessage("Escrow ${session.escrowId} not settled")
-                .isTrue()
+                val settleResp = genesis.settleSubnetEscrow(result.rawJson, from = session.keyName)
+                assertThat(settleResp.code)
+                    .withFailMessage("Settlement failed for escrow ${session.escrowId}")
+                    .isEqualTo(0)
+            }
 
-            val balance = genesis.getBalance(session.address)
-            assertThat(balance)
-                .withFailMessage("User ${session.keyName} did not receive refund")
-                .isGreaterThan(fundAmount - escrowAmount)
+            logSection("Verifying settlement and refunds")
+            sessions.forEach { session ->
+                val escrow = genesis.node.querySubnetEscrow(session.escrowId)
+                assertThat(escrow.escrow!!.settled)
+                    .withFailMessage("Escrow ${session.escrowId} not settled")
+                    .isTrue()
+
+                val balance = genesis.getBalance(session.address)
+                assertThat(balance)
+                    .withFailMessage("User ${session.keyName} did not receive refund")
+                    .isGreaterThan(fundAmount - escrowAmount)
+            }
+        } finally {
+            handles.forEach { genesis.stopSubnetProxy(it.escrowId) }
         }
     }
 

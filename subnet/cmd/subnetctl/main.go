@@ -1,15 +1,15 @@
 package main
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
-	"time"
+	"path/filepath"
 
 	"subnet/bridge"
 	"subnet/state"
@@ -41,12 +41,12 @@ type SlotSignatureJSON struct {
 
 func main() {
 	fs := flag.NewFlagSet("subnetctl", flag.ExitOnError)
-	escrowID := fs.String("escrow-id", "", "escrow ID (required)")
+	escrowID := fs.String("escrow-id", "", "escrow ID (required, or SUBNET_ESCROW_ID env)")
 	chainREST := fs.String("chain-rest", "http://localhost:1317", "chain REST API URL")
-	prompts := fs.Int("prompts", 1, "number of inferences to send")
-	model := fs.String("model", "Qwen/Qwen2.5-7B-Instruct", "model name")
-	output := fs.String("output", "", "output file (default: stdout)")
+	model := fs.String("model", "Qwen/Qwen2.5-7B-Instruct", "default model name")
+	port := fs.String("port", "8080", "listen port")
 	privateKey := fs.String("private-key", "", "private key hex (alternative to SUBNET_PRIVATE_KEY env)")
+	storagePath := fs.String("storage-path", "", "SQLite path for crash recovery")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		log.Fatal(err)
@@ -59,71 +59,80 @@ func main() {
 	if keyHex == "" {
 		log.Fatal("--private-key flag or SUBNET_PRIVATE_KEY env var required")
 	}
-	if *escrowID == "" {
-		log.Fatal("--escrow-id required")
+
+	eid := *escrowID
+	if eid == "" {
+		eid = os.Getenv("SUBNET_ESCROW_ID")
+	}
+	if eid == "" {
+		log.Fatal("--escrow-id flag or SUBNET_ESCROW_ID env var required")
 	}
 
-	br := bridge.NewRESTBridge(*chainREST)
+	crest := *chainREST
+	if v := os.Getenv("SUBNET_CHAIN_REST"); v != "" && *chainREST == "http://localhost:1317" {
+		crest = v
+	}
 
+	mdl := *model
+	if v := os.Getenv("SUBNET_MODEL"); v != "" && *model == "Qwen/Qwen2.5-7B-Instruct" {
+		mdl = v
+	}
+
+	p := *port
+	if v := os.Getenv("SUBNET_PORT"); v != "" && *port == "8080" {
+		p = v
+	}
+
+	sp := *storagePath
+	if sp == "" {
+		sp = os.Getenv("SUBNET_STORAGE_PATH")
+	}
+	if sp == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			home = "/tmp"
+		}
+		sp = filepath.Join(home, ".cache", "gonka", fmt.Sprintf("subnet-%s.db", eid))
+	}
+
+	if err := os.MkdirAll(filepath.Dir(sp), 0755); err != nil {
+		log.Fatalf("create storage dir: %v", err)
+	}
+
+	relay := &streamRelay{}
+
+	br := bridge.NewRESTBridge(crest)
 	cfg := user.HTTPSessionConfig{
-		PrivateKeyHex: keyHex,
-		EscrowID:      *escrowID,
-		Bridge:        br,
-		StreamCallback: func(line string) {
-			fmt.Fprintln(os.Stderr, line)
-		},
+		PrivateKeyHex:  keyHex,
+		EscrowID:       eid,
+		Bridge:         br,
+		StoragePath:    sp,
+		StreamCallback: relay.callback,
 	}
 
 	session, sm, err := user.NewHTTPSession(cfg)
 	if err != nil {
 		log.Fatalf("create session: %v", err)
 	}
+	defer session.Close()
 
-	ctx := context.Background()
-
-	for i := 0; i < *prompts; i++ {
-		prompt := []byte(fmt.Sprintf(
-			`{"model":"%s","messages":[{"role":"user","content":"test prompt %d"}],"max_tokens":%d}`,
-			*model, i, 100,
-		))
-		result, err := session.SendInference(ctx, user.InferenceParams{
-			Model:       *model,
-			Prompt:      prompt,
-			InputLength: uint64(len(prompt)),
-			MaxTokens:   100,
-			StartedAt:   time.Now().Unix(),
-		})
-		if err != nil {
-			log.Fatalf("inference %d: %v", i, err)
-		}
-		log.Printf("inference %d: nonce=%d receipt=%v", i, result.Nonce, result.Receipt != nil)
+	proxy := &Proxy{
+		session:  session,
+		sm:       sm,
+		escrowID: eid,
+		model:    mdl,
+		relay:    relay,
 	}
 
-	if err := session.Finalize(ctx); err != nil {
-		log.Fatalf("finalize: %v", err)
-	}
-	log.Println("finalization complete")
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/chat/completions", proxy.handleChatCompletions)
+	mux.HandleFunc("/v1/finalize", proxy.handleFinalize)
+	mux.HandleFunc("/v1/status", proxy.handleStatus)
 
-	st := sm.SnapshotState()
-	finalNonce := session.Nonce()
-	payload, err := state.BuildSettlement(*escrowID, st, session.Signatures()[finalNonce], finalNonce)
-	if err != nil {
-		log.Fatalf("build settlement: %v", err)
-	}
-
-	data, err := marshalSettlement(payload)
-	if err != nil {
-		log.Fatalf("marshal settlement: %v", err)
-	}
-
-	if *output != "" {
-		if err := os.WriteFile(*output, data, 0644); err != nil {
-			log.Fatalf("write output: %v", err)
-		}
-		log.Printf("settlement written to %s", *output)
-	} else {
-		// Settlement JSON goes to stdout. Logs go to stderr (log.* default).
-		fmt.Println(string(data))
+	addr := ":" + p
+	log.Printf("subnetctl listening on %s (escrow=%s model=%s)", addr, eid, mdl)
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		log.Fatalf("server: %v", err)
 	}
 }
 
@@ -158,4 +167,3 @@ func marshalSettlement(p *state.SettlementPayload) ([]byte, error) {
 		HostStats: stats, Signatures: sigs,
 	}, "", "  ")
 }
-

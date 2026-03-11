@@ -720,42 +720,75 @@ data class LocalInferencePair(
         }
     }
 
-    data class SubnetctlResult(val parsed: SubnetSettlementData, val rawJson: String, val stderr: String)
+    data class SubnetProxyHandle(val escrowId: Long, val port: Int, val proxyUrl: String)
 
-    fun runSubnetctl(escrowId: Long, prompts: Int, model: String, keyName: String? = null): SubnetctlResult =
-        wrapLog("runSubnetctl", true) {
+    fun startSubnetProxy(escrowId: Long, keyName: String? = null, port: Int = 18080 + escrowId.toInt()): SubnetProxyHandle =
+        wrapLog("startSubnetProxy", true) {
             val privateKey = (if (keyName != null) node.getPrivateKey(keyName) else node.getColdPrivateKey()).trim()
-            val settlementFile = "/tmp/subnetctl-settlement-${escrowId}.json"
-            val stderrFile = "/tmp/subnetctl-stderr-${escrowId}.log"
-            // Run subnetctl: settlement -> file, stderr -> file, stdout -> /dev/null.
-            val runCommand = listOf(
+            val stderrFile = "/tmp/subnetctl-proxy-${escrowId}.log"
+            val startCommand = listOf(
                 "sh", "-c",
-                "rm -f $settlementFile $stderrFile && " +
-                    "subnetctl" +
-                    " --escrow-id $escrowId" +
-                    " --chain-rest http://\$NODE_HOST:1317" +
-                    " --prompts $prompts" +
-                    " --model '$model'" +
-                    " --private-key '$privateKey'" +
-                    " --output $settlementFile" +
-                    " >/dev/null 2>$stderrFile"
+                "SUBNET_PRIVATE_KEY='$privateKey'" +
+                    " SUBNET_ESCROW_ID=$escrowId" +
+                    " SUBNET_CHAIN_REST=http://\$NODE_HOST:1317" +
+                    " SUBNET_PORT=$port" +
+                    " SUBNET_STORAGE_PATH=/tmp/subnetctl-proxy-${escrowId}.db" +
+                    " nohup subnetctl >$stderrFile 2>&1 &" +
+                    " echo \$!"
             )
-            api.executor.exec(runCommand, null)
-            // Read stderr (stream + log output).
-            val stderrOutput = try {
-                api.executor.exec(listOf("cat", stderrFile), null).joinToString("")
-            } catch (_: Exception) { "" }
-            // Read settlement JSON.
-            val raw = api.executor.exec(listOf("cat", settlementFile), null).joinToString("")
-            val start = raw.indexOf('{')
-            val end = raw.lastIndexOf('}')
-            if (start < 0 || end < 0) {
-                error("subnetctl output contains no JSON object. stderr:\n$stderrOutput\nraw:\n$raw")
+            api.executor.exec(startCommand, null)
+            // Wait for proxy to be ready.
+            val proxyUrl = "http://localhost:$port"
+            var ready = false
+            for (i in 0 until 30) {
+                try {
+                    api.executor.exec(listOf("sh", "-c", "curl -sf $proxyUrl/v1/status >/dev/null 2>&1 && echo OK"), null)
+                    ready = true
+                    break
+                } catch (_: Exception) {
+                    Thread.sleep(500)
+                }
             }
-            val json = raw.substring(start, end + 1)
-            val parsed = Gson().fromJson(json, SubnetSettlementData::class.java)
-            SubnetctlResult(parsed = parsed, rawJson = json, stderr = stderrOutput)
+            if (!ready) {
+                val logs = try {
+                    api.executor.exec(listOf("cat", stderrFile), null).joinToString("")
+                } catch (_: Exception) { "no logs" }
+                error("subnetctl did not start within 15s. Logs:\n$logs")
+            }
+            SubnetProxyHandle(escrowId, port, proxyUrl)
         }
+
+    fun stopSubnetProxy(escrowId: Long) {
+        try {
+            api.executor.exec(listOf("sh", "-c", "pkill -f 'SUBNET_ESCROW_ID=$escrowId.*subnetctl' || true"), null)
+        } catch (_: Exception) { /* ignore */ }
+    }
+
+    fun sendChatCompletion(proxyUrl: String, model: String, prompt: String, stream: Boolean = false): String {
+        val body = """{"model":"$model","messages":[{"role":"user","content":"$prompt"}],"max_tokens":100,"stream":$stream}"""
+        val result = api.executor.exec(listOf(
+            "sh", "-c",
+            "curl -sf -X POST $proxyUrl/v1/chat/completions -H 'Content-Type: application/json' -d '${body.replace("'", "'\\''")}'"
+        ), null)
+        return result.joinToString("")
+    }
+
+    fun finalizeSubnetProxy(proxyUrl: String): SubnetctlResult {
+        val raw = api.executor.exec(listOf(
+            "sh", "-c",
+            "curl -sf -X POST $proxyUrl/v1/finalize"
+        ), null).joinToString("")
+        val start = raw.indexOf('{')
+        val end = raw.lastIndexOf('}')
+        if (start < 0 || end < 0) {
+            error("finalize returned no JSON object. raw:\n$raw")
+        }
+        val json = raw.substring(start, end + 1)
+        val parsed = Gson().fromJson(json, SubnetSettlementData::class.java)
+        return SubnetctlResult(parsed = parsed, rawJson = json, stderr = "")
+    }
+
+    data class SubnetctlResult(val parsed: SubnetSettlementData, val rawJson: String, val stderr: String)
 
     fun settleSubnetEscrow(settlementJson: String, from: String? = null): TxResponse =
         wrapLog("settleSubnetEscrow", true) {
