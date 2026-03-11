@@ -2,6 +2,8 @@
 Rough chart of funding flows as of Tokenomics v2.
 
 In all charts, the accounts with underscores are "subaccounts", the others are full Cosmos accounts.
+
+**Implementation note:** In the codebase, sub-account names are: inference uses `settled` and `owed` (diagram: exec_settled, exec_balance); streamvesting uses `vesting` (exec_vesting); collateral uses `collateral` and `collateral-unbonding` (provider_collateral, provider_unbonding). The bookkeeper formats ledger entries as `{owner}_{subAccount}` (e.g. `bob_settled`).
 ## Inferences
 
 ```mermaid
