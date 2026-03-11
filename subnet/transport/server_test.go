@@ -50,7 +50,7 @@ func setupServerEnv(t *testing.T) *serverTestEnv {
 	h, err := host.NewHost(sm, hostSigner, engine, "escrow-1", group, nil, host.WithGrace(100), host.WithStorage(store))
 	require.NoError(t, err)
 
-	srv, err := NewServer(h, store, "escrow-1", verifier, group, userSigner.Address())
+	srv, err := NewServer(h, store, verifier, userSigner.Address())
 	require.NoError(t, err)
 
 	e := echo.New()
@@ -235,8 +235,8 @@ func TestServer_RateLimit(t *testing.T) {
 	env := setupServerEnv(t)
 
 	// Re-create server with a tight rate limit.
-	srv, err := NewServer(env.server.host, env.store, "escrow-1",
-		env.server.verifier, env.group, env.userSigner.Address(),
+	srv, err := NewServer(env.server.host, env.store,
+		env.server.verifier, env.userSigner.Address(),
 		WithRateLimit(RateLimitConfig{RequestsPerSecond: 1, BurstSize: 1}))
 	require.NoError(t, err)
 
@@ -306,7 +306,7 @@ func TestHandleGossipNonce_WarmKey(t *testing.T) {
 	h, err := host.NewHost(sm2, hostSigner, engine, "escrow-1", group, nil, host.WithGrace(100), host.WithStorage(store), host.WithVerifier(verifier))
 	require.NoError(t, err)
 
-	srv, err := NewServer(h, store, "escrow-1", verifier, group, userSigner.Address())
+	srv, err := NewServer(h, store, verifier, userSigner.Address())
 	require.NoError(t, err)
 
 	e := echo.New()
@@ -431,7 +431,7 @@ func TestServer_NonExecutor_SSE(t *testing.T) {
 	h, err := host.NewHost(sm, hostSigners[0], engine, "escrow-1", group, nil, host.WithGrace(100), host.WithStorage(store))
 	require.NoError(t, err)
 
-	srv, err := NewServer(h, store, "escrow-1", verifier, group, userSigner.Address())
+	srv, err := NewServer(h, store, verifier, userSigner.Address())
 	require.NoError(t, err)
 
 	e := echo.New()

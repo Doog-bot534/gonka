@@ -163,11 +163,11 @@ func TestRecoverSessions_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 
 	mgr.mu.RLock()
-	entry, ok := mgr.sessions["escrow-1"]
+	srv, ok := mgr.sessions["escrow-1"]
 	mgr.mu.RUnlock()
 	require.True(t, ok, "session should exist after recovery")
-	require.NotNil(t, entry.host)
-	require.NotNil(t, entry.server)
+	require.NotNil(t, srv)
+	require.NotNil(t, srv.Host())
 }
 
 func TestRecoverSessions_Nonce0(t *testing.T) {
@@ -208,16 +208,16 @@ func TestRecoverSessions_Nonce0(t *testing.T) {
 
 	// Session must be registered despite nonce 0.
 	mgr.mu.RLock()
-	entry, ok := mgr.sessions["escrow-1"]
+	srv, ok := mgr.sessions["escrow-1"]
 	mgr.mu.RUnlock()
 	require.True(t, ok, "nonce-0 session must be registered after recovery")
-	require.NotNil(t, entry.host)
-	require.NotNil(t, entry.server)
+	require.NotNil(t, srv)
+	require.NotNil(t, srv.Host())
 
-	// Subsequent getOrCreate must return the same entry without error.
-	entry2, err := mgr.getOrCreate("escrow-1")
+	// Subsequent getOrCreate must return the same session without error.
+	srv2, err := mgr.getOrCreate("escrow-1")
 	require.NoError(t, err)
-	require.Equal(t, entry, entry2)
+	require.Equal(t, srv, srv2)
 }
 
 func TestRecoverSessions_EmptyStore(t *testing.T) {

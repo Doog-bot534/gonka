@@ -70,7 +70,7 @@ func setupHTTPEnv(t *testing.T, numHosts int, balance, grace uint64, cfgs ...typ
 		require.NoError(t, err)
 		hosts[i] = h
 
-		srv, srvErr := transport.NewServer(h, store, "escrow-1", verifier, group, userSigner.Address())
+		srv, srvErr := transport.NewServer(h, store, verifier, userSigner.Address())
 		require.NoError(t, srvErr)
 		servers[i] = srv
 

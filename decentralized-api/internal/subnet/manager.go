@@ -33,15 +33,10 @@ import (
 	"subnet/types"
 )
 
-type sessionEntry struct {
-	server *transport.Server
-	host   *host.Host
-}
-
 // HostManager manages per-escrow subnet sessions with lazy creation.
 type HostManager struct {
 	mu       sync.RWMutex
-	sessions map[string]*sessionEntry
+	sessions map[string]*transport.Server
 
 	store        storage.Storage
 	signer       *signing.Secp256k1Signer
@@ -63,7 +58,7 @@ func NewHostManager(
 	recorder cosmosclient.CosmosMessageClient,
 ) *HostManager {
 	return &HostManager{
-		sessions:     make(map[string]*sessionEntry),
+		sessions:     make(map[string]*transport.Server),
 		store:        store,
 		signer:       signer,
 		verifier:     signing.NewSecp256k1Verifier(),
@@ -80,23 +75,23 @@ func (m *HostManager) Close() error {
 	return m.store.Close()
 }
 
-func (m *HostManager) getOrCreate(escrowID string) (*sessionEntry, error) {
+func (m *HostManager) getOrCreate(escrowID string) (*transport.Server, error) {
 	m.mu.RLock()
-	entry, ok := m.sessions[escrowID]
+	srv, ok := m.sessions[escrowID]
 	m.mu.RUnlock()
 	if ok {
-		return entry, nil
+		return srv, nil
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if entry, ok = m.sessions[escrowID]; ok {
-		return entry, nil
+	if srv, ok = m.sessions[escrowID]; ok {
+		return srv, nil
 	}
 	return m.createLocked(escrowID)
 }
 
-func (m *HostManager) createLocked(escrowID string) (*sessionEntry, error) {
+func (m *HostManager) createLocked(escrowID string) (*transport.Server, error) {
 	group, err := bridge.BuildGroup(escrowID, m.bridge)
 	if err != nil {
 		return nil, fmt.Errorf("build group: %w", err)
@@ -133,19 +128,15 @@ func (m *HostManager) createLocked(escrowID string) (*sessionEntry, error) {
 		return nil, fmt.Errorf("create host: %w", err)
 	}
 
-	srv, err := transport.NewServer(h, m.store, escrowID, m.verifier, group, creatorAddr,
+	srv, err := transport.NewServer(h, m.store, m.verifier, creatorAddr,
 		transport.WithBridge(m.bridge),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create server: %w", err)
 	}
 
-	entry := &sessionEntry{
-		server: srv,
-		host:   h,
-	}
-	m.sessions[escrowID] = entry
-	return entry, nil
+	m.sessions[escrowID] = srv
+	return srv, nil
 }
 
 // RecoverSessions rebuilds in-memory sessions from the shared store.
@@ -211,27 +202,27 @@ func (m *HostManager) recoverSession(escrowID string) error {
 		return fmt.Errorf("create host: %w", err)
 	}
 
-	srv, err := transport.NewServer(h, m.store, escrowID, m.verifier, meta.Group, meta.CreatorAddr,
+	srv, err := transport.NewServer(h, m.store, m.verifier, meta.CreatorAddr,
 		transport.WithBridge(m.bridge),
 	)
 	if err != nil {
 		return fmt.Errorf("create server: %w", err)
 	}
 
-	m.sessions[escrowID] = &sessionEntry{server: srv, host: h}
+	m.sessions[escrowID] = srv
 	return nil
 }
 
 // Register mounts subnet session routes on the given echo group.
 func (m *HostManager) Register(g *echo.Group) {
-	g.POST("/sessions/:id/chat/completions", m.withAuth(func(e *sessionEntry) echo.HandlerFunc { return e.server.HandleInference }))
-	g.POST("/sessions/:id/verify-timeout", m.withAuth(func(e *sessionEntry) echo.HandlerFunc { return e.server.HandleVerifyTimeout }))
-	g.POST("/sessions/:id/challenge-receipt", m.withAuth(func(e *sessionEntry) echo.HandlerFunc { return e.server.HandleChallengeReceipt }))
-	g.POST("/sessions/:id/gossip/nonce", m.withAuth(func(e *sessionEntry) echo.HandlerFunc { return e.server.HandleGossipNonce }))
-	g.POST("/sessions/:id/gossip/txs", m.withAuth(func(e *sessionEntry) echo.HandlerFunc { return e.server.HandleGossipTxs }))
-	g.GET("/sessions/:id/diffs", m.withoutAuth(func(e *sessionEntry) echo.HandlerFunc { return e.server.HandleGetDiffs }))
-	g.GET("/sessions/:id/mempool", m.withoutAuth(func(e *sessionEntry) echo.HandlerFunc { return e.server.HandleGetMempool }))
-	g.GET("/sessions/:id/signatures", m.withoutAuth(func(e *sessionEntry) echo.HandlerFunc { return e.server.HandleGetSignatures }))
+	g.POST("/sessions/:id/chat/completions", m.withAuth(func(srv *transport.Server) echo.HandlerFunc { return srv.HandleInference }))
+	g.POST("/sessions/:id/verify-timeout", m.withAuth(func(srv *transport.Server) echo.HandlerFunc { return srv.HandleVerifyTimeout }))
+	g.POST("/sessions/:id/challenge-receipt", m.withAuth(func(srv *transport.Server) echo.HandlerFunc { return srv.HandleChallengeReceipt }))
+	g.POST("/sessions/:id/gossip/nonce", m.withAuth(func(srv *transport.Server) echo.HandlerFunc { return srv.HandleGossipNonce }))
+	g.POST("/sessions/:id/gossip/txs", m.withAuth(func(srv *transport.Server) echo.HandlerFunc { return srv.HandleGossipTxs }))
+	g.GET("/sessions/:id/diffs", m.withoutAuth(func(srv *transport.Server) echo.HandlerFunc { return srv.HandleGetDiffs }))
+	g.GET("/sessions/:id/mempool", m.withoutAuth(func(srv *transport.Server) echo.HandlerFunc { return srv.HandleGetMempool }))
+	g.GET("/sessions/:id/signatures", m.withoutAuth(func(srv *transport.Server) echo.HandlerFunc { return srv.HandleGetSignatures }))
 	g.GET("/sessions/:id/payloads", m.handleGetPayloads)
 }
 
@@ -318,12 +309,12 @@ func (m *HostManager) authenticatePayloadRequest(c echo.Context, escrowID string
 	}
 
 	// Get session and verify group membership
-	entry, err := m.getOrCreate(escrowID)
+	srv, err := m.getOrCreate(escrowID)
 	if err != nil {
 		return 0, c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	group := entry.host.Group()
+	group := srv.Host().Group()
 	granterAddress, err := m.findGranterInGroup(validatorAddress, group)
 	if err != nil {
 		return 0, c.JSON(http.StatusUnauthorized, map[string]string{"error": "not a group member"})
@@ -467,22 +458,22 @@ func (m *HostManager) signPayloadResponse(inferenceID string, promptPayload, res
 	return calculations.Sign(accountSigner, components, calculations.Developer)
 }
 
-func (m *HostManager) withAuth(pick func(*sessionEntry) echo.HandlerFunc) echo.HandlerFunc {
+func (m *HostManager) withAuth(pick func(*transport.Server) echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		entry, err := m.getOrCreate(c.Param("id"))
+		srv, err := m.getOrCreate(c.Param("id"))
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
-		return entry.server.AuthMiddleware(pick(entry))(c)
+		return srv.AuthMiddleware(pick(srv))(c)
 	}
 }
 
-func (m *HostManager) withoutAuth(pick func(*sessionEntry) echo.HandlerFunc) echo.HandlerFunc {
+func (m *HostManager) withoutAuth(pick func(*transport.Server) echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		entry, err := m.getOrCreate(c.Param("id"))
+		srv, err := m.getOrCreate(c.Param("id"))
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
-		return pick(entry)(c)
+		return pick(srv)(c)
 	}
 }

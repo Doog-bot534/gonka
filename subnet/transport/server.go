@@ -30,10 +30,7 @@ type Server struct {
 	host        *host.Host
 	store       storage.Storage
 	gossip      *gossip.Gossip // nil until gossip is wired
-	escrowID    string
 	verifier    signing.Verifier
-	group       []types.SlotAssignment
-	groupAddrs  map[string]bool     // precomputed set of group member addresses
 	userAddr    string              // session user address, allowed alongside group members
 	peerClients map[int]*HTTPClient // slot index -> client, for timeout verification
 	rateLimit   *rateLimiter        // nil = no limiting
@@ -78,33 +75,24 @@ func WithBridge(b bridge.MainnetBridge) ServerOption {
 func NewServer(
 	h *host.Host,
 	store storage.Storage,
-	escrowID string,
 	verifier signing.Verifier,
-	group []types.SlotAssignment,
 	userAddr string,
 	opts ...ServerOption,
 ) (*Server, error) {
-	if err := types.ValidateGroup(group); err != nil {
-		return nil, err
-	}
-	groupAddrs := make(map[string]bool, len(group))
-	for _, slot := range group {
-		groupAddrs[slot.ValidatorAddress] = true
-	}
 	s := &Server{
-		host:       h,
-		store:      store,
-		escrowID:   escrowID,
-		verifier:   verifier,
-		group:      group,
-		groupAddrs: groupAddrs,
-		userAddr:   userAddr,
+		host:     h,
+		store:    store,
+		verifier: verifier,
+		userAddr: userAddr,
 	}
 	for _, o := range opts {
 		o(s)
 	}
 	return s, nil
 }
+
+// Host returns the underlying host.Host.
+func (s *Server) Host() *host.Host { return s.host }
 
 // SetGossip attaches a gossip instance for nonce/tx propagation.
 func (s *Server) SetGossip(g *gossip.Gossip) { s.gossip = g }
@@ -148,7 +136,7 @@ func (s *Server) isAllowedSender(addr string) bool {
 	if s.userAddr != "" && addr == s.userAddr {
 		return true
 	}
-	if s.groupAddrs[addr] {
+	if s.host.IsGroupMemberAddr(addr) {
 		return true
 	}
 	return s.isWarmKeySender(addr)
@@ -165,8 +153,8 @@ func (s *Server) isWarmKeySender(addr string) bool {
 	if s.bridge == nil {
 		return false
 	}
-	seen := make(map[string]bool, len(s.group))
-	for _, slot := range s.group {
+	seen := make(map[string]bool, len(s.host.Group()))
+	for _, slot := range s.host.Group() {
 		if seen[slot.ValidatorAddress] {
 			continue
 		}
@@ -183,7 +171,7 @@ func (s *Server) isWarmKeySender(addr string) bool {
 // a group member (excludes the user). Gossip is host-to-host; the user has
 // no business gossiping.
 func (s *Server) isGroupMember(addr string) bool {
-	if s.groupAddrs[addr] {
+	if s.host.IsGroupMemberAddr(addr) {
 		return true
 	}
 	return s.isWarmKeySender(addr)
@@ -226,7 +214,7 @@ func (s *Server) AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		}
 
 		now := time.Now().Unix()
-		addr, err := VerifyRequest(s.verifier, s.escrowID, body, sig, ts, now)
+		addr, err := VerifyRequest(s.verifier, s.host.EscrowID(), body, sig, ts, now)
 		if err != nil {
 			return errJSON(c, http.StatusUnauthorized, err.Error())
 		}
@@ -340,7 +328,7 @@ func (s *Server) HandleVerifyTimeout(c echo.Context) error {
 	localMempool := s.host.MempoolTxs()
 
 	// Determine executor slot from inference_id.
-	executorIdx := int(req.InferenceID % uint64(len(s.group)))
+	executorIdx := int(req.InferenceID % uint64(len(s.host.Group())))
 	var executorClient host.ExecutorClient
 	if s.peerClients != nil {
 		if pc, ok := s.peerClients[executorIdx]; ok {
@@ -356,7 +344,7 @@ func (s *Server) HandleVerifyTimeout(c echo.Context) error {
 		// Fetch stored diffs to forward to executor during challenge.
 		var storedDiffs []types.Diff
 		if s.store != nil && st.LatestNonce > 0 {
-			records, dErr := s.store.GetDiffs(s.escrowID, 1, st.LatestNonce)
+			records, dErr := s.store.GetDiffs(s.host.EscrowID(), 1, st.LatestNonce)
 			if dErr == nil {
 				storedDiffs = make([]types.Diff, len(records))
 				for i, r := range records {
@@ -376,7 +364,7 @@ func (s *Server) HandleVerifyTimeout(c echo.Context) error {
 
 	resp := VerifyTimeoutResponse{Accept: accept}
 	if accept {
-		sig, voterSlot, sErr := signTimeoutVote(s.escrowID, req.InferenceID, reason, s.host.Signer(), s.host.SlotIDs())
+		sig, voterSlot, sErr := signTimeoutVote(s.host.EscrowID(), req.InferenceID, reason, s.host.Signer(), s.host.SlotIDs())
 		if sErr != nil {
 			return errJSON(c, http.StatusInternalServerError, sErr.Error())
 		}
@@ -456,17 +444,17 @@ func (s *Server) HandleGossipNonce(c echo.Context) error {
 	if len(req.StateSig) == 0 {
 		return errJSON(c, http.StatusBadRequest, "missing state signature")
 	}
-	if req.SlotID >= uint32(len(s.group)) {
+	if req.SlotID >= uint32(len(s.host.Group())) {
 		return errJSON(c, http.StatusBadRequest, "invalid slot id")
 	}
 
 	// Verify stateSig recovers to the claimed slot's address.
 	// SlotIDs are compact 0..len(group)-1 so direct index is safe after bounds check above.
-	expectedAddr := s.group[req.SlotID].ValidatorAddress
+	expectedAddr := s.host.Group()[req.SlotID].ValidatorAddress
 
 	sigContent := &types.StateSignatureContent{
 		StateRoot: req.StateHash,
-		EscrowId:  s.escrowID,
+		EscrowId:  s.host.EscrowID(),
 		Nonce:     req.Nonce,
 	}
 	sigData, err := proto.Marshal(sigContent)
@@ -557,7 +545,7 @@ func (s *Server) HandleGetDiffs(c echo.Context) error {
 		return errJSON(c, http.StatusBadRequest, "invalid 'to' parameter")
 	}
 
-	records, err := s.store.GetDiffs(s.escrowID, from, to)
+	records, err := s.store.GetDiffs(s.host.EscrowID(), from, to)
 	if err != nil {
 		return errJSON(c, http.StatusInternalServerError, err.Error())
 	}

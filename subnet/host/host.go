@@ -221,6 +221,13 @@ func (h *Host) EscrowID() string            { return h.escrowID }
 func (h *Host) Group() []types.SlotAssignment { return h.group }
 func (h *Host) SlotIDs() map[uint32]bool     { return h.slotIDs }
 
+// IsGroupMemberAddr returns true if addr is a group member (owns at least one slot).
+// Safe to call without locking -- addrToSlots is immutable after construction.
+func (h *Host) IsGroupMemberAddr(addr string) bool {
+	_, ok := h.addrToSlots[addr]
+	return ok
+}
+
 // SnapshotState returns a deep copy of the current state.
 func (h *Host) SnapshotState() types.EscrowState {
 	h.mu.Lock()
