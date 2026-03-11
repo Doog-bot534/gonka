@@ -2,12 +2,12 @@ package host
 
 import (
 	"context"
-	"crypto/sha256"
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"subnet/internal/testutil"
 	"subnet/types"
 )
 
@@ -28,7 +28,7 @@ func (m *mockExecutorClient) ChallengeReceipt(_ context.Context, _ uint64, _ *In
 	return m.challengeReceipt, m.challengeReceiptErr
 }
 
-var testPrompt = []byte("prompt")
+var testPrompt = testutil.TestPrompt
 
 func testPayload() *InferencePayload {
 	return &InferencePayload{
@@ -63,7 +63,7 @@ func stateWithPendingAt(inferenceID uint64, executorSlot uint32, startedAt int64
 
 // stateWithPendingFull returns a pending state with all fields needed for VerifyPayload.
 func stateWithPendingFull(inferenceID uint64, executorSlot uint32) types.EscrowState {
-	promptHash := sha256.Sum256(testPrompt)
+	promptHash := testutil.TestPromptHash
 	return types.EscrowState{
 		EscrowID: "escrow-1",
 		Config:   types.SessionConfig{TokenPrice: 1, VoteThreshold: 1, RefusalTimeout: 60, ExecutionTimeout: 1200},

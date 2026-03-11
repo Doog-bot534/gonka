@@ -11,7 +11,6 @@ import (
 	"decentralized-api/chainphase"
 	"decentralized-api/completionapi"
 	"decentralized-api/payloadstorage"
-	"decentralized-api/utils"
 
 	"subnet"
 )
@@ -91,11 +90,15 @@ func (e *EngineAdapter) Execute(ctx context.Context, req subnet.ExecuteRequest) 
 		return nil, fmt.Errorf("get usage: %w", err)
 	}
 
-	canonicalized, err := utils.CanonicalizeJSON(modified.NewBody)
+	// Store the canonicalized ORIGINAL prompt (not the modified one with seed).
+	// The subnet's PromptHash = sha256(canonicalize(original)), so the validator
+	// must receive the canonical original to pass hash verification.
+	// The seed is deterministic (derived from InferenceID), so the validator
+	// can reconstruct it.
+	promptPayload, err := subnet.CanonicalizeJSON(req.Prompt)
 	if err != nil {
 		return nil, fmt.Errorf("canonicalize prompt: %w", err)
 	}
-	promptPayload := []byte(canonicalized)
 
 	storageKey := SubnetPayloadKey(req.EscrowID, req.InferenceID)
 	epochID := currentEpochID(e.phaseTracker)

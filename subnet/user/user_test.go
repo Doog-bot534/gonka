@@ -61,7 +61,7 @@ func TestUser_RoundRobinSelection(t *testing.T) {
 	ctx := context.Background()
 
 	params := InferenceParams{
-		Model: "llama", Prompt: []byte("prompt"),
+		Model: "llama", Prompt: testutil.TestPrompt,
 		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
 	}
 
@@ -86,7 +86,7 @@ func TestUser_PipelinesReceipt(t *testing.T) {
 	ctx := context.Background()
 
 	params := InferenceParams{
-		Model: "llama", Prompt: []byte("prompt"),
+		Model: "llama", Prompt: testutil.TestPrompt,
 		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
 	}
 
@@ -116,7 +116,7 @@ func TestUser_CollectsSignatures(t *testing.T) {
 	ctx := context.Background()
 
 	params := InferenceParams{
-		Model: "llama", Prompt: []byte("prompt"),
+		Model: "llama", Prompt: testutil.TestPrompt,
 		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
 	}
 
@@ -172,7 +172,7 @@ func TestUser_HostError_StateConsistency(t *testing.T) {
 
 	ctx := context.Background()
 	params := InferenceParams{
-		Model: "llama", Prompt: []byte("prompt"),
+		Model: "llama", Prompt: testutil.TestPrompt,
 		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
 	}
 
@@ -195,7 +195,7 @@ func TestUser_Finalize(t *testing.T) {
 	session, _, _ := setupSession(t, 3, 100000, 100)
 	ctx := context.Background()
 	params := InferenceParams{
-		Model: "llama", Prompt: []byte("prompt"),
+		Model: "llama", Prompt: testutil.TestPrompt,
 		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
 	}
 
@@ -218,7 +218,7 @@ func TestUser_Finalize_CollectsSignatures(t *testing.T) {
 	session, _, _ := setupSession(t, 3, 100000, 100)
 	ctx := context.Background()
 	params := InferenceParams{
-		Model: "llama", Prompt: []byte("prompt"),
+		Model: "llama", Prompt: testutil.TestPrompt,
 		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
 	}
 
@@ -248,7 +248,7 @@ func TestUser_Finalize_DiffCount(t *testing.T) {
 	session, _, _ := setupSession(t, numHosts, 100000, 100)
 	ctx := context.Background()
 	params := InferenceParams{
-		Model: "llama", Prompt: []byte("prompt"),
+		Model: "llama", Prompt: testutil.TestPrompt,
 		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
 	}
 
@@ -271,7 +271,7 @@ func TestUser_PendingTxDedup(t *testing.T) {
 	session, _, _ := setupSession(t, 3, 100000, 100)
 	ctx := context.Background()
 	params := InferenceParams{
-		Model: "llama", Prompt: []byte("prompt"),
+		Model: "llama", Prompt: testutil.TestPrompt,
 		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
 	}
 
@@ -336,7 +336,7 @@ func TestCollectTimeoutVotes_WeightEarlyExit(t *testing.T) {
 
 	ctx := context.Background()
 	params := InferenceParams{
-		Model: "llama", Prompt: []byte("prompt"),
+		Model: "llama", Prompt: testutil.TestPrompt,
 		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
 	}
 
@@ -458,7 +458,7 @@ func TestUser_Finalize_SeedRevealAndSettlement(t *testing.T) {
 
 	ctx := context.Background()
 	params := InferenceParams{
-		Model: "llama", Prompt: []byte("prompt"),
+		Model: "llama", Prompt: testutil.TestPrompt,
 		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
 	}
 

@@ -3,7 +3,6 @@ package host
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"maps"
 	"slices"
@@ -942,8 +941,11 @@ func (h *Host) signProposer(msg proto.Message) ([]byte, error) {
 // VerifyPayload checks that an InferencePayload matches the expected on-chain fields.
 // Used by both executor (signReceipt) and verifier (VerifyRefusedTimeout) paths.
 func VerifyPayload(p *InferencePayload, promptHash []byte, model string, inputLength, maxTokens uint64, startedAt int64) error {
-	hash := sha256.Sum256(p.Prompt)
-	if !bytes.Equal(hash[:], promptHash) {
+	hash, err := subnet.CanonicalPromptHash(p.Prompt)
+	if err != nil {
+		return fmt.Errorf("%w: %v", types.ErrPromptHashMismatch, err)
+	}
+	if !bytes.Equal(hash, promptHash) {
 		return types.ErrPromptHashMismatch
 	}
 	if p.InputLength != inputLength {

@@ -73,7 +73,7 @@ func setupEnv(t *testing.T, numHosts int, balance, grace uint64, engines ...subn
 func defaultParams() user.InferenceParams {
 	return user.InferenceParams{
 		Model:       "llama",
-		Prompt:      []byte("prompt"),
+		Prompt:      testutil.TestPrompt,
 		InputLength: 100,
 		MaxTokens:   50,
 		StartedAt:   1000,
@@ -515,12 +515,12 @@ func TestProtocol_VaryingInferenceCosts(t *testing.T) {
 
 	// Send 6 inferences with different params.
 	paramsList := []user.InferenceParams{
-		{Model: "llama", Prompt: []byte("p1"), InputLength: 100, MaxTokens: 50, StartedAt: 1000},
-		{Model: "llama", Prompt: []byte("p2"), InputLength: 200, MaxTokens: 100, StartedAt: 2000},
-		{Model: "llama", Prompt: []byte("p3"), InputLength: 50, MaxTokens: 25, StartedAt: 3000},
-		{Model: "llama", Prompt: []byte("p4"), InputLength: 150, MaxTokens: 75, StartedAt: 4000},
-		{Model: "llama", Prompt: []byte("p5"), InputLength: 80, MaxTokens: 40, StartedAt: 5000},
-		{Model: "llama", Prompt: []byte("p6"), InputLength: 60, MaxTokens: 30, StartedAt: 6000},
+		{Model: "llama", Prompt: testutil.TestPrompt, InputLength: 100, MaxTokens: 50, StartedAt: 1000},
+		{Model: "llama", Prompt: testutil.TestPrompt, InputLength: 200, MaxTokens: 100, StartedAt: 2000},
+		{Model: "llama", Prompt: testutil.TestPrompt, InputLength: 50, MaxTokens: 25, StartedAt: 3000},
+		{Model: "llama", Prompt: testutil.TestPrompt, InputLength: 150, MaxTokens: 75, StartedAt: 4000},
+		{Model: "llama", Prompt: testutil.TestPrompt, InputLength: 80, MaxTokens: 40, StartedAt: 5000},
+		{Model: "llama", Prompt: testutil.TestPrompt, InputLength: 60, MaxTokens: 30, StartedAt: 6000},
 	}
 
 	for _, p := range paramsList {

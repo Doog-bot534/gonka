@@ -3,12 +3,12 @@ package user
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"sync"
 
 	"google.golang.org/protobuf/proto"
 
+	"subnet"
 	"subnet/host"
 	"subnet/signing"
 	"subnet/state"
@@ -100,7 +100,7 @@ func NewSession(
 
 // composeDiffTxs builds the txs for the next diff (no side effects).
 // Caller must hold s.mu.
-func (s *Session) composeDiffTxs(params InferenceParams) (uint64, int, []*types.SubnetTx) {
+func (s *Session) composeDiffTxs(params InferenceParams) (uint64, int, []*types.SubnetTx, error) {
 	nonce := s.nonce + 1
 	hostIdx := int(nonce % uint64(len(s.group)))
 
@@ -110,19 +110,22 @@ func (s *Session) composeDiffTxs(params InferenceParams) (uint64, int, []*types.
 	txs = append(txs, s.pendingTxs...)
 
 	// Add MsgStartInference.
-	promptHash := sha256.Sum256(params.Prompt)
+	promptHash, err := subnet.CanonicalPromptHash(params.Prompt)
+	if err != nil {
+		return 0, 0, nil, fmt.Errorf("canonical prompt hash: %w", err)
+	}
 	txs = append(txs, &types.SubnetTx{Tx: &types.SubnetTx_StartInference{
 		StartInference: &types.MsgStartInference{
 			InferenceId: nonce,
 			Model:       params.Model,
-			PromptHash:  promptHash[:],
+			PromptHash:  promptHash,
 			InputLength: params.InputLength,
 			MaxTokens:   params.MaxTokens,
 			StartedAt:   params.StartedAt,
 		},
 	}})
 
-	return nonce, hostIdx, txs
+	return nonce, hostIdx, txs, nil
 }
 
 // diffsForHost returns catch-up diffs for a host (from its last sync nonce to current).
@@ -219,7 +222,10 @@ func (s *Session) ProcessResponse(hostIdx int, resp *host.HostResponse) error {
 func (s *Session) NextDiff(params InferenceParams) (types.Diff, int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	nonce, hostIdx, txs := s.composeDiffTxs(params)
+	nonce, hostIdx, txs, err := s.composeDiffTxs(params)
+	if err != nil {
+		return types.Diff{}, 0, err
+	}
 	diff, err := s.signDiff(nonce, txs, nil)
 	if err != nil {
 		return types.Diff{}, 0, err
@@ -241,7 +247,10 @@ func (s *Session) PrepareInference(params InferenceParams) (*preparedInference, 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	nonce, hostIdx, txs := s.composeDiffTxs(params)
+	nonce, hostIdx, txs, err := s.composeDiffTxs(params)
+	if err != nil {
+		return nil, err
+	}
 
 	// Apply locally to compute post_state_root, then sign.
 	postStateRoot, err := s.sm.ApplyLocal(nonce, txs)

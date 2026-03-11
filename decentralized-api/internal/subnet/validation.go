@@ -3,7 +3,7 @@ package subnet
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -190,17 +190,17 @@ func (v *ValidationAdapter) fetchPayloadsFromExecutor(ctx context.Context, req s
 		return nil, nil, fmt.Errorf("verify executor signature: %w", err)
 	}
 
-	// Verify hashes against ValidateRequest
-	expectedPromptHash := hex.EncodeToString(req.PromptHash)
-	expectedResponseHash := hex.EncodeToString(req.ResponseHash)
-	if err := validation.VerifyPayloadHashes(
-		payloadResp.PromptPayload,
-		payloadResp.ResponsePayload,
-		expectedPromptHash,
-		expectedResponseHash,
-		inferenceID,
-	); err != nil {
-		return nil, nil, err
+	// Verify prompt hash: the stored payload is already canonical (from
+	// subnet.CanonicalizeJSON), so direct sha256 matches CanonicalPromptHash.
+	promptHash := sha256.Sum256(payloadResp.PromptPayload)
+	if !bytes.Equal(promptHash[:], req.PromptHash) {
+		return nil, nil, fmt.Errorf("prompt hash mismatch: expected %x, got %x", req.PromptHash, promptHash[:])
+	}
+
+	// Verify response hash: raw sha256 of stored response bytes.
+	responseHash := sha256.Sum256(payloadResp.ResponsePayload)
+	if !bytes.Equal(responseHash[:], req.ResponseHash) {
+		return nil, nil, fmt.Errorf("response hash mismatch: expected %x, got %x", req.ResponseHash, responseHash[:])
 	}
 
 	return payloadResp.PromptPayload, payloadResp.ResponsePayload, nil

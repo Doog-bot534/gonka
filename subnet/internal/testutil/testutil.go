@@ -1,20 +1,30 @@
 package testutil
 
 import (
-	"crypto/sha256"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
+	"subnet"
 	"subnet/signing"
 	"subnet/types"
 )
 
 var deterministicMarshal = proto.MarshalOptions{Deterministic: true}
 
-var TestPrompt = []byte("prompt")
-var TestPromptHash = sha256.Sum256(TestPrompt)
+var TestPrompt = []byte(`{"model":"llama","messages":[{"role":"user","content":"prompt"}]}`)
+var TestPromptHash = mustCanonicalPromptHash(TestPrompt)
+
+func mustCanonicalPromptHash(prompt []byte) [32]byte {
+	h, err := subnet.CanonicalPromptHash(prompt)
+	if err != nil {
+		panic(err)
+	}
+	var arr [32]byte
+	copy(arr[:], h)
+	return arr
+}
 
 func MustGenerateKey(t *testing.T) *signing.Secp256k1Signer {
 	t.Helper()

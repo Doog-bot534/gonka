@@ -38,7 +38,7 @@ func acceptResolver(warmKeys, coldKeys []*signing.Secp256k1Signer) state.WarmKey
 }
 
 var defaultParams = InferenceParams{
-	Model: "llama", Prompt: []byte("prompt"),
+	Model: "llama", Prompt: testutil.TestPrompt,
 	InputLength: 100, MaxTokens: 50, StartedAt: 1000,
 }
 
