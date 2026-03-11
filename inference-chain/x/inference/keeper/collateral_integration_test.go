@@ -11,6 +11,7 @@ import (
 	keepertest "github.com/productscience/inference/testutil/keeper"
 	"github.com/productscience/inference/testutil/sample"
 	blskeeper "github.com/productscience/inference/x/bls/keeper"
+	blstypes "github.com/productscience/inference/x/bls/types"
 	collateralKeeper "github.com/productscience/inference/x/collateral/keeper"
 	collateralTypes "github.com/productscience/inference/x/collateral/types"
 	"github.com/productscience/inference/x/inference/keeper"
@@ -42,11 +43,13 @@ func setupRealKeepers(t testing.TB) (sdk.Context, keeper.Keeper, collateralKeepe
 	// --- Store and Codec Setup ---
 	inferenceStoreKey := storetypes.NewKVStoreKey(types.StoreKey)
 	collateralStoreKey := storetypes.NewKVStoreKey(collateralTypes.StoreKey)
+	blsStoreKey := storetypes.NewKVStoreKey(blstypes.StoreKey)
 
 	db := dbm.NewMemDB()
 	stateStore := store.NewCommitMultiStore(db, log.NewNopLogger(), metrics.NewNoOpMetrics())
 	stateStore.MountStoreWithDB(inferenceStoreKey, storetypes.StoreTypeIAVL, db)
 	stateStore.MountStoreWithDB(collateralStoreKey, storetypes.StoreTypeIAVL, db)
+	stateStore.MountStoreWithDB(blsStoreKey, storetypes.StoreTypeIAVL, db)
 	require.NoError(t, stateStore.LoadLatestVersion())
 
 	registry := codectypes.NewInterfaceRegistry()
@@ -85,8 +88,6 @@ func setupRealKeepers(t testing.TB) (sdk.Context, keeper.Keeper, collateralKeepe
 	)
 
 	// Create a BLS keeper for testing (similar to testutil/keeper/inference.go)
-	blsStoreKey := storetypes.NewKVStoreKey("bls")
-	stateStore.MountStoreWithDB(blsStoreKey, storetypes.StoreTypeIAVL, db)
 	blsKeeper := blskeeper.NewKeeper(
 		cdc,
 		runtime.NewKVStoreService(blsStoreKey),
