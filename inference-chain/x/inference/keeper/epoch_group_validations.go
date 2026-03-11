@@ -65,14 +65,24 @@ func (k Keeper) MigrateEpochGroupValidationsToEntries(ctx context.Context) error
 	if !found {
 		return nil
 	}
-	previousEpochIndex := currentEpochIndex
-	hasPreviousEpoch := false
-	if currentEpochIndex > 0 {
-		previousEpochIndex = currentEpochIndex - 1
-		hasPreviousEpoch = true
+
+	if err := k.migrateSpecificEpoch(ctx, currentEpochIndex); err != nil {
+		return err
 	}
 
-	iter, err := k.EpochGroupValidationsMap.Iterate(ctx, nil)
+	if currentEpochIndex > 0 {
+		if err := k.migrateSpecificEpoch(ctx, currentEpochIndex-1); err != nil {
+			return err
+		}
+	}
+
+	// Clear legacy aggregate storage in bulk after migrating the subset we need.
+	return k.EpochGroupValidationsMap.Clear(ctx, nil)
+}
+
+func (k Keeper) migrateSpecificEpoch(ctx context.Context, epochIndex uint64) error {
+	// Only iterate over the specific epoch entries
+	iter, err := k.EpochGroupValidationsMap.Iterate(ctx, collections.NewPrefixedPairRange[uint64, string](epochIndex))
 	if err != nil {
 		return err
 	}
@@ -83,10 +93,7 @@ func (k Keeper) MigrateEpochGroupValidationsToEntries(ctx context.Context) error
 		if valueErr != nil {
 			return valueErr
 		}
-		shouldCopy := v.EpochIndex == currentEpochIndex || (hasPreviousEpoch && v.EpochIndex == previousEpochIndex)
-		if !shouldCopy {
-			continue
-		}
+
 		for _, inferenceID := range v.ValidatedInferences {
 			has, hasErr := k.EpochGroupValidationEntry.Has(ctx, collections.Join3(v.EpochIndex, v.Participant, inferenceID))
 			if hasErr != nil {
@@ -101,7 +108,5 @@ func (k Keeper) MigrateEpochGroupValidationsToEntries(ctx context.Context) error
 			}
 		}
 	}
-
-	// Clear legacy aggregate storage in bulk after migrating the subset we need.
-	return k.EpochGroupValidationsMap.Clear(ctx, nil)
+	return nil
 }
