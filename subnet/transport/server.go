@@ -98,7 +98,7 @@ func (s *Server) Host() *host.Host { return s.host }
 func (s *Server) SetGossip(g *gossip.Gossip) { s.gossip = g }
 
 // Register mounts all subnet routes on the given echo group.
-// The caller typically mounts this under /subnet/v1.
+// The caller typically mounts this under /v1/subnet.
 func (s *Server) Register(g *echo.Group) {
 	g.Use(s.AuthMiddleware)
 	if s.rateLimit != nil {

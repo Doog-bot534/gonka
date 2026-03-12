@@ -75,7 +75,7 @@ func setupHTTPEnv(t *testing.T, numHosts int, balance, grace uint64, cfgs ...typ
 		servers[i] = srv
 
 		e := echo.New()
-		g := e.Group("/subnet/v1")
+		g := e.Group("/v1/subnet")
 		srv.Register(g)
 		ts := httptest.NewServer(e)
 		t.Cleanup(ts.Close)

@@ -37,7 +37,7 @@ func setupClientTestEnv(t *testing.T) (*HTTPClient, *httptest.Server, *signing.S
 	require.NoError(t, err)
 
 	e := echo.New()
-	g := e.Group("/subnet/v1")
+	g := e.Group("/v1/subnet")
 	srv.Register(g)
 
 	ts := httptest.NewServer(e)

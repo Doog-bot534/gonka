@@ -103,7 +103,7 @@ func (c *HTTPClient) post(ctx context.Context, path string, timeout time.Duratio
 func (c *HTTPClient) get(ctx context.Context, path string, timeout time.Duration, resp any) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	url := fmt.Sprintf("%s/subnet/v1%s", c.baseURL, path)
+	url := fmt.Sprintf("%s/v1/subnet%s", c.baseURL, path)
 	body, err := c.doGet(ctx, url)
 	if err != nil {
 		return err
@@ -332,7 +332,7 @@ func (c *HTTPClient) GetMempool(ctx context.Context) ([]*types.SubnetTx, error) 
 // doPostRaw sends a signed POST request and returns the raw http.Response.
 // Caller is responsible for closing resp.Body.
 func (c *HTTPClient) doPostRaw(ctx context.Context, path string, body []byte) (*http.Response, error) {
-	url := c.baseURL + "/subnet/v1" + path
+	url := c.baseURL + "/v1/subnet" + path
 
 	ts := time.Now().Unix()
 	sig, err := SignRequest(c.signer, c.escrowID, body, ts)
