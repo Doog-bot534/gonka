@@ -239,6 +239,7 @@ jobs:
           sudo docker load -i docker-images/decentralized-api.tar || true
           sudo docker load -i docker-images/inference-mock-server.tar || true
           sudo docker load -i docker-images/proxy.tar || true
+          rm -rf docker-images/
 
       - name: Install Make
         run: |
