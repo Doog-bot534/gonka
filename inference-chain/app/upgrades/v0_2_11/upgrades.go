@@ -92,7 +92,8 @@ func executeContractMigration(ctx context.Context, k keeper.Keeper, infoJSON str
 	var data MigrationData
 	if err := json.Unmarshal([]byte(infoJSON), &data); err != nil {
 		k.LogError("failed to unmarshal Plan.Info", types.Upgrades, "info", infoJSON, "error", err)
-		return err
+		// Log the error and do NOT kill the chain
+		return nil
 	}
 
 	// Get the governance admin address
@@ -129,7 +130,6 @@ func executeContractMigration(ctx context.Context, k keeper.Keeper, infoJSON str
 	k.LogInfo("successfully migrated community sale contract", types.Upgrades, "address", data.CommunitySaleAddress, "new_code_id", data.NewCodeID)
 	return nil
 }
-
 
 // setParameters sets the safety_window parameter to 50.
 func setParameters(ctx context.Context, k keeper.Keeper) error {

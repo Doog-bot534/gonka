@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"cosmossdk.io/collections"
 	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/productscience/inference/x/inference/types"
@@ -37,19 +38,15 @@ func (k Keeper) ReleaseFromEscrow(ctx sdk.Context, toAddr sdk.AccAddress, amount
 
 // IsBridgeContractAddress checks if the given contract address matches any registered bridge addresses for the specific chain
 func (k Keeper) IsBridgeContractAddress(ctx context.Context, chainId, contractAddress string) bool {
-	// Get all registered bridge contract addresses for the specific chain
-	bridgeAddresses := k.GetBridgeContractAddressesByChain(ctx, chainId)
-
-	// Normalize the input address for comparison
+	// Set already forces toLower, so we can directy index
 	normalizedInput := strings.ToLower(contractAddress)
 
-	for _, bridgeAddr := range bridgeAddresses {
-		if strings.ToLower(bridgeAddr.Address) == normalizedInput {
-			return true
-		}
+	has, err := k.BridgeContractAddresses.Has(ctx, collections.Join(chainId, normalizedInput))
+	if err != nil {
+		k.LogError("Error checking bridge contract address", types.Messages, "chainId", chainId, "contractAddress", contractAddress, "error", err)
+		return false
 	}
-
-	return false
+	return has
 }
 
 // HandleNativeTokenRelease handles the release of native tokens when WGNK is burned on Ethereum
