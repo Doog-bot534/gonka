@@ -360,13 +360,13 @@ Keeper handlers: /inference-chain/x/collateral/keeper/msg_server_*.go
 2) DepositCollateral
 - Proto: MsgDepositCollateral
 - Handler: x/collateral/keeper/msg_server_deposit_collateral.go
-- Types: x/collateral/types/message_deposit_collateral.go
+- Types: x/collateral/types/msg_deposit_collateral.go
 - Check: participant bech32; amount denom/amount valid and > 0; denom allow-list if needed
 
 3) WithdrawCollateral
 - Proto: MsgWithdrawCollateral
 - Handler: x/collateral/keeper/msg_server_withdraw_collateral.go
-- Types: x/collateral/types/message_withdraw_collateral.go
+- Types: x/collateral/types/msg_withdraw_collateral.go
 - Check: participant bech32; amount denom/amount valid and > 0
 
 
@@ -418,27 +418,27 @@ inference module
     - Types: x/inference/types/message_start_inference.go
     - Handler: x/inference/keeper/msg_server_start_inference.go
     - [x] Implement/extend ValidateBasic
-    - [ ] Tests
+    - [x] Tests
 - MsgFinishInference
     - Types: x/inference/types/message_finish_inference.go
     - Handler: x/inference/keeper/msg_server_finish_inference.go
     - [x] Implement/extend ValidateBasic
-    - [ ] Tests
+    - [x] Tests
 - MsgSubmitNewParticipant
     - Types: x/inference/types/message_submit_new_participant.go
     - Handler: x/inference/keeper/msg_server_submit_new_participant.go
     - [x] Implement ValidateBasic
-    - [ ] Tests
+    - [x] Tests
 - MsgValidation
     - Types: x/inference/types/message_validation.go
     - Handler: x/inference/keeper/msg_server_validation.go
     - [x] Implement ValidateBasic
-    - [ ] Tests
+    - [x] Tests
 - MsgSubmitNewUnfundedParticipant
     - Types: x/inference/types/message_submit_new_unfunded_participant.go
     - Handler: x/inference/keeper/msg_server_submit_new_unfunded_participant.go
     - [x] Implement ValidateBasic
-    - [ ] Tests
+    - [x] Tests
 - MsgInvalidateInference
     - Types: x/inference/types/message_invalidate_inference.go
     - Handler: x/inference/keeper/msg_server_invalidate_inference.go
@@ -477,18 +477,18 @@ inference module
 - MsgRegisterModel
     - Types: x/inference/types/message_register_model.go
     - Handler: x/inference/keeper/msg_server_register_model.go
-    - [ ] Implement ValidateBasic
-    - [ ] Tests
+    - [x] Implement ValidateBasic
+    - [x] Tests
 - MsgCreateTrainingTask
     - Types: x/inference/types/message_create_training_task.go
     - Handler: x/inference/keeper/msg_server_create_training_task.go
-    - [ ] Implement ValidateBasic
-    - [ ] Tests
+    - [x] Implement ValidateBasic
+    - [x] Tests
 - MsgSubmitHardwareDiff
     - Types: x/inference/types/message_submit_hardware_diff.go
     - Handler: x/inference/keeper/msg_server_submit_hardware_diff.go
-    - [ ] Implement/extend ValidateBasic
-    - [ ] Tests
+    - [x] Implement/extend ValidateBasic
+    - [x] Tests
 - MsgCreatePartialUpgrade
     - Types: x/inference/types/message_create_partial_upgrade.go
     - Handler: x/inference/keeper/msg_server_create_partial_upgrade.go
@@ -507,13 +507,13 @@ inference module
 - MsgSubmitTrainingKvRecord
     - Types: x/inference/types/message_submit_training_kv_record.go
     - Handler: x/inference/keeper/msg_server_submit_training_kv_record.go
-    - [ ] Implement ValidateBasic
-    - [ ] Tests
+    - [x] Implement ValidateBasic
+    - [x] Tests
 - MsgJoinTraining
     - Types: x/inference/types/message_join_training.go
     - Handler: x/inference/keeper/msg_server_join_training.go
-    - [ ] Implement ValidateBasic
-    - [ ] Tests
+    - [x] Implement ValidateBasic
+    - [x] Tests
 - MsgTrainingHeartbeat
     - Types: x/inference/types/message_training_heartbeat.go
     - Handler: x/inference/keeper/msg_server_training_heartbeat.go
@@ -542,8 +542,8 @@ inference module
 - MsgUpdateParams (inference)
     - Types: x/inference/types/msg_update_params.go
     - Handler: x/inference/keeper/msg_update_params.go
-    - [ ] Ensure ValidateBasic (authority + params.Validate())
-    - [ ] Tests (if missing)
+    - [x] Ensure ValidateBasic (authority + params.Validate())
+    - [x] Tests (if missing)
 
 bls module
 - MsgUpdateParams
@@ -589,7 +589,7 @@ bookkeeper module
 - MsgUpdateParams
     - Types: x/bookkeeper/types/msg_update_params.go
     - Handler: x/bookkeeper/keeper/msg_update_params.go
-    - [ ] Ensure ValidateBasic
+    - [x] Ensure ValidateBasic
 
 streamvesting module
 - MsgUpdateParams
