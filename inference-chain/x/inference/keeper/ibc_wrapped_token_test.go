@@ -39,7 +39,7 @@ func TestSetIBCTradeApprovedToken_Validation(t *testing.T) {
 	testCases := []struct {
 		name        string
 		token       types.BridgeTokenReference
-		shouldPanic bool
+		shouldError bool
 	}{
 		{
 			name: "Valid IBC token",
@@ -47,7 +47,7 @@ func TestSetIBCTradeApprovedToken_Validation(t *testing.T) {
 				ChainId:         "cosmoshub-4",
 				ContractAddress: "ibc/27394FB092D2ECCD56123C74F36E4C1F926001CEADA9CA97EA622B25F41E5EB2",
 			},
-			shouldPanic: false,
+			shouldError: false,
 		},
 		{
 			name: "Valid Transfer token",
@@ -55,7 +55,7 @@ func TestSetIBCTradeApprovedToken_Validation(t *testing.T) {
 				ChainId:         "osmosis-1",
 				ContractAddress: "transfer/channel-0/uosmo",
 			},
-			shouldPanic: false,
+			shouldError: false,
 		},
 		{
 			name: "Invalid - Empty ChainId",
@@ -63,7 +63,7 @@ func TestSetIBCTradeApprovedToken_Validation(t *testing.T) {
 				ChainId:         "",
 				ContractAddress: "ibc/123",
 			},
-			shouldPanic: true,
+			shouldError: true,
 		},
 		{
 			name: "Invalid - Empty Address",
@@ -71,7 +71,7 @@ func TestSetIBCTradeApprovedToken_Validation(t *testing.T) {
 				ChainId:         "chain",
 				ContractAddress: "",
 			},
-			shouldPanic: true,
+			shouldError: true,
 		},
 		{
 			name: "Invalid - Binary Data in ChainId",
@@ -79,14 +79,14 @@ func TestSetIBCTradeApprovedToken_Validation(t *testing.T) {
 				ChainId:         "chain\x00",
 				ContractAddress: "ibc/123",
 			},
-			shouldPanic: true,
+			shouldError: true,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := k.SetIBCTradeApprovedToken(ctx, tc.token)
-			if tc.shouldPanic {
+			if tc.shouldError {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)

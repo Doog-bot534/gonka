@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
@@ -16,7 +17,7 @@ func (k msgServer) RegisterIbcTokenMetadata(goCtx context.Context, msg *types.Ms
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
 	// Validate that this is strictly an IBC denom to protect native chain denoms (e.g. ugnk)
-	if len(msg.IbcDenom) < 4 || msg.IbcDenom[:4] != "ibc/" {
+	if !strings.HasPrefix(msg.IbcDenom, "ibc/") {
 		return nil, fmt.Errorf("invalid denom: must start with 'ibc/' to protect native token metadata")
 	}
 
