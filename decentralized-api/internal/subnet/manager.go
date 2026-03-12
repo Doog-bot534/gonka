@@ -104,7 +104,7 @@ func (m *HostManager) createLocked(escrowID string) (*transport.Server, error) {
 
 	creatorAddr := escrow.CreatorAddress
 
-	config := types.DefaultSessionConfig(len(group))
+	config := types.SessionConfigWithPrice(len(group), escrow.TokenPrice)
 
 	if err := m.store.CreateSession(storage.CreateSessionParams{
 		EscrowID:       escrowID,

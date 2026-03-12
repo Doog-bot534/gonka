@@ -25,6 +25,11 @@ const (
 	SubnetSettlementPhase = byte(0x02)
 )
 
+// SubnetQuorumFor returns the minimum slot votes required for a given group size.
+func SubnetQuorumFor(groupSize int) int {
+	return 2*groupSize/3 + 1
+}
+
 // WarmKeyChecker returns true if grantee has an authz grant from granter.
 type WarmKeyChecker func(granter, grantee string) bool
 
@@ -95,9 +100,10 @@ func VerifySubnetSettlement(escrow types.SubnetEscrow, msg *types.MsgSettleSubne
 		slotVotes++
 	}
 
-	// Check quorum: need >= 11 slot votes
-	if slotVotes < SubnetQuorumSlots {
-		return fmt.Errorf("insufficient quorum: %d slot votes, need %d", slotVotes, SubnetQuorumSlots)
+	// Check quorum: derived from actual slot count in escrow.
+	requiredQuorum := SubnetQuorumFor(len(escrow.Slots))
+	if slotVotes < requiredQuorum {
+		return fmt.Errorf("insufficient quorum: %d slot votes, need %d", slotVotes, requiredQuorum)
 	}
 
 	// Verify total cost does not exceed escrow amount

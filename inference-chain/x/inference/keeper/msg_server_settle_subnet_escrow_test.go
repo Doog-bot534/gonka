@@ -147,3 +147,40 @@ func TestSettleSubnetEscrow_ZeroCostSettlement(t *testing.T) {
 	require.True(t, found)
 	require.True(t, settled.Settled)
 }
+
+func TestSettleSubnetEscrow_AllowlistBlocks(t *testing.T) {
+	k, ms, ctx, _ := setupSubnetEscrowTest(t)
+	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
+
+	creator := sdk.AccAddress(make([]byte, 20))
+	creator[0] = 0xCC
+	escrow := types.SubnetEscrow{
+		Id:      1,
+		Creator: creator.String(),
+		Amount:  7_000_000_000,
+		Slots:   make([]string, keeper.SubnetGroupSize),
+		Settled: false,
+	}
+	_, err := k.StoreSubnetEscrow(ctx, &escrow, 1)
+	require.NoError(t, err)
+
+	// Set params with allowlist NOT containing the escrow creator.
+	params, err := k.GetParams(ctx)
+	require.NoError(t, err)
+	params.SubnetEscrowParams = &types.SubnetEscrowParams{
+		MinAmount:               types.DefaultSubnetEscrowMinAmount,
+		MaxAmount:               types.DefaultSubnetEscrowMaxAmount,
+		MaxEscrowsPerEpoch:      types.DefaultSubnetMaxEscrowsPerEpoch,
+		GroupSize:               types.DefaultSubnetGroupSize,
+		AllowedCreatorAddresses: []string{"gonka1someotheraddressxxxxxxxxxxxxxxxxxx"},
+		TokenPrice:              types.DefaultSubnetTokenPrice,
+	}
+	require.NoError(t, k.SetParams(ctx, params))
+
+	_, err = ms.SettleSubnetEscrow(ctx, &types.MsgSettleSubnetEscrow{
+		Settler:  creator.String(),
+		EscrowId: 1,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not in the allowed list")
+}

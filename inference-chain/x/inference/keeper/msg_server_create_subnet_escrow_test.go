@@ -169,3 +169,69 @@ func TestCreateSubnetEscrow_CounterOverflow(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "overflow")
 }
+
+func TestCreateSubnetEscrow_AllowlistBlocks(t *testing.T) {
+	k, ms, ctx, _ := setupSubnetEscrowTest(t)
+
+	setupEpochGroupForSubnet(ctx, k, 5)
+
+	creator := sdk.AccAddress(make([]byte, 20))
+	creator[0] = 0xFF
+
+	// Set params with allowlist that does NOT include the creator.
+	params, err := k.GetParams(ctx)
+	require.NoError(t, err)
+	params.SubnetEscrowParams = &types.SubnetEscrowParams{
+		MinAmount:               types.DefaultSubnetEscrowMinAmount,
+		MaxAmount:               types.DefaultSubnetEscrowMaxAmount,
+		MaxEscrowsPerEpoch:      types.DefaultSubnetMaxEscrowsPerEpoch,
+		GroupSize:               types.DefaultSubnetGroupSize,
+		AllowedCreatorAddresses: []string{"gonka1someotheraddressxxxxxxxxxxxxxxxxxx"},
+		TokenPrice:              types.DefaultSubnetTokenPrice,
+	}
+	require.NoError(t, k.SetParams(ctx, params))
+
+	_, err = ms.CreateSubnetEscrow(ctx, &types.MsgCreateSubnetEscrow{
+		Creator: creator.String(),
+		Amount:  7_000_000_000,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not in the escrow creator allowlist")
+}
+
+func TestCreateSubnetEscrow_ParamsOverrideDefaults(t *testing.T) {
+	k, ms, ctx, mocks := setupSubnetEscrowTest(t)
+
+	setupEpochGroupForSubnet(ctx, k, 5)
+
+	creator := sdk.AccAddress(make([]byte, 20))
+	creator[0] = 0xFF
+
+	// Set params with custom min=1000, max=2000, group_size=8.
+	params, err := k.GetParams(ctx)
+	require.NoError(t, err)
+	params.SubnetEscrowParams = &types.SubnetEscrowParams{
+		MinAmount:               1_000_000_000,
+		MaxAmount:               2_000_000_000,
+		MaxEscrowsPerEpoch:      types.DefaultSubnetMaxEscrowsPerEpoch,
+		GroupSize:               8,
+		AllowedCreatorAddresses: nil, // no restriction
+		TokenPrice:              types.DefaultSubnetTokenPrice,
+	}
+	require.NoError(t, k.SetParams(ctx, params))
+
+	mocks.BankKeeper.EXPECT().
+		SendCoinsFromAccountToModule(gomock.Any(), creator, types.ModuleName, gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	resp, err := ms.CreateSubnetEscrow(ctx, &types.MsgCreateSubnetEscrow{
+		Creator: creator.String(),
+		Amount:  1_500_000_000,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	escrow, found := k.GetSubnetEscrow(ctx, resp.EscrowId)
+	require.True(t, found)
+	require.Len(t, escrow.Slots, 8)
+}

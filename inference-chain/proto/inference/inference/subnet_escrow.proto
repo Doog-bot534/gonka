@@ -12,6 +12,7 @@ message SubnetEscrow {
   uint64 epoch_index = 5;
   string app_hash = 6;
   bool settled = 7;
+  uint64 token_price = 8;
 }
 
 message SubnetHostEpochStats {

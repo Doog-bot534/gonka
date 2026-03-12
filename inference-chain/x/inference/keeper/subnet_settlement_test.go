@@ -450,6 +450,23 @@ func TestVerifySubnetSettlement_WrongPhaseRejected(t *testing.T) {
 	require.Contains(t, err.Error(), "state_root mismatch")
 }
 
+func TestSubnetQuorumFor(t *testing.T) {
+	tests := []struct {
+		groupSize int
+		want      int
+	}{
+		{1, 1},
+		{3, 3},
+		{8, 6},
+		{16, 11},
+		{32, 22},
+	}
+	for _, tc := range tests {
+		got := keeper.SubnetQuorumFor(tc.groupSize)
+		require.Equal(t, tc.want, got, "SubnetQuorumFor(%d)", tc.groupSize)
+	}
+}
+
 // Verify signature format conversion roundtrip (go-ethereum <-> dcrd)
 func TestSignatureFormatConversion(t *testing.T) {
 	key, err := dcrdsecp.GeneratePrivateKey()

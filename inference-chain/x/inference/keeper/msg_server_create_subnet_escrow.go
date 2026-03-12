@@ -11,17 +11,17 @@ import (
 	"github.com/productscience/inference/x/inference/types"
 )
 
-const (
-	SubnetEscrowMinAmount  uint64 = 5_000_000_000  // 5 GNK in ngonka
-	SubnetEscrowMaxAmount  uint64 = 10_000_000_000 // 10 GNK in ngonka
-	SubnetMaxEscrowsPerEpoch       = 100
-)
-
 func (k msgServer) CreateSubnetEscrow(goCtx context.Context, msg *types.MsgCreateSubnetEscrow) (*types.MsgCreateSubnetEscrowResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
-	if msg.Amount < SubnetEscrowMinAmount || msg.Amount > SubnetEscrowMaxAmount {
-		return nil, fmt.Errorf("escrow amount %d out of range [%d, %d]", msg.Amount, SubnetEscrowMinAmount, SubnetEscrowMaxAmount)
+	ep := k.GetSubnetEscrowParams(goCtx)
+
+	if !k.IsAllowedEscrowCreator(goCtx, msg.Creator) {
+		return nil, fmt.Errorf("address %s is not in the escrow creator allowlist", msg.Creator)
+	}
+
+	if msg.Amount < ep.MinAmount || msg.Amount > ep.MaxAmount {
+		return nil, fmt.Errorf("escrow amount %d out of range [%d, %d]", msg.Amount, ep.MinAmount, ep.MaxAmount)
 	}
 
 	epochIndex, ok := k.GetEffectiveEpochIndex(goCtx)
@@ -30,8 +30,8 @@ func (k msgServer) CreateSubnetEscrow(goCtx context.Context, msg *types.MsgCreat
 	}
 
 	epochCount := k.GetSubnetEscrowEpochCount(goCtx, epochIndex)
-	if epochCount >= SubnetMaxEscrowsPerEpoch {
-		return nil, fmt.Errorf("epoch %d already has %d escrows (max %d)", epochIndex, epochCount, SubnetMaxEscrowsPerEpoch)
+	if epochCount >= uint64(ep.MaxEscrowsPerEpoch) {
+		return nil, fmt.Errorf("epoch %d already has %d escrows (max %d)", epochIndex, epochCount, ep.MaxEscrowsPerEpoch)
 	}
 
 	epochGroup, err := k.GetCurrentEpochGroup(goCtx)
@@ -64,7 +64,7 @@ func (k msgServer) CreateSubnetEscrow(goCtx context.Context, msg *types.MsgCreat
 	}
 	nextID := counter + 1
 
-	slots := calculations.GetSlotsFromSorted(appHash, fmt.Sprintf("subnet_escrow:%d", nextID), sortedEntries, totalWeight, SubnetGroupSize)
+	slots := calculations.GetSlotsFromSorted(appHash, fmt.Sprintf("subnet_escrow:%d", nextID), sortedEntries, totalWeight, int(ep.GroupSize))
 
 	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
 	if err != nil {
@@ -87,6 +87,7 @@ func (k msgServer) CreateSubnetEscrow(goCtx context.Context, msg *types.MsgCreat
 		EpochIndex: epochIndex,
 		AppHash:    appHash,
 		Settled:    false,
+		TokenPrice: ep.TokenPrice,
 	}
 
 	id, err := k.StoreSubnetEscrow(goCtx, escrow, nextID)

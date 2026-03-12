@@ -16,6 +16,10 @@ func (k msgServer) SettleSubnetEscrow(goCtx context.Context, msg *types.MsgSettl
 		return nil, fmt.Errorf("escrow %d not found", msg.EscrowId)
 	}
 
+	if !k.IsAllowedEscrowCreator(goCtx, escrow.Creator) {
+		return nil, fmt.Errorf("escrow creator %s is not in the allowed list", escrow.Creator)
+	}
+
 	warmKeyChecker := func(granter, grantee string) bool {
 		return k.HasWarmKeyGrant(goCtx, granter, grantee)
 	}

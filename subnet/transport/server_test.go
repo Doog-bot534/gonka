@@ -414,6 +414,41 @@ func TestServer_StreamingInference(t *testing.T) {
 	require.True(t, hasInferenceData, "should have inference data events")
 }
 
+func (env *serverTestEnv) doPostAs(t *testing.T, path string, body []byte, signer *signing.Secp256k1Signer) *httptest.ResponseRecorder {
+	t.Helper()
+	ts := time.Now().Unix()
+	sig, err := SignRequest(signer, "escrow-1", body, ts)
+	require.NoError(t, err)
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(HeaderSignature, hex.EncodeToString(sig))
+	req.Header.Set(HeaderTimestamp, fmt.Sprintf("%d", ts))
+	rec := httptest.NewRecorder()
+	env.echo.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestServer_Inference_GroupMemberRejected(t *testing.T) {
+	env := setupServerEnv(t)
+	body := []byte(`{}`)
+	rec := env.doPostAs(t, "/subnet/v1/sessions/escrow-1/chat/completions", body, env.hostSigner)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestServer_VerifyTimeout_GroupMemberRejected(t *testing.T) {
+	env := setupServerEnv(t)
+	body := []byte(`{}`)
+	rec := env.doPostAs(t, "/subnet/v1/sessions/escrow-1/verify-timeout", body, env.hostSigner)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestServer_ChallengeReceipt_GroupMemberRejected(t *testing.T) {
+	env := setupServerEnv(t)
+	body := []byte(`{}`)
+	rec := env.doPostAs(t, "/subnet/v1/sessions/escrow-1/challenge-receipt", body, env.hostSigner)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
 func TestServer_NonExecutor_SSE(t *testing.T) {
 	// 3 hosts, request to non-executor.
 	hostSigners := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}

@@ -55,6 +55,14 @@ const million = 1_000_000
 const billion = 1_000_000_000
 const year = 365 * 24 * 60 * 60
 
+const (
+	DefaultSubnetEscrowMinAmount    uint64 = 5_000_000_000
+	DefaultSubnetEscrowMaxAmount    uint64 = 10_000_000_000
+	DefaultSubnetMaxEscrowsPerEpoch uint32 = 100
+	DefaultSubnetGroupSize          uint32 = 16
+	DefaultSubnetTokenPrice         uint64 = 1
+)
+
 func DefaultGenesisOnlyParams() GenesisOnlyParams {
 	return GenesisOnlyParams{
 		TotalSupply:                             1_000 * million * billion,
@@ -108,6 +116,7 @@ func DefaultParams() Params {
 			// Note: proto encoding does not preserve empty-vs-nil for repeated fields; keep nil to match round-trips.
 			AllowedTransferAddresses: nil, // nil = no restriction, all TAs allowed
 		},
+		SubnetEscrowParams: DefaultSubnetEscrowParams(),
 	}
 }
 
@@ -253,6 +262,30 @@ func DefaultDynamicPricingParams() *DynamicPricingParams {
 		GracePeriodEndEpoch:       90,                     // Grace period ends at epoch 90
 		GracePeriodPerTokenPrice:  0,                      // Free inference during grace period (0 ngonka)
 	}
+}
+
+func DefaultSubnetEscrowParams() *SubnetEscrowParams {
+	return &SubnetEscrowParams{
+		MinAmount:               DefaultSubnetEscrowMinAmount,
+		MaxAmount:               DefaultSubnetEscrowMaxAmount,
+		MaxEscrowsPerEpoch:      DefaultSubnetMaxEscrowsPerEpoch,
+		GroupSize:               DefaultSubnetGroupSize,
+		AllowedCreatorAddresses: nil,
+		TokenPrice:              DefaultSubnetTokenPrice,
+	}
+}
+
+func (p *SubnetEscrowParams) Validate() error {
+	if p.MinAmount == 0 {
+		return fmt.Errorf("subnet escrow min_amount must be positive")
+	}
+	if p.MaxAmount < p.MinAmount {
+		return fmt.Errorf("subnet escrow max_amount (%d) must be >= min_amount (%d)", p.MaxAmount, p.MinAmount)
+	}
+	if p.GroupSize == 0 {
+		return fmt.Errorf("subnet escrow group_size must be positive")
+	}
+	return nil
 }
 
 func (p *Params) ParamSetPairs() paramtypes.ParamSetPairs {
@@ -415,6 +448,13 @@ func (p Params) Validate() error {
 			return err
 		}
 	}
+
+	if p.SubnetEscrowParams != nil {
+		if err := p.SubnetEscrowParams.Validate(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

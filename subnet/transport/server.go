@@ -167,6 +167,11 @@ func (s *Server) isWarmKeySender(addr string) bool {
 	return false
 }
 
+// isOwner returns true if addr is the session owner (escrow creator).
+func (s *Server) isOwner(addr string) bool {
+	return s.userAddr != "" && addr == s.userAddr
+}
+
 // isGroupMember returns true if addr is a group member or a warm key for
 // a group member (excludes the user). Gossip is host-to-host; the user has
 // no business gossiping.
@@ -231,6 +236,11 @@ func (s *Server) AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 }
 
 func (s *Server) HandleInference(c echo.Context) error {
+	sender := c.Get(contextKeySender).(string)
+	if !s.isOwner(sender) {
+		return errJSON(c, http.StatusForbidden, "restricted to escrow owner")
+	}
+
 	body := c.Get("body").([]byte)
 
 	var ir InferenceRequest
@@ -312,6 +322,11 @@ func (s *Server) SetPeerClients(peers map[int]*HTTPClient) {
 }
 
 func (s *Server) HandleVerifyTimeout(c echo.Context) error {
+	sender := c.Get(contextKeySender).(string)
+	if !s.isOwner(sender) {
+		return errJSON(c, http.StatusForbidden, "restricted to escrow owner")
+	}
+
 	body := c.Get("body").([]byte)
 
 	var req VerifyTimeoutRequest
@@ -400,6 +415,11 @@ func signTimeoutVote(escrowID string, inferenceID uint64, reason types.TimeoutRe
 }
 
 func (s *Server) HandleChallengeReceipt(c echo.Context) error {
+	sender := c.Get(contextKeySender).(string)
+	if !s.isOwner(sender) {
+		return errJSON(c, http.StatusForbidden, "restricted to escrow owner")
+	}
+
 	body := c.Get("body").([]byte)
 
 	var req ChallengeReceiptRequest

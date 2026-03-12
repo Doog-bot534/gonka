@@ -12,3 +12,13 @@ func DefaultSessionConfig(groupSize int) SessionConfig {
 		ValidationRate:   5000,
 	}
 }
+
+// SessionConfigWithPrice returns a session config with a custom token price.
+// tokenPrice == 0 is treated as 1 for backward compatibility.
+func SessionConfigWithPrice(groupSize int, tokenPrice uint64) SessionConfig {
+	cfg := DefaultSessionConfig(groupSize)
+	if tokenPrice > 0 {
+		cfg.TokenPrice = tokenPrice
+	}
+	return cfg
+}

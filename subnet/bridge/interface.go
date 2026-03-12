@@ -21,8 +21,9 @@ type EscrowInfo struct {
 	EscrowID       string
 	Amount         uint64
 	CreatorAddress string
-	AppHash []byte
+	AppHash        []byte
 	Slots          []string // host addresses, len == SubnetGroupSize
+	TokenPrice     uint64
 }
 
 type HostInfo struct {
