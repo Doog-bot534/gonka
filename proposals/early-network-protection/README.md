@@ -236,37 +236,34 @@ The two systems can be applied independently or in combination:
 - `inference-chain/x/inference/types/params.go` - Enhanced `GenesisOnlyParams` with dual system parameters
 - `inference-chain/x/inference/types/params.pb.go` - Protocol buffer definitions for both systems
 
-**New GenesisOnlyParams Fields**:
+**GenesisOnlyParams fields (as implemented)**:
 - `max_individual_power_percentage`: Default 0.30 (30%) - Power capping threshold
-- `network_maturity_threshold`: Default 10,000,000 - Genesis enhancement deactivation threshold  
-- `genesis_veto_multiplier`: Default 0.52 - Enhancement multiplier (for single validator fallback)
-- `genesis_validator_addresses`: List of genesis validator addresses for distributed enhancement
-- `genesis_enhancement_enabled`: Default false - Enable/disable Genesis Validator Enhancement feature
+- `genesis_guardian_network_maturity_threshold`: Maturity threshold for guardian enhancement deactivation
+- `genesis_guardian_multiplier`: Default 0.52 - Total enhancement multiplier (split across guardians)
+- `genesis_guardian_addresses`: Repeated list of genesis guardian addresses for distributed enhancement
+- `genesis_guardian_enabled`: Enable/disable Genesis Guardian Enhancement feature
 
 **Implementation Files**:
 - `inference-chain/x/inference/module/power_capping.go` - Universal power capping algorithm (epoch powers)
-- `inference-chain/x/inference/module/genesis_enhancement.go` - Genesis validator enhancement (staking powers)
-- `inference-chain/x/inference/module/early_protection.go` - Integration and orchestration logic
+- `inference-chain/x/inference/module/genesis_guardian_enhancement.go` - Genesis guardian enhancement (staking powers)
+- Integration and orchestration live in `module/module.go`: `applyEpochPowerCapping`, `applyEarlyNetworkProtection` (no separate `early_protection.go`)
 
 #### Implementation Functions by System
 
-**Power Capping Functions** (`module/power_capping.go`):
+**Power Capping** (`module/power_capping.go`):
 - `ApplyPowerCapping` - Main entry point for universal power capping
-- `calculateOptimalCap` - Implement sorting and threshold detection algorithm
-- `applyCapToDistribution` - Apply calculated cap to original power distribution
-- `validateCappingResults` - Ensure power conservation and mathematical correctness
+- `calculateOptimalCap` - Sorting and threshold detection
+- `applyCapToDistribution` - Apply calculated cap to original distribution
+- `validateCappingResults` - Power conservation verification (tests)
 
-**Genesis Enhancement Functions** (`module/genesis_enhancement.go`):
-- `ShouldApplyGenesisEnhancement` - Check network maturity and validator identification  
-- `ApplyGenesisEnhancement` - Apply distributed enhancement to genesis validators
-- `identifyGenesisValidators` - Find genesis validators from configuration list
-- `calculateDistributedEnhancement` - Compute distributed enhancement based on validator count
-- `determineEnhancementMultiplier` - Select appropriate multiplier (0.26, 0.18, or 0.52)
+**Genesis Guardian Enhancement** (`module/genesis_guardian_enhancement.go`):
+- `ShouldApplyGenesisGuardianEnhancement` - Network maturity and guardian identification
+- `ApplyGenesisGuardianEnhancement` - Apply distributed enhancement to guardians
+- Per-guardian enhancement from `genesis_guardian_multiplier` (e.g. 0.52/2 ≈ 0.26 for 2 guardians, 0.52/3 for 3)
 
-**Integration Functions** (`module/early_protection.go`):
-- `orchestrateDualProtection` - Coordinate both systems appropriately
-- `applyEpochProtection` - Apply power capping to epoch powers
-- `applyStakingProtection` - Apply genesis enhancement to staking powers
+**Integration** (`module/module.go`):
+- `applyEpochPowerCapping` - Power capping on `activeParticipants` after `ComputeNewWeights`
+- `applyEarlyNetworkProtection` - Genesis guardian enhancement on `computeResult` before `SetComputeValidators`
 
 #### Enhanced Module Workflow
 
@@ -289,6 +286,8 @@ The two systems can be applied independently or in combination:
 - **Flexibility**: Systems can be applied separately or in combination as needed
 - **Clarity**: Clear separation between universal limits and temporary developer protections
 - **Maintainability**: Isolated systems simplify testing and modification
+
+**Implementation status**: Sections 1–4 and 6 of the task plan are implemented (params, power capping, genesis guardian enhancement, integration in `module.go`, tests, Testermint data classes). Section 5 (genesis config examples in deploy/local-test-net, dual system documentation) is optional and not yet done.
 
 ### Security Analysis
 
