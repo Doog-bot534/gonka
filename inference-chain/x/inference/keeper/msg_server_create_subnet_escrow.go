@@ -12,17 +12,13 @@ import (
 )
 
 func (k msgServer) CreateSubnetEscrow(goCtx context.Context, msg *types.MsgCreateSubnetEscrow) (*types.MsgCreateSubnetEscrowResponse, error) {
-	if err := k.CheckPermission(goCtx, msg, NoPermission); err != nil {
+	if err := k.CheckPermission(goCtx, msg, EscrowAllowListPermission); err != nil {
 		return nil, err
 	}
 
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
 	ep := k.GetSubnetEscrowParams(goCtx)
-
-	if !k.IsAllowedEscrowCreator(goCtx, msg.Creator) {
-		return nil, fmt.Errorf("address %s is not in the escrow creator allowlist", msg.Creator)
-	}
 
 	if msg.Amount < ep.MinAmount || msg.Amount > ep.MaxAmount {
 		return nil, fmt.Errorf("escrow amount %d out of range [%d, %d]", msg.Amount, ep.MinAmount, ep.MaxAmount)

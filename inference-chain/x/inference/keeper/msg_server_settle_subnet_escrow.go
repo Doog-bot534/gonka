@@ -9,7 +9,7 @@ import (
 )
 
 func (k msgServer) SettleSubnetEscrow(goCtx context.Context, msg *types.MsgSettleSubnetEscrow) (*types.MsgSettleSubnetEscrowResponse, error) {
-	if err := k.CheckPermission(goCtx, msg, NoPermission); err != nil {
+	if err := k.CheckPermission(goCtx, msg, EscrowAllowListPermission); err != nil {
 		return nil, err
 	}
 
@@ -18,10 +18,6 @@ func (k msgServer) SettleSubnetEscrow(goCtx context.Context, msg *types.MsgSettl
 	escrow, found := k.GetSubnetEscrow(goCtx, msg.EscrowId)
 	if !found {
 		return nil, fmt.Errorf("escrow %d not found", msg.EscrowId)
-	}
-
-	if !k.IsAllowedEscrowCreator(goCtx, escrow.Creator) {
-		return nil, fmt.Errorf("escrow creator %s is not in the allowed list", escrow.Creator)
 	}
 
 	warmKeyChecker := func(granter, grantee string) bool {
