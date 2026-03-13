@@ -153,7 +153,7 @@ func (v *ValidationAdapter) fetchPayloadsFromExecutor(ctx context.Context, req s
 	}
 
 	// Build request URL for subnet session endpoint
-	requestURL, err := validation.BuildPayloadRequestURL(executorInfo.URL, fmt.Sprintf("subnet/v1/sessions/%s/payloads", req.EscrowID), inferenceID)
+	requestURL, err := validation.BuildPayloadRequestURL(executorInfo.URL, fmt.Sprintf("v1/subnet/sessions/%s/payloads", req.EscrowID), inferenceID)
 	if err != nil {
 		return nil, nil, err
 	}

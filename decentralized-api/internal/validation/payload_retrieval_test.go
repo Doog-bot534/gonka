@@ -12,9 +12,9 @@ import (
 
 func TestBuildPayloadRequestURL_SubnetPath(t *testing.T) {
 	// Test with subnet session-specific path
-	url, err := BuildPayloadRequestURL("https://executor.example.com", "subnet/v1/sessions/escrow-123/payloads", "456")
+	url, err := BuildPayloadRequestURL("https://executor.example.com", "v1/subnet/sessions/escrow-123/payloads", "456")
 	require.NoError(t, err)
-	assert.Contains(t, url, "subnet/v1/sessions/escrow-123/payloads")
+	assert.Contains(t, url, "v1/subnet/sessions/escrow-123/payloads")
 	assert.Contains(t, url, "inference_id=456")
 }
 

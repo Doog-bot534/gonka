@@ -75,11 +75,12 @@ class SubnetTests : TestermintTest() {
         )
         assertThat(transferResp.code).isEqualTo(0)
 
+        genesis.waitForNextInferenceWindow()
+
         logSection("Creating subnet escrow from user account")
         val escrowAmount = 7_000_000_000L
         val txResp = genesis.createSubnetEscrow(escrowAmount, from = userKeyName)
         assertThat(txResp.code).isEqualTo(0)
-        genesis.waitForNextInferenceWindow()
 
         logSection("Starting subnet proxy")
         val handle = genesis.startSubnetProxy(escrowId = 1, keyName = userKeyName)
@@ -140,11 +141,12 @@ class SubnetTests : TestermintTest() {
         )
         assertThat(transferResp.code).isEqualTo(0)
 
+        genesis.waitForNextInferenceWindow()
+
         logSection("Creating subnet escrow from user account")
         val escrowAmount = 7_000_000_000L
         val txResp = genesis.createSubnetEscrow(escrowAmount, from = userKeyName)
         assertThat(txResp.code).isEqualTo(0)
-        genesis.waitForNextInferenceWindow()
 
         logSection("Starting subnet proxy")
         val handle = genesis.startSubnetProxy(escrowId = 1, keyName = userKeyName)
@@ -208,6 +210,7 @@ class SubnetTests : TestermintTest() {
         }
 
         genesis.waitForNextEpoch()
+        genesis.waitForNextInferenceWindow()
 
         val sessions = users.mapIndexed { i, user ->
             logSection("Creating escrow for user $i")
@@ -217,8 +220,6 @@ class SubnetTests : TestermintTest() {
             assertThat(escrowId).withFailMessage("No escrow_id in tx events for user $i").isNotNull()
             SessionSetup(user.keyName, user.address, escrowId!!)
         }
-
-        genesis.waitForNextInferenceWindow()
 
         logSection("Starting $sessionCount subnet proxies")
         val handles = sessions.map { session ->

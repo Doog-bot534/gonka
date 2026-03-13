@@ -750,12 +750,13 @@ data class LocalInferencePair(
             var ready = false
             for (i in 0 until 30) {
                 try {
-                    api.executor.exec(listOf("sh", "-c", "curl -sf $proxyUrl/v1/status >/dev/null 2>&1 && echo OK"), null)
-                    ready = true
-                    break
-                } catch (_: Exception) {
-                    Thread.sleep(500)
-                }
+                    val output = api.executor.exec(listOf("sh", "-c", "curl -sf $proxyUrl/v1/status >/dev/null 2>&1 && echo OK"), null)
+                    if (output.any { it.trim() == "OK" }) {
+                        ready = true
+                        break
+                    }
+                } catch (_: Exception) { }
+                Thread.sleep(500)
             }
             if (!ready) {
                 val logs = try {
