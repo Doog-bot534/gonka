@@ -117,17 +117,14 @@ func (s *Server) Register(g *echo.Group) {
 }
 
 // writeJSON serializes v with goccy/go-json, bypassing Echo's default serializer.
+// TODO: set a custom echo.JSONSerializer using goccy/go-json on all Echo instances
+// in decentralized-api, then replace writeJSON calls with c.JSON.
 func writeJSON(c echo.Context, code int, v interface{}) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
 	return c.Blob(code, echo.MIMEApplicationJSON, b)
-}
-
-// errJSON writes a JSON error response.
-func errJSON(c echo.Context, code int, msg string) error {
-	return writeJSON(c, code, map[string]string{"error": msg})
 }
 
 // isAllowedSender returns true if addr is the session user, a group member,
@@ -195,17 +192,17 @@ func (s *Server) AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		sigHex := c.Request().Header.Get(HeaderSignature)
 		tsStr := c.Request().Header.Get(HeaderTimestamp)
 		if sigHex == "" || tsStr == "" {
-			return errJSON(c, http.StatusUnauthorized, "missing auth headers")
+			return echo.NewHTTPError(http.StatusUnauthorized, "missing auth headers")
 		}
 
 		sig, err := hex.DecodeString(sigHex)
 		if err != nil {
-			return errJSON(c, http.StatusUnauthorized, "invalid signature hex")
+			return echo.NewHTTPError(http.StatusUnauthorized, "invalid signature hex")
 		}
 
 		ts, err := strconv.ParseInt(tsStr, 10, 64)
 		if err != nil {
-			return errJSON(c, http.StatusUnauthorized, "invalid timestamp")
+			return echo.NewHTTPError(http.StatusUnauthorized, "invalid timestamp")
 		}
 
 		// Cap body size before reading.
@@ -215,17 +212,17 @@ func (s *Server) AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 
 		body, err := io.ReadAll(c.Request().Body)
 		if err != nil {
-			return errJSON(c, http.StatusBadRequest, "read body")
+			return echo.NewHTTPError(http.StatusBadRequest, "read body")
 		}
 
 		now := time.Now().Unix()
 		addr, err := VerifyRequest(s.verifier, s.host.EscrowID(), body, sig, ts, now)
 		if err != nil {
-			return errJSON(c, http.StatusUnauthorized, err.Error())
+			return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
 		}
 
 		if !s.isAllowedSender(addr) {
-			return errJSON(c, http.StatusForbidden, "sender not in group")
+			return echo.NewHTTPError(http.StatusForbidden, "sender not in group")
 		}
 
 		// Store sender and re-inject body for handler.
@@ -257,7 +254,7 @@ func (s *Server) HandleInference(c echo.Context) error {
 		return err
 	}
 	if !s.isOwner(sender) {
-		return errJSON(c, http.StatusForbidden, "restricted to escrow owner")
+		return echo.NewHTTPError(http.StatusForbidden, "restricted to escrow owner")
 	}
 
 	body, err := getBody(c)
@@ -267,17 +264,17 @@ func (s *Server) HandleInference(c echo.Context) error {
 
 	var ir InferenceRequest
 	if err := json.Unmarshal(body, &ir); err != nil {
-		return errJSON(c, http.StatusBadRequest, "invalid json: "+err.Error())
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid json: "+err.Error())
 	}
 
 	req, err := HostRequestFromJSON(ir)
 	if err != nil {
-		return errJSON(c, http.StatusBadRequest, "decode request: "+err.Error())
+		return echo.NewHTTPError(http.StatusBadRequest, "decode request: "+err.Error())
 	}
 
 	resp, err := s.host.HandleRequest(c.Request().Context(), req)
 	if err != nil {
-		return errJSON(c, http.StatusInternalServerError, err.Error())
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
 	// Always SSE response.
@@ -349,7 +346,7 @@ func (s *Server) HandleVerifyTimeout(c echo.Context) error {
 		return err
 	}
 	if !s.isOwner(sender) {
-		return errJSON(c, http.StatusForbidden, "restricted to escrow owner")
+		return echo.NewHTTPError(http.StatusForbidden, "restricted to escrow owner")
 	}
 
 	body, err := getBody(c)
@@ -359,12 +356,12 @@ func (s *Server) HandleVerifyTimeout(c echo.Context) error {
 
 	var req VerifyTimeoutRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		return errJSON(c, http.StatusBadRequest, "invalid json")
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid json")
 	}
 
 	reason, err := TimeoutReasonFromString(req.Reason)
 	if err != nil {
-		return errJSON(c, http.StatusBadRequest, err.Error())
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
 	st := s.host.SnapshotState()
@@ -399,17 +396,17 @@ func (s *Server) HandleVerifyTimeout(c echo.Context) error {
 	case types.TimeoutReason_TIMEOUT_REASON_EXECUTION:
 		accept, err = host.VerifyExecutionTimeout(c.Request().Context(), st, req.InferenceID, localMempool, executorClient, st.Config, nowUnix)
 	default:
-		return errJSON(c, http.StatusBadRequest, "unknown reason")
+		return echo.NewHTTPError(http.StatusBadRequest, "unknown reason")
 	}
 	if err != nil {
-		return errJSON(c, http.StatusInternalServerError, err.Error())
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
 	resp := VerifyTimeoutResponse{Accept: accept}
 	if accept {
 		sig, voterSlot, sErr := signTimeoutVote(s.host.EscrowID(), req.InferenceID, reason, s.host.Signer(), s.host.PrimarySlot())
 		if sErr != nil {
-			return errJSON(c, http.StatusInternalServerError, sErr.Error())
+			return echo.NewHTTPError(http.StatusInternalServerError, sErr.Error())
 		}
 		resp.Signature = sig
 		resp.VoterSlot = voterSlot
@@ -443,7 +440,7 @@ func (s *Server) HandleChallengeReceipt(c echo.Context) error {
 		return err
 	}
 	if !s.isOwner(sender) && !s.isGroupMember(sender) {
-		return errJSON(c, http.StatusForbidden, "restricted to escrow owner or group member")
+		return echo.NewHTTPError(http.StatusForbidden, "restricted to escrow owner or group member")
 	}
 
 	body, err := getBody(c)
@@ -453,21 +450,21 @@ func (s *Server) HandleChallengeReceipt(c echo.Context) error {
 
 	var req ChallengeReceiptRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		return errJSON(c, http.StatusBadRequest, "invalid json")
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid json")
 	}
 
 	diffs := make([]types.Diff, len(req.Diffs))
 	for i, dj := range req.Diffs {
 		d, err := DiffFromJSON(dj)
 		if err != nil {
-			return errJSON(c, http.StatusBadRequest, fmt.Sprintf("decode diff %d: %v", i, err))
+			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("decode diff %d: %v", i, err))
 		}
 		diffs[i] = d
 	}
 
 	receipt, _, err := s.host.ChallengeReceipt(c.Request().Context(), req.InferenceID, PayloadFromJSON(req.Payload), diffs)
 	if err != nil {
-		return errJSON(c, http.StatusInternalServerError, err.Error())
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
 	return writeJSON(c, http.StatusOK, ChallengeReceiptResponse{Receipt: receipt})
@@ -480,7 +477,7 @@ func (s *Server) HandleGossipNonce(c echo.Context) error {
 		return err
 	}
 	if !s.isGroupMember(sender) {
-		return errJSON(c, http.StatusForbidden, "gossip restricted to group members")
+		return echo.NewHTTPError(http.StatusForbidden, "gossip restricted to group members")
 	}
 
 	body, err := getBody(c)
@@ -490,17 +487,17 @@ func (s *Server) HandleGossipNonce(c echo.Context) error {
 
 	var req GossipNonceRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		return errJSON(c, http.StatusBadRequest, "invalid json")
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid json")
 	}
 
 	// Reject empty sig or invalid slot upfront. Without this, an attacker
 	// can poison the seen map with a fake (nonce, hash) and cause false
 	// equivocation detection against an honest host.
 	if len(req.StateSig) == 0 {
-		return errJSON(c, http.StatusBadRequest, "missing state signature")
+		return echo.NewHTTPError(http.StatusBadRequest, "missing state signature")
 	}
 	if req.SlotID >= uint32(len(s.host.Group())) {
-		return errJSON(c, http.StatusBadRequest, "invalid slot id")
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid slot id")
 	}
 
 	// Verify stateSig recovers to the claimed slot's address.
@@ -514,21 +511,21 @@ func (s *Server) HandleGossipNonce(c echo.Context) error {
 	}
 	sigData, err := proto.Marshal(sigContent)
 	if err != nil {
-		return errJSON(c, http.StatusInternalServerError, "marshal sig content")
+		return echo.NewHTTPError(http.StatusInternalServerError, "marshal sig content")
 	}
 	addr, err := s.verifier.RecoverAddress(sigData, req.StateSig)
 	if err != nil {
-		return errJSON(c, http.StatusBadRequest, "invalid gossip state signature")
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid gossip state signature")
 	}
 	if addr != expectedAddr {
 		if !s.host.IsWarmKeyForSlot(addr, req.SlotID) {
-			return errJSON(c, http.StatusBadRequest, "invalid gossip state signature")
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid gossip state signature")
 		}
 	}
 
 	if s.gossip != nil {
 		if err := s.gossip.OnNonceReceived(req.Nonce, req.StateHash, req.StateSig, req.SlotID); err != nil {
-			return errJSON(c, http.StatusConflict, err.Error())
+			return echo.NewHTTPError(http.StatusConflict, err.Error())
 		}
 	}
 
@@ -547,7 +544,7 @@ func (s *Server) HandleGossipTxs(c echo.Context) error {
 		return err
 	}
 	if !s.isGroupMember(sender) {
-		return errJSON(c, http.StatusForbidden, "gossip restricted to group members")
+		return echo.NewHTTPError(http.StatusForbidden, "gossip restricted to group members")
 	}
 
 	body, err := getBody(c)
@@ -557,13 +554,13 @@ func (s *Server) HandleGossipTxs(c echo.Context) error {
 
 	var req GossipTxsRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		return errJSON(c, http.StatusBadRequest, "invalid json")
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid json")
 	}
 
 	if s.gossip != nil {
 		txs, err := SubnetTxsFromBytes(req.Txs)
 		if err != nil {
-			return errJSON(c, http.StatusBadRequest, "decode txs: "+err.Error())
+			return echo.NewHTTPError(http.StatusBadRequest, "decode txs: "+err.Error())
 		}
 		s.gossip.OnTxsReceived(txs)
 	}
@@ -574,16 +571,16 @@ func (s *Server) HandleGossipTxs(c echo.Context) error {
 func (s *Server) HandleGetSignatures(c echo.Context) error {
 	nonceStr := c.QueryParam("nonce")
 	if nonceStr == "" {
-		return errJSON(c, http.StatusBadRequest, "missing 'nonce' parameter")
+		return echo.NewHTTPError(http.StatusBadRequest, "missing 'nonce' parameter")
 	}
 	nonce, err := strconv.ParseUint(nonceStr, 10, 64)
 	if err != nil {
-		return errJSON(c, http.StatusBadRequest, "invalid 'nonce' parameter")
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid 'nonce' parameter")
 	}
 
 	sigs, err := s.host.GetSignatures(nonce)
 	if err != nil {
-		return errJSON(c, http.StatusInternalServerError, err.Error())
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
 	return writeJSON(c, http.StatusOK, SignaturesResponse{Signatures: sigs})
@@ -591,7 +588,7 @@ func (s *Server) HandleGetSignatures(c echo.Context) error {
 
 func (s *Server) HandleGetDiffs(c echo.Context) error {
 	if s.store == nil {
-		return errJSON(c, http.StatusNotFound, "no storage configured")
+		return echo.NewHTTPError(http.StatusNotFound, "no storage configured")
 	}
 
 	fromStr := c.QueryParam("from")
@@ -599,16 +596,16 @@ func (s *Server) HandleGetDiffs(c echo.Context) error {
 
 	from, err := strconv.ParseUint(fromStr, 10, 64)
 	if err != nil {
-		return errJSON(c, http.StatusBadRequest, "invalid 'from' parameter")
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid 'from' parameter")
 	}
 	to, err := strconv.ParseUint(toStr, 10, 64)
 	if err != nil {
-		return errJSON(c, http.StatusBadRequest, "invalid 'to' parameter")
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid 'to' parameter")
 	}
 
 	records, err := s.store.GetDiffs(s.host.EscrowID(), from, to)
 	if err != nil {
-		return errJSON(c, http.StatusInternalServerError, err.Error())
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
 	// Convert to JSON-friendly format.
@@ -621,7 +618,7 @@ func (s *Server) HandleGetDiffs(c echo.Context) error {
 	for i, rec := range records {
 		dj, err := DiffToJSON(rec.Diff)
 		if err != nil {
-			return errJSON(c, http.StatusInternalServerError, fmt.Sprintf("encode diff %d: %v", rec.Nonce, err))
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("encode diff %d: %v", rec.Nonce, err))
 		}
 		result[i] = diffRecordJSON{DiffJSON: dj, StateHash: rec.StateHash}
 	}
@@ -633,7 +630,7 @@ func (s *Server) HandleGetMempool(c echo.Context) error {
 	txs := s.host.MempoolTxs()
 	data, err := SubnetTxsToBytes(txs)
 	if err != nil {
-		return errJSON(c, http.StatusInternalServerError, err.Error())
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 	return writeJSON(c, http.StatusOK, map[string]interface{}{"txs": data})
 }
