@@ -379,7 +379,7 @@ func (s *Server) HandleVerifyTimeout(c echo.Context) error {
 
 	resp := VerifyTimeoutResponse{Accept: accept}
 	if accept {
-		sig, voterSlot, sErr := signTimeoutVote(s.host.EscrowID(), req.InferenceID, reason, s.host.Signer(), s.host.SlotIDs())
+		sig, voterSlot, sErr := signTimeoutVote(s.host.EscrowID(), req.InferenceID, reason, s.host.Signer(), s.host.PrimarySlot())
 		if sErr != nil {
 			return errJSON(c, http.StatusInternalServerError, sErr.Error())
 		}
@@ -390,13 +390,8 @@ func (s *Server) HandleVerifyTimeout(c echo.Context) error {
 }
 
 // signTimeoutVote marshals and signs a TimeoutVoteContent, returning the
-// signature and the first slot ID from the host's owned slots.
-func signTimeoutVote(escrowID string, inferenceID uint64, reason types.TimeoutReason, signer signing.Signer, slotIDs map[uint32]bool) ([]byte, uint32, error) {
-	var voterSlot uint32
-	for slot := range slotIDs {
-		voterSlot = slot
-		break
-	}
+// signature and the voter's slot ID.
+func signTimeoutVote(escrowID string, inferenceID uint64, reason types.TimeoutReason, signer signing.Signer, voterSlot uint32) ([]byte, uint32, error) {
 	voteContent := &types.TimeoutVoteContent{
 		EscrowId:    escrowID,
 		InferenceId: inferenceID,
@@ -416,8 +411,8 @@ func signTimeoutVote(escrowID string, inferenceID uint64, reason types.TimeoutRe
 
 func (s *Server) HandleChallengeReceipt(c echo.Context) error {
 	sender := c.Get(contextKeySender).(string)
-	if !s.isOwner(sender) {
-		return errJSON(c, http.StatusForbidden, "restricted to escrow owner")
+	if !s.isOwner(sender) && !s.isGroupMember(sender) {
+		return errJSON(c, http.StatusForbidden, "restricted to escrow owner or group member")
 	}
 
 	body := c.Get("body").([]byte)

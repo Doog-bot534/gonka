@@ -53,6 +53,7 @@ type escrowResponse struct {
 		EpochIndex uint64   `json:"epoch_index,string"`
 		AppHash    string   `json:"app_hash"`
 		Settled    bool     `json:"settled"`
+		TokenPrice uint64   `json:"token_price,string"`
 	} `json:"escrow"`
 	Found bool `json:"found"`
 }
@@ -121,6 +122,7 @@ func (b *RESTBridge) GetEscrow(escrowID string) (*EscrowInfo, error) {
 		CreatorAddress: resp.Escrow.Creator,
 		AppHash:        appHash,
 		Slots:          resp.Escrow.Slots,
+		TokenPrice:     resp.Escrow.TokenPrice,
 	}, nil
 }
 

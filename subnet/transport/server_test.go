@@ -442,11 +442,13 @@ func TestServer_VerifyTimeout_GroupMemberRejected(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, rec.Code)
 }
 
-func TestServer_ChallengeReceipt_GroupMemberRejected(t *testing.T) {
+func TestServer_ChallengeReceipt_GroupMemberAllowed(t *testing.T) {
 	env := setupServerEnv(t)
-	body := []byte(`{}`)
+	// Group members (peer hosts) must be allowed to call ChallengeReceipt
+	// during timeout verification. Empty diffs + no matching inference = 200 with empty receipt.
+	body := []byte(`{"inference_id":999,"diffs":[],"payload":null}`)
 	rec := env.doPostAs(t, "/v1/subnet/sessions/escrow-1/challenge-receipt", body, env.hostSigner)
-	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestServer_NonExecutor_SSE(t *testing.T) {

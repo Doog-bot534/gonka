@@ -221,6 +221,10 @@ func (h *Host) EscrowID() string            { return h.escrowID }
 func (h *Host) Group() []types.SlotAssignment { return h.group }
 func (h *Host) SlotIDs() map[uint32]bool     { return h.slotIDs }
 
+// PrimarySlot returns the lowest slot ID owned by this host.
+// Deterministic: derived from sortedSlots which is sorted at construction time.
+func (h *Host) PrimarySlot() uint32 { return h.sortedSlots[0] }
+
 // IsGroupMemberAddr returns true if addr is a group member (owns at least one slot).
 // Safe to call without locking -- addrToSlots is immutable after construction.
 func (h *Host) IsGroupMemberAddr(addr string) bool {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"subnet/logging"
@@ -47,6 +48,7 @@ type Gossip struct {
 	stopCh    chan struct{}
 	stopped   chan struct{}
 	closeOnce sync.Once
+	started   atomic.Bool
 }
 
 func NewGossip(escrowID string, slotID uint32, peers []PeerClient, mempool MempoolSink, opts ...GossipOption) *Gossip {
@@ -234,6 +236,7 @@ func (g *Gossip) BroadcastTxs(ctx context.Context, txs []*types.SubnetTx) {
 
 // Start begins the background re-propagation and recovery loops.
 func (g *Gossip) Start(ctx context.Context) {
+	g.started.Store(true)
 	go g.backgroundLoop(ctx)
 }
 
@@ -241,6 +244,9 @@ func (g *Gossip) Start(ctx context.Context) {
 func (g *Gossip) Stop() {
 	g.closeOnce.Do(func() {
 		close(g.stopCh)
+		if !g.started.Load() {
+			close(g.stopped)
+		}
 	})
 	<-g.stopped
 }
