@@ -39,7 +39,7 @@ func (k Keeper) ValidateIbcTokenForTrade(ctx context.Context, req *types.QueryVa
 	// 1. Find the display denom
 	// 2. Find the unit in DenomUnits that matches display denom
 	// 3. Get its exponent
-	var decimals uint32
+	var decimals uint32 = 0
 	displayDenom := metadata.Display
 	for _, unit := range metadata.DenomUnits {
 		if unit.Denom == displayDenom {

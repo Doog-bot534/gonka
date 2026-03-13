@@ -84,6 +84,9 @@ func setEpochParticipantsSets(ctx context.Context, k keeper.Keeper) error {
 // executeContractMigration parses the JSON Plan.Info and triggers Contract Migration.
 // It uses `allow_all_trade_tokens` set to true to complete the community-sale migration payload.
 func executeContractMigration(ctx context.Context, k keeper.Keeper, infoJSON string) error {
+	// Note: For all failures except for actual migration issues
+	// we return nil so the chain will continue. Otherwise we just need to
+	// fix the (obvious) error and try again.
 	if infoJSON == "" {
 		k.LogInfo("no migration data found in Plan.Info, skipping contract migration", types.Upgrades)
 		return nil
@@ -100,7 +103,7 @@ func executeContractMigration(ctx context.Context, k keeper.Keeper, infoJSON str
 	adminAddr, err := sdk.AccAddressFromBech32(k.GetAuthority())
 	if err != nil {
 		k.LogError("invalid governance address", types.Upgrades, "error", err)
-		return err
+		return nil
 	}
 
 	// Make sure both arguments are provided
@@ -112,7 +115,7 @@ func executeContractMigration(ctx context.Context, k keeper.Keeper, infoJSON str
 	contractAddr, err := sdk.AccAddressFromBech32(data.CommunitySaleAddress)
 	if err != nil {
 		k.LogError("invalid contract address in Plan.Info", types.Upgrades, "address", data.CommunitySaleAddress, "error", err)
-		return err
+		return nil
 	}
 
 	// Prepare the CosmWasm Migrate message (enabling all trade tokens natively)
