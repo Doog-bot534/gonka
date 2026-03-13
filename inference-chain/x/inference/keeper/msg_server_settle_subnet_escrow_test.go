@@ -188,5 +188,5 @@ func TestSettleSubnetEscrow_AllowlistBlocks(t *testing.T) {
 		EscrowId: 1,
 	})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "not in the allowed list")
+	require.Contains(t, err.Error(), "address is not allowed to create subnet escrows")
 }

@@ -196,7 +196,7 @@ func TestCreateSubnetEscrow_AllowlistBlocks(t *testing.T) {
 		Amount:  7_000_000_000,
 	})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "not in the escrow creator allowlist")
+	require.Contains(t, err.Error(), "address is not allowed to create subnet escrows")
 }
 
 func TestCreateSubnetEscrow_ParamsOverrideDefaults(t *testing.T) {
