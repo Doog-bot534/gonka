@@ -13,10 +13,20 @@ import (
 	"github.com/productscience/inference/x/inference/types"
 )
 
+// pruneSubnet is a helper that runs only the subnet pruner via the Pruner framework.
+func pruneSubnet(k keeper.Keeper, ctx sdk.Context, currentEpoch int64) error {
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		return err
+	}
+	return k.GetSubnetPruner(params).Prune(ctx, k, currentEpoch)
+}
+
 func TestPruneSubnetData_DeletesOldEscrows(t *testing.T) {
 	k, ctx, mock := keepertest.InferenceKeeperReturningMocks(t)
 	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
 	mock.BankKeeper.ExpectAny(ctx)
+	require.NoError(t, k.PruningState.Set(ctx, types.PruningState{}))
 
 	// Create escrow in epoch 3
 	escrow := &types.SubnetEscrow{
@@ -35,8 +45,9 @@ func TestPruneSubnetData_DeletesOldEscrows(t *testing.T) {
 	require.True(t, found)
 
 	// Prune at epoch 5 (threshold=2, so epoch 3 should be pruned)
-	err = k.PruneSubnetData(ctx, 5)
-	require.NoError(t, err)
+	// First call removes the escrow, second call marks the epoch complete.
+	require.NoError(t, pruneSubnet(k, ctx, 5))
+	require.NoError(t, pruneSubnet(k, ctx, 5))
 
 	// Escrow should be deleted
 	_, found = k.GetSubnetEscrow(ctx, 1)
@@ -47,6 +58,7 @@ func TestPruneSubnetData_PreservesRecentEscrows(t *testing.T) {
 	k, ctx, mock := keepertest.InferenceKeeperReturningMocks(t)
 	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
 	mock.BankKeeper.ExpectAny(ctx)
+	require.NoError(t, k.PruningState.Set(ctx, types.PruningState{}))
 
 	// Create escrow in epoch 4
 	escrow := &types.SubnetEscrow{
@@ -60,8 +72,7 @@ func TestPruneSubnetData_PreservesRecentEscrows(t *testing.T) {
 	require.NoError(t, err)
 
 	// Prune at epoch 5 (threshold=2, so epoch 4 is not yet prunable)
-	err = k.PruneSubnetData(ctx, 5)
-	require.NoError(t, err)
+	require.NoError(t, pruneSubnet(k, ctx, 5))
 
 	// Escrow should still exist
 	_, found := k.GetSubnetEscrow(ctx, 1)
@@ -72,6 +83,7 @@ func TestPruneSubnetData_HostStatsDeleted(t *testing.T) {
 	k, ctx, mock := keepertest.InferenceKeeperReturningMocks(t)
 	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
 	mock.BankKeeper.ExpectAny(ctx)
+	require.NoError(t, k.PruningState.Set(ctx, types.PruningState{}))
 
 	participant := sdk.AccAddress(make([]byte, 20))
 	participant[0] = 0x01
@@ -94,9 +106,9 @@ func TestPruneSubnetData_HostStatsDeleted(t *testing.T) {
 		EscrowCount: 1,
 	})
 
-	// Prune at epoch 5
-	err = k.PruneSubnetData(ctx, 5)
-	require.NoError(t, err)
+	// Prune at epoch 5 -- two passes: first removes escrows, second marks complete and runs PostPruneEpoch
+	require.NoError(t, pruneSubnet(k, ctx, 5))
+	require.NoError(t, pruneSubnet(k, ctx, 5))
 
 	// Stats should be deleted
 	_, found := k.GetSubnetHostEpochStats(ctx, 3, participant)
@@ -110,6 +122,7 @@ func TestPruneSubnetData_HostStatsDeleted(t *testing.T) {
 func TestPruneSubnetData_UnsettledEscrowDistributesFunds(t *testing.T) {
 	k, ctx, mock := keepertest.InferenceKeeperReturningMocks(t)
 	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
+	require.NoError(t, k.PruningState.Set(ctx, types.PruningState{}))
 
 	// Create 4 unique validators in 16 slots
 	addr1 := sdk.AccAddress(make([]byte, 20))
@@ -151,8 +164,7 @@ func TestPruneSubnetData_UnsettledEscrowDistributesFunds(t *testing.T) {
 		Return(nil).
 		Times(4)
 
-	err = k.PruneSubnetData(ctx, 5)
-	require.NoError(t, err)
+	require.NoError(t, pruneSubnet(k, ctx, 5))
 
 	// Escrow should be deleted
 	_, found := k.GetSubnetEscrow(ctx, 1)
@@ -162,6 +174,7 @@ func TestPruneSubnetData_UnsettledEscrowDistributesFunds(t *testing.T) {
 func TestPruneSubnetData_UnsettledDistributionAmounts(t *testing.T) {
 	k, ctx, mock := keepertest.InferenceKeeperReturningMocks(t)
 	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
+	require.NoError(t, k.PruningState.Set(ctx, types.PruningState{}))
 
 	// Create 4 unique validators in 16 slots (4 slots each)
 	addrs := make([]sdk.AccAddress, 4)
@@ -204,14 +217,14 @@ func TestPruneSubnetData_UnsettledDistributionAmounts(t *testing.T) {
 			Return(nil)
 	}
 
-	err = k.PruneSubnetData(ctx, 5)
-	require.NoError(t, err)
+	require.NoError(t, pruneSubnet(k, ctx, 5))
 }
 
 func TestPruneSubnetData_TracksProgress(t *testing.T) {
 	k, ctx, mock := keepertest.InferenceKeeperReturningMocks(t)
 	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
 	mock.BankKeeper.ExpectAny(ctx)
+	require.NoError(t, k.PruningState.Set(ctx, types.PruningState{}))
 
 	// Create escrows in epochs 1, 2, 3
 	for epoch := uint64(1); epoch <= 3; epoch++ {
@@ -227,24 +240,25 @@ func TestPruneSubnetData_TracksProgress(t *testing.T) {
 	}
 
 	// Prune at epoch 4 -> should prune epochs 1 and 2
-	err := k.PruneSubnetData(ctx, 4)
-	require.NoError(t, err)
+	// First pass removes escrows, second pass marks epochs complete
+	require.NoError(t, pruneSubnet(k, ctx, 4))
+	require.NoError(t, pruneSubnet(k, ctx, 4))
 
-	lastPruned, err := k.SubnetPrunedEpoch.Get(ctx)
+	st, err := k.PruningState.Get(ctx)
 	require.NoError(t, err)
-	require.Equal(t, int64(2), lastPruned)
+	require.Equal(t, int64(2), st.SubnetPrunedEpoch)
 
 	// Epoch 3 escrow should still exist
 	_, found := k.GetSubnetEscrow(ctx, 3)
 	require.True(t, found)
 
 	// Prune at epoch 5 -> should prune epoch 3
-	err = k.PruneSubnetData(ctx, 5)
-	require.NoError(t, err)
+	require.NoError(t, pruneSubnet(k, ctx, 5))
+	require.NoError(t, pruneSubnet(k, ctx, 5))
 
-	lastPruned, err = k.SubnetPrunedEpoch.Get(ctx)
+	st, err = k.PruningState.Get(ctx)
 	require.NoError(t, err)
-	require.Equal(t, int64(3), lastPruned)
+	require.Equal(t, int64(3), st.SubnetPrunedEpoch)
 
 	_, found = k.GetSubnetEscrow(ctx, 3)
 	require.False(t, found)
