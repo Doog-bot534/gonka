@@ -1,11 +1,12 @@
 package admin
 
 import (
-	"log/slog"
+	"decentralized-api/logging"
 	"net/http"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
+	"github.com/productscience/inference/x/inference/types"
 )
 
 // StorePayloadRequest is the request body for storing payloads
@@ -33,7 +34,7 @@ func (s *Server) storePayload(c echo.Context) error {
 
 	var req StorePayloadRequest
 	if err := c.Bind(&req); err != nil {
-		slog.Error("Failed to bind request", "error", err)
+		logging.Error("Failed to bind request", types.Inferences, "error", err)
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body: "+err.Error())
 	}
 
@@ -44,7 +45,7 @@ func (s *Server) storePayload(c echo.Context) error {
 	// Parse epoch_id string to uint64
 	epochId, err := strconv.ParseUint(req.EpochId, 10, 64)
 	if err != nil {
-		slog.Error("Failed to parse epoch_id", "epochId", req.EpochId, "error", err)
+		logging.Error("Failed to parse epoch_id", types.Inferences, "epochId", req.EpochId, "error", err)
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid epoch_id: "+err.Error())
 	}
 
@@ -54,11 +55,11 @@ func (s *Server) storePayload(c echo.Context) error {
 
 	// Store payloads
 	if err := s.payloadStorage.Store(c.Request().Context(), inferenceId, epochId, []byte(req.PromptPayload), []byte(req.ResponsePayload)); err != nil {
-		slog.Error("Failed to store payload", "inferenceId", inferenceId, "epochId", epochId, "error", err)
+		logging.Error("Failed to store payload", types.Inferences, "inferenceId", inferenceId, "epochId", epochId, "error", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store payload: "+err.Error())
 	}
 
-	slog.Info("Stored payload via admin endpoint", "inferenceId", inferenceId, "epochId", epochId)
+	logging.Info("Stored payload via admin endpoint", types.Inferences, "inferenceId", inferenceId, "epochId", epochId)
 
 	return c.JSON(http.StatusOK, StorePayloadResponse{
 		Status:      "success",
