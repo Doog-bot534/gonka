@@ -57,8 +57,8 @@ type (
 		UnitOfComputePriceProposals   collections.Map[string, types.UnitOfComputePriceProposal]
 		EpochGroupDataMap             collections.Map[collections.Pair[uint64, string], types.EpochGroupData]
 		// Epoch collections
-		Epochs                    collections.Map[uint64, types.Epoch]
-		EffectiveEpochIndex       collections.Item[uint64]
+		Epochs              collections.Map[uint64, types.Epoch]
+		EffectiveEpochIndex collections.Item[uint64]
 		// TODO(v0.2.11-cleanup): remove legacy aggregate map after upgrade migration period.
 		EpochGroupValidationsMap  collections.Map[collections.Pair[uint64, string], types.EpochGroupValidations]
 		EpochGroupValidationEntry collections.KeySet[collections.Triple[uint64, string, string]]
@@ -93,12 +93,11 @@ type (
 		PunishmentGraceEpochs collections.Map[uint64, types.GraceEpochParams]
 		ActiveParticipantsSet collections.KeySet[collections.Pair[uint64, sdk.AccAddress]]
 		// Subnet escrow collections
-		SubnetEscrows          collections.Map[uint64, types.SubnetEscrow]
-		SubnetEscrowCounter    collections.Item[uint64]
-		SubnetEscrowEpochCount collections.Map[uint64, uint64]
+		SubnetEscrows           collections.Map[uint64, types.SubnetEscrow]
+		SubnetEscrowCounter     collections.Item[uint64]
+		SubnetEscrowEpochCount  collections.Map[uint64, uint64]
 		SubnetHostEpochStatsMap collections.Map[collections.Pair[uint64, sdk.AccAddress], types.SubnetHostEpochStats]
-		SubnetEscrowsByEpoch   collections.Map[collections.Pair[uint64, uint64], collections.NoValue]
-		SubnetPrunedEpoch      collections.Item[int64]
+		SubnetEscrowsByEpoch    collections.Map[collections.Pair[uint64, uint64], collections.NoValue]
 	}
 )
 
@@ -504,12 +503,6 @@ func NewKeeper(
 			"subnet_escrows_by_epoch",
 			collections.PairKeyCodec(collections.Uint64Key, collections.Uint64Key),
 			collections.NoValue{},
-		),
-		SubnetPrunedEpoch: collections.NewItem(
-			sb,
-			types.SubnetPrunedEpochPrefix,
-			"subnet_pruned_epoch",
-			collections.Int64Value,
 		),
 	}
 	// Build the collections schema
