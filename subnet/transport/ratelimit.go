@@ -60,7 +60,7 @@ func rateLimitMiddleware(rl *rateLimiter) echo.MiddlewareFunc {
 				return next(c)
 			}
 			if !rl.allow(sender) {
-				return c.JSON(http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
+				return echo.NewHTTPError(http.StatusTooManyRequests, "rate limit exceeded")
 			}
 			return next(c)
 		}

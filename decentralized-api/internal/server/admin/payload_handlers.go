@@ -28,34 +28,34 @@ type StorePayloadResponse struct {
 func (s *Server) storePayload(c echo.Context) error {
 	inferenceId := c.QueryParam("inference_id")
 	if inferenceId == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "inference_id required"})
+		return echo.NewHTTPError(http.StatusBadRequest, "inference_id required")
 	}
 
 	var req StorePayloadRequest
 	if err := c.Bind(&req); err != nil {
 		slog.Error("Failed to bind request", "error", err)
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body: " + err.Error()})
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body: "+err.Error())
 	}
 
 	if req.EpochId == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "epoch_id required"})
+		return echo.NewHTTPError(http.StatusBadRequest, "epoch_id required")
 	}
 
 	// Parse epoch_id string to uint64
 	epochId, err := strconv.ParseUint(req.EpochId, 10, 64)
 	if err != nil {
 		slog.Error("Failed to parse epoch_id", "epochId", req.EpochId, "error", err)
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid epoch_id: " + err.Error()})
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid epoch_id: "+err.Error())
 	}
 
 	if s.payloadStorage == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "payload storage not configured"})
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "payload storage not configured")
 	}
 
 	// Store payloads
 	if err := s.payloadStorage.Store(c.Request().Context(), inferenceId, epochId, []byte(req.PromptPayload), []byte(req.ResponsePayload)); err != nil {
 		slog.Error("Failed to store payload", "inferenceId", inferenceId, "epochId", epochId, "error", err)
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to store payload: " + err.Error()})
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store payload: "+err.Error())
 	}
 
 	slog.Info("Stored payload via admin endpoint", "inferenceId", inferenceId, "epochId", epochId)

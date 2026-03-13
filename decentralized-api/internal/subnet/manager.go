@@ -233,7 +233,7 @@ func (m *HostManager) handleGetPayloads(c echo.Context) error {
 	escrowID := c.Param("id")
 	inferenceID := c.QueryParam("inference_id")
 	if inferenceID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "inference_id required"})
+		return echo.NewHTTPError(http.StatusBadRequest, "inference_id required")
 	}
 
 	epochID, err := m.authenticatePayloadRequest(c, escrowID)
@@ -245,15 +245,15 @@ func (m *HostManager) handleGetPayloads(c echo.Context) error {
 	promptPayload, responsePayload, _, err := m.retrievePayloadsWithAdjacentEpochs(c.Request().Context(), escrowID, inferenceID, epochID)
 	if err != nil {
 		if errors.Is(err, payloadstorage.ErrNotFound) {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "payload not found"})
+			return echo.NewHTTPError(http.StatusNotFound, "payload not found")
 		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
 	// Sign response using same scheme as public endpoint
 	executorSignature, err := m.signPayloadResponse(inferenceID, promptPayload, responsePayload)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to sign response"})
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to sign response")
 	}
 
 	return c.JSON(http.StatusOK, validation.PayloadResponse{
@@ -274,26 +274,26 @@ func (m *HostManager) authenticatePayloadRequest(c echo.Context, escrowID string
 	inferenceID := c.QueryParam("inference_id")
 
 	if validatorAddress == "" {
-		return 0, c.JSON(http.StatusBadRequest, map[string]string{"error": "X-Validator-Address header required"})
+		return 0, echo.NewHTTPError(http.StatusBadRequest, "X-Validator-Address header required")
 	}
 	if timestampStr == "" {
-		return 0, c.JSON(http.StatusBadRequest, map[string]string{"error": "X-Timestamp header required"})
+		return 0, echo.NewHTTPError(http.StatusBadRequest, "X-Timestamp header required")
 	}
 	if epochIDStr == "" {
-		return 0, c.JSON(http.StatusBadRequest, map[string]string{"error": "X-Epoch-Id header required"})
+		return 0, echo.NewHTTPError(http.StatusBadRequest, "X-Epoch-Id header required")
 	}
 	if signature == "" {
-		return 0, c.JSON(http.StatusUnauthorized, map[string]string{"error": "Authorization header required"})
+		return 0, echo.NewHTTPError(http.StatusUnauthorized, "Authorization header required")
 	}
 
 	timestamp, err := strconv.ParseInt(timestampStr, 10, 64)
 	if err != nil {
-		return 0, c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid timestamp format"})
+		return 0, echo.NewHTTPError(http.StatusBadRequest, "invalid timestamp format")
 	}
 
 	epochID, err := strconv.ParseUint(epochIDStr, 10, 64)
 	if err != nil {
-		return 0, c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid epoch_id format"})
+		return 0, echo.NewHTTPError(http.StatusBadRequest, "invalid epoch_id format")
 	}
 
 	// Validate timestamp within 60s window
@@ -302,28 +302,28 @@ func (m *HostManager) authenticatePayloadRequest(c echo.Context, escrowID string
 	maxFuture := int64(10 * time.Second)
 	requestAge := now - timestamp
 	if requestAge > maxAge {
-		return 0, c.JSON(http.StatusBadRequest, map[string]string{"error": "request timestamp too old"})
+		return 0, echo.NewHTTPError(http.StatusBadRequest, "request timestamp too old")
 	}
 	if requestAge < -maxFuture {
-		return 0, c.JSON(http.StatusBadRequest, map[string]string{"error": "request timestamp in the future"})
+		return 0, echo.NewHTTPError(http.StatusBadRequest, "request timestamp in the future")
 	}
 
 	// Get session and verify group membership
 	srv, err := m.getOrCreate(escrowID)
 	if err != nil {
-		return 0, c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return 0, echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
 	group := srv.Host().Group()
 	granterAddress, err := m.findGranterInGroup(validatorAddress, group)
 	if err != nil {
-		return 0, c.JSON(http.StatusUnauthorized, map[string]string{"error": "not a group member"})
+		return 0, echo.NewHTTPError(http.StatusUnauthorized, "not a group member")
 	}
 
 	// Collect requester's pubkeys for signature verification
 	pubkeys, err := m.getValidatorPubKeys(c.Request().Context(), validatorAddress, granterAddress)
 	if err != nil {
-		return 0, c.JSON(http.StatusUnauthorized, map[string]string{"error": "failed to resolve validator pubkeys"})
+		return 0, echo.NewHTTPError(http.StatusUnauthorized, "failed to resolve validator pubkeys")
 	}
 
 	// Verify signature
@@ -335,7 +335,7 @@ func (m *HostManager) authenticatePayloadRequest(c echo.Context, escrowID string
 		ExecutorAddress: "",
 	}
 	if err := calculations.ValidateSignatureWithGrantees(components, calculations.Developer, pubkeys, signature); err != nil {
-		return 0, c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid signature"})
+		return 0, echo.NewHTTPError(http.StatusUnauthorized, "invalid signature")
 	}
 
 	return epochID, nil
@@ -462,7 +462,7 @@ func (m *HostManager) withAuth(pick func(*transport.Server) echo.HandlerFunc) ec
 	return func(c echo.Context) error {
 		srv, err := m.getOrCreate(c.Param("id"))
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 		}
 		return srv.AuthMiddleware(pick(srv))(c)
 	}
@@ -472,7 +472,7 @@ func (m *HostManager) withoutAuth(pick func(*transport.Server) echo.HandlerFunc)
 	return func(c echo.Context) error {
 		srv, err := m.getOrCreate(c.Param("id"))
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 		}
 		return pick(srv)(c)
 	}
