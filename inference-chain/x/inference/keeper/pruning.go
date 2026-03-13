@@ -152,20 +152,15 @@ func (k Keeper) GetSubnetPruner(params types.Params) Pruner[collections.Pair[uin
 			epochIndex := uint64(epoch)
 			// Clear SubnetHostEpochStats for this epoch
 			statsRng := collections.NewPrefixedPairRange[uint64, sdk.AccAddress](epochIndex)
-			statsIter, err := k.SubnetHostEpochStatsMap.Iterate(ctx, statsRng)
-			if err == nil {
-				defer statsIter.Close()
-				for ; statsIter.Valid(); statsIter.Next() {
-					key, err := statsIter.Key()
-					if err != nil {
-						continue
-					}
-					_ = k.SubnetHostEpochStatsMap.Remove(ctx, key)
-				}
+			err := k.SubnetHostEpochStatsMap.Clear(ctx, statsRng)
+			if err != nil {
+				k.LogError("failed to clear subnet host epoch stats", types.Pruning, "epoch", epochIndex, "error", err)
 			}
-
 			// Delete epoch count
-			_ = k.SubnetEscrowEpochCount.Remove(ctx, epochIndex)
+			err = k.SubnetEscrowEpochCount.Remove(ctx, epochIndex)
+			if err != nil {
+				k.LogError("failed to remove subnet escrow epoch count", types.Pruning, "epoch", epochIndex, "error", err)
+			}
 			return nil
 		},
 		Logger: k,
