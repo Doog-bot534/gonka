@@ -39,11 +39,11 @@ The ownership transfer system enables complete handover of genesis accounts thro
 
 **Transfer Record Management**: The system maintains transfer records in module state to ensure each genesis account can only be transferred once. Transfer records include source address, destination address, transfer block height, and completion status.
 
-**Implementation**: `TransferRecord` type in `inference-chain/x/genesis-transfer/types/genesis.go` with keeper functions in `inference-chain/x/genesis-transfer/keeper/transfer_records.go` for validation and state management.
+**Implementation**: `TransferRecord` is used in genesis state and in keeper state; keeper functions: `GetTransferRecord`/`SetTransferRecord` in `keeper/validation.go`, enumeration and helpers (`GetAllTransferRecords`, `HasTransferRecord`, etc.) in `keeper/transfer_records.go`.
 
 ### 2.3. Atomic Transfer Operations
 
-**Transfer Execution**: The `ExecuteOwnershipTransfer` function in `inference-chain/x/genesis-transfer/keeper/transfer.go` implements atomic transfer logic ensuring either complete success or complete failure with no partial transfers.
+**Transfer Execution**: The `ExecuteOwnershipTransfer` function in `inference-chain/x/genesistransfer/keeper/transfer.go` implements atomic transfer logic (unified with balance and vesting transfer in `TransferOwnership`) ensuring either complete success or complete failure with no partial transfers.
 
 **Atomic Operations Sequence**:
 1. Account validation and transfer eligibility verification
@@ -64,7 +64,7 @@ The ownership transfer system enables complete handover of genesis accounts thro
 
 ### 3.2. Vesting Transfer Implementation
 
-**Vesting Schedule Analysis**: The `TransferVestingSchedule` function in `inference-chain/x/genesis-transfer/keeper/vesting.go` implements vesting transfer logic including current vesting state analysis, remaining period calculation, and new vesting account creation.
+**Vesting transfer**: Vesting logic is implemented inside the unified transfer flow in `inference-chain/x/genesistransfer/keeper/transfer.go` (no separate `vesting.go`): current vesting state analysis, remaining period calculation, and new vesting account creation for the recipient.
 
 **Implementation Components**:
 - Vesting account type detection and validation
@@ -83,23 +83,21 @@ The ownership transfer system enables complete handover of genesis accounts thro
 
 ### 4.1. Core Implementation Files
 
-**Message Definition**: `inference-chain/x/genesis-transfer/types/msgs.go` defines the `MsgTransferOwnership` message type including authority validation, genesis account address, and recipient account address fields.
+**Message Definition**: `inference-chain/x/genesistransfer/types/msg_transfer_ownership.go` defines the `MsgTransferOwnership` message type (genesis account address, recipient address, validated by signer).
 
-**Transfer Logic**: `inference-chain/x/genesis-transfer/keeper/transfer.go` implements the main transfer orchestration including account validation, balance enumeration, vesting schedule analysis, atomic transfer execution, and completion state management.
+**Transfer Logic**: `inference-chain/x/genesistransfer/keeper/transfer.go` implements the main transfer orchestration (unified balance + vesting), including account validation, balance enumeration, vesting schedule analysis, atomic transfer execution, and completion state management.
 
-**Vesting Integration**: `inference-chain/x/genesis-transfer/keeper/vesting.go` handles vesting-specific transfer operations including vesting account type detection, remaining schedule calculation, new vesting account creation, and account keeper integration.
-
-**State Management**: `inference-chain/x/genesis-transfer/keeper/transfer_records.go` manages transfer completion tracking and duplicate prevention through persistent state storage and validation functions.
+**State Management**: `inference-chain/x/genesistransfer/keeper/transfer_records.go` provides transfer record enumeration and helpers; `GetTransferRecord`/`SetTransferRecord` live in `keeper/validation.go`. Together they manage transfer completion tracking and duplicate prevention.
 
 ### 4.2. Module Integration Requirements
 
-**Module Registration**: Standard Cosmos SDK module integration through `inference-chain/x/genesis-transfer/module/module.go` with message handler registration, query endpoint definition, and genesis function implementation.
+**Module Registration**: Standard Cosmos SDK module integration through `inference-chain/x/genesistransfer/module/module.go` with message handler registration, query endpoint definition, and genesis function implementation.
 
 **Application Integration**: Module registration in `inference-chain/app/app.go` module manager with appropriate module ordering and dependency specification.
 
-**Genesis State Configuration**: Optional genesis state support in `inference-chain/x/genesis-transfer/types/genesis.go` for pre-defining allowed transfer accounts and system parameters.
+**Genesis State Configuration**: Optional genesis state support in `inference-chain/x/genesistransfer/types/genesis.go` for pre-defining allowed transfer accounts and system parameters.
 
-**State Schema**: Module state definitions in `inference-chain/x/genesis-transfer/types/genesis.go` including transfer record structure, parameter definitions, and validation logic.
+**State Schema**: Module state definitions in `inference-chain/x/genesistransfer/types/genesis.go` including transfer record structure, parameter definitions, and validation logic.
 
 ## 5. Security and Access Control
 
@@ -107,7 +105,7 @@ The ownership transfer system enables complete handover of genesis accounts thro
 
 **Account Owner Authorization**: Transfer execution requires transaction signature from the private key controlling the genesis account being transferred. This ensures only the legitimate account owner can initiate ownership transfer.
 
-**One-Time Transfer Enforcement**: Each genesis account can only be transferred once through transfer record validation in module state. The `ValidateTransfer` function in `inference-chain/x/genesis-transfer/keeper/validation.go` implements comprehensive transfer eligibility checking.
+**One-Time Transfer Enforcement**: Each genesis account can only be transferred once through transfer record validation in module state. The `ValidateTransfer` function in `inference-chain/x/genesistransfer/keeper/validation.go` implements comprehensive transfer eligibility checking.
 
 **Authorization Validation Sequence**:
 1. Transaction signature verification against genesis account address
@@ -118,7 +116,7 @@ The ownership transfer system enables complete handover of genesis accounts thro
 
 ### 5.2. Optional Genesis Account Restrictions
 
-**Transferable Account Whitelist**: The system supports optional restriction of transfers to pre-approved genesis accounts through the `GenesisTransferParams` configuration in `inference-chain/x/genesis-transfer/types/params.go`.
+**Transferable Account Whitelist**: The system supports optional restriction of transfers to pre-approved genesis accounts through the module `Params` (allowed_accounts, restrict_to_list) in `inference-chain/x/genesistransfer/types/params.go`.
 
 **Whitelist Configuration**:
 - `AllowedAccounts`: Array of genesis account addresses eligible for transfer
@@ -166,7 +164,7 @@ The ownership transfer system enables complete handover of genesis accounts thro
 
 ### 7.1. Transfer Status Queries
 
-**Transfer History Queries**: The system provides query endpoints in `inference-chain/x/genesis-transfer/keeper/grpc_query.go` for retrieving transfer completion status, transfer records, and transfer eligibility for genesis accounts.
+**Transfer History Queries**: The system provides query endpoints in `inference-chain/x/genesistransfer/keeper/grpc_query.go` for retrieving transfer completion status, transfer records, and transfer eligibility for genesis accounts.
 
 **Available Query Functions**:
 - `TransferStatus`: Query completion status for specific genesis accounts
@@ -193,6 +191,10 @@ The ownership transfer system enables complete handover of genesis accounts thro
 **Private Key Management**: Genesis account private keys must be securely managed until transfer completion. Post-transfer, these keys should be securely archived or destroyed following organizational security policies.
 
 **Address Verification**: Recipient address verification is critical for preventing irreversible transfers to incorrect destinations. Implementation includes address format validation and optional confirmation procedures.
+
+## Implementation status
+
+The description above has been aligned with the current codebase. The module lives under `inference-chain/x/genesistransfer/` (not `genesis-transfer`). Transfer logic (liquid + vesting) is unified in `keeper/transfer.go`; there is no separate `keeper/vesting.go`. Params use the type `Params` with `AllowedAccounts` and `RestrictToList`. The only open task from the proposal todo is **6.4** (Decentralized API wiring for genesis transfer read endpoints).
 
 ## 9. Conclusion
 
