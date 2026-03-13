@@ -139,8 +139,8 @@ var MessagePermissions = map[reflect.Type][]Permission{
 	reflect.TypeOf((*types.MsgFinishInference)(nil)): {ActiveParticipantPermission, PreviousActiveParticipantPermission},
 	reflect.TypeOf((*types.MsgValidation)(nil)):      {ActiveParticipantPermission, PreviousActiveParticipantPermission},
 
-	reflect.TypeOf((*types.MsgCreateSubnetEscrow)(nil)): {NoPermission},
-	reflect.TypeOf((*types.MsgSettleSubnetEscrow)(nil)): {NoPermission},
+	reflect.TypeOf((*types.MsgCreateSubnetEscrow)(nil)): {EscrowAllowListPermission},
+	reflect.TypeOf((*types.MsgSettleSubnetEscrow)(nil)): {EscrowAllowListPermission},
 }
 
 type HasSigners interface {
