@@ -107,8 +107,13 @@ func VerifySubnetSettlement(escrow types.SubnetEscrow, msg *types.MsgSettleSubne
 	}
 
 	// Verify total cost does not exceed escrow amount
+	seenStatSlots := make(map[uint32]bool, len(msg.HostStats))
 	var totalCost uint64
 	for _, hs := range msg.HostStats {
+		if seenStatSlots[hs.SlotId] {
+			return fmt.Errorf("duplicate host_stats slot_id %d", hs.SlotId)
+		}
+		seenStatSlots[hs.SlotId] = true
 		totalCost += hs.Cost
 	}
 	if totalCost > escrow.Amount {

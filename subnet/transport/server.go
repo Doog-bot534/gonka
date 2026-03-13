@@ -235,13 +235,35 @@ func (s *Server) AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
+func getSender(c echo.Context) (string, error) {
+	v, ok := c.Get(contextKeySender).(string)
+	if !ok || v == "" {
+		return "", echo.NewHTTPError(http.StatusUnauthorized, "missing sender")
+	}
+	return v, nil
+}
+
+func getBody(c echo.Context) ([]byte, error) {
+	v, ok := c.Get("body").([]byte)
+	if !ok {
+		return nil, echo.NewHTTPError(http.StatusBadRequest, "missing body")
+	}
+	return v, nil
+}
+
 func (s *Server) HandleInference(c echo.Context) error {
-	sender := c.Get(contextKeySender).(string)
+	sender, err := getSender(c)
+	if err != nil {
+		return err
+	}
 	if !s.isOwner(sender) {
 		return errJSON(c, http.StatusForbidden, "restricted to escrow owner")
 	}
 
-	body := c.Get("body").([]byte)
+	body, err := getBody(c)
+	if err != nil {
+		return err
+	}
 
 	var ir InferenceRequest
 	if err := json.Unmarshal(body, &ir); err != nil {
@@ -322,12 +344,18 @@ func (s *Server) SetPeerClients(peers map[int]*HTTPClient) {
 }
 
 func (s *Server) HandleVerifyTimeout(c echo.Context) error {
-	sender := c.Get(contextKeySender).(string)
+	sender, err := getSender(c)
+	if err != nil {
+		return err
+	}
 	if !s.isOwner(sender) {
 		return errJSON(c, http.StatusForbidden, "restricted to escrow owner")
 	}
 
-	body := c.Get("body").([]byte)
+	body, err := getBody(c)
+	if err != nil {
+		return err
+	}
 
 	var req VerifyTimeoutRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -410,12 +438,18 @@ func signTimeoutVote(escrowID string, inferenceID uint64, reason types.TimeoutRe
 }
 
 func (s *Server) HandleChallengeReceipt(c echo.Context) error {
-	sender := c.Get(contextKeySender).(string)
+	sender, err := getSender(c)
+	if err != nil {
+		return err
+	}
 	if !s.isOwner(sender) && !s.isGroupMember(sender) {
 		return errJSON(c, http.StatusForbidden, "restricted to escrow owner or group member")
 	}
 
-	body := c.Get("body").([]byte)
+	body, err := getBody(c)
+	if err != nil {
+		return err
+	}
 
 	var req ChallengeReceiptRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -441,12 +475,18 @@ func (s *Server) HandleChallengeReceipt(c echo.Context) error {
 
 func (s *Server) HandleGossipNonce(c echo.Context) error {
 	// Gossip is host-to-host only. Reject user-signed requests.
-	sender := c.Get(contextKeySender).(string)
+	sender, err := getSender(c)
+	if err != nil {
+		return err
+	}
 	if !s.isGroupMember(sender) {
 		return errJSON(c, http.StatusForbidden, "gossip restricted to group members")
 	}
 
-	body := c.Get("body").([]byte)
+	body, err := getBody(c)
+	if err != nil {
+		return err
+	}
 
 	var req GossipNonceRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -502,12 +542,18 @@ func (s *Server) HandleGossipNonce(c echo.Context) error {
 
 func (s *Server) HandleGossipTxs(c echo.Context) error {
 	// Gossip is host-to-host only.
-	sender := c.Get(contextKeySender).(string)
+	sender, err := getSender(c)
+	if err != nil {
+		return err
+	}
 	if !s.isGroupMember(sender) {
 		return errJSON(c, http.StatusForbidden, "gossip restricted to group members")
 	}
 
-	body := c.Get("body").([]byte)
+	body, err := getBody(c)
+	if err != nil {
+		return err
+	}
 
 	var req GossipTxsRequest
 	if err := json.Unmarshal(body, &req); err != nil {

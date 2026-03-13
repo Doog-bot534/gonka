@@ -652,7 +652,12 @@ func (sm *StateMachine) applyValidationVote(msg *types.MsgValidationVote) error 
 		rec.Status = types.StatusInvalidated
 		// Refund cost.
 		sm.state.HostStats[rec.ExecutorSlot].Invalid++
-		sm.state.HostStats[rec.ExecutorSlot].Cost -= rec.ActualCost
+		hs := sm.state.HostStats[rec.ExecutorSlot]
+		if hs.Cost < rec.ActualCost {
+			hs.Cost = 0
+		} else {
+			hs.Cost -= rec.ActualCost
+		}
 		sm.state.Balance += rec.ActualCost
 	} else if rec.VotesValid > threshold {
 		rec.Status = types.StatusValidated

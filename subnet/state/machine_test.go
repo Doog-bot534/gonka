@@ -2921,3 +2921,53 @@ func TestApplyDiff_RevealSeed_UsesExistingBinding(t *testing.T) {
 	wkAfter := sm.WarmKeys()
 	require.Equal(t, wkBefore, wkAfter, "warm keys should not change during seed reveal")
 }
+
+func TestApplyDiff_Validation_Invalid_CostUnderflowGuard(t *testing.T) {
+	// Set up a scenario where HostStats.Cost is 0 but ActualCost > 0.
+	// The underflow guard should prevent unsigned subtraction wraparound.
+	hosts := []*signing.Secp256k1Signer{
+		testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t),
+		testutil.MustGenerateKey(t), testutil.MustGenerateKey(t),
+	}
+	sm, user := newTestSM(t, hosts, 10000)
+
+	// Start, confirm, finish inference 1 (executor = slot 1).
+	applyStartConfirmFinish(t, sm, user, hosts, 1)
+	st := sm.SnapshotState()
+	require.True(t, st.HostStats[1].Cost > 0)
+
+	// Start, confirm, finish inference 4 (executor = slot 4).
+	// This gives slot 4 some cost. We'll later invalidate inference 1 (slot 1)
+	// but first manually zero slot 1's cost via a second invalidation cycle.
+	// Instead, test directly: finish two inferences on same slot, invalidate
+	// the second one that has cost > slot's remaining cost after first invalidation.
+
+	// Inference 4 -> executor slot 4%5=4
+	applyStartConfirmFinish(t, sm, user, hosts, 4)
+
+	// Challenge inference 1 (executor slot 1).
+	valMsg := &types.MsgValidation{InferenceId: 1, ValidatorSlot: 0, Valid: false, EscrowId: "escrow-1"}
+	valMsg.ProposerSig = testutil.SignProposerTx(t, hosts[0], valMsg)
+	nonce := sm.SnapshotState().LatestNonce + 1
+	diff := testutil.SignDiff(t, user, "escrow-1", nonce, []*types.SubnetTx{txValidation(valMsg)})
+	_, err := sm.ApplyDiff(diff)
+	require.NoError(t, err)
+
+	// Vote invalid to reach threshold (need >2 for 5 slots).
+	var voteTxs []*types.SubnetTx
+	for _, slot := range []uint32{2, 3} {
+		voteMsg := &types.MsgValidationVote{InferenceId: 1, VoterSlot: slot, VoteValid: false, EscrowId: "escrow-1"}
+		voteMsg.ProposerSig = testutil.SignProposerTx(t, hosts[slot], voteMsg)
+		voteTxs = append(voteTxs, txVote(voteMsg))
+	}
+	nonce = sm.SnapshotState().LatestNonce + 1
+	diff = testutil.SignDiff(t, user, "escrow-1", nonce, voteTxs)
+	_, err = sm.ApplyDiff(diff)
+	require.NoError(t, err)
+
+	// Inference 1 is now invalidated, cost was refunded from slot 1.
+	st = sm.SnapshotState()
+	require.Equal(t, types.StatusInvalidated, st.Inferences[1].Status)
+	require.Equal(t, uint64(0), st.HostStats[1].Cost)
+}
+

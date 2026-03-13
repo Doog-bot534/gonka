@@ -2,6 +2,8 @@ package keeper
 
 import (
 	"context"
+	"fmt"
+	"math"
 
 	"cosmossdk.io/collections"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -27,6 +29,9 @@ func (k Keeper) AggregateSubnetHostStats(ctx context.Context, epochIndex uint64,
 	}
 	existing.Missed += slotStats.Missed
 	existing.Invalid += slotStats.Invalid
+	if existing.Cost > math.MaxUint64-slotStats.Cost {
+		return fmt.Errorf("cost overflow aggregating subnet host stats")
+	}
 	existing.Cost += slotStats.Cost
 	existing.RequiredValidations += slotStats.RequiredValidations
 	existing.CompletedValidations += slotStats.CompletedValidations

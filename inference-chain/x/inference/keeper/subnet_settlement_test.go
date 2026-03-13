@@ -319,6 +319,25 @@ func TestComputeSubnetHostStatsHash_Deterministic(t *testing.T) {
 	require.Equal(t, hash1, hash2)
 }
 
+func TestVerifySubnetSettlement_DuplicateHostStatsSlotId(t *testing.T) {
+	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
+
+	keys, slots := generateSubnetKeys(t, keeper.SubnetGroupSize)
+	escrow := types.SubnetEscrow{
+		Id: 1, Creator: "gonka1creator", Amount: 7_000_000_000, Slots: slots,
+	}
+	hostStats := makeHostStats(keeper.SubnetGroupSize, 100_000_000)
+	// Duplicate slot_id 0 by appending a copy.
+	hostStats = append(hostStats, &types.SubnetSettlementHostStats{
+		SlotId: 0, Cost: 100_000_000, RequiredValidations: 10, CompletedValidations: 9,
+	})
+	msg := buildSettlementTestData(t, escrow, keys, hostStats)
+
+	err := keeper.VerifySubnetSettlement(escrow, msg, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "duplicate host_stats slot_id")
+}
+
 func TestVerifySubnetSettlement_DuplicateSlotId(t *testing.T) {
 	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
 
