@@ -232,7 +232,16 @@ class SubnetTests : TestermintTest() {
             runBlocking(dispatcher) {
                 handles.map { handle ->
                     async {
-                        for (i in 0 until 20) {
+                        for (i in 0 until 10) {
+                            genesis.sendChatCompletion(handle.proxyUrl, defaultModel, "test prompt $i")
+                        }
+                    }
+                }.awaitAll()
+            }
+            runBlocking(dispatcher) {
+                handles.map { handle ->
+                    async {
+                        for (i in 0 until 10) {
                             genesis.sendChatCompletion(handle.proxyUrl, defaultModel, "test prompt $i")
                         }
                     }
