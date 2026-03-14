@@ -3,8 +3,8 @@ package keeper
 import (
 	"fmt"
 	"math"
-	"math/bits"
 	"math/big"
+	"math/bits"
 
 	"cosmossdk.io/log"
 	"github.com/productscience/inference/x/inference/types"
@@ -628,6 +628,23 @@ func CalculateParticipantBitcoinRewards(
 		effectiveWeight := RecomputeEffectiveWeightFromMLNodes(vw, mlNodes)
 		if effectiveWeight < 0 {
 			effectiveWeight = 0
+		}
+
+		// Apply collateral adjustment to effective weight.
+		// mlNode.PocWeight values are raw (never collateral-adjusted), but vw.Weight is.
+		// Derive ratio and scale effectiveWeight to match collateral-adjusted weight.
+		rawTotalWeight := int64(0)
+		rawNodes := mlNodes
+		if len(rawNodes) == 0 {
+			rawNodes = vw.MlNodes
+		}
+		for _, mlNode := range rawNodes {
+			if mlNode != nil {
+				rawTotalWeight += mlNode.PocWeight
+			}
+		}
+		if rawTotalWeight > 0 && vw.Weight < rawTotalWeight {
+			effectiveWeight = effectiveWeight * (vw.Weight / rawTotalWeight)
 		}
 
 		logger.Info("Bitcoin Rewards: Calculated effective weight",
