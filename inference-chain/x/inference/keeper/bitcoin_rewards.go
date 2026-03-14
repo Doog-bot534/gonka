@@ -644,7 +644,11 @@ func CalculateParticipantBitcoinRewards(
 			}
 		}
 		if rawTotalWeight > 0 && vw.Weight < rawTotalWeight {
-			effectiveWeight = effectiveWeight * (vw.Weight / rawTotalWeight)
+			// Use big.Int to prevent overflow: effectiveWeight * vw.Weight can exceed int64
+			ewBig := big.NewInt(effectiveWeight)
+			ewBig = ewBig.Mul(ewBig, big.NewInt(vw.Weight))
+			ewBig = ewBig.Div(ewBig, big.NewInt(rawTotalWeight))
+			effectiveWeight = ewBig.Int64()
 		}
 
 		logger.Info("Bitcoin Rewards: Calculated effective weight",
