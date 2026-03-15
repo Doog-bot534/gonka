@@ -3,8 +3,8 @@ package keeper
 import (
 	"fmt"
 	"math"
-	"math/bits"
 	"math/big"
+	"math/bits"
 
 	"cosmossdk.io/log"
 	"github.com/productscience/inference/x/inference/types"
