@@ -34,8 +34,7 @@ import numpy as np
 import requests
 
 
-# Experiment name is intentionally explicit in-script.
-EXP_NAME = "poc_validation"
+DEFAULT_EXP_NAME = "poc_validation"
 
 BENCHMARKS_DIR = Path(__file__).resolve().parents[2]
 DATA_ROOT = BENCHMARKS_DIR / "data" / "poc_calidation"
@@ -247,10 +246,15 @@ def main() -> None:
         help=f"Path to config JSON file (default: {DEFAULT_CONFIG_PATH})",
     )
     parser.add_argument(
+        "--exp-name",
+        default=DEFAULT_EXP_NAME,
+        help=f"Experiment name prefix for the output directory (default: {DEFAULT_EXP_NAME})",
+    )
+    parser.add_argument(
         "--continue",
         dest="continue_run",
         action="store_true",
-        help="Continue from latest run dir for this EXP_NAME, skipping completed tasks",
+        help="Continue from latest run dir for this exp-name, skipping completed tasks",
     )
     args = parser.parse_args()
 
@@ -281,15 +285,17 @@ def main() -> None:
     multi_seed = len(seeds) > 1
 
     DATA_ROOT.mkdir(parents=True, exist_ok=True)
+    exp_name = args.exp_name
+
     if args.continue_run:
-        out_dir = find_latest_run(EXP_NAME)
+        out_dir = find_latest_run(exp_name)
         if out_dir is None:
-            print(f"No previous run found for '{EXP_NAME}', starting fresh")
+            print(f"No previous run found for '{exp_name}', starting fresh")
             args.continue_run = False
 
     if not args.continue_run:
         timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        out_dir = DATA_ROOT / f"{EXP_NAME}_{timestamp}"
+        out_dir = DATA_ROOT / f"{exp_name}_{timestamp}"
         out_dir.mkdir(parents=True, exist_ok=True)
 
     completed = get_completed_tasks(out_dir) if args.continue_run else set()
@@ -297,7 +303,7 @@ def main() -> None:
     server_entries = list(config["servers"].items())
     vllm_runtime_probe = {name: probe_vllm(url) for name, url in server_entries}
     run_config = {
-        "exp_name": EXP_NAME,
+        "exp_name": exp_name,
         "timestamp": datetime.now().isoformat(),
         "artifact_dir": str(out_dir),
         "data_root": str(DATA_ROOT),
@@ -323,7 +329,7 @@ def main() -> None:
 
     total_tasks = sum(len(tasks) for tasks in url_to_tasks.values())
 
-    print(f"EXP_NAME: {EXP_NAME}")
+    print(f"EXP_NAME: {exp_name}")
     print(f"Output: {out_dir}")
     print(f"Model: {config['model']}")
     print(f"Servers: {list(config['servers'].keys())}")

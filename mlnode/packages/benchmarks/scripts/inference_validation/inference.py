@@ -288,17 +288,20 @@ def main() -> None:
     }
     inference_cfg_path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    def _work(prompt: str, lang: str) -> str:
+    def _work(prompt: str, lang: str) -> tuple:
         def _call():
             return inference(model_info, request_params, prompt)
 
+        t0 = time.monotonic()
         resp = _run_with_retries(
             _call,
             max_attempts=max(1, int(args.max_attempts)),
             backoff_start_s=float(args.retry_backoff_start_s),
             backoff_mult=float(args.retry_backoff_mult),
         )
+        prompt_elapsed = time.monotonic() - t0
         inference_result = _extract_logprobs(resp)
+        n_tokens = len(inference_result.results)
         row = InferenceArtifactItem(
             prompt=prompt,
             language=lang,
@@ -307,17 +310,37 @@ def main() -> None:
             request_params=request_params,
             metadata={},
         )
-        return row.model_dump_json() + "\n"
+        return row.model_dump_json() + "\n", n_tokens, prompt_elapsed
+
+    total_output_tokens = 0
+    prompt_times: List[float] = []
+    run_start = time.monotonic()
 
     with inference_artifact_path.open("w", encoding="utf-8") as f, ThreadPoolExecutor(
         max_workers=int(args.max_workers)
     ) as ex:
         futures = [ex.submit(_work, prompt, lang) for prompt, lang in zip(prompts, languages)]
         for fut in tqdm(as_completed(futures), total=len(futures), desc="Inference", smoothing=0):
-            f.write(fut.result())
+            line, n_tok, elapsed = fut.result()
+            f.write(line)
+            total_output_tokens += n_tok
+            prompt_times.append(elapsed)
+
+    run_elapsed = time.monotonic() - run_start
+
+    performance = {
+        "total_time_seconds": round(run_elapsed, 3),
+        "n_prompts": len(prompts),
+        "total_output_tokens": total_output_tokens,
+        "output_tokens_per_second": round(total_output_tokens / run_elapsed, 2) if run_elapsed > 0 else 0,
+        "average_time_per_prompt_seconds": round(run_elapsed / len(prompts), 3) if prompts else 0,
+    }
+    cfg["performance"] = performance
+    inference_cfg_path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     print(f"done: wrote {len(prompts)} inference rows -> {inference_artifact_path}")
     print(f"config -> {inference_cfg_path}")
+    print(f"performance: {json.dumps(performance, indent=2)}")
 
 
 if __name__ == "__main__":

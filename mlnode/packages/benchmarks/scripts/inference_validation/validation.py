@@ -263,7 +263,7 @@ def main() -> None:
     }
     validation_cfg_path.write_text(json.dumps(validation_cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    def _work(item: InferenceArtifactItem) -> str:
+    def _work(item: InferenceArtifactItem) -> tuple:
         enforced_tokens = EnforcedTokens.from_result(item.inference_result)
 
         def _call():
@@ -274,13 +274,16 @@ def main() -> None:
                 enforced_tokens=enforced_tokens,
             )
 
+        t0 = time.monotonic()
         resp = _run_with_retries(
             _call,
             max_attempts=max(1, int(args.max_attempts)),
             backoff_start_s=float(args.retry_backoff_start_s),
             backoff_mult=float(args.retry_backoff_mult),
         )
+        prompt_elapsed = time.monotonic() - t0
         validation_result = _extract_logprobs(resp)
+        n_tokens = len(validation_result.results)
         if validation_result.text != item.inference_result.text:
             print("[warn] validation text mismatch for one prompt; keeping row in artifact.")
 
@@ -293,15 +296,35 @@ def main() -> None:
             validation_model=validation_model,
             request_params=request_params,
         )
-        return out_item.model_dump_json() + "\n"
+        return out_item.model_dump_json() + "\n", n_tokens, prompt_elapsed
+
+    total_output_tokens = 0
+    prompt_times: List[float] = []
+    run_start = time.monotonic()
 
     with output_path.open("w", encoding="utf-8") as f, ThreadPoolExecutor(max_workers=int(args.max_workers)) as ex:
         futures = [ex.submit(_work, item) for item in inference_items]
         for fut in tqdm(as_completed(futures), total=len(futures), desc="Validation", smoothing=0):
-            f.write(fut.result())
+            line, n_tok, elapsed = fut.result()
+            f.write(line)
+            total_output_tokens += n_tok
+            prompt_times.append(elapsed)
+
+    run_elapsed = time.monotonic() - run_start
+
+    performance = {
+        "total_time_seconds": round(run_elapsed, 3),
+        "n_prompts": len(inference_items),
+        "total_output_tokens": total_output_tokens,
+        "output_tokens_per_second": round(total_output_tokens / run_elapsed, 2) if run_elapsed > 0 else 0,
+        "average_time_per_prompt_seconds": round(run_elapsed / len(inference_items), 3) if inference_items else 0,
+    }
+    validation_cfg["performance"] = performance
+    validation_cfg_path.write_text(json.dumps(validation_cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     print(f"done: wrote {len(inference_items)} validated rows -> {output_path}")
     print(f"config -> {validation_cfg_path}")
+    print(f"performance: {json.dumps(performance, indent=2)}")
 
 
 if __name__ == "__main__":
