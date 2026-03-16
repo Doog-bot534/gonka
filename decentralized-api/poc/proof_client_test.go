@@ -121,7 +121,7 @@ func TestCheckDuplicateNonces_Single(t *testing.T) {
 	assert.NoError(t, CheckDuplicateNonces([]VerifiedArtifact{{Nonce: 42}}))
 }
 
-func TestCheckDuplicateNonces_NegativeNoncesAreStillUnique(t *testing.T) {
+func TestCheckDuplicateNonces_NegativeNonces(t *testing.T) {
 	artifacts := []VerifiedArtifact{
 		{Nonce: -1},
 		{Nonce: -2},
