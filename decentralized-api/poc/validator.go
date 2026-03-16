@@ -90,7 +90,11 @@ func isPorosityTooHigh(artifacts []VerifiedArtifact, totalCount uint32) (float64
 		return 0, false
 	}
 
-	porosity := float64(maxNonceValue(artifacts)) / float64(totalCount)
+	maxNonce := maxNonceValue(artifacts)
+	if maxNonce < 0 {
+		maxNonce = -maxNonce
+	}
+	porosity := float64(maxNonce) / float64(totalCount)
 	return porosity, porosity >= PorosityThreshold
 }
 
@@ -494,12 +498,6 @@ func (v *OffChainValidator) validateParticipant(
 	// Check for duplicate nonces (fraud) - permanent failure
 	if err := CheckDuplicateNonces(verified); err != nil {
 		logging.Warn("OffChainValidator: duplicate nonces detected (fraud)", types.PoC,
-			"participant", work.address, "error", err)
-		return validateFailPermanent
-	}
-
-	if err := CheckNegativeNonces(verified); err != nil {
-		logging.Warn("OffChainValidator: negative nonce detected (fraud)", types.PoC,
 			"participant", work.address, "error", err)
 		return validateFailPermanent
 	}

@@ -138,23 +138,6 @@ func TestCheckDuplicateNonces_NegativeDuplicates(t *testing.T) {
 	assert.True(t, errors.Is(CheckDuplicateNonces(artifacts), ErrDuplicateNonces))
 }
 
-func TestCheckNegativeNonces_NoNegative(t *testing.T) {
-	artifacts := []VerifiedArtifact{
-		{Nonce: 0},
-		{Nonce: 1},
-		{Nonce: 42},
-	}
-	assert.NoError(t, CheckNegativeNonces(artifacts))
-}
-
-func TestCheckNegativeNonces_WithNegative(t *testing.T) {
-	artifacts := []VerifiedArtifact{
-		{Nonce: 10},
-		{Nonce: -1},
-	}
-	assert.True(t, errors.Is(CheckNegativeNonces(artifacts), ErrNegativeNonce))
-}
-
 func TestValidateFP16Vector_ValidVector(t *testing.T) {
 	// Construct valid 12-element FP16 vector (DefaultKDim=12, so 24 bytes)
 	validBytes := make([]byte, DefaultKDim*2)
@@ -347,11 +330,6 @@ func TestPermanentFailureErrors(t *testing.T) {
 		{
 			name:        "ErrDuplicateNonces",
 			baseErr:     ErrDuplicateNonces,
-			wrapMessage: "participant xyz",
-		},
-		{
-			name:        "ErrNegativeNonce",
-			baseErr:     ErrNegativeNonce,
 			wrapMessage: "participant xyz",
 		},
 	}
