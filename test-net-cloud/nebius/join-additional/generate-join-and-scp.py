@@ -86,6 +86,9 @@ def create_prepare_script(nodes: list[Node], output_dir: str):
     
     for node in nodes:
         target_dir = f"{node.custom_base_dir}/" if node.custom_base_dir else "~/"
+        target_dir_no_slash = (node.custom_base_dir or "~").rstrip("/")
+        # Ensure remote directory exists (SCP does not create it)
+        script_lines.append(f'ssh $SSH_KEY_ARG -p {node.ssh_port} {node.user}@{node.domain} "mkdir -p {target_dir_no_slash}"')
         # Copy launch.py
         script_lines.append(f"scp $SSH_KEY_ARG -P {node.ssh_port} launch.py {node.user}@{node.domain}:{target_dir}")
         # Copy join script and rename to join.sh
