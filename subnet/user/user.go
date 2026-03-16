@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -68,15 +69,27 @@ type Session struct {
 	verifier      signing.Verifier
 	escrowID      string
 	group         []types.SlotAssignment
-	addrToSlots   map[string][]uint32          // validator address -> slot IDs
+	addrToSlots   map[string][]uint32 // validator address -> slot IDs
 	clients       []HostClient
 	nonce         uint64
-	diffs         []types.Diff                 // append-only log
-	hostSyncNonce map[int]uint64               // hostIdx -> last nonce sent
-	pendingTxs    []*types.SubnetTx            // from host mempools, for next diff
-	pendingTxKeys map[string]struct{}           // dedup set keyed by tx_type:id
-	signatures    map[uint64]map[uint32][]byte // nonce -> slotID -> sig
-	store         storage.Storage              // optional persistent storage
+	diffs         []types.Diff   // append-only log
+	hostSyncNonce map[int]uint64 // hostIdx -> last nonce sent
+	// Transactions that will be included in the next diff.
+	// This includes "host-proposed transactions" (from host mempools),
+	// and `MsgTimeoutInference`.
+	pendingTxs []*types.SubnetTx
+	// Contains the "keys" of txs saved in [pendingTxs]. See [subnetTxKey].
+	// Used to detect whether a pending tx of a given type / with a given ID already exists, to avoid duplicates.
+	pendingTxKeys map[string]struct{}
+	inferenceData map[uint64]*host.InferencePayload // inference_id -> request payload
+	signatures    map[uint64]map[uint32][]byte      // nonce -> slotID -> sig
+	store         storage.Storage                   // optional persistent storage
+
+	// A channel used to tell the background timeout monitor to stop,
+	// and a channel to signal when it has stopped.
+	refusedTimeoutMonitorStop   chan struct{}
+	refusedTimeoutMonitorDone   chan struct{}
+	refusedTimeoutMonitorActive bool
 }
 
 // SessionOption configures optional Session behavior.
@@ -119,6 +132,7 @@ func NewSession(
 		clients:       clients,
 		hostSyncNonce: make(map[int]uint64),
 		pendingTxKeys: make(map[string]struct{}),
+		inferenceData: make(map[uint64]*host.InferencePayload),
 		signatures:    make(map[uint64]map[uint32][]byte),
 	}
 	for _, opt := range opts {
@@ -270,10 +284,10 @@ func (s *Session) NextDiff(params InferenceParams) (types.Diff, int, error) {
 
 // preparedInference holds the data prepared under lock for an inference send.
 type preparedInference struct {
-	diff       types.Diff
-	hostIdx    int
-	catchUp    []types.Diff
-	params     InferenceParams
+	diff    types.Diff
+	hostIdx int
+	catchUp []types.Diff
+	params  InferenceParams
 }
 
 // PrepareInference composes a diff, applies it locally, advances nonce,
@@ -301,6 +315,13 @@ func (s *Session) PrepareInference(params InferenceParams) (*preparedInference, 
 
 	s.diffs = append(s.diffs, diff)
 	s.nonce = diff.Nonce
+	s.inferenceData[nonce] = &host.InferencePayload{
+		Prompt:      append([]byte(nil), params.Prompt...),
+		Model:       params.Model,
+		InputLength: params.InputLength,
+		MaxTokens:   params.MaxTokens,
+		StartedAt:   params.StartedAt,
+	}
 	s.clearPendingTxs()
 
 	if s.store != nil {
@@ -368,6 +389,180 @@ func (s *Session) SendInference(ctx context.Context, params InferenceParams) (*I
 		return nil, err
 	}
 	return s.SendPrepared(ctx, p)
+}
+
+func (s *Session) enqueueRefusedTimeoutTx(inferenceID uint64, votes []*types.TimeoutVote) error {
+	timeoutTx := &types.SubnetTx{Tx: &types.SubnetTx_TimeoutInference{
+		TimeoutInference: &types.MsgTimeoutInference{
+			InferenceId: inferenceID,
+			Reason:      types.TimeoutReason_TIMEOUT_REASON_REFUSED,
+			Votes:       votes,
+		},
+	}}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rec, ok := s.sm.GetInference(inferenceID)
+	if !ok {
+		return fmt.Errorf("inference %d not found", inferenceID)
+	}
+
+	// Check if the inference is _still_ pending.
+	// If it's already been confirmed or rejected, we don't need to enqueue a timeout tx, we can discard it.
+	if rec.Status != types.StatusPending {
+		return fmt.Errorf("inference %d is not pending", inferenceID)
+	}
+	if s.hasPendingConfirmStart(inferenceID) {
+		return fmt.Errorf("inference %d already has pending confirmation", inferenceID)
+	}
+
+	s.addPendingTx(timeoutTx)
+	return nil
+}
+
+// StartRefusedTimeoutMonitor starts a single background task that checks for
+// overdue pending inferences and enqueues refused-timeout txs. Checks run
+// serially; a long check delays the next one instead of overlapping.
+func (s *Session) StartRefusedTimeoutMonitor(interval time.Duration) error {
+	if interval <= 0 {
+		return fmt.Errorf("monitor interval must be > 0")
+	}
+
+	s.mu.Lock()
+	if s.refusedTimeoutMonitorActive {
+		s.mu.Unlock()
+		return nil
+	}
+	stopCh := make(chan struct{})
+	doneCh := make(chan struct{})
+	s.refusedTimeoutMonitorStop = stopCh
+	s.refusedTimeoutMonitorDone = doneCh
+	s.refusedTimeoutMonitorActive = true
+	s.mu.Unlock()
+
+	go s.runRefusedTimeoutMonitor(stopCh, doneCh, interval)
+	return nil
+}
+
+func (s *Session) runRefusedTimeoutMonitor(stopCh <-chan struct{}, doneCh chan<- struct{}, interval time.Duration) {
+	defer close(doneCh)
+
+	for {
+		// Check if we've been told to stop the monitor
+		select {
+		case <-stopCh:
+			return
+		default:
+		}
+
+		s.runRefusedTimeoutCheck()
+
+		// Wait for the specified interval before the next check,
+		// or exit early if stop signal is received
+		select {
+		case <-stopCh:
+			return
+		case <-time.After(interval):
+		}
+	}
+}
+
+func (s *Session) runRefusedTimeoutCheck() {
+	now := time.Now().Unix()
+
+	type candidate struct {
+		inferenceID uint64
+		payload     *host.InferencePayload
+	}
+
+	// Collect the IDs of inferences that have timed out and for which we have to collect votes.
+	var candidates []candidate
+
+	s.mu.Lock()
+	st := s.sm.SnapshotState()
+
+	for id, rec := range st.Inferences {
+		if rec.Status != types.StatusPending {
+			delete(s.inferenceData, id)
+			continue
+		}
+		deadline := rec.StartedAt + st.Config.RefusalTimeout + 1
+		// Check if inference is overdue.
+		if now < deadline {
+			continue
+		}
+
+		// Check if we've received the host's `MsgConfirmStart`, but it has not yet been included in a diff.
+		if s.hasPendingConfirmStart(id) {
+			continue
+		}
+		// Check if a `MsgTimeoutInference` for this inference ID has already been built, but has not yet been included in a diff.
+		if _, hasTimeoutQueued := s.pendingTxKeys[fmt.Sprintf("timeout:%d:%d", id, types.TimeoutReason_TIMEOUT_REASON_REFUSED)]; hasTimeoutQueued {
+			continue
+		}
+		payload, ok := s.inferenceData[id]
+		if !ok {
+			continue
+		}
+
+		// Create a deep copy of the inference
+		payloadCopy := *payload
+		payloadCopy.Prompt = append([]byte(nil), payload.Prompt...)
+
+		candidates = append(candidates, candidate{inferenceID: id, payload: &payloadCopy})
+	}
+	s.mu.Unlock()
+
+	for _, c := range candidates {
+		s.collectAndQueueRefusedTimeout(c.inferenceID, c.payload)
+	}
+}
+
+func (s *Session) collectAndQueueRefusedTimeout(inferenceID uint64, payload *host.InferencePayload) {
+	verifiers := make(map[int]TimeoutVerifier)
+	for i, c := range s.clients {
+		if v, ok := c.(TimeoutVerifier); ok {
+			verifiers[i] = v
+		}
+	}
+
+	votes, _, err := s.CollectTimeoutVotes(context.Background(), inferenceID, types.TimeoutReason_TIMEOUT_REASON_REFUSED, payload, verifiers)
+	if err != nil || len(votes) == 0 {
+		return
+	}
+
+	_ = s.enqueueRefusedTimeoutTx(inferenceID, votes)
+}
+
+// Check if we've received the host's `MsgConfirmStart`, but it has not yet been included in a diff.
+// Caller must hold [Session.mu].
+func (s *Session) hasPendingConfirmStart(inferenceID uint64) bool {
+
+	for _, tx := range s.pendingTxs {
+		if cs := tx.GetConfirmStart(); cs != nil && cs.InferenceId == inferenceID {
+			return true
+		}
+	}
+	return false
+}
+
+// StopRefusedTimeoutMonitor stops the background refused-timeout monitor.
+func (s *Session) StopRefusedTimeoutMonitor() {
+	s.mu.Lock()
+	if !s.refusedTimeoutMonitorActive {
+		s.mu.Unlock()
+		return
+	}
+	stopCh := s.refusedTimeoutMonitorStop
+	doneCh := s.refusedTimeoutMonitorDone
+	s.refusedTimeoutMonitorStop = nil
+	s.refusedTimeoutMonitorDone = nil
+	s.refusedTimeoutMonitorActive = false
+	s.mu.Unlock()
+
+	close(stopCh)
+	<-doneCh
 }
 
 // Finalize completes the round in three phases.
@@ -514,7 +709,6 @@ func (s *Session) Finalize(ctx context.Context) error {
 	return nil
 }
 
-
 // signDiff builds and signs a diff with the given nonce, txs, and post_state_root.
 func (s *Session) signDiff(nonce uint64, txs []*types.SubnetTx, postStateRoot []byte) (types.Diff, error) {
 	content := state.BuildDiffContent(s.escrowID, nonce, txs, postStateRoot)
@@ -529,8 +723,8 @@ func (s *Session) signDiff(nonce uint64, txs []*types.SubnetTx, postStateRoot []
 	return types.Diff{Nonce: nonce, Txs: txs, UserSig: sig, PostStateRoot: postStateRoot}, nil
 }
 
-// subnetTxKey returns a dedup key for host-proposed txs.
-// Returns "" for user-proposed types (start, finalize, timeout).
+// subnetTxKey returns a dedup key for txs saved in [Session.pendingTxKeys].
+// Returns "" for: (start, finalize).
 func subnetTxKey(tx *types.SubnetTx) string {
 	switch inner := tx.GetTx().(type) {
 	case *types.SubnetTx_FinishInference:
@@ -543,6 +737,8 @@ func subnetTxKey(tx *types.SubnetTx) string {
 		return fmt.Sprintf("vote:%d:%d", inner.ValidationVote.InferenceId, inner.ValidationVote.VoterSlot)
 	case *types.SubnetTx_RevealSeed:
 		return fmt.Sprintf("reveal_seed:%d", inner.RevealSeed.SlotId)
+	case *types.SubnetTx_TimeoutInference:
+		return fmt.Sprintf("timeout:%d:%d", inner.TimeoutInference.InferenceId, inner.TimeoutInference.Reason)
 	default:
 		return ""
 	}
@@ -626,6 +822,7 @@ func (s *Session) StateMachine() *state.StateMachine { return s.sm }
 
 // Close releases the underlying storage, if any. Safe to call multiple times.
 func (s *Session) Close() error {
+	s.StopRefusedTimeoutMonitor()
 	if s.store != nil {
 		return s.store.Close()
 	}

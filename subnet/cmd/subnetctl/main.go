@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"subnet/bridge"
 	"subnet/state"
@@ -115,6 +116,9 @@ func main() {
 		log.Fatalf("create session: %v", err)
 	}
 	defer session.Close()
+	if err := session.StartRefusedTimeoutMonitor(1 * time.Second); err != nil {
+		log.Fatalf("start refused-timeout monitor: %v", err)
+	}
 
 	proxy := &Proxy{
 		session:  session,
