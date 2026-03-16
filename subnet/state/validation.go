@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-	"math"
 
 	"subnet/types"
 )
@@ -23,26 +22,31 @@ func DeriveSeed(signature []byte) (int64, error) {
 	return seed, nil
 }
 
-// DeterministicFloat generates a deterministic float64 in [0,1) from seed and inferenceID.
-// Uses sha256("%d:%d") -> first 8 bytes -> uint64 / MaxUint64.
-func DeterministicFloat(seed int64, inferenceID uint64) float64 {
+// deterministicHash returns a deterministic uint64 from seed and inferenceID.
+// Uses sha256("%d:%d") -> first 8 bytes as big-endian uint64.
+// Used for integer-only consensus logic (no float math across architectures).
+func deterministicHash(seed int64, inferenceID uint64) uint64 {
 	input := fmt.Sprintf("%d:%d", seed, inferenceID)
 	sum := sha256.Sum256([]byte(input))
-	hashInt := binary.BigEndian.Uint64(sum[:8])
-	return float64(hashInt) / float64(math.MaxUint64)
+	return binary.BigEndian.Uint64(sum[:8])
 }
 
 // ShouldValidate returns true if this validator should validate the given inference.
+// Uses integer math only (no float64) to avoid architecture-dependent state root splits.
 // probability = (rateBasisPoints/10000) * validatorSlotCount / (totalSlots - executorSlotCount)
-// Returns DeterministicFloat(seed, inferenceID) < probability.
+// Equivalent to: deterministicHash(seed,id)/2^64 < probability
+// Implemented as: (hash >> 32) < (probability * 2^32) using integer arithmetic.
 func ShouldValidate(seed int64, inferenceID uint64, validatorSlotCount, executorSlotCount, totalSlots, rateBasisPoints uint32) bool {
 	if totalSlots <= executorSlotCount {
 		return false
 	}
-	rate := float64(rateBasisPoints) / 10000.0
-	probability := rate * float64(validatorSlotCount) / float64(totalSlots-executorSlotCount)
-	if probability > 1.0 {
-		probability = 1.0
+	denom := uint64(totalSlots - executorSlotCount) * 10000
+	// threshold = (rateBasisPoints * validatorSlotCount * 2^32) / (10000 * (totalSlots - executorSlotCount))
+	threshold := (uint64(rateBasisPoints) * uint64(validatorSlotCount) << 32) / denom
+	const maxThreshold = 1 << 32
+	if threshold > maxThreshold {
+		threshold = maxThreshold
 	}
-	return DeterministicFloat(seed, inferenceID) < probability
+	hashInt := deterministicHash(seed, inferenceID)
+	return (hashInt >> 32) < threshold
 }

@@ -32,21 +32,12 @@ func TestDeriveSeed_TooShort(t *testing.T) {
 	require.ErrorIs(t, err, types.ErrSeedTooShort)
 }
 
-func TestDeterministicFloat_Range(t *testing.T) {
-	for seed := int64(1); seed <= 100; seed++ {
-		for id := uint64(1); id <= 100; id++ {
-			f := DeterministicFloat(seed, id)
-			require.True(t, f >= 0 && f < 1, "float %f out of range for seed=%d id=%d", f, seed, id)
-		}
-	}
-}
+func TestDeterministicHash_Deterministic(t *testing.T) {
+	a := deterministicHash(42, 100)
+	b := deterministicHash(42, 100)
+	require.Equal(t, a, b, "same input must produce same output")
 
-func TestDeterministicFloat_Deterministic(t *testing.T) {
-	a := DeterministicFloat(42, 100)
-	b := DeterministicFloat(42, 100)
-	require.Equal(t, a, b)
-
-	c := DeterministicFloat(42, 101)
+	c := deterministicHash(42, 101)
 	require.NotEqual(t, a, c, "different inputs should produce different outputs")
 }
 
