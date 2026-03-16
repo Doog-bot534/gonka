@@ -62,6 +62,8 @@ const (
 	validateFailRetry                           // Transient failure (network, ML node) - can retry
 )
 
+const PorosityThreshold = 100.0
+
 // participantWork represents a single participant to validate.
 type participantWork struct {
 	address    string
@@ -71,6 +73,25 @@ type participantWork struct {
 	rootHash   []byte
 	attempt    int       // current attempt number (0-based)
 	retryAfter time.Time // don't process before this time
+}
+
+func maxNonceValue(artifacts []VerifiedArtifact) int32 {
+	var maxNonce int32
+	for i, artifact := range artifacts {
+		if i == 0 || artifact.Nonce > maxNonce {
+			maxNonce = artifact.Nonce
+		}
+	}
+	return maxNonce
+}
+
+func isPorosityTooHigh(artifacts []VerifiedArtifact, totalCount uint32) (float64, bool) {
+	if len(artifacts) == 0 || totalCount == 0 {
+		return 0, false
+	}
+
+	porosity := float64(maxNonceValue(artifacts)) / float64(totalCount)
+	return porosity, porosity >= PorosityThreshold
 }
 
 // NewOffChainValidator creates a new off-chain validator.
@@ -474,6 +495,21 @@ func (v *OffChainValidator) validateParticipant(
 	if err := CheckDuplicateNonces(verified); err != nil {
 		logging.Warn("OffChainValidator: duplicate nonces detected (fraud)", types.PoC,
 			"participant", work.address, "error", err)
+		return validateFailPermanent
+	}
+
+	if err := CheckNegativeNonces(verified); err != nil {
+		logging.Warn("OffChainValidator: negative nonce detected (fraud)", types.PoC,
+			"participant", work.address, "error", err)
+		return validateFailPermanent
+	}
+
+	if porosity, invalid := isPorosityTooHigh(verified, work.count); invalid {
+		logging.Warn("OffChainValidator: porosity too high", types.PoC,
+			"participant", work.address,
+			"maxNonce", maxNonceValue(verified),
+			"count", work.count,
+			"porosity", porosity)
 		return validateFailPermanent
 	}
 

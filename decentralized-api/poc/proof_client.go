@@ -27,6 +27,7 @@ import (
 var (
 	ErrProofVerificationFailed = errors.New("proof verification failed")
 	ErrDuplicateNonces         = errors.New("duplicate nonces detected")
+	ErrNegativeNonce           = errors.New("negative nonce detected")
 	ErrIncompleteCoverage      = errors.New("response does not cover all requested leaf indices")
 	ErrInvalidVectorData       = errors.New("invalid vector data detected")
 )
@@ -234,6 +235,16 @@ func CheckDuplicateNonces(artifacts []VerifiedArtifact) error {
 			return ErrDuplicateNonces
 		}
 		seen[a.Nonce] = struct{}{}
+	}
+	return nil
+}
+
+// CheckNegativeNonces rejects artifacts with negative nonces as invalid/fraudulent.
+func CheckNegativeNonces(artifacts []VerifiedArtifact) error {
+	for _, a := range artifacts {
+		if a.Nonce < 0 {
+			return ErrNegativeNonce
+		}
 	}
 	return nil
 }
