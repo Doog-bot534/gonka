@@ -120,8 +120,7 @@ class VLLMRunner(IVLLMRunner):
                 "--model", self.model,
                 "--dtype", self.dtype,
                 "--port", str(port),
-                "--host", self.VLLM_HOST,
-                "--logprobs_mode", "processed_logprobs"
+                "--host", self.VLLM_HOST
             ] + self.additional_args
 
             vllm_command_str = " ".join(shlex.quote(arg) for arg in vllm_command)
