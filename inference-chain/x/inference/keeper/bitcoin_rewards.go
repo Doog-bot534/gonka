@@ -630,6 +630,27 @@ func CalculateParticipantBitcoinRewards(
 			effectiveWeight = 0
 		}
 
+		// Apply collateral adjustment to effective weight.
+		// mlNode.PocWeight values are raw (never collateral-adjusted), but vw.Weight is.
+		// Derive ratio and scale effectiveWeight to match collateral-adjusted weight.
+		rawTotalWeight := int64(0)
+		rawNodes := mlNodes
+		if len(rawNodes) == 0 {
+			rawNodes = vw.MlNodes
+		}
+		for _, mlNode := range rawNodes {
+			if mlNode != nil {
+				rawTotalWeight += mlNode.PocWeight
+			}
+		}
+		if rawTotalWeight > 0 && vw.Weight < rawTotalWeight {
+			// Use big.Int to prevent overflow: effectiveWeight * vw.Weight can exceed int64
+			ewBig := big.NewInt(effectiveWeight)
+			ewBig = ewBig.Mul(ewBig, big.NewInt(vw.Weight))
+			ewBig = ewBig.Div(ewBig, big.NewInt(rawTotalWeight))
+			effectiveWeight = ewBig.Int64()
+		}
+
 		logger.Info("Bitcoin Rewards: Calculated effective weight",
 			"participant", participant.Address,
 			"baseWeight", vw.Weight,
