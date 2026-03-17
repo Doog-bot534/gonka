@@ -747,18 +747,18 @@ func (mr *MockCollateralKeeperMockRecorder) GetCollateral(ctx, participant any) 
 }
 
 // Slash mocks base method.
-func (m *MockCollateralKeeper) Slash(ctx context.Context, participant types1.AccAddress, slashFraction math.LegacyDec, reason string) (types1.Coin, error) {
+func (m *MockCollateralKeeper) Slash(ctx context.Context, participant types1.AccAddress, slashFraction math.LegacyDec, reason string, requiredCollateral math.Int) (types1.Coin, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Slash", ctx, participant, slashFraction, reason)
+	ret := m.ctrl.Call(m, "Slash", ctx, participant, slashFraction, reason, requiredCollateral)
 	ret0, _ := ret[0].(types1.Coin)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Slash indicates an expected call of Slash.
-func (mr *MockCollateralKeeperMockRecorder) Slash(ctx, participant, slashFraction, reason any) *gomock.Call {
+func (mr *MockCollateralKeeperMockRecorder) Slash(ctx, participant, slashFraction, reason, requiredCollateral any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Slash", reflect.TypeOf((*MockCollateralKeeper)(nil).Slash), ctx, participant, slashFraction, reason)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Slash", reflect.TypeOf((*MockCollateralKeeper)(nil).Slash), ctx, participant, slashFraction, reason, requiredCollateral)
 }
 
 // MockStreamVestingKeeper is a mock of StreamVestingKeeper interface.
@@ -1213,6 +1213,21 @@ func (m *MockAuthzKeeper) GranterGrants(ctx context.Context, req *authz.QueryGra
 func (mr *MockAuthzKeeperMockRecorder) GranterGrants(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GranterGrants", reflect.TypeOf((*MockAuthzKeeper)(nil).GranterGrants), ctx, req)
+}
+
+// Grants mocks base method.
+func (m *MockAuthzKeeper) Grants(ctx context.Context, req *authz.QueryGrantsRequest) (*authz.QueryGrantsResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Grants", ctx, req)
+	ret0, _ := ret[0].(*authz.QueryGrantsResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Grants indicates an expected call of Grants.
+func (mr *MockAuthzKeeperMockRecorder) Grants(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Grants", reflect.TypeOf((*MockAuthzKeeper)(nil).Grants), ctx, req)
 }
 
 // MockBlsKeeper is a mock of BlsKeeper interface.
