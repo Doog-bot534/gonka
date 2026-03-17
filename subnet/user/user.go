@@ -612,10 +612,16 @@ func (s *Session) addPendingTx(tx *types.SubnetTx) {
 	s.pendingTxs = append(s.pendingTxs, tx)
 }
 
-// clearPendingTxs resets the pending tx slice and dedup set.
+const maxPendingTxKeys = 100_000
+
+// clearPendingTxs resets the pending tx slice. The dedup key set is preserved
+// so that txs already applied in earlier diffs are not re-added from another
+// host's mempool. The key set is bulk-cleared only when it exceeds the cap.
 func (s *Session) clearPendingTxs() {
 	s.pendingTxs = nil
-	clear(s.pendingTxKeys)
+	if len(s.pendingTxKeys) > maxPendingTxKeys {
+		clear(s.pendingTxKeys)
+	}
 }
 
 // filterRevealedSeeds drops MsgRevealSeed for addresses that already revealed.

@@ -533,26 +533,17 @@ func (sm *StateMachine) applyValidation(msg *types.MsgValidation) error {
 		return types.ErrSelfValidation
 	}
 
-	// Status gate + dedup.
+	// Idempotent: duplicate validation from same address is always a no-op.
+	if found, _ := sm.addressHasValidated(rec, msg.ValidatorSlot); found {
+		return nil
+	}
+
+	// Status gate.
 	switch rec.Status {
-	case types.StatusValidated, types.StatusInvalidated:
-		// Late compliance credit. Silent no-op if duplicate.
-		if found, _ := sm.addressHasValidated(rec, msg.ValidatorSlot); found {
-			return nil
-		}
-	case types.StatusChallenged:
-		// Additional validation during challenge. Silent no-op if duplicate.
-		if found, _ := sm.addressHasValidated(rec, msg.ValidatorSlot); found {
-			return nil
-		}
-	case types.StatusFinished:
-		// First validation or additional on Finished. Error if duplicate.
-		if found, existingSlot := sm.addressHasValidated(rec, msg.ValidatorSlot); found {
-			return fmt.Errorf("%w: address %s already validated via slot %d",
-				types.ErrDuplicateValidation, sm.slotToAddress[msg.ValidatorSlot], existingSlot)
-		}
+	case types.StatusFinished, types.StatusChallenged, types.StatusValidated, types.StatusInvalidated:
+		// OK
 	default:
-		return fmt.Errorf("%w: expected finished, got %d", types.ErrInvalidTransition, rec.Status)
+		return fmt.Errorf("%w: expected finished or later, got %d", types.ErrInvalidTransition, rec.Status)
 	}
 
 	// Proposer sig + escrow_id (expensive, after dedup).
