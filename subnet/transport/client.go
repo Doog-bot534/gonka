@@ -153,6 +153,7 @@ func (c *HTTPClient) Send(ctx context.Context, req host.HostRequest) (*host.Host
 // Non-protocol data lines are forwarded to StreamCallback if configured.
 func (c *HTTPClient) parseSSEResponse(r io.Reader, nonce uint64) (*host.HostResponse, error) {
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 1<<20), 1<<20) // 1MB max line -- default 64KB breaks on long SSE responses
 	var result host.HostResponse
 
 	for scanner.Scan() {
