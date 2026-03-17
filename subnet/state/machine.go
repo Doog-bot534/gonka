@@ -78,7 +78,6 @@ type StateMachine struct {
 
 	// Lookup maps derived from group at construction time.
 	slotToAddress      map[uint32]string
-	addressInGroup     map[string]bool
 	addressToSlotCount map[string]uint32
 	addressToSlots     map[string][]uint32 // address -> sorted slot IDs
 	totalSlots         uint32
@@ -104,11 +103,9 @@ func NewStateMachine(
 	opts ...SMOption,
 ) *StateMachine {
 	slotToAddr := make(map[uint32]string, len(group))
-	addrInGroup := make(map[string]bool, len(group))
 	addrToSlotCount := make(map[string]uint32, len(group))
 	for _, s := range group {
 		slotToAddr[s.SlotID] = s.ValidatorAddress
-		addrInGroup[s.ValidatorAddress] = true
 		addrToSlotCount[s.ValidatorAddress]++
 	}
 
@@ -120,7 +117,7 @@ func NewStateMachine(
 		hostStats[s.SlotID] = &types.HostStats{}
 	}
 
-	addrToSlots := make(map[string][]uint32, len(addrInGroup))
+	addrToSlots := make(map[string][]uint32, len(addrToSlotCount))
 	for slot, addr := range slotToAddr {
 		addrToSlots[addr] = append(addrToSlots[addr], slot)
 	}
@@ -142,7 +139,6 @@ func NewStateMachine(
 		verifier:           verifier,
 		userAddress:        userAddress,
 		slotToAddress:      slotToAddr,
-		addressInGroup:     addrInGroup,
 		addressToSlotCount: addrToSlotCount,
 		addressToSlots:     addrToSlots,
 		totalSlots:         uint32(len(group)),
@@ -911,7 +907,7 @@ func (sm *StateMachine) allUniqueAddressesRevealed() bool {
 	for slot := range sm.state.RevealedSeeds {
 		revealedAddrs[sm.slotToAddress[slot]] = true
 	}
-	return len(revealedAddrs) == len(sm.addressInGroup)
+	return len(revealedAddrs) == len(sm.addressToSlots)
 }
 
 // BuildDiffContent creates the proto DiffContent from nonce, txs, escrowID, and postStateRoot for signing.

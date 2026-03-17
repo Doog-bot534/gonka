@@ -296,21 +296,9 @@ func (h *Host) HandleRequest(ctx context.Context, req HostRequest) (*HostRespons
 
 	h.mu.Unlock()
 
-	// (f) Build execution job for caller to run via RunExecution.
+	// (f) Execution job for caller to run via RunExecution.
 	// Execution is always deferred so the caller can send the receipt
 	// before inference starts (SSE flow).
-	var execJob *subnet.ExecuteRequest
-	if job != nil {
-		execJob = &subnet.ExecuteRequest{
-			InferenceID: job.inferenceID,
-			Model:       job.model,
-			Prompt:      job.prompt,
-			PromptHash:  job.promptHash,
-			InputLength: job.inputLength,
-			MaxTokens:   job.maxTokens,
-			EscrowID:    h.escrowID,
-		}
-	}
 
 	// (g) Validate other hosts' inferences outside mutex.
 	for _, vj := range validationJobs {
@@ -324,7 +312,7 @@ func (h *Host) HandleRequest(ctx context.Context, req HostRequest) (*HostRespons
 		Receipt:      receipt,
 		ConfirmedAt:  confirmedAt,
 		Mempool:      h.mempool.Txs(),
-		ExecutionJob: execJob,
+		ExecutionJob: job,
 	}, nil
 }
 
@@ -336,7 +324,10 @@ func (h *Host) applyAndPersist(diff types.Diff) error {
 	if diff.Nonce <= currentNonce {
 		return nil
 	}
-	warmBefore := h.sm.WarmKeys()
+	var warmBefore map[uint32]string
+	if h.store != nil {
+		warmBefore = h.sm.WarmKeys()
+	}
 	root, err := h.sm.ApplyDiff(diff)
 	if err != nil {
 		return fmt.Errorf("apply diff nonce %d: %w", diff.Nonce, err)
@@ -396,22 +387,10 @@ func (h *Host) findDiff(diffs []types.Diff, nonce uint64) *types.Diff {
 	return nil
 }
 
-// executeJob captures all data needed to run executeAsync outside the mutex.
-type executeJob struct {
-	inferenceID  uint64
-	model        string
-	prompt       []byte
-	promptHash   []byte
-	inputLength  uint64
-	maxTokens    uint64
-	executorSlot uint32
-	diffNonce    uint64
-}
-
 // signReceipt verifies the payload and signs the executor receipt (sync, under mutex).
-// Returns the receipt sig, confirmed_at timestamp, and an executeJob if this host is the executor.
+// Returns the receipt sig, confirmed_at timestamp, and an ExecuteRequest if this host is the executor.
 // Caller must hold h.mu.
-func (h *Host) signReceipt(req HostRequest) ([]byte, int64, *executeJob, error) {
+func (h *Host) signReceipt(req HostRequest) ([]byte, int64, *subnet.ExecuteRequest, error) {
 	if req.Payload == nil {
 		return nil, 0, nil, nil
 	}
@@ -456,6 +435,17 @@ func (h *Host) signReceipt(req HostRequest) ([]byte, int64, *executeJob, error) 
 			return nil, 0, nil, fmt.Errorf("sign executor receipt: %w", err)
 		}
 
+		// Add MsgConfirmStart to mempool so it survives HTTP failures.
+		// If the response is lost (e.g. 503), the next request delivers it via mempool.
+		h.mempool.Add(MempoolEntry{
+			Tx: &types.SubnetTx{Tx: &types.SubnetTx_ConfirmStart{ConfirmStart: &types.MsgConfirmStart{
+				InferenceId: start.InferenceId,
+				ExecutorSig: sig,
+				ConfirmedAt: confirmedAt,
+			}}},
+			ProposedAt: h.sm.LatestNonce(),
+		})
+
 		// Dedup: return receipt (proves executor alive) but skip execution.
 		if _, dup := h.executing[start.InferenceId]; dup {
 			return sig, confirmedAt, nil, nil
@@ -463,15 +453,14 @@ func (h *Host) signReceipt(req HostRequest) ([]byte, int64, *executeJob, error) 
 
 		h.executing[start.InferenceId] = struct{}{}
 
-		job := &executeJob{
-			inferenceID:  start.InferenceId,
-			model:        start.Model,
-			prompt:       req.Payload.Prompt,
-			promptHash:   start.PromptHash,
-			inputLength:  start.InputLength,
-			maxTokens:    start.MaxTokens,
-			executorSlot: executorSlot,
-			diffNonce:    targetDiff.Nonce,
+		job := &subnet.ExecuteRequest{
+			InferenceID: start.InferenceId,
+			Model:       start.Model,
+			Prompt:      req.Payload.Prompt,
+			PromptHash:  start.PromptHash,
+			InputLength: start.InputLength,
+			MaxTokens:   start.MaxTokens,
+			EscrowID:    h.escrowID,
 		}
 		return sig, confirmedAt, job, nil
 	}
@@ -480,38 +469,33 @@ func (h *Host) signReceipt(req HostRequest) ([]byte, int64, *executeJob, error) 
 
 // executeAsync runs engine.Execute, builds MsgFinishInference, and adds it to the mempool.
 // Called outside the mutex so engine.Execute doesn't block other requests.
-func (h *Host) executeAsync(ctx context.Context, job *executeJob) {
+func (h *Host) executeAsync(ctx context.Context, job *subnet.ExecuteRequest) {
 	defer func() {
 		h.mu.Lock()
-		delete(h.executing, job.inferenceID)
+		delete(h.executing, job.InferenceID)
 		h.mu.Unlock()
 	}()
 
-	result, err := h.engine.Execute(ctx, subnet.ExecuteRequest{
-		InferenceID: job.inferenceID,
-		Model:       job.model,
-		Prompt:      job.prompt,
-		PromptHash:  job.promptHash,
-		InputLength: job.inputLength,
-		MaxTokens:   job.maxTokens,
-		EscrowID:    h.escrowID,
-	})
+	executorSlot := h.group[job.InferenceID%uint64(len(h.group))].SlotID
+	diffNonce := h.LatestNonce()
+
+	result, err := h.engine.Execute(ctx, *job)
 	if err != nil {
-		logging.Error("execute failed", "subsystem", "host", "inference_id", job.inferenceID, "error", err)
+		logging.Error("execute failed", "subsystem", "host", "inference_id", job.InferenceID, "error", err)
 		return
 	}
 
 	finishMsg := &types.MsgFinishInference{
-		InferenceId:  job.inferenceID,
+		InferenceId:  job.InferenceID,
 		ResponseHash: result.ResponseHash,
 		InputTokens:  result.InputTokens,
 		OutputTokens: result.OutputTokens,
-		ExecutorSlot: job.executorSlot,
+		ExecutorSlot: executorSlot,
 		EscrowId:     h.escrowID,
 	}
 	proposerSig, err := h.signProposer(finishMsg)
 	if err != nil {
-		logging.Error("sign finish msg failed", "subsystem", "host", "inference_id", job.inferenceID, "error", err)
+		logging.Error("sign finish msg failed", "subsystem", "host", "inference_id", job.InferenceID, "error", err)
 		return
 	}
 	finishMsg.ProposerSig = proposerSig
@@ -520,7 +504,7 @@ func (h *Host) executeAsync(ctx context.Context, job *executeJob) {
 		Tx: &types.SubnetTx{Tx: &types.SubnetTx_FinishInference{
 			FinishInference: finishMsg,
 		}},
-		ProposedAt: job.diffNonce,
+		ProposedAt: diffNonce,
 	})
 }
 
@@ -887,28 +871,14 @@ func (h *Host) ChallengeReceipt(ctx context.Context, inferenceID uint64, payload
 }
 
 // challengeReceiptLocked applies diffs, checks executor eligibility, and signs
-// the receipt under the mutex. Returns a non-nil job when async execution is needed.
-func (h *Host) challengeReceiptLocked(inferenceID uint64, payload *InferencePayload, diffs []types.Diff) ([]byte, int64, *executeJob, error) {
+// the receipt under the mutex. Returns a non-nil ExecuteRequest when async execution is needed.
+func (h *Host) challengeReceiptLocked(inferenceID uint64, payload *InferencePayload, diffs []types.Diff) ([]byte, int64, *subnet.ExecuteRequest, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	for _, diff := range diffs {
 		if err := h.applyAndPersist(diff); err != nil {
 			return nil, 0, nil, fmt.Errorf("apply challenge diff nonce %d: %w", diff.Nonce, err)
-		}
-	}
-
-	// Check if already executing or already finished (MsgFinishInference in mempool).
-	alreadyRunning := false
-	if _, dup := h.executing[inferenceID]; dup {
-		alreadyRunning = true
-	}
-	if !alreadyRunning {
-		for _, tx := range h.mempool.Txs() {
-			if fi := tx.GetFinishInference(); fi != nil && fi.InferenceId == inferenceID {
-				alreadyRunning = true
-				break
-			}
 		}
 	}
 
@@ -946,22 +916,27 @@ func (h *Host) challengeReceiptLocked(inferenceID uint64, payload *InferencePayl
 		return nil, 0, nil, fmt.Errorf("sign executor receipt: %w", err)
 	}
 
-	// Return receipt (proves executor is alive) but skip execution if already running.
-	if alreadyRunning {
+	// Dedup: return receipt (proves executor alive) but skip execution
+	// if already in-flight or already finished in mempool.
+	if _, dup := h.executing[inferenceID]; dup {
 		return sig, confirmedAt, nil, nil
+	}
+	for _, tx := range h.mempool.Txs() {
+		if fi := tx.GetFinishInference(); fi != nil && fi.InferenceId == inferenceID {
+			return sig, confirmedAt, nil, nil
+		}
 	}
 
 	h.executing[inferenceID] = struct{}{}
 
-	job := &executeJob{
-		inferenceID:  inferenceID,
-		model:        rec.Model,
-		prompt:       payload.Prompt,
-		promptHash:   rec.PromptHash,
-		inputLength:  rec.InputLength,
-		maxTokens:    rec.MaxTokens,
-		executorSlot: rec.ExecutorSlot,
-		diffNonce:    h.sm.LatestNonce(),
+	job := &subnet.ExecuteRequest{
+		InferenceID: inferenceID,
+		Model:       rec.Model,
+		Prompt:      payload.Prompt,
+		PromptHash:  rec.PromptHash,
+		InputLength: rec.InputLength,
+		MaxTokens:   rec.MaxTokens,
+		EscrowID:    h.escrowID,
 	}
 	return sig, confirmedAt, job, nil
 }

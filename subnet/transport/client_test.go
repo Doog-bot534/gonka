@@ -137,7 +137,7 @@ func TestHTTPClient_Send_SSE(t *testing.T) {
 
 	// Configure a stream callback to collect data lines.
 	var streamLines []string
-	client.config.StreamCallback = func(line string) {
+	client.config.StreamCallback = func(nonce uint64, line string) {
 		streamLines = append(streamLines, line)
 	}
 

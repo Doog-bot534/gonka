@@ -224,7 +224,7 @@ func TestProtocol_SignatureWithholding(t *testing.T) {
 	// Run deferred execution to populate mempool.
 	_, err = h.RunExecution(ctx, resp.ExecutionJob)
 	require.NoError(t, err)
-	require.Len(t, h.MempoolTxs(), 1) // MsgFinishInference
+	require.Len(t, h.MempoolTxs(), 2) // MsgConfirmStart + MsgFinishInference
 
 	// Nonces 2-4: empty diffs, never including the finish.
 	// Grace=2, proposed at nonce 1.
@@ -242,7 +242,7 @@ func TestProtocol_SignatureWithholding(t *testing.T) {
 		}
 		// Still processes diffs and returns mempool.
 		require.Equal(t, n, resp.Nonce)
-		require.Len(t, resp.Mempool, 1, "mempool should still have the finish tx")
+		require.Len(t, resp.Mempool, 2, "mempool should have confirm_start + finish")
 	}
 }
 
@@ -276,7 +276,16 @@ func TestProtocol_SignatureResumesAfterInclusion(t *testing.T) {
 	require.NotNil(t, resp.ExecutionJob)
 	_, err = h.RunExecution(ctx, resp.ExecutionJob)
 	require.NoError(t, err)
-	finishTx := h.MempoolTxs()[0]
+
+	// Find the finish tx (mempool also has confirm_start from Issue 4 fix).
+	var finishTx *types.SubnetTx
+	for _, tx := range h.MempoolTxs() {
+		if tx.GetFinishInference() != nil {
+			finishTx = tx
+			break
+		}
+	}
+	require.NotNil(t, finishTx, "mempool should contain MsgFinishInference")
 
 	// Nonce 2: confirm start.
 	receiptContent := &types.ExecutorReceiptContent{
@@ -312,11 +321,11 @@ func TestProtocol_ExecutorAssignment(t *testing.T) {
 	params := defaultParams()
 
 	for i := 0; i < 5; i++ {
-		result, err := env.session.SendInference(ctx, params)
+		resp, err := env.session.SendInference(ctx, params)
 		require.NoError(t, err)
 
 		// The executor should return a receipt.
-		require.NotNil(t, result.Receipt, "executor host should return receipt for inference %d", result.InferenceID)
+		require.NotNil(t, resp.Receipt, "executor host should return receipt for inference %d", i+1)
 	}
 
 	// Verify executor assignment in state.

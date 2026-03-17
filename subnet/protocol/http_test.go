@@ -330,16 +330,16 @@ func TestHTTP_TimeoutExecution(t *testing.T) {
 	params := defaultParams()
 
 	// Send inference and confirm start.
-	result, err := env.session.SendInference(ctx, params)
+	resp, err := env.session.SendInference(ctx, params)
 	require.NoError(t, err)
-	require.NotNil(t, result.Receipt)
+	require.NotNil(t, resp.Receipt)
 
 	// Manually confirm start in a new diff.
 	confirmTx := &types.SubnetTx{Tx: &types.SubnetTx_ConfirmStart{
 		ConfirmStart: &types.MsgConfirmStart{
 			InferenceId: 1,
-			ExecutorSig: result.Receipt,
-			ConfirmedAt: result.ConfirmedAt,
+			ExecutorSig: resp.Receipt,
+			ConfirmedAt: resp.ConfirmedAt,
 		},
 	}}
 	nonce := env.session.Nonce() + 1

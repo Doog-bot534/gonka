@@ -99,7 +99,7 @@ func main() {
 		log.Fatalf("create storage dir: %v", err)
 	}
 
-	relay := &streamRelay{}
+	registry := newStreamRegistry()
 
 	br := bridge.NewRESTBridge(crest)
 	cfg := user.HTTPSessionConfig{
@@ -107,7 +107,7 @@ func main() {
 		EscrowID:       eid,
 		Bridge:         br,
 		StoragePath:    sp,
-		StreamCallback: relay.callback,
+		StreamCallback: registry.callback,
 	}
 
 	session, sm, err := user.NewHTTPSession(cfg)
@@ -121,13 +121,15 @@ func main() {
 		sm:       sm,
 		escrowID: eid,
 		model:    mdl,
-		relay:    relay,
+		registry: registry,
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/chat/completions", proxy.handleChatCompletions)
 	mux.HandleFunc("/v1/finalize", proxy.handleFinalize)
 	mux.HandleFunc("/v1/status", proxy.handleStatus)
+	mux.HandleFunc("/v1/debug/pending", proxy.handleDebugPending)
+	mux.HandleFunc("/v1/debug/state", proxy.handleDebugState)
 
 	addr := ":" + p
 	log.Printf("subnetctl listening on %s (escrow=%s model=%s)", addr, eid, mdl)
