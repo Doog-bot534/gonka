@@ -49,25 +49,28 @@ End-to-end test plan for testnet: **register LP, fund LP, register and fund comm
    - New contract schema requires `accepted_ibc_denom`; use a placeholder if IBC is not set up yet (e.g. `"ibc/placeholder"`), or the real IBC denom.
    - Example (replace `GOV_ADDR`, `BUYER_ADDR`, `CODE_ID`, `CHAIN_ID`, `RPC`):
      ```bash
-     inferenced tx wasm instantiate <CODE_ID> \
-       '{"admin":"<GOV_ADDR>","buyer":"<BUYER_ADDR>","accepted_chain_id":"ethereum","accepted_eth_contract":"0xdac17f958d2ee523a2206206994597c13d831ec7","accepted_ibc_denom":"ibc/placeholder","price_usd":"25000"}' \
+     inferenced tx wasm instantiate 4 \
+       '{"admin":"gonka10d07y265gmmuvt4z0w9aw880jnsr700j2h5m33","buyer":"gonka1u6tf76c80snq05642msrkyez4a39u979upp8w5","accepted_chain_id":"ethereum","accepted_eth_contract":"0xdac17f958d2ee523a2206206994597c13d831ec7","accepted_ibc_denom":"ibc/placeholder","price_usd":"25000"}' \
        --label "community-sale-testnet" \
-       --admin <GOV_ADDR> \
-       --from gonka-account-key --chain-id <CHAIN_ID> --node <RPC> \
+       --admin gonka10d07y265gmmuvt4z0w9aw880jnsr700j2h5m33 \
+       --from gonka-account-key --chain-id gonka-testnet --node http://89.169.111.79:26657 \
        --keyring-backend file --home .inference --gas auto --gas-adjustment 1.3 \
        --broadcast-mode sync --output json --yes
      ```
    - Note the **contract address** from the tx response (needed for funding and for upgrade 11).
 
 6. **Governance: fund community sale from community pool**  
-   - Submit a governance proposal whose single message is **MsgCommunityPoolSpend**: recipient = **community-sale contract address**, amount = desired GNK (e.g. 1M GNK).  
+   - Submit a governance proposal whose single message is **MsgCommunityPoolSpend**: recipient = **community-sale contract address** (from step 5), amount = desired GNK (e.g. 1M GNK).  
    - Deposit and vote so the proposal passes.  
-   - Example structure (submit via your usual method, e.g. JSON file or CLI):
-     - Message: `@type: /cosmos.distribution.v1beta1.MsgCommunityPoolSpend`, authority = gov module, recipient = `<CONTRACT_ADDRESS>`, amount = e.g. `1000000000000000` ngonka  
-     - Title: e.g. “Fund Community Sale Contract (testnet)”  
-     - Summary: e.g. “Transfer GNK from community pool to community sale contract”  
-     - Deposit: e.g. 50000000ngonka  
-   - Verify: query contract balance or `distribution community-pool` and bank balance of the contract.
+   **Option A – use the script** (submit + vote in one go):
+   ```bash
+   ./bridge-community-sale-fund.sh --recipient gonka1wkwy0xh89ksdgj9hr347dyd2dw7zesmtrue6kfzyml4vdtz6e5wsms7nus
+   # Optional: --amount 1000000000000000ngonka (default 1M GNK)
+   ```
+
+   **Option B – manual**: Message type `@type: /cosmos.distribution.v1beta1.MsgCommunityPoolSpend`, authority = gov module, recipient = `<CONTRACT_ADDRESS>`, amount = `[{ "denom": "ngonka", "amount": "1000000000000000" }]`; deposit e.g. 25000000ngonka.  
+
+   Verify: `inferenced q bank balances <CONTRACT_ADDRESS>` and/or `inferenced q distribution community-pool`.
 
 ---
 

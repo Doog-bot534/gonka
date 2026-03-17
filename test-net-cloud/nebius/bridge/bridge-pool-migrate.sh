@@ -162,6 +162,12 @@ if [ -z "$PROPOSAL_ID_ARG" ]; then
         echo "Successfully uploaded WASM. New Code ID: $NEW_CODE_ID"
     fi
 
+    # Log code_id prominently so it's visible in console
+    echo "=========================================="
+    echo "  MIGRATION TARGET CODE_ID: $NEW_CODE_ID"
+    echo "  (LP will migrate to this code after proposal passes)"
+    echo "=========================================="
+
     if [ -z "$NEW_CODE_ID" ]; then
         echo "Error: Either --code-id, --wasm, or --use-repo is required."
         exit 1
@@ -176,6 +182,7 @@ if [ -z "$PROPOSAL_ID_ARG" ]; then
       exit 1
     fi
     echo "Current LP Address: $CONTRACT_ADDR"
+    echo "  -> Will migrate this contract to code_id: $NEW_CODE_ID"
 
     # 2. Get Gov Module Address (Sender)
     ADMIN_INFO=$($APP_NAME q wasm contract "$CONTRACT_ADDR" --output json $NODE_OPTS | jq -r .contract_info.admin)
@@ -235,6 +242,7 @@ else
 fi
 
 echo "Found Proposal ID: $PROPOSAL_ID"
+[ -n "$NEW_CODE_ID" ] && [ "$NEW_CODE_ID" != "null" ] && echo "  -> Migration will set LP to code_id: $NEW_CODE_ID"
 
 if [ -z "$PROPOSAL_ID" ] || [ "$PROPOSAL_ID" == "null" ]; then
      echo "Error: Could not find proposal ID."
