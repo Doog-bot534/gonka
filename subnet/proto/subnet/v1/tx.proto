@@ -40,6 +40,8 @@ message MsgTimeoutInference {
 }
 
 message TimeoutVote {
+  // If a Host is assigned to many slots, this field will contain their "PrimarySlot",
+  // i.e. the lowest slot ID owned by this host.
   uint32 voter_slot = 1;
   bool   accept = 2;
   bytes  signature = 3;

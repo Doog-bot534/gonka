@@ -367,10 +367,12 @@ func (x *MsgTimeoutInference) GetVotes() []*TimeoutVote {
 }
 
 type TimeoutVote struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	VoterSlot     uint32                 `protobuf:"varint,1,opt,name=voter_slot,json=voterSlot,proto3" json:"voter_slot,omitempty"`
-	Accept        bool                   `protobuf:"varint,2,opt,name=accept,proto3" json:"accept,omitempty"`
-	Signature     []byte                 `protobuf:"bytes,3,opt,name=signature,proto3" json:"signature,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// If a Host is assigned to many slots, this field will contain their "PrimarySlot",
+	// i.e. the lowest slot ID owned by this host.
+	VoterSlot     uint32 `protobuf:"varint,1,opt,name=voter_slot,json=voterSlot,proto3" json:"voter_slot,omitempty"`
+	Accept        bool   `protobuf:"varint,2,opt,name=accept,proto3" json:"accept,omitempty"`
+	Signature     []byte `protobuf:"bytes,3,opt,name=signature,proto3" json:"signature,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
