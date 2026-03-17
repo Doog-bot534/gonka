@@ -161,6 +161,10 @@ func (s *Session) composeDiffTxs(params InferenceParams) (uint64, int, []*types.
 	for _, tx := range s.pendingTxs {
 		switch inner := tx.GetTx().(type) {
 		case *types.SubnetTx_ConfirmStart:
+			rec, ok := s.sm.GetInference(inner.ConfirmStart.InferenceId)
+			if ok && rec.Status != types.StatusPending {
+				continue
+			}
 			willBeStarted[inner.ConfirmStart.InferenceId] = true
 		case *types.SubnetTx_FinishInference:
 			rec, ok := s.sm.GetInference(inner.FinishInference.InferenceId)
