@@ -22,18 +22,18 @@ import (
 )
 
 type httpTestEnv struct {
-	session      *user.Session
-	hosts        []*host.Host
-	servers      []*transport.Server
-	httpServers  []*httptest.Server
-	clients      []*transport.HTTPClient // user-authenticated clients
-	hostClients  []*transport.HTTPClient // host-authenticated clients (for gossip)
-	signers      []*signing.Secp256k1Signer
-	userSigner   *signing.Secp256k1Signer
-	group        []types.SlotAssignment
-	config       types.SessionConfig
-	stores       []*storage.Memory
-	gossips      []*gossip.Gossip
+	session     *user.Session
+	hosts       []*host.Host
+	servers     []*transport.Server
+	httpServers []*httptest.Server
+	clients     []*transport.HTTPClient // user-authenticated clients
+	hostClients []*transport.HTTPClient // host-authenticated clients (for gossip)
+	signers     []*signing.Secp256k1Signer
+	userSigner  *signing.Secp256k1Signer
+	group       []types.SlotAssignment
+	config      types.SessionConfig
+	stores      []*storage.Memory
+	gossips     []*gossip.Gossip
 }
 
 // setupHTTPEnv creates a full HTTP test environment with storage, gossip,
@@ -293,7 +293,7 @@ func TestHTTP_TimeoutRefused(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	votes, err := env.session.CollectTimeoutVotes(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_REFUSED, &host.InferencePayload{
+	votes, metThreshold, err := env.session.CollectTimeoutVotes(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_REFUSED, &host.InferencePayload{
 		Prompt:      testutil.TestPrompt,
 		Model:       "llama",
 		InputLength: 100,
@@ -302,6 +302,7 @@ func TestHTTP_TimeoutRefused(t *testing.T) {
 	}, verifiers)
 	require.NoError(t, err)
 	require.True(t, len(votes) > int(env.config.VoteThreshold), "need >%d votes, got %d", env.config.VoteThreshold, len(votes))
+	require.True(t, metThreshold, "timeout votes did not meet threshold")
 
 	// Compose and apply timeout.
 	timeoutTx := &types.SubnetTx{Tx: &types.SubnetTx_TimeoutInference{
@@ -368,10 +369,12 @@ func TestHTTP_TimeoutExecution(t *testing.T) {
 		verifiers[i] = env.clients[i]
 	}
 
-	votes, err := env.session.CollectTimeoutVotes(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_EXECUTION, nil, verifiers) // nil payload for execution timeout
+	votes, metThreshold, err := env.session.CollectTimeoutVotes(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_EXECUTION, nil, verifiers) // nil payload for execution timeout
 	require.NoError(t, err)
 	require.True(t, len(votes) > int(env.config.VoteThreshold),
 		"need >%d votes, got %d", env.config.VoteThreshold, len(votes))
+	require.True(t, metThreshold, "timeout votes did not meet threshold")
+
 }
 
 func TestHTTP_TimeoutRejected(t *testing.T) {
@@ -433,7 +436,7 @@ func TestHTTP_ChallengeReceipt_RejectsTimeout(t *testing.T) {
 		verifiers[i] = env.clients[i]
 	}
 
-	votes, err := env.session.CollectTimeoutVotes(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_REFUSED, &host.InferencePayload{
+	votes, metThreshold, err := env.session.CollectTimeoutVotes(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_REFUSED, &host.InferencePayload{
 		Prompt:      testutil.TestPrompt,
 		Model:       "llama",
 		InputLength: 100,
@@ -442,6 +445,7 @@ func TestHTTP_ChallengeReceipt_RejectsTimeout(t *testing.T) {
 	}, verifiers)
 	require.NoError(t, err)
 	require.Equal(t, 0, len(votes), "all hosts should reject timeout because executor is alive and produced receipt")
+	require.False(t, metThreshold, "timeout votes should not meet threshold")
 }
 
 func TestHTTP_StateRecovery(t *testing.T) {
@@ -931,4 +935,3 @@ func TestAttack_GossipEmptySigBypass(t *testing.T) {
 	err = hostClient1.GossipNonce(ctx, 1, resp.StateHash, resp.StateSig, 0)
 	require.NoError(t, err, "real gossip must succeed after rejected bypass attempts")
 }
-

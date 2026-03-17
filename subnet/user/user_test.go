@@ -361,7 +361,7 @@ func TestCollectTimeoutVotes_WeightEarlyExit(t *testing.T) {
 		verifiers[i] = &mockTimeoutVerifier{accept: true, signer: slotSigner, group: group, slotIdx: i}
 	}
 
-	votes, err := session.CollectTimeoutVotes(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_REFUSED, &host.InferencePayload{
+	votes, metThreshold, err := session.CollectTimeoutVotes(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_REFUSED, &host.InferencePayload{
 		Prompt:      testutil.TestPrompt,
 		Model:       "llama",
 		InputLength: 100,
@@ -378,6 +378,7 @@ func TestCollectTimeoutVotes_WeightEarlyExit(t *testing.T) {
 	}
 	require.True(t, totalWeight > config.VoteThreshold,
 		"accumulated weight %d should exceed threshold %d", totalWeight, config.VoteThreshold)
+	require.True(t, metThreshold, "timeout votes did not meet threshold")
 }
 
 type mockTimeoutVerifier struct {
@@ -417,9 +418,10 @@ func (m *mockTimeoutVerifier) VerifyTimeout(_ context.Context, inferenceID uint6
 // Fixed private keys for reproducible seed derivation.
 // signer[0] seed=8507102209880137399, signer[1] seed=8250581583015032772, signer[2] seed=88554756047201157.
 // With 3 hosts, 100% rate, prob=0.5 per non-executor inference:
-//   signer[0]: validates inf 1,2 (RequiredValidations=2)
-//   signer[1]: all floats >= 0.5 (RequiredValidations=0)
-//   signer[2]: all floats >= 0.5 (RequiredValidations=0)
+//
+//	signer[0]: validates inf 1,2 (RequiredValidations=2)
+//	signer[1]: all floats >= 0.5 (RequiredValidations=0)
+//	signer[2]: all floats >= 0.5 (RequiredValidations=0)
 var settlementFixedKeys = []string{
 	"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 	"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",

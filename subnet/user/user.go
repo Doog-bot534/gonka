@@ -641,13 +641,15 @@ type TimeoutVerifier interface {
 // Returns votes for inclusion in MsgTimeoutInference.
 // Deduplicates verifiers by validator address to avoid duplicate votes
 // when the same validator occupies multiple slots.
+//
+// Returns whether we've collected enough votes to meet the threshold.
 func (s *Session) CollectTimeoutVotes(
 	ctx context.Context,
 	inferenceID uint64,
 	reason types.TimeoutReason,
 	payload *host.InferencePayload,
 	verifiers map[int]TimeoutVerifier, // hostIdx -> verifier
-) ([]*types.TimeoutVote, error) {
+) ([]*types.TimeoutVote, bool, error) {
 	// Determine executor slot and resolve its validator address.
 	executorIdx := int(inferenceID % uint64(len(s.group)))
 	executorAddr := s.group[executorIdx].ValidatorAddress
@@ -717,5 +719,5 @@ func (s *Session) CollectTimeoutVotes(
 		}
 	}
 
-	return votes, nil
+	return votes, accWeight > voteThreshold, nil
 }
