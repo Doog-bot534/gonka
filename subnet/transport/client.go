@@ -41,7 +41,7 @@ type ClientConfig struct {
 	GossipTimeout    time.Duration          // gossip/nonce, gossip/txs, default 10s
 	VerifyTimeout    time.Duration          // verify-timeout, default 3m
 	QueryTimeout     time.Duration          // diffs, mempool GETs, default 30s
-	StreamCallback   func(line string)      // if set, receives raw SSE data lines during inference
+	StreamCallback   func(nonce uint64, line string) // if set, receives raw SSE data lines during inference
 }
 
 func DefaultClientConfig() ClientConfig {
@@ -134,7 +134,12 @@ func (c *HTTPClient) Send(ctx context.Context, req host.HostRequest) (*host.Host
 
 	contentType := resp.Header.Get("Content-Type")
 	if strings.HasPrefix(contentType, "text/event-stream") {
-		return c.parseSSEResponse(resp.Body)
+		result, err := c.parseSSEResponse(resp.Body, req.Nonce)
+		if err != nil && result != nil {
+			// Partial result: return both so caller can extract receipt from broken stream.
+			return result, err
+		}
+		return result, err
 	}
 
 	// Backward compat: JSON response.
@@ -151,8 +156,9 @@ func (c *HTTPClient) Send(ctx context.Context, req host.HostRequest) (*host.Host
 
 // parseSSEResponse reads an SSE stream and extracts subnet_receipt and subnet_meta events.
 // Non-protocol data lines are forwarded to StreamCallback if configured.
-func (c *HTTPClient) parseSSEResponse(r io.Reader) (*host.HostResponse, error) {
+func (c *HTTPClient) parseSSEResponse(r io.Reader, nonce uint64) (*host.HostResponse, error) {
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 1<<20), 1<<20) // 1MB max line -- default 64KB breaks on long SSE responses
 	var result host.HostResponse
 
 	for scanner.Scan() {
@@ -163,7 +169,7 @@ func (c *HTTPClient) parseSSEResponse(r io.Reader) (*host.HostResponse, error) {
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
 			if c.config.StreamCallback != nil {
-				c.config.StreamCallback(line)
+				c.config.StreamCallback(nonce, line)
 			}
 			continue
 		}
@@ -173,7 +179,7 @@ func (c *HTTPClient) parseSSEResponse(r io.Reader) (*host.HostResponse, error) {
 		if err := json.Unmarshal([]byte(data), &envelope); err != nil {
 			// Not JSON -- forward as-is.
 			if c.config.StreamCallback != nil {
-				c.config.StreamCallback(line)
+				c.config.StreamCallback(nonce, line)
 			}
 			continue
 		}
@@ -203,11 +209,11 @@ func (c *HTTPClient) parseSSEResponse(r io.Reader) (*host.HostResponse, error) {
 
 		// Inference data line -- forward to callback.
 		if c.config.StreamCallback != nil {
-			c.config.StreamCallback(line)
+			c.config.StreamCallback(nonce, line)
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("read SSE stream: %w", err)
+		return &result, fmt.Errorf("read SSE stream: %w", err)
 	}
 	return &result, nil
 }
@@ -272,11 +278,23 @@ func (c *HTTPClient) ChallengeReceipt(ctx context.Context, inferenceID uint64, p
 }
 
 // VerifyTimeout implements user.TimeoutVerifier over HTTP.
-func (c *HTTPClient) VerifyTimeout(ctx context.Context, inferenceID uint64, reason types.TimeoutReason, payload *host.InferencePayload) (bool, []byte, uint32, error) {
+func (c *HTTPClient) VerifyTimeout(ctx context.Context, inferenceID uint64, reason types.TimeoutReason, payload *host.InferencePayload, diffs []types.Diff) (bool, []byte, uint32, error) {
+	var djList []DiffJSON
+	if len(diffs) > 0 {
+		djList = make([]DiffJSON, len(diffs))
+		for i, d := range diffs {
+			dj, err := DiffToJSON(d)
+			if err != nil {
+				return false, nil, 0, fmt.Errorf("encode diff %d: %w", i, err)
+			}
+			djList[i] = dj
+		}
+	}
 	resp, err := c.SendVerifyTimeout(ctx, VerifyTimeoutRequest{
 		InferenceID: inferenceID,
 		Reason:      TimeoutReasonToString(reason),
 		Payload:     PayloadToJSON(payload),
+		Diffs:       djList,
 	})
 	if err != nil {
 		return false, nil, 0, err

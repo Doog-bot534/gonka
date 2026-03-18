@@ -1274,13 +1274,13 @@ func TestApplyDiff_Validation_DuplicateAddress(t *testing.T) {
 	_, err := sm.ApplyDiff(diff)
 	require.NoError(t, err)
 
-	// Same address (signer[1]) tries again from slot 2 -> ErrDuplicateValidation.
+	// Same address (signer[1]) tries again from slot 2 -> idempotent no-op.
 	valMsg2 := &types.MsgValidation{InferenceId: 1, ValidatorSlot: 2, Valid: false, EscrowId: "escrow-1"}
 	valMsg2.ProposerSig = testutil.SignProposerTx(t, signers[1], valMsg2)
 	nonce = sm.SnapshotState().LatestNonce + 1
 	diff = testutil.SignDiff(t, user, "escrow-1", nonce, []*types.SubnetTx{txValidation(valMsg2)})
 	_, err = sm.ApplyDiff(diff)
-	require.ErrorIs(t, err, types.ErrDuplicateValidation)
+	require.NoError(t, err)
 }
 
 func TestApplyDiff_ValidationVote_MultiSlotWeight(t *testing.T) {

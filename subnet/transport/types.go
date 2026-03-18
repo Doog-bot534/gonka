@@ -50,6 +50,7 @@ type VerifyTimeoutRequest struct {
 	InferenceID uint64       `json:"inference_id"`
 	Reason      string       `json:"reason"` // "refused" or "execution"
 	Payload     *PayloadJSON `json:"payload,omitempty"`
+	Diffs       []DiffJSON   `json:"diffs,omitempty"` // catch-up diffs so verifier knows about the inference
 }
 
 // VerifyTimeoutResponse is returned by the timeout verification endpoint.

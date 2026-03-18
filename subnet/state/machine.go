@@ -6,6 +6,7 @@ import (
 	"maps"
 	"math"
 	"slices"
+	"sync"
 
 	"google.golang.org/protobuf/proto"
 
@@ -71,14 +72,17 @@ func copyInferences(src map[uint64]*types.InferenceRecord) map[uint64]*types.Inf
 type WarmKeyResolver func(warmAddr, coldAddr string) (bool, error)
 
 // StateMachine applies diffs and tracks session state.
+// The embedded RWMutex protects mutable fields in state (Inferences,
+// HostStats, RevealedSeeds, WarmKeys, Balance, Phase, nonces).
+// Immutable lookup maps (slotToAddress, etc.) are safe to read without locking.
 type StateMachine struct {
+	mu          sync.RWMutex
 	state       *types.EscrowState
 	verifier    signing.Verifier
 	userAddress string
 
 	// Lookup maps derived from group at construction time.
 	slotToAddress      map[uint32]string
-	addressInGroup     map[string]bool
 	addressToSlotCount map[string]uint32
 	addressToSlots     map[string][]uint32 // address -> sorted slot IDs
 	totalSlots         uint32
@@ -104,11 +108,9 @@ func NewStateMachine(
 	opts ...SMOption,
 ) *StateMachine {
 	slotToAddr := make(map[uint32]string, len(group))
-	addrInGroup := make(map[string]bool, len(group))
 	addrToSlotCount := make(map[string]uint32, len(group))
 	for _, s := range group {
 		slotToAddr[s.SlotID] = s.ValidatorAddress
-		addrInGroup[s.ValidatorAddress] = true
 		addrToSlotCount[s.ValidatorAddress]++
 	}
 
@@ -120,7 +122,7 @@ func NewStateMachine(
 		hostStats[s.SlotID] = &types.HostStats{}
 	}
 
-	addrToSlots := make(map[string][]uint32, len(addrInGroup))
+	addrToSlots := make(map[string][]uint32, len(addrToSlotCount))
 	for slot, addr := range slotToAddr {
 		addrToSlots[addr] = append(addrToSlots[addr], slot)
 	}
@@ -142,7 +144,6 @@ func NewStateMachine(
 		verifier:           verifier,
 		userAddress:        userAddress,
 		slotToAddress:      slotToAddr,
-		addressInGroup:     addrInGroup,
 		addressToSlotCount: addrToSlotCount,
 		addressToSlots:     addrToSlots,
 		totalSlots:         uint32(len(group)),
@@ -172,13 +173,78 @@ func (sm *StateMachine) ApplyDiff(diff types.Diff) ([]byte, error) {
 	}
 
 	// 2. Apply txs and verify post_state_root atomically.
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
 	return sm.applyCore(diff.Nonce, diff.Txs, diff.PostStateRoot)
 }
 
 // ApplyLocal applies txs without signature verification. Used by the user
 // to compute the post_state_root before signing the diff.
 func (sm *StateMachine) ApplyLocal(nonce uint64, txs []*types.SubnetTx) ([]byte, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
 	return sm.applyCore(nonce, txs, nil)
+}
+
+// ApplyLocalBestEffort applies txs one by one, skipping any that fail.
+// Returns the post-state root and the subset of txs that were applied.
+// Used by the user to compose diffs from pending txs that may be stale.
+func (sm *StateMachine) ApplyLocalBestEffort(nonce uint64, txs []*types.SubnetTx) ([]byte, []*types.SubnetTx, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	expectedNonce := sm.state.LatestNonce + 1
+	if nonce != expectedNonce {
+		return nil, nil, fmt.Errorf("%w: expected %d, got %d", types.ErrInvalidNonce, expectedNonce, nonce)
+	}
+
+	// Same pre-check as applyCore: at most one MsgStartInference, with id == nonce.
+	startCount := 0
+	for _, tx := range txs {
+		if start := tx.GetStartInference(); start != nil {
+			startCount++
+			if start.InferenceId != nonce {
+				return nil, nil, types.ErrInvalidInferenceID
+			}
+		}
+	}
+	if startCount > 1 {
+		return nil, nil, types.ErrMultipleStartMsgs
+	}
+
+	// All applyTx implementations are check-first-mutate-last:
+	// preconditions are validated before any state mutation, so a
+	// failed tx leaves state unchanged. No per-tx snapshots needed.
+	var applied []*types.SubnetTx
+	for _, tx := range txs {
+		if err := sm.applyTx(tx); err != nil {
+			continue
+		}
+		applied = append(applied, tx)
+	}
+
+	sm.state.LatestNonce = nonce
+
+	if sm.state.Phase == types.PhaseFinalizing && sm.state.FinalizeNonce == 0 {
+		sm.state.FinalizeNonce = nonce
+	}
+	if sm.state.Phase == types.PhaseFinalizing {
+		sm.recomputeCompliance()
+		sm.penalizeUnrevealedSeeds()
+		allRevealed := sm.allUniqueAddressesRevealed()
+		deadlinePassed := sm.state.LatestNonce >= sm.state.FinalizeNonce+uint64(len(sm.state.Group))
+		if allRevealed || deadlinePassed {
+			sm.state.Phase = types.PhaseSettlement
+		}
+	}
+
+	root, err := ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences, sm.state.Phase, sm.state.WarmKeys)
+	if err != nil {
+		return nil, nil, fmt.Errorf("compute state root: %w", err)
+	}
+
+	logging.Debug("applied diff (best-effort)", "subsystem", "state", "nonce", nonce, "applied", len(applied), "candidates", len(txs))
+	return root, applied, nil
 }
 
 // applyCore validates nonce, applies txs, updates nonce, and returns the state root.
@@ -254,16 +320,22 @@ func (sm *StateMachine) applyCore(nonce uint64, txs []*types.SubnetTx, postState
 
 // LatestNonce returns the current nonce without deep-copying state.
 func (sm *StateMachine) LatestNonce() uint64 {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	return sm.state.LatestNonce
 }
 
 // Phase returns the current session phase.
 func (sm *StateMachine) Phase() types.SessionPhase {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	return sm.state.Phase
 }
 
 // SnapshotState returns a deep copy of the current escrow state.
 func (sm *StateMachine) SnapshotState() types.EscrowState {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	s := *sm.state
 
 	// Deep copy Group.
@@ -343,11 +415,15 @@ func (sm *StateMachine) restoreMutable(snap mutableSnapshot) {
 
 // ComputeStateRoot returns the current state root without modifying state.
 func (sm *StateMachine) ComputeStateRoot() ([]byte, error) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	return ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences, sm.state.Phase, sm.state.WarmKeys)
 }
 
 // WarmKeys returns the current warm key bindings (shallow copy).
 func (sm *StateMachine) WarmKeys() map[uint32]string {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	if len(sm.state.WarmKeys) == 0 {
 		return nil
 	}
@@ -358,6 +434,8 @@ func (sm *StateMachine) WarmKeys() map[uint32]string {
 
 // IsWarmKeyAddress returns true if addr is a known warm key for any slot.
 func (sm *StateMachine) IsWarmKeyAddress(addr string) bool {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	for _, warmAddr := range sm.state.WarmKeys {
 		if warmAddr == addr {
 			return true
@@ -537,26 +615,17 @@ func (sm *StateMachine) applyValidation(msg *types.MsgValidation) error {
 		return types.ErrSelfValidation
 	}
 
-	// Status gate + dedup.
+	// Idempotent: duplicate validation from same address is always a no-op.
+	if found, _ := sm.addressHasValidated(rec, msg.ValidatorSlot); found {
+		return nil
+	}
+
+	// Status gate.
 	switch rec.Status {
-	case types.StatusValidated, types.StatusInvalidated:
-		// Late compliance credit. Silent no-op if duplicate.
-		if found, _ := sm.addressHasValidated(rec, msg.ValidatorSlot); found {
-			return nil
-		}
-	case types.StatusChallenged:
-		// Additional validation during challenge. Silent no-op if duplicate.
-		if found, _ := sm.addressHasValidated(rec, msg.ValidatorSlot); found {
-			return nil
-		}
-	case types.StatusFinished:
-		// First validation or additional on Finished. Error if duplicate.
-		if found, existingSlot := sm.addressHasValidated(rec, msg.ValidatorSlot); found {
-			return fmt.Errorf("%w: address %s already validated via slot %d",
-				types.ErrDuplicateValidation, sm.slotToAddress[msg.ValidatorSlot], existingSlot)
-		}
+	case types.StatusFinished, types.StatusChallenged, types.StatusValidated, types.StatusInvalidated:
+		// OK
 	default:
-		return fmt.Errorf("%w: expected finished, got %d", types.ErrInvalidTransition, rec.Status)
+		return fmt.Errorf("%w: expected finished or later, got %d", types.ErrInvalidTransition, rec.Status)
 	}
 
 	// Proposer sig + escrow_id (expensive, after dedup).
@@ -911,7 +980,7 @@ func (sm *StateMachine) allUniqueAddressesRevealed() bool {
 	for slot := range sm.state.RevealedSeeds {
 		revealedAddrs[sm.slotToAddress[slot]] = true
 	}
-	return len(revealedAddrs) == len(sm.addressInGroup)
+	return len(revealedAddrs) == len(sm.addressToSlots)
 }
 
 // BuildDiffContent creates the proto DiffContent from nonce, txs, escrowID, and postStateRoot for signing.
@@ -970,6 +1039,8 @@ func (sm *StateMachine) ResolveWarmKey(slotID uint32, recovered, expected string
 // Used during replay to restore bindings that were discovered during the original run.
 // Existing bindings are not overwritten.
 func (sm *StateMachine) InjectWarmKeys(delta map[uint32]string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
 	for slotID, addr := range delta {
 		if _, exists := sm.state.WarmKeys[slotID]; !exists {
 			sm.state.WarmKeys[slotID] = addr
@@ -1002,12 +1073,16 @@ func (sm *StateMachine) AddressSlotCount(addr string) uint32 {
 
 // IsSlotRevealed returns true if the given slot has already revealed its seed.
 func (sm *StateMachine) IsSlotRevealed(slotID uint32) bool {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	_, ok := sm.state.RevealedSeeds[slotID]
 	return ok
 }
 
 // GetInference returns a copy of the inference record for the given ID.
 func (sm *StateMachine) GetInference(id uint64) (types.InferenceRecord, bool) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	rec, ok := sm.state.Inferences[id]
 	if !ok {
 		return types.InferenceRecord{}, false
@@ -1017,6 +1092,8 @@ func (sm *StateMachine) GetInference(id uint64) (types.InferenceRecord, bool) {
 
 // RevealedSlots returns a shallow copy of the revealed seeds map.
 func (sm *StateMachine) RevealedSlots() map[uint32]int64 {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	if len(sm.state.RevealedSeeds) == 0 {
 		return nil
 	}

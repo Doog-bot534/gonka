@@ -67,9 +67,18 @@ func (v *ValidationAdapter) Validate(ctx context.Context, req subnet.ValidateReq
 		return nil, fmt.Errorf("fetch payloads from executor: %w", err)
 	}
 
+	// The stored prompt is the original user request (before ModifyRequestBody).
+	// Apply the same modifications (logprobs, seed, max_tokens) so the
+	// validation re-execution matches the original execution environment.
+	seed := int32(req.InferenceID)
+	modified, err := completionapi.ModifyRequestBody(promptPayload, seed)
+	if err != nil {
+		return nil, fmt.Errorf("modify request body for validation: %w", err)
+	}
+
 	var requestMap map[string]interface{}
-	if err := json.Unmarshal(promptPayload, &requestMap); err != nil {
-		return nil, fmt.Errorf("unmarshal prompt payload: %w", err)
+	if err := json.Unmarshal(modified.NewBody, &requestMap); err != nil {
+		return nil, fmt.Errorf("unmarshal modified prompt: %w", err)
 	}
 
 	originalResponse, err := completionapi.NewCompletionResponseFromLinesFromResponsePayload(responsePayload)
@@ -82,9 +91,9 @@ func (v *ValidationAdapter) Validate(ctx context.Context, req subnet.ValidateReq
 		return nil, fmt.Errorf("get enforced tokens: %w", err)
 	}
 
+	// Validation-specific overrides on top of ModifyRequestBody output.
 	requestMap["enforced_tokens"] = enforcedTokens
 	requestMap["stream"] = false
-	requestMap["skip_special_tokens"] = false
 	delete(requestMap, "stream_options")
 
 	validationBody, err := json.Marshal(requestMap)

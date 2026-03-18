@@ -126,11 +126,11 @@ func TestProcessResponse_WarmKey_Rejected(t *testing.T) {
 	session, err := NewSession(userSM, userKey, "escrow-1", group, clients, verifier)
 	require.NoError(t, err)
 	session.nonce = 1
-	session.diffs = append(session.diffs, types.Diff{Nonce: 1})
+	session.diffs = append(session.diffs, types.Diff{Nonce: 1, PostStateRoot: root})
 
 	err = session.ProcessResponse(1, &host.HostResponse{
 		Nonce: 1, StateHash: root, StateSig: stateSig,
-	})
+	}, 1)
 	require.Error(t, err, "rejected warm key should cause error")
 	require.ErrorIs(t, err, types.ErrInvalidStateSig)
 }
@@ -167,11 +167,11 @@ func TestProcessResponse_WarmKey_NoResolver(t *testing.T) {
 	session, err := NewSession(userSM, userKey, "escrow-1", group, clients, verifier)
 	require.NoError(t, err)
 	session.nonce = 1
-	session.diffs = append(session.diffs, types.Diff{Nonce: 1})
+	session.diffs = append(session.diffs, types.Diff{Nonce: 1, PostStateRoot: root})
 
 	err = session.ProcessResponse(1, &host.HostResponse{
 		Nonce: 1, StateHash: root, StateSig: stateSig,
-	})
+	}, 1)
 	require.Error(t, err, "without resolver, warm key mismatch should fail")
 	require.ErrorIs(t, err, types.ErrInvalidStateSig)
 }

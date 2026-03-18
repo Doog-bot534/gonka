@@ -67,13 +67,7 @@ func TestUser_RoundRobinSelection(t *testing.T) {
 
 	// Nonce 1 -> host 1%3=1, nonce 2 -> host 2%3=2, nonce 3 -> host 3%3=0.
 	for i := 0; i < 6; i++ {
-		_, hostIdx, err := session.NextDiff(params)
-		require.NoError(t, err)
-		expectedHost := int((session.nonce + 1) % 3)
-		require.Equal(t, expectedHost, hostIdx)
-
-		// Actually send to advance nonce.
-		_, err = session.SendInference(ctx, params)
+		_, err := session.SendInference(ctx, params)
 		require.NoError(t, err)
 	}
 
@@ -96,11 +90,12 @@ func TestUser_PipelinesReceipt(t *testing.T) {
 	require.NotNil(t, result1.Receipt, "executor should return receipt")
 
 	// After processing response, pendingTxs should have MsgConfirmStart + MsgFinishInference.
-	// NextDiff for inference 2 should include these.
-	diff2, _, err := session.NextDiff(params)
+	// Second inference should pipeline these.
+	_, err = session.SendInference(ctx, params)
 	require.NoError(t, err)
 
-	// Find MsgConfirmStart in diff2.
+	// Find MsgConfirmStart in diff at nonce 2.
+	diff2 := session.Diffs()[1]
 	var hasConfirm bool
 	for _, tx := range diff2.Txs {
 		if confirm := tx.GetConfirmStart(); confirm != nil {
@@ -276,7 +271,7 @@ func TestUser_PendingTxDedup(t *testing.T) {
 	}
 
 	// Send one inference to populate host mempool.
-	result, err := session.SendInference(ctx, params)
+	resp, err := session.SendInference(ctx, params)
 	require.NoError(t, err)
 
 	// ProcessResponse already queued mempool txs. Record count.
@@ -284,9 +279,9 @@ func TestUser_PendingTxDedup(t *testing.T) {
 
 	// Simulate receiving the same mempool again (as if from another host).
 	err = session.ProcessResponse(0, &host.HostResponse{
-		Nonce:   result.Nonce,
-		Mempool: result.Mempool,
-	})
+		Nonce:   resp.Nonce,
+		Mempool: resp.Mempool,
+	}, resp.Nonce)
 	require.NoError(t, err)
 
 	// Dedup should prevent growth.
@@ -367,7 +362,7 @@ func TestCollectTimeoutVotes_WeightEarlyExit(t *testing.T) {
 		InputLength: 100,
 		MaxTokens:   50,
 		StartedAt:   1000,
-	}, verifiers)
+	}, verifiers, nil)
 	require.NoError(t, err)
 
 	// Compute total weight of returned votes.
@@ -388,7 +383,7 @@ type mockTimeoutVerifier struct {
 	escrowID string // defaults to "escrow-1" when empty
 }
 
-func (m *mockTimeoutVerifier) VerifyTimeout(_ context.Context, inferenceID uint64, reason types.TimeoutReason, _ *host.InferencePayload) (bool, []byte, uint32, error) {
+func (m *mockTimeoutVerifier) VerifyTimeout(_ context.Context, inferenceID uint64, reason types.TimeoutReason, _ *host.InferencePayload, _ []types.Diff) (bool, []byte, uint32, error) {
 	if !m.accept {
 		return false, nil, 0, nil
 	}

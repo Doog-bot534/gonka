@@ -111,9 +111,9 @@ func TestRecoverSession_HappyPath(t *testing.T) {
 		Model: "llama", Prompt: testutil.TestPrompt,
 		InputLength: 100, MaxTokens: 50, StartedAt: 1000,
 	}
-	result, err := session.SendInference(ctx, params)
+	resp, err := session.SendInference(ctx, params)
 	require.NoError(t, err)
-	require.Equal(t, uint64(numInferences+1), result.Nonce)
+	require.Equal(t, uint64(numInferences+1), resp.Nonce)
 }
 
 func TestRecoverSession_EmptySession(t *testing.T) {

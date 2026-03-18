@@ -18,7 +18,7 @@ type HTTPSessionConfig struct {
 	EscrowID       string
 	Bridge         bridge.MainnetBridge
 	StoragePath    string              // optional: path to SQLite DB for session persistence
-	StreamCallback func(line string)   // optional: receives raw SSE data lines during inference
+	StreamCallback func(nonce uint64, line string) // optional: receives raw SSE data lines during inference
 }
 
 // NewHTTPSession creates a user Session wired with HTTP clients to real dapi hosts.

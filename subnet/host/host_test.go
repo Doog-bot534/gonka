@@ -70,6 +70,16 @@ func handleAndExecute(t *testing.T, h *Host, ctx context.Context, req HostReques
 	return resp, nil
 }
 
+// findMempoolTx returns the first mempool tx matching the given type.
+func findMempoolFinish(txs []*types.SubnetTx) *types.SubnetTx {
+	for _, tx := range txs {
+		if tx.GetFinishInference() != nil {
+			return tx
+		}
+	}
+	return nil
+}
+
 // --- Tests ---
 
 func TestHost_AppliesDiffs(t *testing.T) {
@@ -173,9 +183,9 @@ func TestHost_ProducesMsgFinish(t *testing.T) {
 		Diffs: []types.Diff{diff}, Nonce: 1, Payload: defaultPayload(),
 	})
 	require.NoError(t, err)
-	require.Len(t, resp.Mempool, 1)
+	require.Len(t, resp.Mempool, 2, "should have confirm_start + finish")
 
-	fin := resp.Mempool[0].GetFinishInference()
+	fin := findMempoolFinish(resp.Mempool).GetFinishInference()
 	require.NotNil(t, fin)
 	require.Equal(t, uint64(1), fin.InferenceId)
 	require.Equal(t, uint32(1), fin.ExecutorSlot)
@@ -211,7 +221,7 @@ func TestHost_WithholdsOnStaleTx(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, resp.StateSig, "should withhold at nonce 4 (stale)")
 	require.Equal(t, uint64(4), resp.Nonce)
-	require.Equal(t, 1, h.mempool.Len(), "mempool should still have the entry")
+	require.Equal(t, 2, h.mempool.Len(), "mempool should have confirm_start + finish")
 }
 
 func TestHost_SignsAfterIncluded(t *testing.T) {
@@ -226,21 +236,21 @@ func TestHost_SignsAfterIncluded(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Get the finish tx from mempool to include in a later diff.
-	finishTx := resp.Mempool[0]
+	// Get the finish and confirm txs from mempool to include in later diffs.
+	finishTx := findMempoolFinish(resp.Mempool)
+	require.NotNil(t, finishTx, "mempool should contain MsgFinishInference")
+
+	// Find confirm_start from mempool (put there by signReceipt).
+	var confirmTx *types.SubnetTx
+	for _, tx := range resp.Mempool {
+		if tx.GetConfirmStart() != nil {
+			confirmTx = tx
+			break
+		}
+	}
+	require.NotNil(t, confirmTx, "mempool should contain MsgConfirmStart")
 
 	// Nonce 2: confirm start (needed for state machine to accept finish).
-	// Use resp.ConfirmedAt from the executor receipt to match the signature.
-	receiptContent := &types.ExecutorReceiptContent{
-		InferenceId: 1, PromptHash: testutil.TestPromptHash[:], Model: "llama",
-		InputLength: 100, MaxTokens: 50, StartedAt: 1000, EscrowId: "escrow-1",
-		ConfirmedAt: resp.ConfirmedAt,
-	}
-	receiptData, _ := proto.Marshal(receiptContent)
-	receiptSig, _ := hosts[1].Sign(receiptData)
-	confirmTx := &types.SubnetTx{Tx: &types.SubnetTx_ConfirmStart{ConfirmStart: &types.MsgConfirmStart{
-		InferenceId: 1, ExecutorSig: receiptSig, ConfirmedAt: resp.ConfirmedAt,
-	}}}
 	diff2 := testutil.SignDiff(t, user, "escrow-1", 2, []*types.SubnetTx{confirmTx})
 
 	// Nonce 3: empty (to push past grace).
@@ -322,8 +332,9 @@ func TestHost_MultiSlotExecutor(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp.Receipt, "host should execute for slot 0 (nonce 4)")
-	require.Len(t, resp.Mempool, 1)
-	fin4 := resp.Mempool[0].GetFinishInference()
+	require.Len(t, resp.Mempool, 2, "should have MsgConfirmStart + MsgFinishInference")
+	fin4 := findMempoolFinish(resp.Mempool).GetFinishInference()
+	require.NotNil(t, fin4)
 	require.Equal(t, uint32(0), fin4.ExecutorSlot)
 
 	// nonce 6: executor = group[6%4]=group[2] -> slot 2 -> hosts[2], NOT hosts[0].
@@ -342,7 +353,7 @@ func TestHost_MultiSlotExecutor(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp.Receipt, "host should execute for slot 3 (nonce 7)")
-	require.Len(t, resp.Mempool, 2)
+	require.Len(t, resp.Mempool, 4, "confirm+finish for inf 4 and inf 7")
 	var fin7 *types.MsgFinishInference
 	for _, tx := range resp.Mempool {
 		if f := tx.GetFinishInference(); f != nil && f.InferenceId == 7 {
@@ -681,7 +692,10 @@ func TestHost_ExecuteFailure_ReturnsReceiptNoMempool(t *testing.T) {
 	// RunExecution should fail but not crash.
 	_, execErr := h.RunExecution(context.Background(), resp.ExecutionJob)
 	require.Error(t, execErr, "engine failure should propagate")
-	require.Empty(t, h.MempoolTxs(), "mempool should be empty (no MsgFinishInference)")
+	// Mempool has MsgConfirmStart (from signReceipt) but no MsgFinishInference.
+	mptxs := h.MempoolTxs()
+	require.Len(t, mptxs, 1, "mempool should have only MsgConfirmStart")
+	require.NotNil(t, mptxs[0].GetConfirmStart())
 }
 
 // countingEngine wraps stub engine and counts Execute calls.
@@ -811,7 +825,7 @@ func TestHost_ChallengeReceipt_AlreadyFinished(t *testing.T) {
 	// Run execution to populate mempool with MsgFinishInference.
 	_, err = h.RunExecution(context.Background(), resp.ExecutionJob)
 	require.NoError(t, err)
-	require.Len(t, h.MempoolTxs(), 1, "should have MsgFinishInference in mempool")
+	require.Len(t, h.MempoolTxs(), 2, "should have MsgConfirmStart + MsgFinishInference in mempool")
 
 	// ChallengeReceipt returns receipt (proves executor is alive) but skips execution.
 	receipt, _, err := h.ChallengeReceipt(context.Background(), 1, defaultPayload(), []types.Diff{diff})
@@ -978,6 +992,68 @@ func TestHost_ValidationTriggersOnFinishedInference(t *testing.T) {
 		}
 	}
 	require.True(t, foundValidation, "MsgValidation should be in response mempool")
+}
+
+func TestHost_ResponseCache_Lifecycle(t *testing.T) {
+	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
+	user := testutil.MustGenerateKey(t)
+	h := newTestHost(t, 1, hosts, user, 100000, 100)
+
+	// Execute inference 1 via HandleRequest + RunExecution.
+	diff := testutil.SignDiff(t, user, "escrow-1", 1, []*types.SubnetTx{testutil.StartTx(1)})
+	resp, err := h.HandleRequest(context.Background(), HostRequest{
+		Diffs: []types.Diff{diff}, Nonce: 1, Payload: defaultPayload(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.ExecutionJob)
+	require.Nil(t, resp.CachedResponseBody, "first request should not have cached body")
+
+	result, err := h.RunExecution(context.Background(), resp.ExecutionJob)
+	require.NoError(t, err)
+	require.NotEmpty(t, result.ResponseBody)
+
+	// Verify cache populated.
+	h.mu.Lock()
+	cached, ok := h.completedResponses[1]
+	h.mu.Unlock()
+	require.True(t, ok, "response should be cached after execution")
+	require.Equal(t, result.ResponseBody, cached)
+
+	// Reconnect: same request again should return cached body, no execution job.
+	resp2, err := h.HandleRequest(context.Background(), HostRequest{
+		Diffs: []types.Diff{diff}, Nonce: 1, Payload: defaultPayload(),
+	})
+	require.NoError(t, err)
+	require.Nil(t, resp2.ExecutionJob, "reconnect should not trigger new execution")
+	require.NotNil(t, resp2.CachedResponseBody, "reconnect should return cached body")
+	require.Equal(t, result.ResponseBody, resp2.CachedResponseBody)
+
+	// Evict: apply diff with MsgFinishInference.
+	finishTx := findMempoolFinish(h.MempoolTxs())
+	require.NotNil(t, finishTx)
+	confirmTx := findMempoolConfirm(h.MempoolTxs())
+	require.NotNil(t, confirmTx)
+
+	diff2 := testutil.SignDiff(t, user, "escrow-1", 2, []*types.SubnetTx{confirmTx})
+	diff3 := testutil.SignDiff(t, user, "escrow-1", 3, []*types.SubnetTx{finishTx})
+	_, err = h.HandleRequest(context.Background(), HostRequest{
+		Diffs: []types.Diff{diff2, diff3},
+	})
+	require.NoError(t, err)
+
+	h.mu.Lock()
+	_, stillCached := h.completedResponses[1]
+	h.mu.Unlock()
+	require.False(t, stillCached, "cache should be evicted after MsgFinishInference in diff")
+}
+
+func findMempoolConfirm(txs []*types.SubnetTx) *types.SubnetTx {
+	for _, tx := range txs {
+		if tx.GetConfirmStart() != nil {
+			return tx
+		}
+	}
+	return nil
 }
 
 func TestAccumulateGossipSig_WarmKey(t *testing.T) {

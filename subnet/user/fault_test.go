@@ -219,7 +219,7 @@ func runFault(t *testing.T, failPct int) {
 	}
 	for _, infID := range pendingDeadIDs {
 		votes, err := session.CollectTimeoutVotes(ctx, infID,
-			types.TimeoutReason_TIMEOUT_REASON_REFUSED, payload, verifiers)
+			types.TimeoutReason_TIMEOUT_REASON_REFUSED, payload, verifiers, nil)
 		require.NoError(t, err, "collect timeout votes for inference %d", infID)
 		session.addPendingTx(&types.SubnetTx{Tx: &types.SubnetTx_TimeoutInference{
 			TimeoutInference: &types.MsgTimeoutInference{
