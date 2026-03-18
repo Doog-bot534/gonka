@@ -162,7 +162,7 @@ func setParameters(ctx context.Context, k keeper.Keeper) error {
 		MinAmount:          50_000_000,      // 0.05 GNK
 		MaxAmount:          100_000_000_000, // 100 GNK
 		MaxEscrowsPerEpoch: 100,
-		GroupSize:          32,
+		GroupSize:          16,
 		TokenPrice:         10,
 		AllowedCreatorAddresses: []string{
 			"gonka10fynmy2npvdvew0vj2288gz8ljfvmjs35lat8n",
