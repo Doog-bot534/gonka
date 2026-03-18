@@ -233,6 +233,11 @@ func (p *Proxy) handleTimeout(ctx context.Context, prepared *user.PreparedInfere
 		return fmt.Errorf("collect timeout votes: %w", err)
 	}
 
+	if !p.session.HasSufficientTimeoutVotes(votes) {
+		log.Printf("inference %d: insufficient timeout votes, skipping timeout tx", nonce)
+		return fmt.Errorf("inference %d timed out but insufficient votes to prove it", nonce)
+	}
+
 	p.session.AddPendingTimeoutTx(nonce, reason, votes)
 	if err := p.session.SendPendingDiff(ctx); err != nil {
 		return fmt.Errorf("send timeout diff: %w", err)

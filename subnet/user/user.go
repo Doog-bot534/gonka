@@ -172,6 +172,21 @@ func (s *Session) filterPendingTxs() {
 			if ok && rec.Status < types.StatusChallenged {
 				continue
 			}
+		case *types.SubnetTx_TimeoutInference:
+			rec, ok := s.sm.GetInference(inner.TimeoutInference.InferenceId)
+			if !ok {
+				continue
+			}
+			switch inner.TimeoutInference.Reason {
+			case types.TimeoutReason_TIMEOUT_REASON_REFUSED:
+				if rec.Status != types.StatusPending {
+					continue
+				}
+			case types.TimeoutReason_TIMEOUT_REASON_EXECUTION:
+				if rec.Status != types.StatusStarted {
+					continue
+				}
+			}
 		case *types.SubnetTx_RevealSeed:
 			if revealed[s.sm.SlotAddress(inner.RevealSeed.SlotId)] {
 				key := subnetTxKey(tx)
@@ -450,7 +465,7 @@ func (s *Session) Finalize(ctx context.Context) error {
 		nonce := s.nonce + 1
 		hostIdx := int(nonce % uint64(n))
 
-		s.filterRevealedSeeds()
+		s.filterPendingTxs()
 		txs := make([]*types.SubnetTx, len(s.pendingTxs))
 		copy(txs, s.pendingTxs)
 		if i == 0 {
@@ -494,7 +509,7 @@ func (s *Session) Finalize(ctx context.Context) error {
 		nonce := s.nonce + 1
 		hostIdx := int(nonce % uint64(n))
 
-		s.filterRevealedSeeds()
+		s.filterPendingTxs()
 		txs := make([]*types.SubnetTx, len(s.pendingTxs))
 		copy(txs, s.pendingTxs)
 
@@ -825,4 +840,20 @@ func (s *Session) CollectTimeoutVotes(
 	}
 
 	return votes, nil
+}
+
+// HasSufficientTimeoutVotes returns true if the accept votes exceed the vote threshold.
+func (s *Session) HasSufficientTimeoutVotes(votes []*types.TimeoutVote) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	threshold := s.sm.VoteThreshold()
+	var accWeight uint32
+	for _, v := range votes {
+		if v.Accept {
+			addr := s.sm.SlotAddress(v.VoterSlot)
+			accWeight += s.sm.AddressSlotCount(addr)
+		}
+	}
+	return accWeight > threshold
 }
