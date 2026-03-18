@@ -299,7 +299,7 @@ func TestHTTP_TimeoutRefused(t *testing.T) {
 		InputLength: 100,
 		MaxTokens:   50,
 		StartedAt:   1000,
-	}, verifiers)
+	}, verifiers, allDiffs)
 	require.NoError(t, err)
 	require.True(t, len(votes) > int(env.config.VoteThreshold), "need >%d votes, got %d", env.config.VoteThreshold, len(votes))
 
@@ -368,7 +368,7 @@ func TestHTTP_TimeoutExecution(t *testing.T) {
 		verifiers[i] = env.clients[i]
 	}
 
-	votes, err := env.session.CollectTimeoutVotes(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_EXECUTION, nil, verifiers) // nil payload for execution timeout
+	votes, err := env.session.CollectTimeoutVotes(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_EXECUTION, nil, verifiers, allDiffs) // nil payload for execution timeout
 	require.NoError(t, err)
 	require.True(t, len(votes) > int(env.config.VoteThreshold),
 		"need >%d votes, got %d", env.config.VoteThreshold, len(votes))
@@ -397,7 +397,7 @@ func TestHTTP_TimeoutRejected(t *testing.T) {
 	require.NoError(t, err)
 
 	// Try timeout verification -- should fail because inference is finished.
-	accept, _, _, err := env.clients[2].VerifyTimeout(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_REFUSED, nil)
+	accept, _, _, err := env.clients[2].VerifyTimeout(ctx, 1, types.TimeoutReason_TIMEOUT_REASON_REFUSED, nil, nil)
 	require.Error(t, err)
 	require.False(t, accept)
 }
@@ -439,7 +439,7 @@ func TestHTTP_ChallengeReceipt_RejectsTimeout(t *testing.T) {
 		InputLength: 100,
 		MaxTokens:   50,
 		StartedAt:   1000,
-	}, verifiers)
+	}, verifiers, allDiffs)
 	require.NoError(t, err)
 	require.Equal(t, 0, len(votes), "all hosts should reject timeout because executor is alive and produced receipt")
 }
@@ -597,13 +597,14 @@ func TestHTTP_GossipRecovery(t *testing.T) {
 	g := env.gossips[2]
 	g.RecoveryDelay = 0 // trigger immediately for test
 
-	// Register that host 2 has seen nonce 3 but doesn't have diffs.
-	// (Gossip from the server fires async, so host 2 may already know about nonces.)
+	// Register that host 2 has seen nonce 3 but doesn't have the diffs backed.
+	// Use the real PostStateRoot to avoid racing with async gossip that may
+	// have already propagated the real hash for (nonce, slot).
 	allDiffs := env.session.Diffs()
-	lastNonce := allDiffs[len(allDiffs)-1].Nonce
+	lastDiff := allDiffs[len(allDiffs)-1]
+	lastNonce := lastDiff.Nonce
 
-	// Manually register a seen nonce higher than what host 2 has backed.
-	err := g.OnNonceReceived(lastNonce, []byte("hash-placeholder"), []byte("sig-placeholder"), 0)
+	err := g.OnNonceReceived(lastNonce, lastDiff.PostStateRoot, []byte("sig-placeholder"), 0)
 	require.NoError(t, err)
 
 	// Wire recovery: fetch from host 0, apply to host 2.

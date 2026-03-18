@@ -118,15 +118,14 @@ func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-const retryInterval = 5 * time.Second
-
 // timeoutBuffer is added to session config deadlines so verifiers have
 // passed their own deadline before the proxy fires the timeout.
-const timeoutBuffer = 5 * time.Second
+// Var (not const) so tests can set it to 0 for fast execution.
+var timeoutBuffer = 5 * time.Second
 
-// runInference prepares once, then retries SendOnly in a loop until the
-// inference completes (MsgFinishInference in mempool) or a deadline expires.
-// On timeout, collects votes and submits MsgTimeoutInference.
+// runInference sends the inference to the host with at most two attempts.
+// On first failure, waits for the appropriate deadline then retries once.
+// If both attempts fail, collects timeout votes and submits MsgTimeoutInference.
 func (p *Proxy) runInference(ctx context.Context, params user.InferenceParams, w io.Writer) error {
 	prepared, err := p.session.PrepareInference(params)
 	if err != nil {
@@ -140,59 +139,82 @@ func (p *Proxy) runInference(ctx context.Context, params user.InferenceParams, w
 	}
 
 	cfg := p.sm.SnapshotState().Config
-	refusalDeadline := time.Now().Add(time.Duration(cfg.RefusalTimeout)*time.Second + timeoutBuffer)
-	var executionDeadline time.Time
-	streamBroke := false
+	now := time.Now()
 
-	for {
-		if streamBroke && w != nil {
-			writeStreamReset(w)
-		}
+	// Attempt 1.
+	finished, confirmedAt, err := p.sendAndProcess(ctx, prepared, nonce)
+	if err != nil {
+		return err
+	}
+	if finished {
+		return nil
+	}
 
-		resp, sendErr := p.session.SendOnly(ctx, prepared)
-		if sendErr != nil && resp == nil {
-			// Total failure (no partial result).
-			if time.Now().After(refusalDeadline) {
-				return p.handleTimeout(ctx, prepared, nonce, types.TimeoutReason_TIMEOUT_REASON_REFUSED, params)
-			}
-			log.Printf("send failed (will retry): %v", sendErr)
-			streamBroke = true
-			if !sleep(ctx, retryInterval) {
-				return ctx.Err()
-			}
-			continue
-		}
-
-		// Process whatever we got (full or partial result from broken stream).
-		if err := p.session.ProcessResponse(prepared.HostIdx(), resp, nonce); err != nil {
-			return fmt.Errorf("process response: %w", err)
-		}
-
-		// If the stream broke but we extracted useful data, still use it
-		// for deadline tracking below, then retry.
-		streamBroke = sendErr != nil
-
-		// Set execution deadline once we have confirmation.
-		if resp.ConfirmedAt > 0 && executionDeadline.IsZero() {
-			executionDeadline = time.Unix(resp.ConfirmedAt, 0).Add(
-				time.Duration(cfg.ExecutionTimeout)*time.Second + timeoutBuffer)
-		}
-
-		// Check if inference finished (only possible on a complete response).
-		if !streamBroke && hasMsgFinish(resp.Mempool, nonce) {
-			return nil
-		}
-
-		// Check execution deadline.
-		if !executionDeadline.IsZero() && time.Now().After(executionDeadline) {
-			return p.handleTimeout(ctx, prepared, nonce, types.TimeoutReason_TIMEOUT_REASON_EXECUTION, params)
-		}
-
-		// Retry after broken stream or poll for in-flight execution.
-		if !sleep(ctx, retryInterval) {
+	// Wait for the appropriate deadline.
+	var reason types.TimeoutReason
+	if confirmedAt > 0 {
+		deadline := time.Unix(confirmedAt, 0).Add(
+			time.Duration(cfg.ExecutionTimeout)*time.Second + timeoutBuffer)
+		if !sleepUntil(ctx, deadline) {
 			return ctx.Err()
 		}
+		reason = types.TimeoutReason_TIMEOUT_REASON_EXECUTION
+	} else {
+		deadline := now.Add(time.Duration(cfg.RefusalTimeout)*time.Second + timeoutBuffer)
+		if !sleepUntil(ctx, deadline) {
+			return ctx.Err()
+		}
+		reason = types.TimeoutReason_TIMEOUT_REASON_REFUSED
 	}
+
+	// Attempt 2 (final).
+	if w != nil {
+		writeStreamReset(w)
+	}
+	finished, confirmedAt, err = p.sendAndProcess(ctx, prepared, nonce)
+	if err != nil {
+		return err
+	}
+	if finished {
+		return nil
+	}
+
+	// Update reason if attempt 2 revealed a receipt.
+	if confirmedAt > 0 {
+		reason = types.TimeoutReason_TIMEOUT_REASON_EXECUTION
+	}
+
+	return p.handleTimeout(ctx, prepared, nonce, reason, params)
+}
+
+// sendAndProcess sends the prepared inference and processes the response.
+// Returns finished=true when MsgFinishInference is in the host's mempool.
+// confirmedAt is the executor's receipt timestamp (0 if no receipt received).
+func (p *Proxy) sendAndProcess(ctx context.Context, prepared *user.PreparedInference, nonce uint64) (finished bool, confirmedAt int64, err error) {
+	resp, sendErr := p.session.SendOnly(ctx, prepared)
+	if sendErr != nil && resp == nil {
+		return false, 0, nil
+	}
+
+	if err := p.session.ProcessResponse(prepared.HostIdx(), resp, nonce); err != nil {
+		return false, 0, fmt.Errorf("process response: %w", err)
+	}
+
+	if sendErr == nil && hasMsgFinish(resp.Mempool, nonce) {
+		return true, resp.ConfirmedAt, nil
+	}
+
+	return false, resp.ConfirmedAt, nil
+}
+
+// sleepUntil blocks until deadline or context cancellation.
+// Returns true if the deadline was reached, false if cancelled.
+func sleepUntil(ctx context.Context, deadline time.Time) bool {
+	d := time.Until(deadline)
+	if d <= 0 {
+		return true
+	}
+	return sleep(ctx, d)
 }
 
 // hasMsgFinish returns true if mempool contains MsgFinishInference for the given nonce.
@@ -217,7 +239,9 @@ func sleep(ctx context.Context, d time.Duration) bool {
 	}
 }
 
-// handleTimeout collects timeout votes from verifier hosts and submits MsgTimeoutInference.
+// handleTimeout collects timeout votes from verifier hosts and submits
+// MsgTimeoutInference. Single attempt -- the timeoutBuffer ensures verifiers
+// have already passed their own deadline before the proxy fires.
 func (p *Proxy) handleTimeout(ctx context.Context, prepared *user.PreparedInference, nonce uint64, reason types.TimeoutReason, params user.InferenceParams) error {
 	payload := &host.InferencePayload{
 		Prompt:      params.Prompt,
@@ -228,22 +252,23 @@ func (p *Proxy) handleTimeout(ctx context.Context, prepared *user.PreparedInfere
 	}
 
 	verifiers := p.session.TimeoutVerifiers()
-	votes, err := p.session.CollectTimeoutVotes(ctx, nonce, reason, payload, verifiers)
+	storedDiffs := p.session.Diffs()
+
+	votes, err := p.session.CollectTimeoutVotes(ctx, nonce, reason, payload, verifiers, storedDiffs)
 	if err != nil {
 		return fmt.Errorf("collect timeout votes: %w", err)
 	}
 
-	if !p.session.HasSufficientTimeoutVotes(votes) {
-		log.Printf("inference %d: insufficient timeout votes, skipping timeout tx", nonce)
-		return fmt.Errorf("inference %d timed out but insufficient votes to prove it", nonce)
+	if p.session.HasSufficientTimeoutVotes(votes) {
+		p.session.AddPendingTimeoutTx(nonce, reason, votes)
+		if err := p.session.SendPendingDiff(ctx); err != nil {
+			return fmt.Errorf("send timeout diff: %w", err)
+		}
+		return fmt.Errorf("inference %d timed out: %s", nonce, reason)
 	}
 
-	p.session.AddPendingTimeoutTx(nonce, reason, votes)
-	if err := p.session.SendPendingDiff(ctx); err != nil {
-		return fmt.Errorf("send timeout diff: %w", err)
-	}
-
-	return fmt.Errorf("inference %d timed out: %s", nonce, reason)
+	log.Printf("inference %d: insufficient timeout votes, skipping timeout tx", nonce)
+	return fmt.Errorf("inference %d timed out but insufficient votes to prove it", nonce)
 }
 
 // deferredWriter delays WriteHeader(200) until the first Write call.

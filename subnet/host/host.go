@@ -359,6 +359,16 @@ func (h *Host) applyAndPersist(diff types.Diff) error {
 	return nil
 }
 
+// ApplyCatchUpDiffs applies diffs the host hasn't seen yet.
+// Already-applied diffs (nonce <= current) are silently skipped.
+func (h *Host) ApplyCatchUpDiffs(diffs []types.Diff) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, diff := range diffs {
+		_ = h.applyAndPersist(diff)
+	}
+}
+
 // signIfAccepted computes state root, checks acceptance, signs if allowed,
 // stores sig and checks finalization. Caller must hold h.mu.
 func (h *Host) signIfAccepted(applied []*types.SubnetTx) (stateSig, root []byte, nonce uint64, err error) {

@@ -59,13 +59,13 @@ type Session struct {
 	verifier      signing.Verifier
 	escrowID      string
 	group         []types.SlotAssignment
-	addrToSlots   map[string][]uint32          // validator address -> slot IDs
+	addrToSlots   map[string][]uint32 // validator address -> slot IDs
 	clients       []HostClient
 	nonce         uint64
 	diffs         []types.Diff                 // append-only log
 	hostSyncNonce map[int]uint64               // hostIdx -> last nonce sent
 	pendingTxs    []*types.SubnetTx            // from host mempools, for next diff
-	pendingTxKeys map[string]struct{}           // dedup set keyed by tx_type:id
+	pendingTxKeys map[string]struct{}          // dedup set keyed by tx_type:id
 	signatures    map[uint64]map[uint32][]byte // nonce -> slotID -> sig
 	store         storage.Storage              // optional persistent storage
 }
@@ -179,11 +179,11 @@ func (s *Session) filterPendingTxs() {
 			}
 			switch inner.TimeoutInference.Reason {
 			case types.TimeoutReason_TIMEOUT_REASON_REFUSED:
-				if rec.Status != types.StatusPending {
+				if rec.Status != types.StatusPending || willBeStarted[inner.TimeoutInference.InferenceId] {
 					continue
 				}
 			case types.TimeoutReason_TIMEOUT_REASON_EXECUTION:
-				if rec.Status != types.StatusStarted {
+				if rec.Status != types.StatusStarted && !willBeStarted[inner.TimeoutInference.InferenceId] {
 					continue
 				}
 			}
@@ -311,10 +311,10 @@ func (s *Session) ProcessResponse(hostIdx int, resp *host.HostResponse, inferenc
 
 // PreparedInference holds the data prepared under lock for an inference send.
 type PreparedInference struct {
-	diff       types.Diff
-	hostIdx    int
-	catchUp    []types.Diff
-	params     InferenceParams
+	diff    types.Diff
+	hostIdx int
+	catchUp []types.Diff
+	params  InferenceParams
 }
 
 // composeDiffLocked builds, applies, persists, and returns a new diff.
@@ -586,7 +586,6 @@ func (s *Session) Finalize(ctx context.Context) error {
 	return nil
 }
 
-
 // signDiff builds and signs a diff with the given nonce, txs, and post_state_root.
 func (s *Session) signDiff(nonce uint64, txs []*types.SubnetTx, postStateRoot []byte) (types.Diff, error) {
 	content := state.BuildDiffContent(s.escrowID, nonce, txs, postStateRoot)
@@ -756,19 +755,21 @@ func (s *Session) Close() error {
 
 // TimeoutVerifier contacts a host for timeout verification votes.
 type TimeoutVerifier interface {
-	VerifyTimeout(ctx context.Context, inferenceID uint64, reason types.TimeoutReason, payload *host.InferencePayload) (accept bool, sig []byte, voterSlot uint32, err error)
+	VerifyTimeout(ctx context.Context, inferenceID uint64, reason types.TimeoutReason, payload *host.InferencePayload, diffs []types.Diff) (accept bool, sig []byte, voterSlot uint32, err error)
 }
 
 // CollectTimeoutVotes contacts non-executor hosts to collect signed votes.
 // Returns votes for inclusion in MsgTimeoutInference.
 // Deduplicates verifiers by validator address to avoid duplicate votes
 // when the same validator occupies multiple slots.
+// Diffs are forwarded to verifiers so they can catch up to the inference nonce.
 func (s *Session) CollectTimeoutVotes(
 	ctx context.Context,
 	inferenceID uint64,
 	reason types.TimeoutReason,
 	payload *host.InferencePayload,
 	verifiers map[int]TimeoutVerifier, // hostIdx -> verifier
+	diffs []types.Diff,
 ) ([]*types.TimeoutVote, error) {
 	// Determine executor slot and resolve its validator address.
 	executorIdx := int(inferenceID % uint64(len(s.group)))
@@ -802,7 +803,7 @@ func (s *Session) CollectTimeoutVotes(
 	results := make(chan voteResult, len(deduped))
 	for _, av := range deduped {
 		go func(verifier TimeoutVerifier) {
-			accept, sig, voterSlot, err := verifier.VerifyTimeout(ctx, inferenceID, reason, payload)
+			accept, sig, voterSlot, err := verifier.VerifyTimeout(ctx, inferenceID, reason, payload, diffs)
 			if err != nil {
 				results <- voteResult{err: err}
 				return
@@ -824,20 +825,31 @@ func (s *Session) CollectTimeoutVotes(
 
 	voteThreshold := s.sm.VoteThreshold()
 	var accWeight uint32
+	var errors, rejects int
 	for i := 0; i < expected; i++ {
 		res := <-results
 		if res.err != nil {
+			errors++
+			logging.Debug("timeout vote error",
+				"subsystem", "session", "inference_id", inferenceID, "error", res.err)
 			continue // skip failed hosts
 		}
 		if res.vote != nil {
 			votes = append(votes, res.vote)
 			voterAddr := s.sm.SlotAddress(res.vote.VoterSlot)
 			accWeight += s.sm.AddressSlotCount(voterAddr)
+		} else {
+			rejects++
 		}
 		if accWeight > voteThreshold {
 			break
 		}
 	}
+	logging.Debug("timeout vote collection",
+		"subsystem", "session", "inference_id", inferenceID,
+		"accept", len(votes), "weight", accWeight,
+		"reject", rejects, "errors", errors,
+		"threshold", voteThreshold, "verifiers", expected)
 
 	return votes, nil
 }

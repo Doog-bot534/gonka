@@ -278,11 +278,23 @@ func (c *HTTPClient) ChallengeReceipt(ctx context.Context, inferenceID uint64, p
 }
 
 // VerifyTimeout implements user.TimeoutVerifier over HTTP.
-func (c *HTTPClient) VerifyTimeout(ctx context.Context, inferenceID uint64, reason types.TimeoutReason, payload *host.InferencePayload) (bool, []byte, uint32, error) {
+func (c *HTTPClient) VerifyTimeout(ctx context.Context, inferenceID uint64, reason types.TimeoutReason, payload *host.InferencePayload, diffs []types.Diff) (bool, []byte, uint32, error) {
+	var djList []DiffJSON
+	if len(diffs) > 0 {
+		djList = make([]DiffJSON, len(diffs))
+		for i, d := range diffs {
+			dj, err := DiffToJSON(d)
+			if err != nil {
+				return false, nil, 0, fmt.Errorf("encode diff %d: %w", i, err)
+			}
+			djList[i] = dj
+		}
+	}
 	resp, err := c.SendVerifyTimeout(ctx, VerifyTimeoutRequest{
 		InferenceID: inferenceID,
 		Reason:      TimeoutReasonToString(reason),
 		Payload:     PayloadToJSON(payload),
+		Diffs:       djList,
 	})
 	if err != nil {
 		return false, nil, 0, err

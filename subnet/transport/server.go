@@ -381,6 +381,19 @@ func (s *Server) HandleVerifyTimeout(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
+	// Apply catch-up diffs so the verifier knows about the inference.
+	if len(req.Diffs) > 0 {
+		diffs := make([]types.Diff, 0, len(req.Diffs))
+		for i, dj := range req.Diffs {
+			d, dErr := DiffFromJSON(dj)
+			if dErr != nil {
+				return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("decode diff %d: %v", i, dErr))
+			}
+			diffs = append(diffs, d)
+		}
+		s.host.ApplyCatchUpDiffs(diffs)
+	}
+
 	st := s.host.SnapshotState()
 	localMempool := s.host.MempoolTxs()
 

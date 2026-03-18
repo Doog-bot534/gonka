@@ -6,6 +6,7 @@ import (
 	"maps"
 	"math"
 	"slices"
+	"sync"
 
 	"google.golang.org/protobuf/proto"
 
@@ -71,7 +72,11 @@ func copyInferences(src map[uint64]*types.InferenceRecord) map[uint64]*types.Inf
 type WarmKeyResolver func(warmAddr, coldAddr string) (bool, error)
 
 // StateMachine applies diffs and tracks session state.
+// The embedded RWMutex protects mutable fields in state (Inferences,
+// HostStats, RevealedSeeds, WarmKeys, Balance, Phase, nonces).
+// Immutable lookup maps (slotToAddress, etc.) are safe to read without locking.
 type StateMachine struct {
+	mu          sync.RWMutex
 	state       *types.EscrowState
 	verifier    signing.Verifier
 	userAddress string
@@ -168,12 +173,16 @@ func (sm *StateMachine) ApplyDiff(diff types.Diff) ([]byte, error) {
 	}
 
 	// 2. Apply txs and verify post_state_root atomically.
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
 	return sm.applyCore(diff.Nonce, diff.Txs, diff.PostStateRoot)
 }
 
 // ApplyLocal applies txs without signature verification. Used by the user
 // to compute the post_state_root before signing the diff.
 func (sm *StateMachine) ApplyLocal(nonce uint64, txs []*types.SubnetTx) ([]byte, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
 	return sm.applyCore(nonce, txs, nil)
 }
 
@@ -250,16 +259,22 @@ func (sm *StateMachine) applyCore(nonce uint64, txs []*types.SubnetTx, postState
 
 // LatestNonce returns the current nonce without deep-copying state.
 func (sm *StateMachine) LatestNonce() uint64 {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	return sm.state.LatestNonce
 }
 
 // Phase returns the current session phase.
 func (sm *StateMachine) Phase() types.SessionPhase {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	return sm.state.Phase
 }
 
 // SnapshotState returns a deep copy of the current escrow state.
 func (sm *StateMachine) SnapshotState() types.EscrowState {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	s := *sm.state
 
 	// Deep copy Group.
@@ -339,11 +354,15 @@ func (sm *StateMachine) restoreMutable(snap mutableSnapshot) {
 
 // ComputeStateRoot returns the current state root without modifying state.
 func (sm *StateMachine) ComputeStateRoot() ([]byte, error) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	return ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences, sm.state.Phase, sm.state.WarmKeys)
 }
 
 // WarmKeys returns the current warm key bindings (shallow copy).
 func (sm *StateMachine) WarmKeys() map[uint32]string {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	if len(sm.state.WarmKeys) == 0 {
 		return nil
 	}
@@ -354,6 +373,8 @@ func (sm *StateMachine) WarmKeys() map[uint32]string {
 
 // IsWarmKeyAddress returns true if addr is a known warm key for any slot.
 func (sm *StateMachine) IsWarmKeyAddress(addr string) bool {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	for _, warmAddr := range sm.state.WarmKeys {
 		if warmAddr == addr {
 			return true
@@ -957,6 +978,8 @@ func (sm *StateMachine) ResolveWarmKey(slotID uint32, recovered, expected string
 // Used during replay to restore bindings that were discovered during the original run.
 // Existing bindings are not overwritten.
 func (sm *StateMachine) InjectWarmKeys(delta map[uint32]string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
 	for slotID, addr := range delta {
 		if _, exists := sm.state.WarmKeys[slotID]; !exists {
 			sm.state.WarmKeys[slotID] = addr
@@ -989,12 +1012,16 @@ func (sm *StateMachine) AddressSlotCount(addr string) uint32 {
 
 // IsSlotRevealed returns true if the given slot has already revealed its seed.
 func (sm *StateMachine) IsSlotRevealed(slotID uint32) bool {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	_, ok := sm.state.RevealedSeeds[slotID]
 	return ok
 }
 
 // GetInference returns a copy of the inference record for the given ID.
 func (sm *StateMachine) GetInference(id uint64) (types.InferenceRecord, bool) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	rec, ok := sm.state.Inferences[id]
 	if !ok {
 		return types.InferenceRecord{}, false
@@ -1004,6 +1031,8 @@ func (sm *StateMachine) GetInference(id uint64) (types.InferenceRecord, bool) {
 
 // RevealedSlots returns a shallow copy of the revealed seeds map.
 func (sm *StateMachine) RevealedSlots() map[uint32]int64 {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
 	if len(sm.state.RevealedSeeds) == 0 {
 		return nil
 	}
