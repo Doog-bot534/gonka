@@ -134,7 +134,12 @@ func (c *HTTPClient) Send(ctx context.Context, req host.HostRequest) (*host.Host
 
 	contentType := resp.Header.Get("Content-Type")
 	if strings.HasPrefix(contentType, "text/event-stream") {
-		return c.parseSSEResponse(resp.Body, req.Nonce)
+		result, err := c.parseSSEResponse(resp.Body, req.Nonce)
+		if err != nil && result != nil {
+			// Partial result: return both so caller can extract receipt from broken stream.
+			return result, err
+		}
+		return result, err
 	}
 
 	// Backward compat: JSON response.
@@ -208,7 +213,7 @@ func (c *HTTPClient) parseSSEResponse(r io.Reader, nonce uint64) (*host.HostResp
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("read SSE stream: %w", err)
+		return &result, fmt.Errorf("read SSE stream: %w", err)
 	}
 	return &result, nil
 }

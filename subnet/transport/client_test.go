@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"testing"
 
@@ -129,6 +130,43 @@ func TestHTTPClient_GetMempool(t *testing.T) {
 	txs, err := client.GetMempool(ctx)
 	require.NoError(t, err)
 	require.NotEmpty(t, txs)
+}
+
+func TestParseSSE_PartialResult(t *testing.T) {
+	// Simulate a server that sends subnet_receipt then closes the connection.
+	// parseSSEResponse should return the partial result with receipt alongside the error.
+	client := &HTTPClient{config: DefaultClientConfig()}
+
+	sseData := "data: {\"subnet_receipt\":{\"state_sig\":\"c2ln\",\"state_hash\":\"aGFzaA==\",\"nonce\":1,\"receipt\":\"cmVjZWlwdA==\",\"confirmed_at\":1000}}\n\n"
+	// Use a reader that returns the data then an error (simulating connection drop).
+	r := &truncatedReader{data: []byte(sseData)}
+
+	result, err := client.parseSSEResponse(r, 1)
+	require.Error(t, err, "should return error from broken stream")
+	require.NotNil(t, result, "should return partial result")
+	require.Equal(t, uint64(1), result.Nonce)
+	require.NotNil(t, result.Receipt, "receipt should be extracted from partial stream")
+	require.Equal(t, int64(1000), result.ConfirmedAt)
+}
+
+// truncatedReader returns data followed by an io.ErrUnexpectedEOF to simulate a broken connection.
+type truncatedReader struct {
+	data []byte
+	pos  int
+	done bool
+}
+
+func (r *truncatedReader) Read(p []byte) (int, error) {
+	if r.done {
+		return 0, fmt.Errorf("connection reset")
+	}
+	if r.pos >= len(r.data) {
+		r.done = true
+		return 0, fmt.Errorf("connection reset")
+	}
+	n := copy(p, r.data[r.pos:])
+	r.pos += n
+	return n, nil
 }
 
 func TestHTTPClient_Send_SSE(t *testing.T) {

@@ -994,6 +994,68 @@ func TestHost_ValidationTriggersOnFinishedInference(t *testing.T) {
 	require.True(t, foundValidation, "MsgValidation should be in response mempool")
 }
 
+func TestHost_ResponseCache_Lifecycle(t *testing.T) {
+	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
+	user := testutil.MustGenerateKey(t)
+	h := newTestHost(t, 1, hosts, user, 100000, 100)
+
+	// Execute inference 1 via HandleRequest + RunExecution.
+	diff := testutil.SignDiff(t, user, "escrow-1", 1, []*types.SubnetTx{testutil.StartTx(1)})
+	resp, err := h.HandleRequest(context.Background(), HostRequest{
+		Diffs: []types.Diff{diff}, Nonce: 1, Payload: defaultPayload(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.ExecutionJob)
+	require.Nil(t, resp.CachedResponseBody, "first request should not have cached body")
+
+	result, err := h.RunExecution(context.Background(), resp.ExecutionJob)
+	require.NoError(t, err)
+	require.NotEmpty(t, result.ResponseBody)
+
+	// Verify cache populated.
+	h.mu.Lock()
+	cached, ok := h.completedResponses[1]
+	h.mu.Unlock()
+	require.True(t, ok, "response should be cached after execution")
+	require.Equal(t, result.ResponseBody, cached)
+
+	// Reconnect: same request again should return cached body, no execution job.
+	resp2, err := h.HandleRequest(context.Background(), HostRequest{
+		Diffs: []types.Diff{diff}, Nonce: 1, Payload: defaultPayload(),
+	})
+	require.NoError(t, err)
+	require.Nil(t, resp2.ExecutionJob, "reconnect should not trigger new execution")
+	require.NotNil(t, resp2.CachedResponseBody, "reconnect should return cached body")
+	require.Equal(t, result.ResponseBody, resp2.CachedResponseBody)
+
+	// Evict: apply diff with MsgFinishInference.
+	finishTx := findMempoolFinish(h.MempoolTxs())
+	require.NotNil(t, finishTx)
+	confirmTx := findMempoolConfirm(h.MempoolTxs())
+	require.NotNil(t, confirmTx)
+
+	diff2 := testutil.SignDiff(t, user, "escrow-1", 2, []*types.SubnetTx{confirmTx})
+	diff3 := testutil.SignDiff(t, user, "escrow-1", 3, []*types.SubnetTx{finishTx})
+	_, err = h.HandleRequest(context.Background(), HostRequest{
+		Diffs: []types.Diff{diff2, diff3},
+	})
+	require.NoError(t, err)
+
+	h.mu.Lock()
+	_, stillCached := h.completedResponses[1]
+	h.mu.Unlock()
+	require.False(t, stillCached, "cache should be evicted after MsgFinishInference in diff")
+}
+
+func findMempoolConfirm(txs []*types.SubnetTx) *types.SubnetTx {
+	for _, tx := range txs {
+		if tx.GetConfirmStart() != nil {
+			return tx
+		}
+	}
+	return nil
+}
+
 func TestAccumulateGossipSig_WarmKey(t *testing.T) {
 	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
 	warmSigner := testutil.MustGenerateKey(t)

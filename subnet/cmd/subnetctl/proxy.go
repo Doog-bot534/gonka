@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"subnet/host"
 	"subnet/state"
 	"subnet/types"
 	"subnet/user"
@@ -48,6 +49,15 @@ func (r *streamRegistry) callback(nonce uint64, line string) {
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
+	}
+}
+
+// writeStreamReset writes a stream_reset SSE event to signal the client
+// that the connection was lost and the response will be replayed from scratch.
+func writeStreamReset(w io.Writer) {
+	fmt.Fprintf(w, "data: {\"subnet_stream_reset\":true}\n\n")
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
 	}
 }
 
@@ -108,9 +118,15 @@ func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// runInference prepares, sends to the host, and processes the response.
-// Fully parallel: PrepareInference holds the lock briefly, then network I/O
-// and response processing run concurrently with other requests.
+const retryInterval = 5 * time.Second
+
+// timeoutBuffer is added to session config deadlines so verifiers have
+// passed their own deadline before the proxy fires the timeout.
+const timeoutBuffer = 5 * time.Second
+
+// runInference prepares once, then retries SendOnly in a loop until the
+// inference completes (MsgFinishInference in mempool) or a deadline expires.
+// On timeout, collects votes and submits MsgTimeoutInference.
 func (p *Proxy) runInference(ctx context.Context, params user.InferenceParams, w io.Writer) error {
 	prepared, err := p.session.PrepareInference(params)
 	if err != nil {
@@ -123,12 +139,106 @@ func (p *Proxy) runInference(ctx context.Context, params user.InferenceParams, w
 		defer p.registry.unregister(nonce)
 	}
 
-	resp, err := p.session.SendOnly(ctx, prepared)
-	if err != nil {
-		return fmt.Errorf("send to host %d: %w", prepared.HostIdx(), err)
+	cfg := p.sm.SnapshotState().Config
+	refusalDeadline := time.Now().Add(time.Duration(cfg.RefusalTimeout)*time.Second + timeoutBuffer)
+	var executionDeadline time.Time
+	streamBroke := false
+
+	for {
+		if streamBroke && w != nil {
+			writeStreamReset(w)
+		}
+
+		resp, sendErr := p.session.SendOnly(ctx, prepared)
+		if sendErr != nil && resp == nil {
+			// Total failure (no partial result).
+			if time.Now().After(refusalDeadline) {
+				return p.handleTimeout(ctx, prepared, nonce, types.TimeoutReason_TIMEOUT_REASON_REFUSED, params)
+			}
+			log.Printf("send failed (will retry): %v", sendErr)
+			streamBroke = true
+			if !sleep(ctx, retryInterval) {
+				return ctx.Err()
+			}
+			continue
+		}
+
+		// Process whatever we got (full or partial result from broken stream).
+		if err := p.session.ProcessResponse(prepared.HostIdx(), resp, nonce); err != nil {
+			return fmt.Errorf("process response: %w", err)
+		}
+
+		// If the stream broke but we extracted useful data, still use it
+		// for deadline tracking below, then retry.
+		streamBroke = sendErr != nil
+
+		// Set execution deadline once we have confirmation.
+		if resp.ConfirmedAt > 0 && executionDeadline.IsZero() {
+			executionDeadline = time.Unix(resp.ConfirmedAt, 0).Add(
+				time.Duration(cfg.ExecutionTimeout)*time.Second + timeoutBuffer)
+		}
+
+		// Check if inference finished (only possible on a complete response).
+		if !streamBroke && hasMsgFinish(resp.Mempool, nonce) {
+			return nil
+		}
+
+		// Check execution deadline.
+		if !executionDeadline.IsZero() && time.Now().After(executionDeadline) {
+			return p.handleTimeout(ctx, prepared, nonce, types.TimeoutReason_TIMEOUT_REASON_EXECUTION, params)
+		}
+
+		// Retry after broken stream or poll for in-flight execution.
+		if !sleep(ctx, retryInterval) {
+			return ctx.Err()
+		}
+	}
+}
+
+// hasMsgFinish returns true if mempool contains MsgFinishInference for the given nonce.
+func hasMsgFinish(txs []*types.SubnetTx, nonce uint64) bool {
+	for _, tx := range txs {
+		if fi := tx.GetFinishInference(); fi != nil && fi.InferenceId == nonce {
+			return true
+		}
+	}
+	return false
+}
+
+// sleep returns false if context was cancelled during the wait.
+func sleep(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+// handleTimeout collects timeout votes from verifier hosts and submits MsgTimeoutInference.
+func (p *Proxy) handleTimeout(ctx context.Context, prepared *user.PreparedInference, nonce uint64, reason types.TimeoutReason, params user.InferenceParams) error {
+	payload := &host.InferencePayload{
+		Prompt:      params.Prompt,
+		Model:       params.Model,
+		InputLength: params.InputLength,
+		MaxTokens:   params.MaxTokens,
+		StartedAt:   params.StartedAt,
 	}
 
-	return p.session.ProcessResponse(prepared.HostIdx(), resp, nonce)
+	verifiers := p.session.TimeoutVerifiers()
+	votes, err := p.session.CollectTimeoutVotes(ctx, nonce, reason, payload, verifiers)
+	if err != nil {
+		return fmt.Errorf("collect timeout votes: %w", err)
+	}
+
+	p.session.AddPendingTimeoutTx(nonce, reason, votes)
+	if err := p.session.SendPendingDiff(ctx); err != nil {
+		return fmt.Errorf("send timeout diff: %w", err)
+	}
+
+	return fmt.Errorf("inference %d timed out: %s", nonce, reason)
 }
 
 // deferredWriter delays WriteHeader(200) until the first Write call.

@@ -46,6 +46,7 @@ type HostResponse struct {
 	ConfirmedAt int64  // executor wall-clock timestamp, 0 if not executor
 	Mempool     []*types.SubnetTx
 	ExecutionJob *subnet.ExecuteRequest // non-nil if this host is the executor and execution is deferred
+	CachedResponseBody []byte // non-nil when reconnecting to a completed inference
 }
 
 // AcceptanceChecker is an optional hook that lets the host withhold its
@@ -76,10 +77,11 @@ type Host struct {
 	slotToAddr  map[uint32]string   // slotID -> validator address
 	addrToSlots map[string][]uint32 // address -> all slotIDs owned
 
-	sortedSlots []uint32            // deterministic slot order for this host
-	executing   map[uint64]struct{} // inference IDs with in-flight execution
-	validating  map[uint64]struct{} // inference IDs with in-flight validation
-	ownSeed     int64               // deterministic seed derived from signer + escrowID
+	sortedSlots        []uint32            // deterministic slot order for this host
+	executing          map[uint64]struct{} // inference IDs with in-flight execution
+	validating         map[uint64]struct{} // inference IDs with in-flight validation
+	completedResponses map[uint64][]byte   // inference ID -> cached ML response body
+	ownSeed            int64               // deterministic seed derived from signer + escrowID
 }
 
 func NewHost(
@@ -152,10 +154,11 @@ func NewHost(
 		checker:     checker,
 		slotToAddr:  slotToAddr,
 		addrToSlots: addrToSlots,
-		sortedSlots: sortedSlots,
-		executing:   make(map[uint64]struct{}),
-		validating:  make(map[uint64]struct{}),
-		ownSeed:     ownSeed,
+		sortedSlots:        sortedSlots,
+		executing:          make(map[uint64]struct{}),
+		validating:         make(map[uint64]struct{}),
+		completedResponses: make(map[uint64][]byte),
+		ownSeed:            ownSeed,
 	}
 	for _, opt := range opts {
 		opt(h)
@@ -275,7 +278,7 @@ func (h *Host) HandleRequest(ctx context.Context, req HostRequest) (*HostRespons
 	}
 
 	// (b) Sign executor receipt (sync, under mutex).
-	receipt, confirmedAt, job, err := h.signReceipt(req)
+	receipt, confirmedAt, job, cachedBody, err := h.signReceipt(req)
 	if err != nil {
 		h.mu.Unlock()
 		return nil, err
@@ -306,13 +309,14 @@ func (h *Host) HandleRequest(ctx context.Context, req HostRequest) (*HostRespons
 	}
 
 	return &HostResponse{
-		StateSig:     stateSig,
-		StateHash:    root,
-		Nonce:        nonce,
-		Receipt:      receipt,
-		ConfirmedAt:  confirmedAt,
-		Mempool:      h.mempool.Txs(),
-		ExecutionJob: job,
+		StateSig:           stateSig,
+		StateHash:          root,
+		Nonce:              nonce,
+		Receipt:            receipt,
+		ConfirmedAt:        confirmedAt,
+		Mempool:            h.mempool.Txs(),
+		ExecutionJob:       job,
+		CachedResponseBody: cachedBody,
 	}, nil
 }
 
@@ -333,6 +337,16 @@ func (h *Host) applyAndPersist(diff types.Diff) error {
 		return fmt.Errorf("apply diff nonce %d: %w", diff.Nonce, err)
 	}
 	h.mempool.RemoveIncluded(diff.Txs)
+
+	// Evict cached responses for finalized or timed-out inferences.
+	for _, tx := range diff.Txs {
+		if fi := tx.GetFinishInference(); fi != nil {
+			delete(h.completedResponses, fi.InferenceId)
+		}
+		if ti := tx.GetTimeoutInference(); ti != nil {
+			delete(h.completedResponses, ti.InferenceId)
+		}
+	}
 
 	if h.store != nil {
 		warmAfter := h.sm.WarmKeys()
@@ -388,15 +402,16 @@ func (h *Host) findDiff(diffs []types.Diff, nonce uint64) *types.Diff {
 }
 
 // signReceipt verifies the payload and signs the executor receipt (sync, under mutex).
-// Returns the receipt sig, confirmed_at timestamp, and an ExecuteRequest if this host is the executor.
+// Returns the receipt sig, confirmed_at timestamp, an ExecuteRequest if this host is the executor,
+// and cached response body if the inference already completed (reconnect case).
 // Caller must hold h.mu.
-func (h *Host) signReceipt(req HostRequest) ([]byte, int64, *subnet.ExecuteRequest, error) {
+func (h *Host) signReceipt(req HostRequest) ([]byte, int64, *subnet.ExecuteRequest, []byte, error) {
 	if req.Payload == nil {
-		return nil, 0, nil, nil
+		return nil, 0, nil, nil, nil
 	}
 	targetDiff := h.findDiff(req.Diffs, req.Nonce)
 	if targetDiff == nil {
-		return nil, 0, nil, nil
+		return nil, 0, nil, nil, nil
 	}
 
 	for _, tx := range targetDiff.Txs {
@@ -411,7 +426,7 @@ func (h *Host) signReceipt(req HostRequest) ([]byte, int64, *subnet.ExecuteReque
 
 		// Verify payload matches signed diff.
 		if err := VerifyPayload(req.Payload, start.PromptHash, start.Model, start.InputLength, start.MaxTokens, start.StartedAt); err != nil {
-			return nil, 0, nil, err
+			return nil, 0, nil, nil, err
 		}
 
 		// Sign executor receipt with wall-clock confirmed_at.
@@ -428,11 +443,11 @@ func (h *Host) signReceipt(req HostRequest) ([]byte, int64, *subnet.ExecuteReque
 		}
 		receiptData, err := proto.Marshal(receiptContent)
 		if err != nil {
-			return nil, 0, nil, fmt.Errorf("marshal executor receipt: %w", err)
+			return nil, 0, nil, nil, fmt.Errorf("marshal executor receipt: %w", err)
 		}
 		sig, err := h.signer.Sign(receiptData)
 		if err != nil {
-			return nil, 0, nil, fmt.Errorf("sign executor receipt: %w", err)
+			return nil, 0, nil, nil, fmt.Errorf("sign executor receipt: %w", err)
 		}
 
 		// Add MsgConfirmStart to mempool so it survives HTTP failures.
@@ -448,7 +463,12 @@ func (h *Host) signReceipt(req HostRequest) ([]byte, int64, *subnet.ExecuteReque
 
 		// Dedup: return receipt (proves executor alive) but skip execution.
 		if _, dup := h.executing[start.InferenceId]; dup {
-			return sig, confirmedAt, nil, nil
+			return sig, confirmedAt, nil, nil, nil
+		}
+
+		// Already completed: execution finished, response cached.
+		if cached, ok := h.completedResponses[start.InferenceId]; ok {
+			return sig, confirmedAt, nil, cached, nil
 		}
 
 		h.executing[start.InferenceId] = struct{}{}
@@ -462,9 +482,9 @@ func (h *Host) signReceipt(req HostRequest) ([]byte, int64, *subnet.ExecuteReque
 			MaxTokens:   start.MaxTokens,
 			EscrowID:    h.escrowID,
 		}
-		return sig, confirmedAt, job, nil
+		return sig, confirmedAt, job, nil, nil
 	}
-	return nil, 0, nil, nil
+	return nil, 0, nil, nil, nil
 }
 
 // executeAsync runs engine.Execute, builds MsgFinishInference, and adds it to the mempool.
@@ -527,6 +547,13 @@ func (h *Host) RunExecution(ctx context.Context, job *subnet.ExecuteRequest) (*s
 	if err != nil {
 		logging.Error("execute failed", "subsystem", "host", "inference_id", inferenceID, "error", err)
 		return nil, err
+	}
+
+	// Cache response body for reconnection replay.
+	if len(result.ResponseBody) > 0 {
+		h.mu.Lock()
+		h.completedResponses[inferenceID] = result.ResponseBody
+		h.mu.Unlock()
 	}
 
 	finishMsg := &types.MsgFinishInference{

@@ -296,8 +296,12 @@ func (s *Server) HandleInference(c echo.Context) error {
 	receiptWrapper := map[string]interface{}{"subnet_receipt": receiptEvent}
 	writeSSEEvent(w, receiptWrapper)
 
-	// Event 2+: inference result (only if this host is executor).
-	if resp.ExecutionJob != nil {
+	// Event 2+: inference result.
+	// If reconnecting to a completed inference, replay cached response.
+	// Otherwise run deferred execution with live streaming.
+	if resp.CachedResponseBody != nil && resp.ExecutionJob == nil {
+		replaySSEBody(w, resp.CachedResponseBody)
+	} else if resp.ExecutionJob != nil {
 		resp.ExecutionJob.ResponseWriter = w
 		_, execErr := s.host.RunExecution(c.Request().Context(), resp.ExecutionJob)
 		if execErr != nil {
@@ -322,16 +326,29 @@ func (s *Server) HandleInference(c echo.Context) error {
 	return nil
 }
 
+// replaySSEBody writes cached ML response bytes as SSE data lines.
+// The cached bytes are the raw response body (JSON). Wrap as a single SSE data event.
+func replaySSEBody(w http.ResponseWriter, body []byte) {
+	fmt.Fprintf(w, "data: %s\n\n", body)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	fmt.Fprintf(w, "data: [DONE]\n\n")
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // writeSSEEvent writes a single SSE data line with JSON payload.
-func writeSSEEvent(w http.Flusher, data interface{}) {
+func writeSSEEvent(w http.ResponseWriter, data interface{}) {
 	b, err := json.Marshal(data)
 	if err != nil {
 		return
 	}
-	if rw, ok := w.(io.Writer); ok {
-		fmt.Fprintf(rw, "data: %s\n\n", b)
+	fmt.Fprintf(w, "data: %s\n\n", b)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
 	}
-	w.Flush()
 }
 
 // SetPeerClients sets the executor clients for timeout verification.

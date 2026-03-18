@@ -135,22 +135,13 @@ func txPriority(tx *types.SubnetTx) int {
 	}
 }
 
-// composeDiffTxs builds the txs for the next diff (no side effects).
-// Caller must hold s.mu.
-func (s *Session) composeDiffTxs(params InferenceParams) (uint64, int, []*types.SubnetTx, error) {
-	nonce := s.nonce + 1
-	hostIdx := int(nonce % uint64(len(s.group)))
-
-	var txs []*types.SubnetTx
-
-	// Sort pending txs by type priority: confirm_start < finish < validation < vote < rest.
-	// Stable sort preserves insertion order within each type.
+// filterPendingTxs drops pending txs that reference inferences in wrong state
+// or seeds already revealed. Sorts by type priority first. Caller must hold s.mu.
+func (s *Session) filterPendingTxs() {
 	sort.SliceStable(s.pendingTxs, func(i, j int) bool {
 		return txPriority(s.pendingTxs[i]) < txPriority(s.pendingTxs[j])
 	})
 
-	// Single-pass filter: build willBeStarted incrementally (confirm_starts sort first),
-	// drop txs referencing inferences in wrong status, and drop already-revealed seeds.
 	seeds := s.sm.RevealedSlots()
 	revealed := make(map[string]bool, len(seeds))
 	for slot := range seeds {
@@ -192,26 +183,7 @@ func (s *Session) composeDiffTxs(params InferenceParams) (uint64, int, []*types.
 		}
 		filtered = append(filtered, tx)
 	}
-
-	txs = append(txs, filtered...)
-
-	// Add MsgStartInference.
-	promptHash, err := subnet.CanonicalPromptHash(params.Prompt)
-	if err != nil {
-		return 0, 0, nil, fmt.Errorf("canonical prompt hash: %w", err)
-	}
-	txs = append(txs, &types.SubnetTx{Tx: &types.SubnetTx_StartInference{
-		StartInference: &types.MsgStartInference{
-			InferenceId: nonce,
-			Model:       params.Model,
-			PromptHash:  promptHash,
-			InputLength: params.InputLength,
-			MaxTokens:   params.MaxTokens,
-			StartedAt:   params.StartedAt,
-		},
-	}})
-
-	return nonce, hostIdx, txs, nil
+	s.pendingTxs = filtered
 }
 
 // diffsForHost returns catch-up diffs for a host (from its last sync nonce to current).
@@ -330,33 +302,35 @@ type PreparedInference struct {
 	params     InferenceParams
 }
 
-// PrepareInference composes a diff, applies it locally, advances nonce,
-// and returns everything needed for the HTTP send. Thread-safe.
-func (s *Session) PrepareInference(params InferenceParams) (*PreparedInference, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// composeDiffLocked builds, applies, persists, and returns a new diff.
+// extraTxs are prepended to pending txs. Caller must hold s.mu.
+func (s *Session) composeDiffLocked(extraTxs []*types.SubnetTx) (types.Diff, int, error) {
+	nonce := s.nonce + 1
+	hostIdx := int(nonce % uint64(len(s.group)))
 
-	nonce, hostIdx, txs, err := s.composeDiffTxs(params)
-	if err != nil {
-		return nil, err
-	}
+	sort.SliceStable(s.pendingTxs, func(i, j int) bool {
+		return txPriority(s.pendingTxs[i]) < txPriority(s.pendingTxs[j])
+	})
 
-	// Apply locally to compute post_state_root, then sign.
+	txs := make([]*types.SubnetTx, 0, len(s.pendingTxs)+len(extraTxs))
+	txs = append(txs, s.pendingTxs...)
+	txs = append(txs, extraTxs...)
+
 	var warmBefore map[uint32]string
 	if s.store != nil {
 		warmBefore = s.sm.WarmKeys()
 	}
 	postStateRoot, err := s.sm.ApplyLocal(nonce, txs)
 	if err != nil {
-		return nil, fmt.Errorf("local apply: %w", err)
+		return types.Diff{}, 0, fmt.Errorf("local apply: %w", err)
 	}
 	diff, err := s.signDiff(nonce, txs, postStateRoot)
 	if err != nil {
-		return nil, err
+		return types.Diff{}, 0, err
 	}
 
 	s.diffs = append(s.diffs, diff)
-	s.nonce = diff.Nonce
+	s.nonce = nonce
 	s.clearPendingTxs()
 
 	if s.store != nil {
@@ -367,12 +341,43 @@ func (s *Session) PrepareInference(params InferenceParams) (*PreparedInference, 
 			StateHash:    postStateRoot,
 			WarmKeyDelta: delta,
 		}); err != nil {
-			return nil, fmt.Errorf("persist diff: %w", err)
+			return types.Diff{}, 0, fmt.Errorf("persist diff: %w", err)
 		}
 	}
 
-	catchUp := s.diffsForHost(hostIdx)
+	return diff, hostIdx, nil
+}
 
+// PrepareInference composes a diff, applies it locally, advances nonce,
+// and returns everything needed for the HTTP send. Thread-safe.
+func (s *Session) PrepareInference(params InferenceParams) (*PreparedInference, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.filterPendingTxs()
+
+	nonce := s.nonce + 1
+	promptHash, err := subnet.CanonicalPromptHash(params.Prompt)
+	if err != nil {
+		return nil, fmt.Errorf("canonical prompt hash: %w", err)
+	}
+	startTx := &types.SubnetTx{Tx: &types.SubnetTx_StartInference{
+		StartInference: &types.MsgStartInference{
+			InferenceId: nonce,
+			Model:       params.Model,
+			PromptHash:  promptHash,
+			InputLength: params.InputLength,
+			MaxTokens:   params.MaxTokens,
+			StartedAt:   params.StartedAt,
+		},
+	}}
+
+	diff, hostIdx, err := s.composeDiffLocked([]*types.SubnetTx{startTx})
+	if err != nil {
+		return nil, err
+	}
+
+	catchUp := s.diffsForHost(hostIdx)
 	return &PreparedInference{
 		diff:    diff,
 		hostIdx: hostIdx,
@@ -673,6 +678,58 @@ func (s *Session) PendingTxs() []*types.SubnetTx {
 }
 
 func (s *Session) StateMachine() *state.StateMachine { return s.sm }
+
+// AddPendingTimeoutTx adds a MsgTimeoutInference to the pending tx queue.
+func (s *Session) AddPendingTimeoutTx(inferenceID uint64, reason types.TimeoutReason, votes []*types.TimeoutVote) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.addPendingTx(&types.SubnetTx{
+		Tx: &types.SubnetTx_TimeoutInference{TimeoutInference: &types.MsgTimeoutInference{
+			InferenceId: inferenceID,
+			Reason:      reason,
+			Votes:       votes,
+		}},
+	})
+}
+
+// SendPendingDiff creates a diff from pending txs (no new MsgStartInference),
+// applies it locally, and sends it to the next host. Used for timeout submission.
+func (s *Session) SendPendingDiff(ctx context.Context) error {
+	s.mu.Lock()
+	diff, hostIdx, err := s.composeDiffLocked(nil)
+	if err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	catchUp := s.diffsForHost(hostIdx)
+	s.mu.Unlock()
+
+	resp, err := s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUp, Nonce: diff.Nonce})
+	if err != nil {
+		return fmt.Errorf("send timeout diff to host %d: %w", hostIdx, err)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.processResponse(hostIdx, resp, diff.Nonce)
+}
+
+// TimeoutVerifiers returns a map of host index -> TimeoutVerifier for all
+// hosts whose underlying client implements TimeoutVerifier. This gives the
+// proxy access to verifier instances for timeout vote collection.
+func (s *Session) TimeoutVerifiers() map[int]TimeoutVerifier {
+	result := make(map[int]TimeoutVerifier, len(s.clients))
+	for i, c := range s.clients {
+		if tv, ok := c.(TimeoutVerifier); ok {
+			result[i] = tv
+		}
+	}
+	return result
+}
+
+// Clients returns the underlying host clients. Useful for constructing
+// timeout verifiers or other operations that need direct host access.
+func (s *Session) Clients() []HostClient { return s.clients }
 
 // Close releases the underlying storage, if any. Safe to call multiple times.
 func (s *Session) Close() error {
