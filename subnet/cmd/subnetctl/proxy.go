@@ -131,26 +131,52 @@ func (p *Proxy) runInference(ctx context.Context, params user.InferenceParams, w
 	return p.session.ProcessResponse(prepared.HostIdx(), resp, nonce)
 }
 
-func (p *Proxy) handleStreaming(w http.ResponseWriter, r *http.Request, params user.InferenceParams) {
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.WriteHeader(http.StatusOK)
+// deferredWriter delays WriteHeader(200) until the first Write call.
+// If runInference errors before any streaming data arrives, the proxy
+// can still return a proper HTTP error status.
+type deferredWriter struct {
+	w       http.ResponseWriter
+	started bool
+}
 
-	err := p.runInference(r.Context(), params, w)
+func (d *deferredWriter) Write(p []byte) (int, error) {
+	if !d.started {
+		d.w.Header().Set("Content-Type", "text/event-stream")
+		d.w.Header().Set("Cache-Control", "no-cache")
+		d.w.Header().Set("Connection", "keep-alive")
+		d.w.WriteHeader(http.StatusOK)
+		d.started = true
+	}
+	return d.w.Write(p)
+}
+
+func (d *deferredWriter) Flush() {
+	if f, ok := d.w.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (p *Proxy) handleStreaming(w http.ResponseWriter, r *http.Request, params user.InferenceParams) {
+	dw := &deferredWriter{w: w}
+
+	err := p.runInference(r.Context(), params, dw)
 	if err != nil {
-		log.Printf("inference error: %v", err)
-		fmt.Fprintf(w, "data: {\"error\":{\"message\":%q}}\n\n", err.Error())
-		if f, ok := w.(http.Flusher); ok {
-			f.Flush()
+		if !dw.started {
+			// No streaming data sent yet -- return proper HTTP error.
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			fmt.Fprintf(w, `{"error":{"message":%q}}`, err.Error())
+			return
 		}
+		// Already streaming -- send error as SSE data.
+		log.Printf("inference error (mid-stream): %v", err)
+		fmt.Fprintf(dw, "data: {\"error\":{\"message\":%q}}\n\n", err.Error())
+		dw.Flush()
 		return
 	}
 
-	fmt.Fprint(w, "data: [DONE]\n\n")
-	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
-	}
+	fmt.Fprint(dw, "data: [DONE]\n\n")
+	dw.Flush()
 }
 
 func (p *Proxy) handleNonStreaming(w http.ResponseWriter, r *http.Request, params user.InferenceParams) {
