@@ -497,45 +497,10 @@ func (h *Host) signReceipt(req HostRequest) ([]byte, int64, *subnet.ExecuteReque
 	return nil, 0, nil, nil, nil
 }
 
-// executeAsync runs engine.Execute, builds MsgFinishInference, and adds it to the mempool.
-// Called outside the mutex so engine.Execute doesn't block other requests.
+// executeAsync runs inference and adds MsgFinishInference to the mempool.
+// Delegates to RunExecution which also caches the response body for reconnection.
 func (h *Host) executeAsync(ctx context.Context, job *subnet.ExecuteRequest) {
-	defer func() {
-		h.mu.Lock()
-		delete(h.executing, job.InferenceID)
-		h.mu.Unlock()
-	}()
-
-	executorSlot := h.group[job.InferenceID%uint64(len(h.group))].SlotID
-	diffNonce := h.LatestNonce()
-
-	result, err := h.engine.Execute(ctx, *job)
-	if err != nil {
-		logging.Error("execute failed", "subsystem", "host", "inference_id", job.InferenceID, "error", err)
-		return
-	}
-
-	finishMsg := &types.MsgFinishInference{
-		InferenceId:  job.InferenceID,
-		ResponseHash: result.ResponseHash,
-		InputTokens:  result.InputTokens,
-		OutputTokens: result.OutputTokens,
-		ExecutorSlot: executorSlot,
-		EscrowId:     h.escrowID,
-	}
-	proposerSig, err := h.signProposer(finishMsg)
-	if err != nil {
-		logging.Error("sign finish msg failed", "subsystem", "host", "inference_id", job.InferenceID, "error", err)
-		return
-	}
-	finishMsg.ProposerSig = proposerSig
-
-	h.mempool.Add(MempoolEntry{
-		Tx: &types.SubnetTx{Tx: &types.SubnetTx_FinishInference{
-			FinishInference: finishMsg,
-		}},
-		ProposedAt: diffNonce,
-	})
+	_, _ = h.RunExecution(ctx, job)
 }
 
 // RunExecution executes an inference job and adds MsgFinishInference to the mempool.

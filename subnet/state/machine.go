@@ -186,6 +186,67 @@ func (sm *StateMachine) ApplyLocal(nonce uint64, txs []*types.SubnetTx) ([]byte,
 	return sm.applyCore(nonce, txs, nil)
 }
 
+// ApplyLocalBestEffort applies txs one by one, skipping any that fail.
+// Returns the post-state root and the subset of txs that were applied.
+// Used by the user to compose diffs from pending txs that may be stale.
+func (sm *StateMachine) ApplyLocalBestEffort(nonce uint64, txs []*types.SubnetTx) ([]byte, []*types.SubnetTx, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	expectedNonce := sm.state.LatestNonce + 1
+	if nonce != expectedNonce {
+		return nil, nil, fmt.Errorf("%w: expected %d, got %d", types.ErrInvalidNonce, expectedNonce, nonce)
+	}
+
+	// Same pre-check as applyCore: at most one MsgStartInference, with id == nonce.
+	startCount := 0
+	for _, tx := range txs {
+		if start := tx.GetStartInference(); start != nil {
+			startCount++
+			if start.InferenceId != nonce {
+				return nil, nil, types.ErrInvalidInferenceID
+			}
+		}
+	}
+	if startCount > 1 {
+		return nil, nil, types.ErrMultipleStartMsgs
+	}
+
+	// All applyTx implementations are check-first-mutate-last:
+	// preconditions are validated before any state mutation, so a
+	// failed tx leaves state unchanged. No per-tx snapshots needed.
+	var applied []*types.SubnetTx
+	for _, tx := range txs {
+		if err := sm.applyTx(tx); err != nil {
+			continue
+		}
+		applied = append(applied, tx)
+	}
+
+	sm.state.LatestNonce = nonce
+
+	if sm.state.Phase == types.PhaseFinalizing && sm.state.FinalizeNonce == 0 {
+		sm.state.FinalizeNonce = nonce
+	}
+	if sm.state.Phase == types.PhaseFinalizing {
+		sm.recomputeCompliance()
+		sm.penalizeUnrevealedSeeds()
+		allRevealed := sm.allUniqueAddressesRevealed()
+		deadlinePassed := sm.state.LatestNonce >= sm.state.FinalizeNonce+uint64(len(sm.state.Group))
+		if allRevealed || deadlinePassed {
+			sm.state.Phase = types.PhaseSettlement
+		}
+	}
+
+	root, err := ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences, sm.state.Phase, sm.state.WarmKeys)
+	if err != nil {
+		return nil, nil, fmt.Errorf("compute state root: %w", err)
+	}
+
+	logging.Debug("applied diff (best-effort)", "subsystem", "state", "nonce", nonce, "applied", len(applied), "candidates", len(txs))
+	return root, applied, nil
+}
+
 // applyCore validates nonce, applies txs, updates nonce, and returns the state root.
 // If postStateRoot is non-nil, the computed root must match; on mismatch the entire
 // operation is rolled back (including nonce) and an error is returned.

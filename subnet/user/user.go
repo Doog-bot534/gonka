@@ -135,72 +135,6 @@ func txPriority(tx *types.SubnetTx) int {
 	}
 }
 
-// filterPendingTxs drops pending txs that reference inferences in wrong state
-// or seeds already revealed. Sorts by type priority first. Caller must hold s.mu.
-func (s *Session) filterPendingTxs() {
-	sort.SliceStable(s.pendingTxs, func(i, j int) bool {
-		return txPriority(s.pendingTxs[i]) < txPriority(s.pendingTxs[j])
-	})
-
-	seeds := s.sm.RevealedSlots()
-	revealed := make(map[string]bool, len(seeds))
-	for slot := range seeds {
-		revealed[s.sm.SlotAddress(slot)] = true
-	}
-	willBeStarted := make(map[uint64]bool)
-	filtered := s.pendingTxs[:0]
-	for _, tx := range s.pendingTxs {
-		switch inner := tx.GetTx().(type) {
-		case *types.SubnetTx_ConfirmStart:
-			rec, ok := s.sm.GetInference(inner.ConfirmStart.InferenceId)
-			if ok && rec.Status != types.StatusPending {
-				continue
-			}
-			willBeStarted[inner.ConfirmStart.InferenceId] = true
-		case *types.SubnetTx_FinishInference:
-			rec, ok := s.sm.GetInference(inner.FinishInference.InferenceId)
-			if ok && rec.Status != types.StatusStarted && !willBeStarted[inner.FinishInference.InferenceId] {
-				continue
-			}
-		case *types.SubnetTx_Validation:
-			rec, ok := s.sm.GetInference(inner.Validation.InferenceId)
-			if ok && rec.Status < types.StatusFinished {
-				continue
-			}
-		case *types.SubnetTx_ValidationVote:
-			rec, ok := s.sm.GetInference(inner.ValidationVote.InferenceId)
-			if ok && rec.Status < types.StatusChallenged {
-				continue
-			}
-		case *types.SubnetTx_TimeoutInference:
-			rec, ok := s.sm.GetInference(inner.TimeoutInference.InferenceId)
-			if !ok {
-				continue
-			}
-			switch inner.TimeoutInference.Reason {
-			case types.TimeoutReason_TIMEOUT_REASON_REFUSED:
-				if rec.Status != types.StatusPending || willBeStarted[inner.TimeoutInference.InferenceId] {
-					continue
-				}
-			case types.TimeoutReason_TIMEOUT_REASON_EXECUTION:
-				if rec.Status != types.StatusStarted && !willBeStarted[inner.TimeoutInference.InferenceId] {
-					continue
-				}
-			}
-		case *types.SubnetTx_RevealSeed:
-			if revealed[s.sm.SlotAddress(inner.RevealSeed.SlotId)] {
-				key := subnetTxKey(tx)
-				if key != "" {
-					delete(s.pendingTxKeys, key)
-				}
-				continue
-			}
-		}
-		filtered = append(filtered, tx)
-	}
-	s.pendingTxs = filtered
-}
-
 // diffsForHost returns catch-up diffs for a host (from its last sync nonce to current).
 // Caller must hold s.mu.
 func (s *Session) diffsForHost(hostIdx int) []types.Diff {
@@ -327,19 +261,19 @@ func (s *Session) composeDiffLocked(extraTxs []*types.SubnetTx) (types.Diff, int
 		return txPriority(s.pendingTxs[i]) < txPriority(s.pendingTxs[j])
 	})
 
-	txs := make([]*types.SubnetTx, 0, len(s.pendingTxs)+len(extraTxs))
-	txs = append(txs, s.pendingTxs...)
-	txs = append(txs, extraTxs...)
+	candidates := make([]*types.SubnetTx, 0, len(s.pendingTxs)+len(extraTxs))
+	candidates = append(candidates, s.pendingTxs...)
+	candidates = append(candidates, extraTxs...)
 
 	var warmBefore map[uint32]string
 	if s.store != nil {
 		warmBefore = s.sm.WarmKeys()
 	}
-	postStateRoot, err := s.sm.ApplyLocal(nonce, txs)
+	postStateRoot, applied, err := s.sm.ApplyLocalBestEffort(nonce, candidates)
 	if err != nil {
 		return types.Diff{}, 0, fmt.Errorf("local apply: %w", err)
 	}
-	diff, err := s.signDiff(nonce, txs, postStateRoot)
+	diff, err := s.signDiff(nonce, applied, postStateRoot)
 	if err != nil {
 		return types.Diff{}, 0, err
 	}
@@ -368,8 +302,6 @@ func (s *Session) composeDiffLocked(extraTxs []*types.SubnetTx) (types.Diff, int
 func (s *Session) PrepareInference(params InferenceParams) (*PreparedInference, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	s.filterPendingTxs()
 
 	nonce := s.nonce + 1
 	promptHash, err := subnet.CanonicalPromptHash(params.Prompt)
@@ -442,6 +374,46 @@ func (s *Session) SendInference(ctx context.Context, params InferenceParams) (*h
 	return resp, nil
 }
 
+// sendDiffRound composes a diff, sends it to the next host, processes the response.
+// Returns non-nil only on compose or processResponse errors; dead hosts are silently skipped.
+func (s *Session) sendDiffRound(ctx context.Context, extraTxs []*types.SubnetTx) error {
+	s.mu.Lock()
+	diff, hostIdx, err := s.composeDiffLocked(extraTxs)
+	if err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	catchUp := s.diffsForHost(hostIdx)
+	s.mu.Unlock()
+
+	resp, err := s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUp, Nonce: diff.Nonce})
+	if err != nil {
+		return nil // dead host, not fatal
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.processResponse(hostIdx, resp, diff.Nonce)
+}
+
+// sendCatchUp sends existing diffs to a host without composing new ones.
+// Returns non-nil only on processResponse errors; dead hosts are silently skipped.
+func (s *Session) sendCatchUp(ctx context.Context, hostIdx int) error {
+	s.mu.Lock()
+	nonce := s.nonce
+	catchUp := s.diffsForHost(hostIdx)
+	s.mu.Unlock()
+
+	resp, err := s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUp, Nonce: nonce})
+	if err != nil {
+		return nil // dead host
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.processResponse(hostIdx, resp, nonce)
+}
+
 // Finalize completes the round in three phases.
 //
 // Phase A (N iterations): The first diff carries MsgFinalizeRound plus any
@@ -459,109 +431,31 @@ func (s *Session) SendInference(ctx context.Context, params InferenceParams) (*h
 func (s *Session) Finalize(ctx context.Context) error {
 	n := len(s.group)
 
-	// Phase A: collect remaining txs, one diff per host.
+	finalizeTx := &types.SubnetTx{Tx: &types.SubnetTx_FinalizeRound{
+		FinalizeRound: &types.MsgFinalizeRound{},
+	}}
+
+	// Phase A: N diffs collecting remaining txs. First carries MsgFinalizeRound.
 	for i := 0; i < n; i++ {
-		s.mu.Lock()
-		nonce := s.nonce + 1
-		hostIdx := int(nonce % uint64(n))
-
-		s.filterPendingTxs()
-		txs := make([]*types.SubnetTx, len(s.pendingTxs))
-		copy(txs, s.pendingTxs)
+		var extra []*types.SubnetTx
 		if i == 0 {
-			txs = append(txs, &types.SubnetTx{Tx: &types.SubnetTx_FinalizeRound{
-				FinalizeRound: &types.MsgFinalizeRound{},
-			}})
+			extra = []*types.SubnetTx{finalizeTx}
 		}
-
-		postStateRoot, err := s.sm.ApplyLocal(nonce, txs)
-		if err != nil {
-			s.mu.Unlock()
-			return fmt.Errorf("local apply: %w", err)
-		}
-		diff, err := s.signDiff(nonce, txs, postStateRoot)
-		if err != nil {
-			s.mu.Unlock()
+		if err := s.sendDiffRound(ctx, extra); err != nil {
 			return err
 		}
-		s.diffs = append(s.diffs, diff)
-		s.nonce = nonce
-		s.clearPendingTxs()
-		catchUp := s.diffsForHost(hostIdx)
-		s.mu.Unlock()
-
-		resp, err := s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUp, Nonce: nonce})
-		if err != nil {
-			continue // skip dead host
-		}
-
-		s.mu.Lock()
-		if err := s.processResponse(hostIdx, resp, nonce); err != nil {
-			s.mu.Unlock()
-			return fmt.Errorf("process response from host %d: %w", hostIdx, err)
-		}
-		s.mu.Unlock()
 	}
 
-	// Phase A+1: drain the last host's reveal sitting in pendingTxs.
-	{
-		s.mu.Lock()
-		nonce := s.nonce + 1
-		hostIdx := int(nonce % uint64(n))
-
-		s.filterPendingTxs()
-		txs := make([]*types.SubnetTx, len(s.pendingTxs))
-		copy(txs, s.pendingTxs)
-
-		postStateRoot, err := s.sm.ApplyLocal(nonce, txs)
-		if err != nil {
-			s.mu.Unlock()
-			return fmt.Errorf("local apply: %w", err)
-		}
-		diff, err := s.signDiff(nonce, txs, postStateRoot)
-		if err != nil {
-			s.mu.Unlock()
-			return err
-		}
-		s.diffs = append(s.diffs, diff)
-		s.nonce = nonce
-		s.clearPendingTxs()
-		catchUp := s.diffsForHost(hostIdx)
-		s.mu.Unlock()
-
-		resp, err := s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUp, Nonce: nonce})
-		if err != nil {
-			// skip dead host in A+1
-		} else {
-			s.mu.Lock()
-			if err := s.processResponse(hostIdx, resp, nonce); err != nil {
-				s.mu.Unlock()
-				return fmt.Errorf("process response from host %d: %w", hostIdx, err)
-			}
-			s.mu.Unlock()
-		}
+	// Phase A+1: drain the last host's reveal.
+	if err := s.sendDiffRound(ctx, nil); err != nil {
+		return err
 	}
 
 	// Phase B: propagate complete state, collect signatures.
-	// Nonce is frozen -- no new diffs. Each host receives catch-up to
-	// the final nonce and signs the same state.
 	for hostIdx := 0; hostIdx < n; hostIdx++ {
-		s.mu.Lock()
-		nonce := s.nonce
-		catchUp := s.diffsForHost(hostIdx)
-		s.mu.Unlock()
-
-		resp, err := s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUp, Nonce: nonce})
-		if err != nil {
-			continue // skip dead host
+		if err := s.sendCatchUp(ctx, hostIdx); err != nil {
+			return err
 		}
-
-		s.mu.Lock()
-		if err := s.processResponse(hostIdx, resp, nonce); err != nil {
-			s.mu.Unlock()
-			return fmt.Errorf("process response from host %d: %w", hostIdx, err)
-		}
-		s.mu.Unlock()
 	}
 
 	// Check signature quorum: need 2/3+1 slot-weighted signatures.
@@ -641,30 +535,6 @@ func (s *Session) clearPendingTxs() {
 	if len(s.pendingTxKeys) > maxPendingTxKeys {
 		clear(s.pendingTxKeys)
 	}
-}
-
-// filterRevealedSeeds drops MsgRevealSeed for addresses that already revealed.
-func (s *Session) filterRevealedSeeds() {
-	seeds := s.sm.RevealedSlots()
-	if len(seeds) == 0 {
-		return
-	}
-	revealed := make(map[string]bool, len(seeds))
-	for slot := range seeds {
-		revealed[s.sm.SlotAddress(slot)] = true
-	}
-	filtered := s.pendingTxs[:0]
-	for _, tx := range s.pendingTxs {
-		if rs := tx.GetRevealSeed(); rs != nil && revealed[s.sm.SlotAddress(rs.SlotId)] {
-			key := subnetTxKey(tx)
-			if key != "" {
-				delete(s.pendingTxKeys, key)
-			}
-			continue
-		}
-		filtered = append(filtered, tx)
-	}
-	s.pendingTxs = filtered
 }
 
 func (s *Session) Signatures() map[uint64]map[uint32][]byte {
