@@ -15,6 +15,7 @@ import (
 	"decentralized-api/completionapi"
 	"decentralized-api/cosmosclient"
 	"decentralized-api/internal/validation"
+	"decentralized-api/logging"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/productscience/inference/cmd/inferenced/cmd"
@@ -135,6 +136,16 @@ func (v *ValidationAdapter) Validate(ctx context.Context, req subnet.ValidateReq
 	validationResponse, err := completionapi.NewCompletionResponseFromBytes(respBytes)
 	if err != nil {
 		return nil, fmt.Errorf("parse validation response: %w", err)
+	}
+
+	if validationUsage, err := validationResponse.GetUsage(); err == nil {
+		if req.InputTokens > validationUsage.PromptTokens || req.OutputTokens > validationUsage.CompletionTokens {
+			logging.Warn("subnet validation failed: inflated token counts",
+				chaintypes.Validation, "inferenceId", inferenceID,
+				"claimedInput", req.InputTokens, "validationInput", validationUsage.PromptTokens,
+				"claimedOutput", req.OutputTokens, "validationOutput", validationUsage.CompletionTokens)
+			return &subnet.ValidateResult{Valid: false}, nil
+		}
 	}
 
 	originalLogits := originalResponse.ExtractLogits()
