@@ -125,3 +125,57 @@ func TestResponseFromPayload(t *testing.T) {
 	require.Len(t, logits, 1)
 	assert.Equal(t, "hello", logits[0].Token)
 }
+
+func TestTokenCountValidation_MatchingUsage(t *testing.T) {
+	// Stored response has prompt_tokens=10, completion_tokens=5
+	jsonResp := `{"id":"test","choices":[{"message":{"content":"hello"}}],"usage":{"prompt_tokens":10,"completion_tokens":5}}`
+
+	resp, err := completionapi.NewCompletionResponseFromLinesFromResponsePayload([]byte(jsonResp))
+	require.NoError(t, err)
+
+	usage, err := resp.GetUsage()
+	require.NoError(t, err)
+
+	// Claimed counts match stored usage -> should pass
+	claimedInput := uint64(10)
+	claimedOutput := uint64(5)
+
+	assert.False(t, claimedInput > usage.PromptTokens, "matching input should not exceed stored")
+	assert.False(t, claimedOutput > usage.CompletionTokens, "matching output should not exceed stored")
+}
+
+func TestTokenCountValidation_InflatedOutputTokens(t *testing.T) {
+	// Stored response has prompt_tokens=10, completion_tokens=5
+	jsonResp := `{"id":"test","choices":[{"message":{"content":"hello"}}],"usage":{"prompt_tokens":10,"completion_tokens":5}}`
+
+	resp, err := completionapi.NewCompletionResponseFromLinesFromResponsePayload([]byte(jsonResp))
+	require.NoError(t, err)
+
+	usage, err := resp.GetUsage()
+	require.NoError(t, err)
+
+	// Claimed output exceeds stored usage -> billing inflation attack
+	claimedInput := uint64(10)
+	claimedOutput := uint64(100) // inflated!
+
+	assert.False(t, claimedInput > usage.PromptTokens, "input matches stored")
+	assert.True(t, claimedOutput > usage.CompletionTokens, "inflated output should be detected")
+}
+
+func TestTokenCountValidation_InflatedInputTokens(t *testing.T) {
+	// Stored response has prompt_tokens=10, completion_tokens=5
+	jsonResp := `{"id":"test","choices":[{"message":{"content":"hello"}}],"usage":{"prompt_tokens":10,"completion_tokens":5}}`
+
+	resp, err := completionapi.NewCompletionResponseFromLinesFromResponsePayload([]byte(jsonResp))
+	require.NoError(t, err)
+
+	usage, err := resp.GetUsage()
+	require.NoError(t, err)
+
+	// Claimed input exceeds stored usage -> billing inflation attack
+	claimedInput := uint64(999) // inflated!
+	claimedOutput := uint64(5)
+
+	assert.True(t, claimedInput > usage.PromptTokens, "inflated input should be detected")
+	assert.False(t, claimedOutput > usage.CompletionTokens, "output matches stored")
+}

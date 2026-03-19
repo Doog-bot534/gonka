@@ -50,6 +50,7 @@ func (b *ChainBridge) GetEscrow(escrowID string) (*bridge.EscrowInfo, error) {
 		CreatorAddress: resp.Escrow.Creator,
 		AppHash:        appHash,
 		Slots:          resp.Escrow.Slots,
+		TokenPrice:     resp.Escrow.TokenPrice,
 	}, nil
 }
 
