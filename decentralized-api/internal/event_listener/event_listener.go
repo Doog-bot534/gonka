@@ -531,7 +531,7 @@ func getEventValue(events map[string][]string, key string, idx int) (string, boo
 	if idx < len(values) {
 		return values[idx], true
 	}
-	return values[0], true
+	return "", false
 }
 
 func parseEventUint64(events map[string][]string, key string, idx int) (uint64, error) {

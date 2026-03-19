@@ -30,7 +30,9 @@ var ErrHashMismatch = errors.New("hash mismatch: executor served wrong payload w
 var ErrEpochStale = errors.New("inference epoch too old, validation no longer useful")
 
 // HTTP client with timeout for payload retrieval
-var payloadRetrievalClient = &http.Client{}
+var payloadRetrievalClient = &http.Client{
+	Timeout: 30 * time.Second,
+}
 
 // PayloadResponse matches the executor endpoint response.
 // Used by both chain validation and subnet validation paths.
