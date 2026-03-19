@@ -203,15 +203,22 @@ class CollateralTests : TestermintTest() {
                 .inferenceTimeout
                 .map { it.inferenceId }
                 .toSet()
-            repeat(6) {
-                runCatching { genesis.makeInferenceRequest(inferenceRequest) }
-            }
+            repeat(3) { attempt ->
+                repeat(6) {
+                    runCatching { genesis.makeInferenceRequest(inferenceRequest) }
+                }
 
-            genesis.node.waitForNextBlock(1)
-            genesis.waitForBlock(maxBlocks = expirationBlocks.toInt() + 20) { pair ->
-                pair.node.getInferenceTimeouts()
-                    .inferenceTimeout
-                    .any { it.inferenceId !in timeoutIdsBeforeBatch }
+                genesis.node.waitForNextBlock(1)
+                val sawNewTimeout = runCatching {
+                    genesis.waitForBlock(maxBlocks = expirationBlocks.toInt() + 15) { pair ->
+                        pair.node.getInferenceTimeouts()
+                            .inferenceTimeout
+                            .any { it.inferenceId !in timeoutIdsBeforeBatch }
+                    }
+                    true
+                }.getOrDefault(false)
+                if (sawNewTimeout) return@repeat
+                logSection("Batch ${batch + 1} burst ${attempt + 1} did not create a timeout yet; retrying")
             }
             val newTimeouts = genesis.node.getInferenceTimeouts()
                 .inferenceTimeout

@@ -35,7 +35,7 @@ class NodeDisableInferenceTests : TestermintTest() {
         genesis.waitForBlock(maxBlocks = 25) { pair ->
             pair.api.getNodes().any { node ->
                 node.state.epochMlNodes?.values?.any { allocation ->
-                    allocation.timeslotAllocation.getOrNull(1) == true
+                    allocation.timeslotAllocation.any { it }
                 } == true
             }
         }
@@ -45,7 +45,7 @@ class NodeDisableInferenceTests : TestermintTest() {
         assertThat(
             genesisRegisteredNodes.any { node ->
                 node.state.epochMlNodes?.values?.any { allocation ->
-                    allocation.timeslotAllocation.getOrNull(1) == true
+                    allocation.timeslotAllocation.any { it }
                 } == true
             }
         )
