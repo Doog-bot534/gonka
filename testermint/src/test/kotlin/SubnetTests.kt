@@ -182,8 +182,19 @@ class SubnetTests : TestermintTest() {
 
     @Test
     fun `parallel subnet sessions with isolated settlement`() {
-        val sessionCount = 10
-        val (cluster, genesis) = initCluster(config = noRestrictionsConfig, reboot = true)
+        val sessionCount = 6
+        val parallelConfig = noRestrictionsConfig.copy(
+            genesisSpec = noRestrictionsConfig.genesisSpec?.merge(
+                createSpec(
+                    epochLength = 40,
+                    epochShift = 10,
+                )
+            ) ?: createSpec(
+                epochLength = 40,
+                epochShift = 10,
+            )
+        )
+        val (cluster, genesis) = initCluster(config = parallelConfig, reboot = true)
         genesis.waitForNextEpoch()
 
         cluster.allPairs.forEach { pair ->

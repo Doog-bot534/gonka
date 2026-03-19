@@ -175,6 +175,8 @@ class BLSDKGSuccessTest : TestermintTest() {
     }
     
     private fun validateCrossNodeConsistency(allPairs: List<com.productscience.LocalInferencePair>, epochId: Long) {
+        waitForAllNodesAtLeastPhase(allPairs, epochId, DKGPhase.COMPLETED)
+
         // Query BLS data from all nodes
         val blsDataList = allPairs.map { pair ->
             pair.name to queryEpochBLSData(pair, epochId)
@@ -218,6 +220,8 @@ class BLSDKGSuccessTest : TestermintTest() {
     private fun validateThresholdSigningReadiness(allPairs: List<com.productscience.LocalInferencePair>, epochId: Long) {
         // Validate that controllers have the necessary data for threshold signing
         Logger.info("Validating threshold signing readiness for epoch $epochId with ${allPairs.size} controllers")
+
+        waitForAllNodesAtLeastPhase(allPairs, epochId, DKGPhase.COMPLETED)
         
         allPairs.forEach { pair ->
             // Check that each controller can query the group public key
@@ -319,6 +323,16 @@ class BLSDKGSuccessTest : TestermintTest() {
         }
         
         error("Timeout waiting for DKG phase $targetPhase (current: $currentPhase, attempts: $attempts)")
+    }
+
+    private fun waitForAllNodesAtLeastPhase(
+        allPairs: List<com.productscience.LocalInferencePair>,
+        epochId: Long,
+        targetPhase: DKGPhase,
+    ) {
+        allPairs.forEach { pair ->
+            waitForDKGPhase(pair, targetPhase, epochId)
+        }
     }
     
     private fun validateDKGPhase(pair: com.productscience.LocalInferencePair, epochId: Long, expectedPhase: DKGPhase) {
