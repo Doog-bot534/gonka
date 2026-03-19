@@ -99,6 +99,10 @@ var bountyRewards = []BountyReward{
 	// PR: https://github.com/gonka-ai/gonka/pull/835
 	{Address: "gonka100s7x2t0npruu9ta02306qfmaened3vg3a9dn6", Amount: Gonka(5000)},
 
+	// Collateral slashing vulnerability and fix; low severity.
+	// PR: https://github.com/gonka-ai/gonka/pull/868
+	{Address: "gonka1j3f2xkapx8cmczpjqcsrh7cc3peyj3ngkjv4p8", Amount: Gonka(5000)},
+
 	// v0.2.11 release management.
 	{Address: "gonka1ejkupq3cy6p8xd64ew2wlzveml86ckpzn9dl56", Amount: Gonka(7500)},
 
