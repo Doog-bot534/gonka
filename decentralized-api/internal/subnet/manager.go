@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	"github.com/labstack/echo/v4"
 
 	"decentralized-api/cosmosclient"
@@ -37,6 +39,7 @@ import (
 type HostManager struct {
 	mu       sync.RWMutex
 	sessions map[string]*transport.Server
+	sf       singleflight.Group
 
 	store        storage.Storage
 	signer       *signing.Secp256k1Signer
@@ -83,15 +86,33 @@ func (m *HostManager) getOrCreate(escrowID string) (*transport.Server, error) {
 		return srv, nil
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if srv, ok = m.sessions[escrowID]; ok {
+	v, err, _ := m.sf.Do(escrowID, func() (interface{}, error) {
+		m.mu.RLock()
+		if srv, ok := m.sessions[escrowID]; ok {
+			m.mu.RUnlock()
+			return srv, nil
+		}
+		m.mu.RUnlock()
+
+		srv, err := m.create(escrowID)
+		if err != nil {
+			return nil, err
+		}
+
+		m.mu.Lock()
+		m.sessions[escrowID] = srv
+		m.mu.Unlock()
+
 		return srv, nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
-	return m.createLocked(escrowID)
+	return v.(*transport.Server), nil
 }
 
-func (m *HostManager) createLocked(escrowID string) (*transport.Server, error) {
+func (m *HostManager) create(escrowID string) (*transport.Server, error) {
 	group, err := bridge.BuildGroup(escrowID, m.bridge)
 	if err != nil {
 		return nil, fmt.Errorf("build group: %w", err)
@@ -135,7 +156,6 @@ func (m *HostManager) createLocked(escrowID string) (*transport.Server, error) {
 		return nil, fmt.Errorf("create server: %w", err)
 	}
 
-	m.sessions[escrowID] = srv
 	return srv, nil
 }
 
