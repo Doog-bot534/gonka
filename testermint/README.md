@@ -232,4 +232,30 @@ From this point on, you will gain a lot of additional functionality when opening
 - Example: `subsystem=Stages` shows all epoch transition logs
 - Find subsystem definitions in: `inference-chain/x/inference/types/logging.go`
 You can also use the consts in `logging.go` to see exactly where specific subsytems are used.
+
 ---
+
+## REPL
+
+A very simple Kotlin REPL to interact with testermint can be executed with the following:
+
+```bash
+./gradlew installDist
+./build/install/testermint/bin/testermint
+```
+
+Ensure a local test net is running with Docker.
+
+For example, to create a subnet proxy, send a chat completion, and stop it:
+
+```kotlin
+val ss = SubnetSession()
+ss.startSubnet()
+ss.sendChatCompletion()
+ss.stopSubnet()
+```
+
+For more details on existing methods and classes, see `src/main/kotlin/REPL.kt`.
+
+The REPL is currently very barebones and doesn't expose a lot of helpers and utilities.
+Contributions are welcome!

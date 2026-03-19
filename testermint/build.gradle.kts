@@ -4,6 +4,11 @@ import groovy.lang.Closure
 
 plugins {
     kotlin("jvm") version "2.0.10"
+    application
+}
+
+application {
+    mainClass.set("com.productscience.REPLKt")
 }
 
 group = "com.productscience"
@@ -255,6 +260,12 @@ dependencies {
     // Jackson for YAML parsing with Kotlin data class support
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.15.2")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.15.2")
+
+    // REPL
+    implementation("org.jetbrains.kotlin:kotlin-scripting-jvm:2.0.10")
+    implementation("org.jetbrains.kotlin:kotlin-scripting-jsr223:2.0.10")
+    implementation("org.jline:jline:3.25.1")
+    implementation("org.jline:jline-terminal-jna:3.25.1")
 }
 
 tasks.withType<JavaExec>().configureEach {
