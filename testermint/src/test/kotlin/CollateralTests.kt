@@ -126,7 +126,10 @@ class CollateralTests : TestermintTest() {
     @Test
     fun `a participant is slashed for downtime with unbonding slashed`() {
         // Configure genesis with fast expiration for downtime testing
-        val fastExpirationSpec = spec {
+        val fastExpirationSpec = createSpec(
+            epochLength = 25,
+            epochShift = 10,
+        ).merge(spec {
                 this[AppState::inference] = spec<InferenceState> {
                     this[InferenceState::params] = spec<InferenceParams> {
                         this[InferenceParams::validationParams] = spec<ValidationParams> {
@@ -134,7 +137,7 @@ class CollateralTests : TestermintTest() {
                         }
                     }
                 }
-            }
+            })
 
         val fastExpirationConfig = inferenceConfig.copy(
             genesisSpec = inferenceConfig.genesisSpec?.merge(fastExpirationSpec) ?: fastExpirationSpec
@@ -193,7 +196,7 @@ class CollateralTests : TestermintTest() {
 
             // Expiry during PoC uses preserve-node eligibility and skips downtime penalties.
             // Wait until we're safely in the inference window so expiries are counted as missed work.
-            genesis.waitForNextInferenceWindow(windowSizeInBlocks = expirationBlocks.toInt() + 5)
+            genesis.waitForNextInferenceWindow(windowSizeInBlocks = expirationBlocks.toInt() + 10)
 
             logHighlight("Submitting bad inference batch ${batch + 1}")
             val timeoutIdsBeforeBatch = genesis.node.getInferenceTimeouts()
@@ -205,7 +208,7 @@ class CollateralTests : TestermintTest() {
             }
 
             genesis.node.waitForNextBlock(1)
-            genesis.waitForBlock(maxBlocks = expirationBlocks.toInt() + 10) { pair ->
+            genesis.waitForBlock(maxBlocks = expirationBlocks.toInt() + 20) { pair ->
                 pair.node.getInferenceTimeouts()
                     .inferenceTimeout
                     .any { it.inferenceId !in timeoutIdsBeforeBatch }

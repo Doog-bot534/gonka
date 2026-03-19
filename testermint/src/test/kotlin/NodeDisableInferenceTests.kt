@@ -32,18 +32,28 @@ class NodeDisableInferenceTests : TestermintTest() {
         val participants = genesis.api.getActiveParticipants().activeParticipants
         assertThat(participants.participants).hasSize(3)
 
+        genesis.waitForBlock(maxBlocks = 25) { pair ->
+            pair.api.getNodes().any { node ->
+                node.state.epochMlNodes?.values?.any { allocation ->
+                    allocation.timeslotAllocation.getOrNull(1) == true
+                } == true
+            }
+        }
+
         val genesisRegisteredNodes = genesis.api.getNodes()
         assertThat(genesisRegisteredNodes).hasSize(2)
+        assertThat(
+            genesisRegisteredNodes.any { node ->
+                node.state.epochMlNodes?.values?.any { allocation ->
+                    allocation.timeslotAllocation.getOrNull(1) == true
+                } == true
+            }
+        )
+            .isTrue()
+            .`as`("At least one Genesis ML node should have inference timeslot allocation")
 
         val genesisParticipant = participants.getParticipant(genesis)
         assertThat(genesisParticipant).isNotNull
-        genesisParticipant?.mlNodes?.firstOrNull()?.mlNodes.also { genesisMlNodes ->
-            assertThat(genesisMlNodes).isNotNull
-            assertThat(genesisMlNodes).isNotEmpty
-            assertThat(genesisMlNodes!!.any { node -> node.timeslotAllocation.getOrNull(1) == true })
-                .isTrue()
-                .`as`("At least one Genesis ML node should have inference timeslot allocation")
-        }
 
         // 3. Wait for INFERENCE phase and disable join-1
         logSection("Waiting for Inference Window")
