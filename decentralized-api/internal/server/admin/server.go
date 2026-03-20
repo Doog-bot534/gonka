@@ -4,6 +4,7 @@ import (
 	"decentralized-api/apiconfig"
 	"decentralized-api/broker"
 	cosmos_client "decentralized-api/cosmosclient"
+	"decentralized-api/internal/versioned"
 	"decentralized-api/internal/server/middleware"
 	pserver "decentralized-api/internal/server/public"
 	"decentralized-api/internal/validation"
@@ -33,6 +34,7 @@ type Server struct {
 	cdc            *codec.ProtoCodec
 	blockQueue     *pserver.BridgeQueue
 	payloadStorage payloadstorage.PayloadStorage
+	versionedStore *versioned.Store
 }
 
 func NewServer(
@@ -115,6 +117,12 @@ func getCodec() *codec.ProtoCodec {
 	blstypes.RegisterInterfaces(interfaceRegistry)
 	cdc := codec.NewProtoCodec(interfaceRegistry)
 	return cdc
+}
+
+func (s *Server) RegisterVersioned(store *versioned.Store) {
+	s.versionedStore = store
+	g := s.e.Group("/admin/v1/")
+	versioned.RegisterRoutes(g, store)
 }
 
 func (s *Server) Start(addr string) {

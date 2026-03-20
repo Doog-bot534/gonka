@@ -24,6 +24,7 @@ type Config struct {
 	ValidationParams         ValidationParamsCache    `koanf:"validation_params" json:"validation_params"`
 	BandwidthParams          BandwidthParamsCache     `koanf:"bandwidth_params" json:"bandwidth_params"`
 	TransferAgentAccessCache TransferAgentAccessCache `koanf:"-" json:"-"` // not persisted, synced from chain
+	Versioned                VersionedConfig          `koanf:"versioned" json:"versioned"`
 }
 
 type NatsServerConfig struct {
@@ -173,6 +174,12 @@ type BandwidthParamsCache struct {
 	KbPerInputToken           float64 `koanf:"kb_per_input_token" json:"kb_per_input_token"`
 	KbPerOutputToken          float64 `koanf:"kb_per_output_token" json:"kb_per_output_token"`
 	MaxInferencesPerBlock     uint64  `koanf:"max_inferences_per_block" json:"max_inferences_per_block"`
+}
+
+type VersionedConfig struct {
+	Enabled    bool   `koanf:"versioned_enabled" json:"versioned_enabled"`
+	ConfigPath string `koanf:"versioned_config_path" json:"versioned_config_path"`
+	BinaryDir  string `koanf:"versioned_binary_dir" json:"versioned_binary_dir"`
 }
 
 // TransferAgentAccessCache caches the allowed TA addresses for O(1) lookups.
