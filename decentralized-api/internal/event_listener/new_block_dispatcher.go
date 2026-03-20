@@ -233,6 +233,17 @@ func (d *OnNewBlockDispatcher) ProcessNewBlock(ctx context.Context, blockInfo ch
 					"enabled", cache.IsEnabled, "count", len(addresses))
 			}
 
+			// Update subnet versions cache from chain params
+			if params.Params.SubnetEscrowParams != nil {
+				versions := make([]apiconfig.SubnetVersion, len(params.Params.SubnetEscrowParams.ApprovedVersions))
+				for i, v := range params.Params.SubnetEscrowParams.ApprovedVersions {
+					versions[i] = apiconfig.SubnetVersion{
+						Name: v.Name, Binary: v.Binary, SHA256: v.Sha256,
+					}
+				}
+				d.configManager.SetSubnetVersions(apiconfig.SubnetVersionsCache{Versions: versions})
+			}
+
 			// Update PoC V2 enabled flags for runtime V1/V2 switching
 			if params.Params.PocParams != nil {
 				d.phaseTracker.UpdatePocV2Enabled(params.Params.PocParams.PocV2Enabled)

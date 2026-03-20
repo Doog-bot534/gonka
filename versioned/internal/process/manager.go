@@ -21,27 +21,45 @@ import (
 
 type child struct {
 	version oracle.Version
+	port    int
 	cancel  context.CancelFunc
 	done    chan struct{} // closed when runChild exits
 	status  string
 }
 
 type Manager struct {
-	cfg         config.Config
-	processes   map[string]*child
-	downloading map[string]struct{}
-	mu          sync.Mutex
-	routes      atomic.Value // map[string]string
+	cfg           config.Config
+	processes     map[string]*child
+	downloading   map[string]struct{}
+	assignedPorts map[string]int // version name -> assigned port
+	nextPort      int
+	mu            sync.Mutex
+	routes        atomic.Value // map[string]string
 }
 
 func NewManager(cfg config.Config) *Manager {
 	m := &Manager{
-		cfg:         cfg,
-		processes:   make(map[string]*child),
-		downloading: make(map[string]struct{}),
+		cfg:           cfg,
+		processes:     make(map[string]*child),
+		downloading:   make(map[string]struct{}),
+		assignedPorts: make(map[string]int),
+		nextPort:      cfg.BasePort,
 	}
 	m.routes.Store(map[string]string{})
 	return m
+}
+
+// assignPort returns a stable port for the given version name.
+// Once assigned, the same name always gets the same port.
+// Must be called with m.mu held.
+func (m *Manager) assignPort(name string) int {
+	if port, ok := m.assignedPorts[name]; ok {
+		return port
+	}
+	port := m.nextPort
+	m.nextPort++
+	m.assignedPorts[name] = port
+	return port
 }
 
 func (m *Manager) RouteTable() *atomic.Value {
@@ -55,7 +73,7 @@ func (m *Manager) Status() []health.StatusEntry {
 	for _, c := range m.processes {
 		out = append(out, health.StatusEntry{
 			Name:   c.version.Name,
-			Port:   c.version.Port,
+			Port:   c.port,
 			Status: c.status,
 		})
 	}
@@ -75,12 +93,31 @@ func (m *Manager) Reconcile(ctx context.Context, desired []oracle.Version) error
 	var toStopNames []string
 
 	for _, v := range desired {
+		// Override: symlink a local binary, skip download and hash check.
+		if localPath, ok := m.cfg.Overrides[v.Name]; ok {
+			if _, running := m.processes[v.Name]; running {
+				continue
+			}
+			binDir := filepath.Join(m.cfg.BinDir, v.Name)
+			if err := os.MkdirAll(binDir, 0755); err != nil {
+				slog.Error("override mkdir failed", "version", v.Name, "error", err)
+				continue
+			}
+			target := filepath.Join(binDir, m.cfg.BinaryName)
+			os.Remove(target)
+			if err := os.Symlink(localPath, target); err != nil {
+				slog.Error("override symlink failed", "version", v.Name, "error", err)
+				continue
+			}
+			slog.Info("using override binary", "version", v.Name, "path", localPath)
+			m.startChild(ctx, v)
+			continue
+		}
+
 		if existing, running := m.processes[v.Name]; running {
-			// If only the port changed, restart with existing binary.
 			// If binary URL changed, stop + re-download.
-			if existing.version.Port != v.Port || existing.version.Binary != v.Binary {
-				slog.Info("version config changed, restarting", "version", v.Name,
-					"old_port", existing.version.Port, "new_port", v.Port)
+			if existing.version.Binary != v.Binary {
+				slog.Info("version config changed, restarting", "version", v.Name)
 				toStop = append(toStop, existing)
 				toStopNames = append(toStopNames, v.Name)
 				delete(m.processes, v.Name)
@@ -172,6 +209,7 @@ func (m *Manager) startChild(ctx context.Context, v oracle.Version) {
 	childCtx, childCancel := context.WithCancel(ctx)
 	c := &child{
 		version: v,
+		port:    m.assignPort(v.Name),
 		cancel:  childCancel,
 		done:    make(chan struct{}),
 		status:  "starting",
@@ -236,7 +274,7 @@ func (m *Manager) runChild(ctx context.Context, c *child) {
 
 		cmd := exec.CommandContext(ctx, binPath,
 			"--data-dir", dataDir,
-			"--port", fmt.Sprintf("%d", c.version.Port),
+			"--port", fmt.Sprintf("%d", c.port),
 		)
 		cmd.Env = append(os.Environ(), fmt.Sprintf("SUBNET_LOG_PREFIX=%s", c.version.Name))
 		cmd.Stdout = os.Stdout
@@ -249,7 +287,7 @@ func (m *Manager) runChild(ctx context.Context, c *child) {
 		cmd.WaitDelay = 5 * time.Second // SIGKILL after 5s if SIGTERM didn't work
 
 		lastStart = time.Now()
-		slog.Info("starting child", "version", c.version.Name, "port", c.version.Port)
+		slog.Info("starting child", "version", c.version.Name, "port", c.port)
 
 		if err := cmd.Start(); err != nil {
 			slog.Error("child start failed", "version", c.version.Name, "error", err)
@@ -257,7 +295,7 @@ func (m *Manager) runChild(ctx context.Context, c *child) {
 		}
 
 		// Wait for the child to start accepting connections before routing traffic.
-		if !waitForPort(ctx, c.version.Port, 10*time.Second) {
+		if !waitForPort(ctx, c.port, 10*time.Second) {
 			slog.Warn("child did not start listening in time, routing anyway", "version", c.version.Name)
 		}
 		m.mu.Lock()
@@ -327,7 +365,7 @@ func (m *Manager) rebuildRoutes() {
 	routes := make(map[string]string)
 	for _, c := range m.processes {
 		if c.status == "running" {
-			routes[c.version.Name] = fmt.Sprintf("localhost:%d", c.version.Port)
+			routes[c.version.Name] = fmt.Sprintf("localhost:%d", c.port)
 		}
 	}
 	m.routes.Store(routes)

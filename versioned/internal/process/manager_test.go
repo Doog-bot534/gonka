@@ -7,15 +7,12 @@ import (
 	"versioned/internal/oracle"
 )
 
-func oracleVersion(name string, port int) oracle.Version {
-	return oracle.Version{Name: name, Port: port}
-}
-
 func TestNewManager(t *testing.T) {
 	cfg := config.Config{
 		BinDir:     "/tmp/bin",
 		DataDir:    "/tmp/data",
 		BinaryName: "testapp",
+		BasePort:   9100,
 	}
 	m := NewManager(cfg)
 	if m == nil {
@@ -36,17 +33,20 @@ func TestRebuildRoutes(t *testing.T) {
 		BinDir:     "/tmp/bin",
 		DataDir:    "/tmp/data",
 		BinaryName: "testapp",
+		BasePort:   9100,
 	}
 	m := NewManager(cfg)
 
 	m.mu.Lock()
 	m.processes["v1"] = &child{
-		version: oracleVersion("v1", 9001),
+		version: oracle.Version{Name: "v1"},
+		port:    9001,
 		done:    make(chan struct{}),
 		status:  "running",
 	}
 	m.processes["v2"] = &child{
-		version: oracleVersion("v2", 9002),
+		version: oracle.Version{Name: "v2"},
+		port:    9002,
 		done:    make(chan struct{}),
 		status:  "running",
 	}
@@ -67,22 +67,26 @@ func TestRebuildRoutes_ExcludesNonRunning(t *testing.T) {
 		BinDir:     "/tmp/bin",
 		DataDir:    "/tmp/data",
 		BinaryName: "testapp",
+		BasePort:   9100,
 	}
 	m := NewManager(cfg)
 
 	m.mu.Lock()
 	m.processes["v1"] = &child{
-		version: oracleVersion("v1", 9001),
+		version: oracle.Version{Name: "v1"},
+		port:    9001,
 		done:    make(chan struct{}),
 		status:  "running",
 	}
 	m.processes["v2"] = &child{
-		version: oracleVersion("v2", 9002),
+		version: oracle.Version{Name: "v2"},
+		port:    9002,
 		done:    make(chan struct{}),
 		status:  "starting",
 	}
 	m.processes["v3"] = &child{
-		version: oracleVersion("v3", 9003),
+		version: oracle.Version{Name: "v3"},
+		port:    9003,
 		done:    make(chan struct{}),
 		status:  "stopped",
 	}
@@ -106,12 +110,14 @@ func TestStatus(t *testing.T) {
 		BinDir:     "/tmp/bin",
 		DataDir:    "/tmp/data",
 		BinaryName: "testapp",
+		BasePort:   9100,
 	}
 	m := NewManager(cfg)
 
 	m.mu.Lock()
 	m.processes["v1"] = &child{
-		version: oracleVersion("v1", 9001),
+		version: oracle.Version{Name: "v1"},
+		port:    9001,
 		done:    make(chan struct{}),
 		status:  "running",
 	}

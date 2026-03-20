@@ -11,7 +11,7 @@ import (
 func TestFetch(t *testing.T) {
 	want := VersionConfig{
 		Versions: []Version{
-			{Name: "v1", Binary: "http://example.com/v1.zip", SHA256: "abc123", Port: 9001},
+			{Name: "v1", Binary: "http://example.com/v1.zip", SHA256: "abc123"},
 		},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

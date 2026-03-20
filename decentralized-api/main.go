@@ -10,7 +10,6 @@ import (
 	"decentralized-api/internal/event_listener"
 	"decentralized-api/internal/modelmanager"
 	"decentralized-api/internal/nats/server"
-	"decentralized-api/internal/versioned"
 	adminserver "decentralized-api/internal/server/admin"
 	mlserver "decentralized-api/internal/server/mlnode"
 	pserver "decentralized-api/internal/server/public"
@@ -257,24 +256,12 @@ func main() {
 
 	addr = fmt.Sprintf(":%v", config.GetApiConfig().MLServerPort)
 	logging.Info("start ml server on addr", types.Server, "addr", addr)
-	mlServer := mlserver.NewServer(recorder, nodeBroker, mlserver.WithArtifactStore(artifactStore))
+	mlServer := mlserver.NewServer(recorder, nodeBroker, mlserver.WithArtifactStore(artifactStore), mlserver.WithConfigManager(config))
 	mlServer.Start(addr)
 
 	addr = fmt.Sprintf(":%v", config.GetApiConfig().AdminServerPort)
 	logging.Info("start admin server on addr", types.Server, "addr", addr)
 	adminServer := adminserver.NewServer(recorder, nodeBroker, config, validator, blockQueue, payloadStore)
-	if config.GetConfig().Versioned.Enabled {
-		versionedStore, err := versioned.NewStore(
-			config.GetConfig().Versioned.ConfigPath,
-			config.GetConfig().Versioned.BinaryDir,
-		)
-		if err != nil {
-			logging.Error("versioned store init failed", types.System, "error", err)
-		} else {
-			adminServer.RegisterVersioned(versionedStore)
-			logging.Info("versioned enabled", types.System)
-		}
-	}
 	adminServer.Start(addr)
 
 	mlGrpcServerPort := config.GetApiConfig().MlGrpcServerPort

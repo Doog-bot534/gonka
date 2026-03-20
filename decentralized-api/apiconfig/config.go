@@ -24,7 +24,7 @@ type Config struct {
 	ValidationParams         ValidationParamsCache    `koanf:"validation_params" json:"validation_params"`
 	BandwidthParams          BandwidthParamsCache     `koanf:"bandwidth_params" json:"bandwidth_params"`
 	TransferAgentAccessCache TransferAgentAccessCache `koanf:"-" json:"-"` // not persisted, synced from chain
-	Versioned                VersionedConfig          `koanf:"versioned" json:"versioned"`
+	SubnetVersionsCache      SubnetVersionsCache      `koanf:"-" json:"-"` // not persisted, synced from chain
 }
 
 type NatsServerConfig struct {
@@ -176,10 +176,16 @@ type BandwidthParamsCache struct {
 	MaxInferencesPerBlock     uint64  `koanf:"max_inferences_per_block" json:"max_inferences_per_block"`
 }
 
-type VersionedConfig struct {
-	Enabled    bool   `koanf:"versioned_enabled" json:"versioned_enabled"`
-	ConfigPath string `koanf:"versioned_config_path" json:"versioned_config_path"`
-	BinaryDir  string `koanf:"versioned_binary_dir" json:"versioned_binary_dir"`
+// SubnetVersionsCache holds approved subnet versions synced from chain params.
+type SubnetVersionsCache struct {
+	Versions []SubnetVersion `json:"versions"`
+}
+
+// SubnetVersion describes a single approved subnet binary.
+type SubnetVersion struct {
+	Name   string `json:"name"`
+	Binary string `json:"binary"`
+	SHA256 string `json:"sha256"`
 }
 
 // TransferAgentAccessCache caches the allowed TA addresses for O(1) lookups.

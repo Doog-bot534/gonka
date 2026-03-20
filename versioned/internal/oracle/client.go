@@ -18,7 +18,6 @@ type Version struct {
 	Name   string `json:"name"`
 	Binary string `json:"binary"`
 	SHA256 string `json:"sha256,omitempty"`
-	Port   int    `json:"port"`
 }
 
 // ResolvedSHA256 returns the sha256 checksum for this version.
