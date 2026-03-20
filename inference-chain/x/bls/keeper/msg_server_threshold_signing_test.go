@@ -10,6 +10,7 @@ import (
 	keepertest "github.com/productscience/inference/testutil/keeper"
 	"github.com/productscience/inference/x/bls/keeper"
 	"github.com/productscience/inference/x/bls/types"
+	"golang.org/x/crypto/sha3"
 )
 
 func setupMsgServerThresholdSigning(t testing.TB) (keeper.Keeper, types.MsgServer, sdk.Context) {
@@ -93,7 +94,12 @@ func TestRequestThresholdSignature_AcceptsCurrentEpoch(t *testing.T) {
 	_, err := ms.RequestThresholdSignature(sdkCtx, msg)
 	require.NoError(t, err)
 
-	stored, err := k.GetSigningStatus(sdkCtx, msg.RequestId)
+	hash := sha3.NewLegacyKeccak256()
+	hash.Write([]byte(msg.Creator))
+	hash.Write(msg.RequestId)
+	namespacedRequestId := hash.Sum(nil)
+
+	stored, err := k.GetSigningStatus(sdkCtx, namespacedRequestId)
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), stored.CurrentEpochId)
 }
