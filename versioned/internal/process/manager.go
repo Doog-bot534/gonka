@@ -2,7 +2,10 @@ package process
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -19,6 +22,12 @@ import (
 	"versioned/internal/oracle"
 )
 
+const (
+	statusStarting = "starting"
+	statusRunning  = "running"
+	statusStopped  = "stopped"
+)
+
 type child struct {
 	version oracle.Version
 	port    int
@@ -31,7 +40,7 @@ type Manager struct {
 	cfg           config.Config
 	processes     map[string]*child
 	downloading   map[string]struct{}
-	assignedPorts map[string]int // version name -> assigned port
+	assignedPorts map[string]int // version name -> assigned port (persists for manager lifetime)
 	nextPort      int
 	mu            sync.Mutex
 	routes        atomic.Value // map[string]string
@@ -80,69 +89,104 @@ func (m *Manager) Status() []health.StatusEntry {
 	return out
 }
 
+// hashFile computes the sha256 hex digest of a file on disk.
+func hashFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// Reconcile compares desired state against local state and converges.
+// sha256 is the sole identity for binaries. URLs are download hints only.
 func (m *Manager) Reconcile(ctx context.Context, desired []oracle.Version) error {
+	// Step 0: build desired set, injecting forced versions.
 	desiredSet := make(map[string]oracle.Version, len(desired))
 	for _, v := range desired {
 		desiredSet[v.Name] = v
 	}
+	for _, name := range m.cfg.ForceVersions {
+		if _, exists := desiredSet[name]; exists {
+			continue
+		}
+		if _, hasOverride := m.cfg.Overrides[name]; !hasOverride {
+			slog.Warn("forced version skipped: no override configured", "version", name)
+			continue
+		}
+		desiredSet[name] = oracle.Version{Name: name}
+	}
 
-	// Phase 1: under lock, identify what needs downloading and what needs stopping.
+	// Step 1: process desired versions.
 	m.mu.Lock()
-	var toDownload []oracle.Version
+	var toDownload []versionAction
+	var toSwap []versionAction // running version with hash mismatch (zero-downtime swap)
 	var toStop []*child
 	var toStopNames []string
+	for _, v := range desiredSet {
+		binPath := filepath.Join(m.cfg.BinDir, v.Name, m.cfg.BinaryName)
 
-	for _, v := range desired {
-		// Override: symlink a local binary, skip download and hash check.
-		if localPath, ok := m.cfg.Overrides[v.Name]; ok {
-			if _, running := m.processes[v.Name]; running {
-				continue
-			}
-			binDir := filepath.Join(m.cfg.BinDir, v.Name)
-			if err := os.MkdirAll(binDir, 0755); err != nil {
-				slog.Error("override mkdir failed", "version", v.Name, "error", err)
-				continue
-			}
-			target := filepath.Join(binDir, m.cfg.BinaryName)
-			os.Remove(target)
-			if err := os.Symlink(localPath, target); err != nil {
-				slog.Error("override symlink failed", "version", v.Name, "error", err)
-				continue
-			}
-			slog.Info("using override binary", "version", v.Name, "path", localPath)
-			m.startChild(ctx, v)
+		if overrideSrc, isOverride := m.cfg.Overrides[v.Name]; isOverride {
+			m.reconcileOverride(ctx, v, overrideSrc, binPath)
 			continue
 		}
 
-		if existing, running := m.processes[v.Name]; running {
-			// If binary URL changed, stop + re-download.
-			if existing.version.Binary != v.Binary {
-				slog.Info("version config changed, restarting", "version", v.Name)
-				toStop = append(toStop, existing)
-				toStopNames = append(toStopNames, v.Name)
-				delete(m.processes, v.Name)
-				// If binary URL changed, force re-download by removing cached binary.
-				if existing.version.Binary != v.Binary {
-					binPath := filepath.Join(m.cfg.BinDir, v.Name, m.cfg.BinaryName)
-					os.Remove(binPath)
-				}
-				// Fall through to download/start logic below.
-			} else {
+		running, isRunning := m.processes[v.Name]
+
+		desiredHash, err := v.ResolvedSHA256()
+		if err != nil {
+			slog.Error("cannot resolve sha256, skipping", "version", v.Name, "error", err)
+			continue
+		}
+
+		if isRunning {
+			diskHash, hashErr := hashFile(binPath)
+			if hashErr != nil {
+				slog.Error("cannot hash running binary, skipping", "version", v.Name, "error", hashErr)
 				continue
 			}
+			if diskHash == desiredHash {
+				continue // already running correct binary
+			}
+			// Hash mismatch: need zero-downtime swap (download first, then stop).
+			if _, dl := m.downloading[v.Name]; dl {
+				continue
+			}
+			slog.Info("hash mismatch on running version, scheduling swap",
+				"version", v.Name, "disk", diskHash, "desired", desiredHash)
+			m.downloading[v.Name] = struct{}{}
+			toSwap = append(toSwap, versionAction{version: v, child: running})
+			continue
 		}
+
+		// Not running.
 		if _, dl := m.downloading[v.Name]; dl {
 			continue
 		}
-		binPath := filepath.Join(m.cfg.BinDir, v.Name, m.cfg.BinaryName)
-		if _, err := os.Stat(binPath); err != nil {
-			m.downloading[v.Name] = struct{}{}
-			toDownload = append(toDownload, v)
-		} else {
+
+		diskHash, hashErr := hashFile(binPath)
+		if hashErr == nil && diskHash == desiredHash {
+			// Binary on disk matches, just start.
 			m.startChild(ctx, v)
+			continue
 		}
+
+		// Binary missing or hash mismatch: (re)download.
+		if hashErr == nil {
+			slog.Info("cached binary hash mismatch, re-downloading",
+				"version", v.Name, "disk", diskHash, "desired", desiredHash)
+			os.Remove(binPath)
+		}
+		m.downloading[v.Name] = struct{}{}
+		toDownload = append(toDownload, versionAction{version: v})
 	}
 
+	// Step 2: stop versions not in desired set.
 	for name, c := range m.processes {
 		if _, wanted := desiredSet[name]; !wanted {
 			toStop = append(toStop, c)
@@ -152,20 +196,28 @@ func (m *Manager) Reconcile(ctx context.Context, desired []oracle.Version) error
 	for _, name := range toStopNames {
 		delete(m.processes, name)
 	}
-	changed := len(toDownload) > 0 || len(toStop) > 0
+
+	changed := len(toDownload) > 0 || len(toSwap) > 0 || len(toStop) > 0
 	if changed {
 		m.rebuildRoutes()
 	}
 	m.mu.Unlock()
 
 	// Phase 2: downloads outside the lock (can be slow).
-	for _, v := range toDownload {
-		if err := m.downloadAndStart(ctx, v); err != nil {
-			slog.Error("download failed, skipping", "version", v.Name, "error", err)
+	for _, a := range toDownload {
+		if err := m.downloadAndStart(ctx, a.version); err != nil {
+			slog.Error("download failed, skipping", "version", a.version.Name, "error", err)
 		}
 	}
 
-	// Phase 3: stop removed versions outside the lock.
+	// Phase 3: zero-downtime swaps -- download THEN stop old process.
+	for _, a := range toSwap {
+		if err := m.downloadAndSwap(ctx, a.version, a.child); err != nil {
+			slog.Error("swap failed, keeping old version", "version", a.version.Name, "error", err)
+		}
+	}
+
+	// Phase 4: stop removed versions outside the lock.
 	for i, c := range toStop {
 		slog.Info("stopping removed version", "version", toStopNames[i])
 		c.cancel()
@@ -177,9 +229,84 @@ func (m *Manager) Reconcile(ctx context.Context, desired []oracle.Version) error
 	return nil
 }
 
+type versionAction struct {
+	version oracle.Version
+	child   *child // non-nil for swap actions
+}
+
+
+// reconcileOverride handles a version with a local override binary.
+// Must be called with m.mu held.
+func (m *Manager) reconcileOverride(ctx context.Context, v oracle.Version, overrideSrc, binPath string) {
+	srcHash, err := hashFile(overrideSrc)
+	if err != nil {
+		slog.Error("override source unreadable", "version", v.Name, "path", overrideSrc, "error", err)
+		return
+	}
+
+	existing, isRunning := m.processes[v.Name]
+	if isRunning {
+		diskHash, hashErr := hashFile(binPath)
+		if hashErr == nil && diskHash == srcHash {
+			return // already running the same override binary
+		}
+		// Override source changed: stop old, copy new, start.
+		slog.Info("override binary changed, restarting", "version", v.Name)
+		existing.cancel()
+		go func() { waitForChild(existing, 5*time.Second, v.Name) }()
+		delete(m.processes, v.Name)
+	}
+
+	binDir := filepath.Join(m.cfg.BinDir, v.Name)
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		slog.Error("override mkdir failed", "version", v.Name, "error", err)
+		return
+	}
+
+	if err := atomicCopy(overrideSrc, binPath); err != nil {
+		slog.Error("override copy failed", "version", v.Name, "error", err)
+		return
+	}
+
+	slog.Info("using override binary", "version", v.Name, "path", overrideSrc)
+	m.startChild(ctx, v)
+}
+
+// atomicCopy copies src to dst via a temp file + rename.
+func atomicCopy(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	dir := filepath.Dir(dst)
+	tmp, err := os.CreateTemp(dir, filepath.Base(dst)+".tmp.*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+
+	if _, err := io.Copy(tmp, in); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+	tmp.Close()
+
+	if err := os.Chmod(tmpPath, 0755); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := os.Rename(tmpPath, dst); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+	return nil
+}
+
 // downloadAndStart resolves the checksum, downloads the binary, and starts the child.
 func (m *Manager) downloadAndStart(ctx context.Context, v oracle.Version) error {
-	// downloadBinary does the slow work outside the lock.
 	dlErr := m.downloadBinary(ctx, v)
 
 	m.mu.Lock()
@@ -189,6 +316,35 @@ func (m *Manager) downloadAndStart(ctx context.Context, v oracle.Version) error 
 	}
 	m.mu.Unlock()
 	return dlErr
+}
+
+// downloadAndSwap downloads the new binary, then atomically replaces the old one.
+// The old process is stopped only after the new binary is on disk.
+func (m *Manager) downloadAndSwap(ctx context.Context, v oracle.Version, old *child) error {
+	dlErr := m.downloadBinary(ctx, v)
+
+	m.mu.Lock()
+	delete(m.downloading, v.Name)
+	m.mu.Unlock()
+
+	if dlErr != nil {
+		return dlErr
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	// Stop old process after new binary is on disk.
+	slog.Info("stopping old process for swap", "version", v.Name)
+	old.cancel()
+	waitForChild(old, 5*time.Second, v.Name)
+
+	m.mu.Lock()
+	delete(m.processes, v.Name)
+	m.startChild(ctx, v)
+	m.mu.Unlock()
+
+	return nil
 }
 
 func (m *Manager) downloadBinary(ctx context.Context, v oracle.Version) error {
@@ -212,7 +368,7 @@ func (m *Manager) startChild(ctx context.Context, v oracle.Version) {
 		port:    m.assignPort(v.Name),
 		cancel:  childCancel,
 		done:    make(chan struct{}),
-		status:  "starting",
+		status:  statusStarting,
 	}
 	m.processes[v.Name] = c
 	go m.runChild(childCtx, c)
@@ -220,7 +376,6 @@ func (m *Manager) startChild(ctx context.Context, v oracle.Version) {
 
 func (m *Manager) Shutdown(ctx context.Context) error {
 	m.mu.Lock()
-	// Collect children and cancel them all first.
 	children := make([]*child, 0, len(m.processes))
 	names := make([]string, 0, len(m.processes))
 	for name, c := range m.processes {
@@ -232,7 +387,6 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	m.routes.Store(map[string]string{})
 	m.mu.Unlock()
 
-	// Wait for children outside the lock.
 	for i, c := range children {
 		slog.Info("shutting down", "version", names[i])
 		waitForChild(c, 10*time.Second, names[i])
@@ -299,7 +453,7 @@ func (m *Manager) runChild(ctx context.Context, c *child) {
 			slog.Warn("child did not start listening in time, routing anyway", "version", c.version.Name)
 		}
 		m.mu.Lock()
-		c.status = "running"
+		c.status = statusRunning
 		m.rebuildRoutes()
 		m.mu.Unlock()
 
@@ -314,7 +468,7 @@ func (m *Manager) runChild(ctx context.Context, c *child) {
 		slog.Error("child exited", "version", c.version.Name, "error", err)
 
 		m.mu.Lock()
-		c.status = "stopped"
+		c.status = statusStopped
 		m.rebuildRoutes()
 		m.mu.Unlock()
 
@@ -364,7 +518,7 @@ func waitForPort(ctx context.Context, port int, timeout time.Duration) bool {
 func (m *Manager) rebuildRoutes() {
 	routes := make(map[string]string)
 	for _, c := range m.processes {
-		if c.status == "running" {
+		if c.status == statusRunning {
 			routes[c.version.Name] = fmt.Sprintf("localhost:%d", c.port)
 		}
 	}

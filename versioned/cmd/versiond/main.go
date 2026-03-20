@@ -41,17 +41,18 @@ func run(ctx context.Context) error {
 	mux.HandleFunc("/healthz", health.Handler(mgr.Status))
 	mux.Handle("/", proxy.Handler(mgr.RouteTable()))
 
+	listenAddr := config.ListenAddr()
 	srv := &http.Server{
-		Addr:    cfg.ListenAddr,
+		Addr:    listenAddr,
 		Handler: mux,
 	}
 
-	ln, err := net.Listen("tcp", cfg.ListenAddr)
+	ln, err := net.Listen("tcp", listenAddr)
 	if err != nil {
-		return fmt.Errorf("listen %s: %w", cfg.ListenAddr, err)
+		return fmt.Errorf("listen %s: %w", listenAddr, err)
 	}
 	go func() {
-		slog.Info("starting proxy server", "addr", cfg.ListenAddr)
+		slog.Info("starting proxy server", "addr", listenAddr)
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			slog.Error("http server error", "error", err)
 		}

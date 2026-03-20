@@ -15,7 +15,6 @@ services:
       dockerfile: Dockerfile
     environment:
       VERSIOND_ORACLE_URL: http://oracle:8080/versions
-      VERSIOND_LISTEN_ADDR: ":8080"
       VERSIOND_POLL_INTERVAL: "5s"
       VERSIOND_BIN_DIR: /opt/versiond/bin
       VERSIOND_DATA_DIR: /opt/versiond/data

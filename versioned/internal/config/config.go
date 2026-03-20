@@ -2,21 +2,21 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 )
 
 type Config struct {
-	OracleURL    string
-	ListenAddr   string
-	PollInterval time.Duration
-	BinDir       string
-	DataDir      string
-	BinaryName   string
-	BasePort     int
-	Overrides    map[string]string // version name -> local binary path
+	OracleURL     string
+	PollInterval  time.Duration
+	BinDir        string
+	DataDir       string
+	BinaryName    string
+	BasePort      int
+	Overrides     map[string]string // version name -> local binary path
+	ForceVersions []string          // version names that must run regardless of oracle
 }
 
 func Load() (Config, error) {
@@ -26,16 +26,31 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		OracleURL:    oracleURL,
-		ListenAddr:   envOrDefault("VERSIOND_LISTEN_ADDR", ":8080"),
-		PollInterval: parseDuration("VERSIOND_POLL_INTERVAL", 30*time.Second),
-		BinDir:       envOrDefault("VERSIOND_BIN_DIR", "/opt/versiond/bin"),
-		DataDir:      envOrDefault("VERSIOND_DATA_DIR", "/opt/versiond/data"),
-		BinaryName:   envOrDefault("VERSIOND_BINARY_NAME", "subnet"),
-		BasePort:     parseInt("VERSIOND_BASE_PORT", 9100),
-		Overrides:    loadOverrides(),
+		OracleURL:     oracleURL,
+		PollInterval:  parseDuration("VERSIOND_POLL_INTERVAL", 30*time.Second),
+		BinDir:        envOrDefault("VERSIOND_BIN_DIR", "/opt/versiond/bin"),
+		DataDir:       envOrDefault("VERSIOND_DATA_DIR", "/opt/versiond/data"),
+		BinaryName:    envOrDefault("VERSIOND_BINARY_NAME", "subnet"),
+		BasePort:      5000,
+		Overrides:     loadOverrides(),
+		ForceVersions: loadForceVersions(),
 	}
+
+	// Validate: forced versions must have a corresponding override.
+	for _, name := range cfg.ForceVersions {
+		if _, ok := cfg.Overrides[name]; !ok {
+			slog.Error("forced version has no override, will be skipped during reconcile",
+				"version", name,
+				"hint", fmt.Sprintf("set VERSIOND_OVERRIDE_%s=/path/to/binary", name))
+		}
+	}
+
 	return cfg, nil
+}
+
+// ListenAddr returns the hardcoded listen address.
+func ListenAddr() string {
+	return ":8080"
 }
 
 const overridePrefix = "VERSIOND_OVERRIDE_"
@@ -61,23 +76,27 @@ func loadOverrides() map[string]string {
 	return overrides
 }
 
+// loadForceVersions parses VERSIOND_FORCE env var (comma-separated version names).
+func loadForceVersions() []string {
+	v := os.Getenv("VERSIOND_FORCE")
+	if v == "" {
+		return nil
+	}
+	var result []string
+	for _, name := range strings.Split(v, ",") {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			result = append(result, name)
+		}
+	}
+	return result
+}
+
 func envOrDefault(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
 	return fallback
-}
-
-func parseInt(key string, fallback int) int {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil || n <= 0 {
-		return fallback
-	}
-	return n
 }
 
 func parseDuration(key string, fallback time.Duration) time.Duration {
