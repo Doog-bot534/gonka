@@ -290,6 +290,9 @@ contract BridgeContract is ERC20, Ownable, ReentrancyGuard {
         bytes calldata groupPublicKey,
         bytes calldata validationSig
     ) public {
+        // Disallow external submission for genesis epoch
+        require(epochId > 1, "Epoch 1 must be set via Admin");
+
         // Verify sequential submission
         if (epochId != epochMeta.latestEpochId + 1) {
             revert InvalidEpochSequence();
