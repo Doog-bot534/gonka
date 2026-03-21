@@ -344,7 +344,7 @@ contract BridgeContract is ERC20, Ownable, ReentrancyGuard {
         }
 
         // 3. Signature Verification: Use cached group key with dual chain ID protection
-        // Message format: [epochId, gonkaChainId, requestId, ethereumChainId, WITHDRAW_OPERATION, recipient, tokenContract, amount]
+        // Message format: [epochId, gonkaChainId, requestId, ethereumChainId, WITHDRAW_OPERATION, recipient, bridgeContract, tokenContract, amount]
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 cmd.epochId,        // Gonka epoch
@@ -353,6 +353,7 @@ contract BridgeContract is ERC20, Ownable, ReentrancyGuard {
                 ETHEREUM_CHAIN_ID,  // This Ethereum chain ID (prevents cross-Ethereum-chain replays)
                 WITHDRAW_OPERATION, // Operation type
                 cmd.recipient,      // Withdrawal details
+                address(this),      // Destination bridge contract address
                 cmd.tokenContract,
                 cmd.amount
             )
@@ -407,7 +408,7 @@ contract BridgeContract is ERC20, Ownable, ReentrancyGuard {
         }
 
         // 3. Signature Verification: Use cached group key with dual chain ID protection
-        // Message format: [epochId, gonkaChainId, requestId, ethereumChainId, MINT_OPERATION, recipient, amount]
+        // Message format: [epochId, gonkaChainId, requestId, ethereumChainId, MINT_OPERATION, recipient, bridgeContract, amount]
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 cmd.epochId,        // Gonka epoch
@@ -416,6 +417,7 @@ contract BridgeContract is ERC20, Ownable, ReentrancyGuard {
                 ETHEREUM_CHAIN_ID,  // This Ethereum chain ID (prevents cross-Ethereum-chain replays)
                 MINT_OPERATION,     // Operation type
                 cmd.recipient,      // Mint details
+                address(this),      // Destination bridge contract address
                 cmd.amount
             )
         );

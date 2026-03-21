@@ -46,6 +46,13 @@ func (k msgServer) RequestBridgeWithdrawal(goCtx context.Context, msg *types.Msg
 		return nil, fmt.Errorf("calling contract %s is not a registered wrapped token contract", contractAddrStr)
 	}
 
+	// Validate the specific destination bridge address
+	if !k.IsBridgeContractAddress(ctx, bridgeWrappedTokenContract.ChainId, msg.DestinationBridgeAddress) {
+		err := fmt.Errorf("invalid destination bridge address: %s for chain: %s", msg.DestinationBridgeAddress, bridgeWrappedTokenContract.ChainId)
+		k.LogError("Bridge withdrawal: Invalid destination bridge address", types.Messages, "error", err)
+		return nil, err
+	}
+
 	// 4. Get chain ID for request identification
 	chainID := ctx.ChainID()
 
@@ -68,10 +75,11 @@ func (k msgServer) RequestBridgeWithdrawal(goCtx context.Context, msg *types.Msg
 
 	// Prepare data for BLS signing - only the parts after epochId/chainId/requestId
 	// The BLS system will prepend: epochId (8 bytes) + gonkaChainId (32 bytes) + requestId (32 bytes)
-	// We need to provide: ethereumChainId + WITHDRAW_OPERATION + recipient + tokenContract + amount
+	// We need to provide: ethereumChainId + WITHDRAW_OPERATION + recipient + bridgeContract + tokenContract + amount
 	blsData, err := k.prepareBridgeWithdrawalSignatureData(
 		destinationChainId,                         // Numeric chain ID (e.g., "1", "137")
 		msg.DestinationAddress,                     // Ethereum address to receive tokens
+		msg.DestinationBridgeAddress,               // Specific bridge contract
 		bridgeWrappedTokenContract.ContractAddress, // Original token address on destination chain
 		msg.Amount, // Amount as string
 	)
@@ -102,6 +110,7 @@ func (k msgServer) RequestBridgeWithdrawal(goCtx context.Context, msg *types.Msg
 		"user_address", msg.UserAddress,
 		"amount", msg.Amount,
 		"destination_address", msg.DestinationAddress,
+		"destination_bridge_address", msg.DestinationBridgeAddress,
 		"request_id", requestID,
 		"epoch_index", currentEpochGroup.GroupData.EpochIndex,
 		"chain_id", chainID,
@@ -137,8 +146,8 @@ func (k msgServer) generateRequestID(ctx sdk.Context) string {
 
 // prepareBridgeWithdrawalSignatureData prepares the data portion for BLS signature according to Ethereum bridge format
 // This function only prepares the data that comes AFTER epochId, gonkaChainId, and requestId
-// Final message format: [epochId, gonkaChainId, requestId, ethereumChainId, WITHDRAW_OPERATION, recipient, tokenContract, amount]
-func (k msgServer) prepareBridgeWithdrawalSignatureData(chainId, recipient, tokenContract, amount string) ([][]byte, error) {
+// Final message format: [epochId, gonkaChainId, requestId, ethereumChainId, WITHDRAW_OPERATION, recipient, bridgeContract, tokenContract, amount]
+func (k msgServer) prepareBridgeWithdrawalSignatureData(chainId, recipient, bridgeContract, tokenContract, amount string) ([][]byte, error) {
 	// Use helper functions for consistent encoding
 	ethereumChainIdBytes, err := chainIdToBytes32(chainId)
 	if err != nil {
@@ -147,6 +156,10 @@ func (k msgServer) prepareBridgeWithdrawalSignatureData(chainId, recipient, toke
 	recipientBytes, err := ethereumAddressToBytes(recipient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode recipient address: %w", err)
+	}
+	bridgeContractBytes, err := ethereumAddressToBytes(bridgeContract)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode bridge contract address: %w", err)
 	}
 	tokenBytes, err := ethereumAddressToBytes(tokenContract)
 	if err != nil {
@@ -158,11 +171,12 @@ func (k msgServer) prepareBridgeWithdrawalSignatureData(chainId, recipient, toke
 	}
 
 	// Return the data fields that come after epochId, gonkaChainId, requestId
-	// Order: ethereumChainId (32 bytes) + WITHDRAW_OPERATION (32 bytes) + recipient (20 bytes) + tokenContract (20 bytes) + amount (32 bytes)
+	// Order: ethereumChainId (32 bytes) + WITHDRAW_OPERATION (32 bytes) + recipient (20 bytes) + bridgeContract (20 bytes) + tokenContract (20 bytes) + amount (32 bytes)
 	data := [][]byte{
 		ethereumChainIdBytes,     // ETHEREUM_CHAIN_ID (32 bytes)
 		withdrawOperationHash[:], // WITHDRAW_OPERATION hash (32 bytes)
 		recipientBytes,           // Recipient address (20 bytes)
+		bridgeContractBytes,      // Destination bridge address (20 bytes)
 		tokenBytes,               // Token contract address (20 bytes)
 		amountBytes,              // Amount as uint256 (32 bytes)
 	}
