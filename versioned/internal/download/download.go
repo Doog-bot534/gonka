@@ -72,6 +72,34 @@ func Download(ctx context.Context, url, expectedSHA256, destDir, binaryName stri
 	return extractBinary(tmpPath, destDir, binaryName)
 }
 
+// AtomicWriteFile writes data from r into destDir/filename via a temp file + chmod + rename.
+// Prevents truncating a live binary on write failure.
+func AtomicWriteFile(destDir, filename string, r io.Reader) error {
+	tmp, err := os.CreateTemp(destDir, filename+".tmp.*")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+
+	if _, err := io.Copy(tmp, r); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("write: %w", err)
+	}
+	tmp.Close()
+
+	if err := os.Chmod(tmpPath, 0755); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("chmod: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, filepath.Join(destDir, filename)); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("rename: %w", err)
+	}
+	return nil
+}
+
 func extractBinary(zipPath, destDir, binaryName string) error {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
@@ -88,36 +116,8 @@ func extractBinary(zipPath, destDir, binaryName string) error {
 		if err != nil {
 			return fmt.Errorf("open zip entry: %w", err)
 		}
-
-		// Write to temp file first, then rename atomically.
-		// This prevents truncating a live binary on extraction failure.
-		tmpDst, err := os.CreateTemp(destDir, binaryName+".tmp.*")
-		if err != nil {
-			src.Close()
-			return fmt.Errorf("create temp dest: %w", err)
-		}
-		tmpDstPath := tmpDst.Name()
-
-		_, copyErr := io.Copy(tmpDst, src)
-		src.Close()
-		tmpDst.Close()
-
-		if copyErr != nil {
-			os.Remove(tmpDstPath)
-			return fmt.Errorf("extract binary: %w", copyErr)
-		}
-
-		if err := os.Chmod(tmpDstPath, 0755); err != nil {
-			os.Remove(tmpDstPath)
-			return fmt.Errorf("chmod: %w", err)
-		}
-
-		destPath := filepath.Join(destDir, binaryName)
-		if err := os.Rename(tmpDstPath, destPath); err != nil {
-			os.Remove(tmpDstPath)
-			return fmt.Errorf("rename binary: %w", err)
-		}
-		return nil
+		defer src.Close()
+		return AtomicWriteFile(destDir, binaryName, src)
 	}
 	return fmt.Errorf("binary %q not found in zip", binaryName)
 }

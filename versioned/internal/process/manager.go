@@ -276,7 +276,6 @@ type versionAction struct {
 	child   *child // non-nil for swap actions
 }
 
-
 // reconcileOverride handles a version with a local override binary.
 // Does disk I/O outside the lock, then takes the lock to update state.
 func (m *Manager) reconcileOverride(ctx context.Context, v oracle.Version, overrideSrc, binPath string) {
@@ -336,30 +335,7 @@ func atomicCopy(src, dst string) error {
 		return err
 	}
 	defer in.Close()
-
-	dir := filepath.Dir(dst)
-	tmp, err := os.CreateTemp(dir, filepath.Base(dst)+".tmp.*")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-
-	if _, err := io.Copy(tmp, in); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
-		return err
-	}
-	tmp.Close()
-
-	if err := os.Chmod(tmpPath, 0755); err != nil {
-		os.Remove(tmpPath)
-		return err
-	}
-	if err := os.Rename(tmpPath, dst); err != nil {
-		os.Remove(tmpPath)
-		return err
-	}
-	return nil
+	return download.AtomicWriteFile(filepath.Dir(dst), filepath.Base(dst), in)
 }
 
 // downloadAndStart downloads the binary using the pre-resolved hash, then starts the child.
