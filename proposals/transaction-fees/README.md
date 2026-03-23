@@ -6,11 +6,12 @@ This proposal introduces consensus-level transaction fees to the Gonka network. 
 
 The Gonka network currently operates with zero transaction fees. Gas prices are explicitly set to `0ngonka` in the decentralized API client and transaction manager. While this simplifies participation, it leaves the general transaction surface --- governance, bank sends, staking, collateral, reward claims, bridge operations, and CosmWasm calls --- with no economic friction preventing abuse.
 
-This proposal introduces three changes:
+This proposal introduces four changes:
 
-1. **On-chain `FeeParams.min_gas_price` parameter** stored in `x/inference` module params, adjustable via governance proposal without chain upgrade.
+1. **On-chain `FeeParams` parameter group** stored in `x/inference` module params, including `min_gas_price` and `gas_per_poc_count`, adjustable via governance proposal without chain upgrade.
 2. **Custom `TxFeeChecker`** that reads the on-chain parameter and enforces it at consensus level (both `CheckTx` and `DeliverTx`), replacing the current `nil` fee checker.
-3. **`NetworkDutyFeeBypassDecorator`** that exempts protocol-obligation messages (PoC submissions, validations, BLS messages, weight distributions) from fees, following the pattern established by the existing `LiquidityPoolFeeBypassDecorator`.
+3. **`NetworkDutyFeeBypassDecorator`** that exempts protocol-obligation messages (PoC validations, inference messages, BLS messages, weight distributions) from fees, following the pattern established by the existing `LiquidityPoolFeeBypassDecorator`.
+4. **Count-linear gas consumption in `MsgPoCV2StoreCommit`** that makes the fee proportional to claimed compute, serving as the primary sybil resistance mechanism for participant weight.
 
 Account creation remains out of scope and will be addressed separately.
 
@@ -80,7 +81,7 @@ All messages not in the exempt set require fees. Key categories:
 
 | Category | Messages | Notes |
 |----------|----------|-------|
-| PoC commits | `MsgPoCV2StoreCommit` | **Higher fee recommended.** Attack vector for creating many sybil participants. See Section 4.5. |
+| PoC commits | `MsgPoCV2StoreCommit` | **Count-linear fee.** Gas proportional to claimed `Count`. Primary sybil defense. See Section 4.5. |
 | Rewards | `MsgClaimRewards` | Prevents per-block no-op claims. Reward far exceeds fee. |
 | Staking | `MsgDelegate`, `MsgUndelegate`, `MsgBeginRedelegate` | Standard Cosmos anti-spam. |
 | Governance | `MsgSubmitProposal`, `MsgVote`, `MsgDeposit` | Prevents governance spam. |
@@ -128,11 +129,46 @@ At `10ngonka` gas price, the transaction fee (~800,000 ngonka, ~$0.00046) is com
 
 This puts individual transactions well under a cent while making sustained spam cost real money. The parameter is governance-adjustable and should be tuned based on observed mainnet behavior and GNK price movements.
 
-### 4.5. Higher Fee for MsgPoCV2StoreCommit
+### 4.5. Count-Linear Fee for MsgPoCV2StoreCommit
 
-`MsgPoCV2StoreCommit` is an attack vector for sybil participant creation. An attacker who creates many fake participants can submit PoC commits to gain disproportionate network weight. Unlike other PoC messages that are constrained by epoch timing windows, the cost of creating new participants and submitting commits for them should be high enough to make sybil attacks uneconomical.
+`MsgPoCV2StoreCommit` is the primary sybil attack surface. The handler accepts a claimed `Count` and a 32-byte `RootHash` without on-chain verification of the underlying compute --- real verification happens later via validator sampling. An attacker can register many fake participants and submit commits with inflated counts to gain network weight.
 
-This can be achieved by assigning `MsgPoCV2StoreCommit` a higher gas cost via a custom gas meter in the message handler, or by adding a per-message-type fee multiplier to the `FeeParams`. The exact mechanism and fee level should be determined based on the economics of participant creation and the cost of GPU resources needed for legitimate PoC participation.
+The defense is to make the fee proportional to `Count`. Since network weight is linearly proportional to claimed count, and the current total network weight is ~10^6, a sybil claiming `Count=1` gets weight ~1-4 and has effectively zero probability of being assigned a validation slot. To claim meaningful weight, a sybil must claim a meaningful count, which means paying a meaningful fee.
+
+The `MsgPoCV2StoreCommit` handler consumes additional gas proportional to `Count`:
+
+```
+ctx.GasMeter().ConsumeGas(msg.Count × GasPerPoCCount, "poc_commit_count")
+```
+
+`GasPerPoCCount` is a governance-adjustable parameter in `FeeParams`. At `10ngonka` base gas price:
+
+| Claimed Count | Extra Gas (at 100 gas/count) | Extra Fee (ngonka) | Extra Fee (USD) |
+|---|---|---|---|
+| 1,000 | 100,000 | 1,000,000 | $0.00057 |
+| 10,000 | 1,000,000 | 10,000,000 | $0.0057 |
+| 100,000 | 10,000,000 | 100,000,000 | $0.057 |
+| 1,000,000 | 100,000,000 | 1,000,000,000 | $0.57 |
+
+A legitimate participant pays a small fee proportional to their actual GPU output. A sybil attack scales linearly: creating K fake participants each claiming C count costs `K × C × GasPerPoCCount × min_gas_price` per epoch.
+
+### 4.6. Sybil Resistance Model
+
+After the grace period (which has already ended), the remaining sybil defenses are:
+
+1.  **Collateral**: Required for weight beyond the 20% base ratio. A sybil without collateral gets at most 20% of claimed weight.
+2.  **Validation sampling**: 128 slots per participant, 66.7% supermajority required. Per-fake pass probability ~0.0025% at minority attacker weight.
+3.  **Count-linear fee** (this proposal): Makes each epoch of sybil participation cost proportional to claimed weight.
+4.  **Registration fee** (this proposal): `MsgSubmitNewParticipant` requires standard gas fee. Prevents free state bloat from mass account creation, though this is not the primary barrier.
+
+The count-linear fee is the key addition. Collateral prevents cheap weight, sampling prevents unverified weight, and the count-linear fee makes claiming weight expensive per epoch. Together:
+
+```
+Sybil cost per epoch = N_participants × (registration_fee + count × gas_per_count × min_gas_price)
+                     + N_participants × collateral_per_weight_unit × claimed_weight
+```
+
+Without the count-linear fee, the per-epoch cost is near zero (only base gas for the commit message). With it, sustained sybil attacks become linearly expensive in both the number of participants and the weight each claims.
 
 ## 5. Implementation Details
 
@@ -146,16 +182,21 @@ message FeeParams {
   // Minimum gas price enforced at consensus level.
   // Denominated in ngonka. Governance-adjustable.
   cosmos.base.v1beta1.DecCoin min_gas_price = 1;
+
+  // Additional gas consumed per unit of Count in MsgPoCV2StoreCommit.
+  // Makes PoC commit fees proportional to claimed compute.
+  uint64 gas_per_poc_count = 2;
 }
 ```
 
-Accessor function in `inference-chain/x/inference/keeper/params.go`:
+Accessor functions in `inference-chain/x/inference/keeper/params.go`:
 
 ```
 GetMinGasPrice(ctx) → DecCoin
+GetGasPerPoCCount(ctx) → uint64
 ```
 
-Default value: `{denom: "ngonka", amount: "10"}`.
+Default values: `min_gas_price = {denom: "ngonka", amount: "10"}`, `gas_per_poc_count = 100`.
 
 ### 5.2. Custom TxFeeChecker
 
@@ -241,7 +282,18 @@ anteDecorators:
 
 All other ante handler logic remains unchanged.
 
-### 5.5. DAPI Client Updates
+### 5.5. Count-Linear Gas in MsgPoCV2StoreCommit Handler
+
+In `inference-chain/x/inference/keeper/msg_server_poc_v2_commit.go`, after existing validation checks, consume additional gas proportional to the claimed `Count`:
+
+```
+gasPerCount := keeper.GetGasPerPoCCount(ctx)
+ctx.GasMeter().ConsumeGas(msg.Count × gasPerCount, "poc_commit_count")
+```
+
+This is transparent to the rest of the fee system: the gas meter reflects the true cost, and `DeductFeeDecorator` charges accordingly. No changes to the ante handler chain are needed for this --- it uses the standard gas metering mechanism.
+
+### 5.6. DAPI Client Updates
 
 **Single-transaction path** (`decentralized-api/cosmosclient/cosmosclient.go`):
 
@@ -280,7 +332,7 @@ unsignedTx.SetGasLimit(gasEstimate)   // from simulation
 
 Since the DAPI primarily submits network-duty messages (validations, PoC batches, weight distributions, inference start/finish), the bypass decorator covers the vast majority of its transaction volume.
 
-### 5.6. Fee Revenue Flow
+### 5.7. Fee Revenue Flow
 
 Collected fees flow through the existing Cosmos SDK infrastructure. No new distribution logic is needed:
 
@@ -295,7 +347,7 @@ Fee Payer Account
 
 This aligns validator incentives with network security: validators earn more by including legitimate fee-paying transactions.
 
-### 5.7. Feegrant Integration
+### 5.8. Feegrant Integration
 
 The `x/feegrant` module is already wired into `DeductFeeDecorator` (`options.FeegrantKeeper`). Once fees are non-zero, feegrant becomes useful:
 
@@ -344,7 +396,13 @@ The `GasCap` (1,000,000 gas) on the bypass decorator prevents abuse where a node
 
 Requiring *all* messages in a transaction to be network duties prevents bundling spam alongside duty messages to avoid fees.
 
-### 7.5. Fee Bypass List Criteria
+### 7.5. Sybil Resistance via Count-Linear Fees
+
+The count-linear fee on `MsgPoCV2StoreCommit` is the primary economic sybil defense. Network weight is linearly proportional to claimed count, meaning a sybil that claims low count to minimize fees also gets negligible weight (weight ~1-4 against total network weight ~10^6, effectively zero probability of receiving a validation slot). To gain meaningful influence, a sybil must claim meaningful count and pay the corresponding fee each epoch.
+
+Remaining gap: 20% base weight is granted without collateral. A sybil with zero collateral still gets 20% of its claimed weight. The count-linear fee makes this costly to sustain, but does not eliminate it entirely. A future proposal may require minimum collateral to submit `MsgPoCV2StoreCommit`.
+
+### 7.6. Fee Bypass List Criteria
 
 Adding a message to the exempt list means it can be submitted for free. Each addition must satisfy:
 
@@ -357,6 +415,7 @@ Adding a message to the exempt list means it can be submitted for free. Each add
 | Parameter | Default | Location | Adjustable |
 |-----------|---------|----------|------------|
 | `FeeParams.min_gas_price` | `10ngonka` | On-chain, `x/inference` params | Governance proposal |
+| `FeeParams.gas_per_poc_count` | `100` | On-chain, `x/inference` params | Governance proposal |
 | Bypass gas cap | `1,000,000` | `NetworkDutyFeeBypassDecorator` | Chain upgrade |
 | Bypass priority | `500,000` | `NetworkDutyFeeBypassDecorator` | Chain upgrade |
 | Fee-exempt message set | See Section 3.2 | `isExemptMessageType()` | Chain upgrade |
@@ -386,14 +445,17 @@ No impact. `MsgStartInference` and `MsgFinishInference` are fee-exempt. Inferenc
 
 ### 9.5. Attackers
 
-At `10ngonka` minimum gas price and ~80,000 gas per transaction, each spam transaction costs ~800,000 ngonka (~$0.00046). Flooding 10,000 transactions costs ~$4.56; 100,000 transactions costs ~$45.58. Sustained attacks become economically prohibitive, with fees deducted from the attacker and distributed to validators.
+**Transaction spam:** At `10ngonka` minimum gas price and ~80,000 gas per transaction, each spam transaction costs ~800,000 ngonka (~$0.00046). Flooding 10,000 transactions costs ~$4.56; 100,000 transactions costs ~$45.58.
+
+**Sybil attacks:** A sybil participant claiming 100,000 count per epoch pays ~$0.057 in PoC commit fees alone, plus the base transaction fee. Sustaining 100 sybils each claiming 100,000 count costs ~$5.70 per epoch. This scales linearly with both the number of sybils and the weight each claims, making large-scale attacks economically prohibitive.
 
 ## 10. Files Modified
 
 | File | Change |
 |------|--------|
-| `inference-chain/proto/inference/inference/params.proto` | Add `FeeParams` message with `min_gas_price` field |
-| `inference-chain/x/inference/keeper/params.go` | Add `GetMinGasPrice()` accessor |
+| `inference-chain/proto/inference/inference/params.proto` | Add `FeeParams` message with `min_gas_price` and `gas_per_poc_count` fields |
+| `inference-chain/x/inference/keeper/params.go` | Add `GetMinGasPrice()` and `GetGasPerPoCCount()` accessors |
+| `inference-chain/x/inference/keeper/msg_server_poc_v2_commit.go` | Consume additional gas proportional to `msg.Count` |
 | `inference-chain/app/ante.go` | Add `NetworkDutyFeeBypassDecorator`, implement `NewGonkaFeeChecker`, wire into ante chain |
 | `decentralized-api/cosmosclient/cosmosclient.go` | Set gas price to `10ngonka`, remove `WithFees` |
 | `decentralized-api/cosmosclient/tx_manager/tx_manager.go` | Set gas price to `10ngonka`, fix batch gas limits |
