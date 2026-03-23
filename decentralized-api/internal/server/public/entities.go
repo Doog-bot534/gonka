@@ -1,7 +1,10 @@
 package public
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 
 	cryptotypes "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	comettypes "github.com/cometbft/cometbft/types"
@@ -31,7 +34,76 @@ type OpenAiRequest struct {
 }
 
 type Message struct {
-	Content string `json:"content"` // The content of the message
+	Role    string         `json:"role"`
+	Content MessageContent `json:"content"`
+}
+
+type MessageContent struct {
+	Text  *string
+	Parts []ContentPart
+}
+
+type ContentPart struct {
+	Type string `json:"type"`
+	Text string `json:"text,omitempty"`
+}
+
+func (c *MessageContent) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		c.Text = &text
+		c.Parts = nil
+		return nil
+	}
+
+	var parts []ContentPart
+	if err := json.Unmarshal(data, &parts); err == nil {
+		c.Text = nil
+		c.Parts = parts
+		return nil
+	}
+
+	return fmt.Errorf("message content must be a string or an array of typed content parts")
+}
+
+func (c MessageContent) MarshalJSON() ([]byte, error) {
+	if c.Text != nil {
+		return json.Marshal(*c.Text)
+	}
+	if c.Parts != nil {
+		return json.Marshal(c.Parts)
+	}
+	return json.Marshal("")
+}
+
+func (c MessageContent) FlattenedText() (string, int) {
+	if c.Text != nil {
+		return *c.Text, 0
+	}
+
+	var b strings.Builder
+	ignoredParts := 0
+	for _, part := range c.Parts {
+		if part.Type == "text" {
+			b.WriteString(part.Text)
+			continue
+		}
+		ignoredParts++
+	}
+
+	return b.String(), ignoredParts
+}
+
+func FlattenMessagesText(messages []Message) (string, int) {
+	var b strings.Builder
+	ignoredParts := 0
+	for _, message := range messages {
+		text, ignored := message.Content.FlattenedText()
+		b.WriteString(text)
+		b.WriteByte('\n')
+		ignoredParts += ignored
+	}
+	return b.String(), ignoredParts
 }
 
 type ExecutorDestination struct {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"testing"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/productscience/inference/x/inference/types"
 	"github.com/stretchr/testify/require"
+
+	"github.com/labstack/echo/v4"
 )
 
 // createTestRequest creates a test HTTP request with the given body
@@ -226,4 +229,30 @@ func TestMaxRequestBodySizeConstant(t *testing.T) {
 	// MaxRequestBodySize should be 10 MB
 	expectedSize := 10 * 1024 * 1024
 	require.Equal(t, expectedSize, MaxRequestBodySize, "MaxRequestBodySize should be 10 MB")
+}
+
+func TestReadRequest_AcceptsMultipartContent(t *testing.T) {
+	body := []byte(`{"model":"test","messages":[{"role":"user","content":[{"type":"text","text":"Hello"},{"type":"image_url","image_url":{"url":"https://example.com/cat.png"}},{"type":"text","text":" world"}]}]}`)
+	req := createTestRequest(body)
+
+	chatRequest, err := readRequest(req, nil, "transfer-agent")
+	require.NoError(t, err)
+	require.Equal(t, "test", chatRequest.OpenAiRequest.Model)
+
+	promptText, ignoredParts := FlattenMessagesText(chatRequest.OpenAiRequest.Messages)
+	require.Equal(t, "Hello world\n", promptText)
+	require.Equal(t, 1, ignoredParts)
+}
+
+func TestReadRequest_RejectsUnsupportedContentType(t *testing.T) {
+	body := []byte(`{"model":"test","messages":[{"role":"user","content":123}]}`)
+	req := createTestRequest(body)
+
+	_, err := readRequest(req, nil, "transfer-agent")
+	require.Error(t, err)
+
+	var httpErr *echo.HTTPError
+	require.True(t, errors.As(err, &httpErr))
+	require.Equal(t, http.StatusBadRequest, httpErr.Code)
+	require.Contains(t, httpErr.Message, "invalid chat completion request")
 }

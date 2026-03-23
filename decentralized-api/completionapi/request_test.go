@@ -80,6 +80,20 @@ const (
           { "role": "user", "content": "Hi!" }
         ]
     }`
+
+	jsonBodyMultipartContent = `{
+        "model": "Qwen/Qwen2.5-7B-Instruct",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              { "type": "text", "text": "Hello" },
+              { "type": "image_url", "image_url": { "url": "https://example.com/cat.png" } },
+              { "type": "text", "text": " world" }
+            ]
+          }
+        ]
+    }`
 )
 
 func TestModifyRequestBody_NullLogprobsPreserved(t *testing.T) {
@@ -257,4 +271,17 @@ func TestMaxTokens(t *testing.T) {
 			require.Equal(t, float64(tt.expected), maxCompletionTokens)
 		})
 	}
+}
+
+func TestModifyRequestBody_PreservesMultipartContent(t *testing.T) {
+	r, err := ModifyRequestBody([]byte(jsonBodyMultipartContent), 7)
+	require.NoError(t, err)
+
+	var requestMap map[string]interface{}
+	require.NoError(t, json.Unmarshal(r.NewBody, &requestMap))
+
+	messages := requestMap["messages"].([]interface{})
+	message := messages[0].(map[string]interface{})
+	_, isArray := message["content"].([]interface{})
+	require.True(t, isArray)
 }

@@ -23,6 +23,10 @@ func ModifyRequestBody(requestBytes []byte, defaultSeed int32) (*ModifiedRequest
 		return nil, err
 	}
 
+	if err := validateMessageContents(requestMap); err != nil {
+		return nil, err
+	}
+
 	originalLogprobsValue := getOriginalLogprobs(requestMap)
 	if originalLogprobsValue == nil || *originalLogprobsValue == false {
 		requestMap["logprobs"] = true
@@ -68,6 +72,66 @@ func ModifyRequestBody(requestBytes []byte, defaultSeed int32) (*ModifiedRequest
 		OriginalLogprobsValue:    originalLogprobsValue,
 		OriginalTopLogprobsValue: originalTopLogprobsValue,
 	}, nil
+}
+
+func validateMessageContents(requestMap map[string]interface{}) error {
+	rawMessages, ok := requestMap["messages"]
+	if !ok || rawMessages == nil {
+		return nil
+	}
+
+	messages, ok := rawMessages.([]interface{})
+	if !ok {
+		return fmt.Errorf("messages must be an array")
+	}
+
+	for i, rawMessage := range messages {
+		message, ok := rawMessage.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("messages[%d] must be an object", i)
+		}
+
+		content, exists := message["content"]
+		if !exists || content == nil {
+			continue
+		}
+
+		switch typedContent := content.(type) {
+		case string:
+			continue
+		case []interface{}:
+			for j, rawPart := range typedContent {
+				part, ok := rawPart.(map[string]interface{})
+				if !ok {
+					return fmt.Errorf("messages[%d].content[%d] must be an object", i, j)
+				}
+
+				partType, ok := part["type"].(string)
+				if !ok || partType == "" {
+					return fmt.Errorf("messages[%d].content[%d].type must be a string", i, j)
+				}
+
+				if partType != "text" {
+					continue
+				}
+
+				rawText, exists := part["text"]
+				if !exists {
+					continue
+				}
+
+				text, ok := rawText.(string)
+				if !ok {
+					return fmt.Errorf("messages[%d].content[%d].text must be a string", i, j)
+				}
+				_ = text
+			}
+		default:
+			return fmt.Errorf("messages[%d].content must be a string or an array of typed content parts", i)
+		}
+	}
+
+	return nil
 }
 
 func getMaxTokens(requestMap map[string]interface{}) int {
