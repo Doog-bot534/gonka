@@ -3,16 +3,17 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"subnet/host"
+	"subnet/logging"
 	"subnet/state"
 	"subnet/types"
 	"subnet/user"
@@ -59,6 +60,17 @@ func writeStreamReset(w io.Writer) {
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+// inferenceStatusName maps status codes to human-readable names.
+var inferenceStatusName = map[types.InferenceStatus]string{
+	types.StatusPending:     "pending",
+	types.StatusStarted:     "started",
+	types.StatusFinished:    "finished",
+	types.StatusChallenged:  "challenged",
+	types.StatusValidated:   "validated",
+	types.StatusInvalidated: "invalidated",
+	types.StatusTimedOut:    "timed_out",
 }
 
 // Proxy is the OpenAI-compatible HTTP proxy backed by a subnet session.
@@ -133,6 +145,8 @@ func (p *Proxy) runInference(ctx context.Context, params user.InferenceParams, w
 	}
 
 	nonce := prepared.Nonce()
+	logging.Info("inference request", "subsystem", "proxy",
+		"nonce", nonce, "model", params.Model, "max_tokens", params.MaxTokens)
 	if w != nil {
 		p.registry.register(nonce, w)
 		defer p.registry.unregister(nonce)
@@ -147,6 +161,8 @@ func (p *Proxy) runInference(ctx context.Context, params user.InferenceParams, w
 		return err
 	}
 	if finished {
+		logging.Info("inference complete", "subsystem", "proxy",
+			"nonce", nonce, "attempt", 1)
 		return nil
 	}
 
@@ -176,6 +192,8 @@ func (p *Proxy) runInference(ctx context.Context, params user.InferenceParams, w
 		return err
 	}
 	if finished {
+		logging.Info("inference complete", "subsystem", "proxy",
+			"nonce", nonce, "attempt", 2)
 		return nil
 	}
 
@@ -243,6 +261,8 @@ func sleep(ctx context.Context, d time.Duration) bool {
 // MsgTimeoutInference. Single attempt -- the timeoutBuffer ensures verifiers
 // have already passed their own deadline before the proxy fires.
 func (p *Proxy) handleTimeout(ctx context.Context, prepared *user.PreparedInference, nonce uint64, reason types.TimeoutReason, params user.InferenceParams) error {
+	logging.Info("timeout handling", "subsystem", "proxy",
+		"nonce", nonce, "reason", reason.String())
 	payload := &host.InferencePayload{
 		Prompt:      params.Prompt,
 		Model:       params.Model,
@@ -267,7 +287,8 @@ func (p *Proxy) handleTimeout(ctx context.Context, prepared *user.PreparedInfere
 		return fmt.Errorf("inference %d timed out: %s", nonce, reason)
 	}
 
-	log.Printf("inference %d: insufficient timeout votes, skipping timeout tx", nonce)
+	logging.Warn("insufficient timeout votes, skipping timeout tx", "subsystem", "proxy",
+		"nonce", nonce)
 	return fmt.Errorf("inference %d timed out but insufficient votes to prove it", nonce)
 }
 
@@ -309,7 +330,7 @@ func (p *Proxy) handleStreaming(w http.ResponseWriter, r *http.Request, params u
 			return
 		}
 		// Already streaming -- send error as SSE data.
-		log.Printf("inference error (mid-stream): %v", err)
+		logging.Error("inference error (mid-stream)", "subsystem", "proxy", "error", err)
 		fmt.Fprintf(dw, "data: {\"error\":{\"message\":%q}}\n\n", err.Error())
 		dw.Flush()
 		return
@@ -354,18 +375,38 @@ func assembleSSEChunks(raw string) []byte {
 }
 
 func (p *Proxy) handleFinalize(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	if err := p.session.Finalize(r.Context()); err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusInternalServerError)
 		return
 	}
 
-	st := p.sm.SnapshotState()
 	finalNonce := p.session.Nonce()
+	logging.Info("session finalized", "subsystem", "proxy", "nonce", finalNonce)
+	st := p.sm.SnapshotState()
+	payload, err := state.BuildSettlement(p.escrowID, st, p.session.Signatures()[finalNonce], finalNonce)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	data, err := marshalSettlement(payload)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+}
+
+func (p *Proxy) handleGetFinalize(w http.ResponseWriter, r *http.Request) {
+	if p.sm.Phase() != types.PhaseSettlement {
+		http.Error(w, `{"error":{"message":"session not yet finalized"}}`, http.StatusConflict)
+		return
+	}
+
+	finalNonce := p.session.Nonce()
+	st := p.sm.SnapshotState()
 	payload, err := state.BuildSettlement(p.escrowID, st, p.session.Signatures()[finalNonce], finalNonce)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusInternalServerError)
@@ -427,19 +468,9 @@ func (p *Proxy) handleDebugPending(w http.ResponseWriter, r *http.Request) {
 func (p *Proxy) handleDebugState(w http.ResponseWriter, r *http.Request) {
 	st := p.sm.SnapshotState()
 
-	statusNames := map[types.InferenceStatus]string{
-		types.StatusPending:     "pending",
-		types.StatusStarted:     "started",
-		types.StatusFinished:    "finished",
-		types.StatusChallenged:  "challenged",
-		types.StatusValidated:   "validated",
-		types.StatusInvalidated: "invalidated",
-		types.StatusTimedOut:    "timed_out",
-	}
-
 	counts := make(map[string]int)
 	for _, rec := range st.Inferences {
-		name := statusNames[rec.Status]
+		name := inferenceStatusName[rec.Status]
 		if name == "" {
 			name = fmt.Sprintf("unknown(%d)", rec.Status)
 		}
@@ -481,6 +512,105 @@ func (p *Proxy) handleStatus(w http.ResponseWriter, r *http.Request) {
 		Nonce:    p.session.Nonce(),
 		Phase:    phaseStr,
 		Balance:  st.Balance,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (p *Proxy) handleState(w http.ResponseWriter, r *http.Request) {
+	st := p.sm.SnapshotState()
+
+	var phaseStr string
+	switch st.Phase {
+	case types.PhaseActive:
+		phaseStr = "active"
+	case types.PhaseFinalizing:
+		phaseStr = "finalizing"
+	case types.PhaseSettlement:
+		phaseStr = "settlement"
+	default:
+		phaseStr = fmt.Sprintf("unknown(%d)", st.Phase)
+	}
+
+	session := map[string]any{
+		"escrow_id":      st.EscrowID,
+		"phase":          phaseStr,
+		"balance":        st.Balance,
+		"latest_nonce":   st.LatestNonce,
+		"finalize_nonce": st.FinalizeNonce,
+		"config": map[string]any{
+			"refusal_timeout":   st.Config.RefusalTimeout,
+			"execution_timeout": st.Config.ExecutionTimeout,
+			"token_price":       st.Config.TokenPrice,
+			"vote_threshold":    st.Config.VoteThreshold,
+			"validation_rate":   st.Config.ValidationRate,
+		},
+	}
+
+	group := make([]map[string]any, len(st.Group))
+	for i, s := range st.Group {
+		group[i] = map[string]any{
+			"slot_id":           s.SlotID,
+			"validator_address": s.ValidatorAddress,
+		}
+	}
+
+	inferences := make(map[string]any, len(st.Inferences))
+	for id, rec := range st.Inferences {
+		name := inferenceStatusName[rec.Status]
+		if name == "" {
+			name = fmt.Sprintf("unknown(%d)", rec.Status)
+		}
+		inf := map[string]any{
+			"status":        name,
+			"executor_slot": rec.ExecutorSlot,
+			"model":         rec.Model,
+			"prompt_hash":   hex.EncodeToString(rec.PromptHash),
+			"response_hash": hex.EncodeToString(rec.ResponseHash),
+			"input_length":  rec.InputLength,
+			"max_tokens":    rec.MaxTokens,
+			"input_tokens":  rec.InputTokens,
+			"output_tokens": rec.OutputTokens,
+			"reserved_cost": rec.ReservedCost,
+			"actual_cost":   rec.ActualCost,
+			"started_at":    rec.StartedAt,
+			"confirmed_at":  rec.ConfirmedAt,
+			"votes_valid":   rec.VotesValid,
+			"votes_invalid": rec.VotesInvalid,
+			"validated_by":  rec.ValidatedBy.SetBits(),
+		}
+		inferences[fmt.Sprintf("%d", id)] = inf
+	}
+
+	hostStats := make(map[string]any, len(st.HostStats))
+	for slot, hs := range st.HostStats {
+		hostStats[fmt.Sprintf("%d", slot)] = map[string]any{
+			"missed":                hs.Missed,
+			"invalid":              hs.Invalid,
+			"cost":                 hs.Cost,
+			"required_validations":  hs.RequiredValidations,
+			"completed_validations": hs.CompletedValidations,
+		}
+	}
+
+	revealedSeeds := make(map[string]int64, len(st.RevealedSeeds))
+	for slot, seed := range st.RevealedSeeds {
+		revealedSeeds[fmt.Sprintf("%d", slot)] = seed
+	}
+
+	warmKeys := make(map[string]string, len(st.WarmKeys))
+	for slot, addr := range st.WarmKeys {
+		warmKeys[fmt.Sprintf("%d", slot)] = addr
+	}
+
+	resp := map[string]any{
+		"session":        session,
+		"group":          group,
+		"inferences":     inferences,
+		"host_stats":     hostStats,
+		"revealed_seeds": revealedSeeds,
+		"warm_keys":      warmKeys,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -125,11 +125,15 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{$}", proxy.handleSwaggerUI)
+	mux.HandleFunc("GET /openapi.json", proxy.handleOpenAPISpec)
 	mux.HandleFunc("/v1/chat/completions", proxy.handleChatCompletions)
-	mux.HandleFunc("/v1/finalize", proxy.handleFinalize)
-	mux.HandleFunc("/v1/status", proxy.handleStatus)
-	mux.HandleFunc("/v1/debug/pending", proxy.handleDebugPending)
-	mux.HandleFunc("/v1/debug/state", proxy.handleDebugState)
+	mux.HandleFunc("POST /v1/finalize", proxy.handleFinalize)
+	mux.HandleFunc("GET /v1/finalize", proxy.handleGetFinalize)
+	mux.HandleFunc("GET /v1/status", proxy.handleStatus)
+	mux.HandleFunc("GET /v1/state", proxy.handleState)
+	mux.HandleFunc("GET /v1/debug/pending", proxy.handleDebugPending)
+	mux.HandleFunc("GET /v1/debug/state", proxy.handleDebugState)
 
 	addr := ":" + p
 	log.Printf("subnetctl listening on %s (escrow=%s model=%s)", addr, eid, mdl)
