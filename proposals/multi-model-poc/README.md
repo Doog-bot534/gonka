@@ -113,12 +113,14 @@ Within a group, inference requests are distributed according to $pocWeight_S(gro
 
 **Validation rule**: Host $p$'s PoC result in eligible $group_i$ is accepted if:
 
-$$\frac{\sum_{v \text{ votes valid for } p} votingPower_S(group_i, v)}{\sum_{q} consensusWeight_S(q)} > \frac{1}{2}$$
+$$\frac{\sum_{v \text{ votes valid for } p} votingPower_S(group_i, v)}{\sum_{q} consensusWeight_S(q)} > \frac{2}{3}$$
 
 - Numerator: sum of $votingPower_S(group_i, v)$ from all validators $v$ who approved $p$
 - Denominator: total network consensus weight (all hosts, all groups)
 
-Hosts not in the group and not delegating effectively vote against approval. Delegation is therefore essential for any group whose direct members hold less than 50% of total network weight.
+If valid votes do not exceed `2/3`, and invalid votes also do not exceed `2/3`, the existing guardian tiebreak rule applies.
+
+Hosts not in the group and not delegating effectively vote against approval. Delegation is therefore essential for any group whose direct members hold less than 2/3 of total network weight.
 
 **Voting power details**:
 - Number of MLNodes does not matter -- 1 MLNode or 100 MLNodes yields the same vote power
