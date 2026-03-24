@@ -106,11 +106,11 @@ func (ms msgServer) SubmitGroupKeyValidationSignature(goCtx context.Context, msg
 
 	// Check or create GroupKeyValidationState
 	var validationState *types.GroupKeyValidationState
-	validationStateKey := fmt.Sprintf("group_validation_%d", msg.NewEpochId)
+	validationStateKey := types.GroupValidationKey(msg.NewEpochId)
 
 	// Try to get existing validation state
 	store := ms.storeService.OpenKVStore(ctx)
-	bz, err := store.Get([]byte(validationStateKey))
+	bz, err := store.Get(validationStateKey)
 	if err != nil {
 		ms.Keeper.LogError("Failed to get validation state", "new_epoch_id", msg.NewEpochId, "error", err.Error())
 		return nil, fmt.Errorf("failed to get validation state: %w", err)
@@ -247,7 +247,7 @@ func (ms msgServer) SubmitGroupKeyValidationSignature(goCtx context.Context, msg
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal validation state: %w", err)
 	}
-	err = store.Set([]byte(validationStateKey), bz)
+	err = store.Set(validationStateKey, bz)
 	if err != nil {
 		return nil, fmt.Errorf("failed to store validation state: %w", err)
 	}
