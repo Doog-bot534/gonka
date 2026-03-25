@@ -3,6 +3,7 @@ package poc
 import (
 	"bytes"
 	"context"
+	"decentralized-api/apiconfig"
 	"fmt"
 	"sort"
 	"strings"
@@ -26,6 +27,7 @@ type commitState struct {
 
 type CommitWorker struct {
 	store              *artifacts.ManagedArtifactStore
+	configManager      *apiconfig.ConfigManager
 	recorder           cosmosclient.CosmosMessageClient
 	tracker            *chainphase.ChainPhaseTracker
 	participantAddress string
@@ -44,6 +46,7 @@ type CommitWorker struct {
 // The worker runs until Close() is called.
 func NewCommitWorker(
 	store *artifacts.ManagedArtifactStore,
+	configManager *apiconfig.ConfigManager,
 	recorder cosmosclient.CosmosMessageClient,
 	tracker *chainphase.ChainPhaseTracker,
 	participantAddress string,
@@ -51,6 +54,7 @@ func NewCommitWorker(
 ) *CommitWorker {
 	w := &CommitWorker{
 		store:              store,
+		configManager:      configManager,
 		recorder:           recorder,
 		tracker:            tracker,
 		participantAddress: participantAddress,
@@ -337,12 +341,15 @@ func (w *CommitWorker) queryPrimaryPoCModelID() (string, bool) {
 	if w.participantAddress == "" {
 		return "", true
 	}
-	queryClient := w.recorder.NewInferenceQueryClient()
-	paramsResp, err := queryClient.Params(context.Background(), &types.QueryParamsRequest{})
-	if err != nil || paramsResp == nil || paramsResp.Params.PocParams == nil {
+	if w.configManager == nil {
 		return "", false
 	}
-	return paramsResp.Params.PocParams.GetPrimaryModelConfig().ModelId, true
+	model := w.configManager.GetPoCParams().PrimaryModel()
+	if model == nil {
+		return "", false
+	}
+	modelID := model.ModelId
+	return modelID, modelID != ""
 }
 
 func formatWeightDistribution(weights []*types.MLNodeWeight) string {

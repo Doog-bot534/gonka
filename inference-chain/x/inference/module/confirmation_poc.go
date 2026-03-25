@@ -380,7 +380,6 @@ func (am AppModule) updateConfirmationWeights(ctx context.Context, event *types.
 	if err != nil {
 		return fmt.Errorf("failed to get params: %w", err)
 	}
-	weightScaleFactor := params.PocParams.GetWeightScaleFactorDec()
 
 	migrationState := GetMigrationStateFromParams(params.PocParams)
 
@@ -397,7 +396,7 @@ func (am AppModule) updateConfirmationWeights(ctx context.Context, event *types.
 			useV2, dryRun = true, true
 		}
 	}
-	am.evaluateConfirmation(ctx, event, &epochGroupData, currentValidatorWeights, weightScaleFactor, useV2, dryRun)
+	am.evaluateConfirmation(ctx, event, &epochGroupData, currentValidatorWeights, params.PocParams, useV2, dryRun)
 
 	return nil
 }
@@ -407,14 +406,15 @@ func (am AppModule) evaluateConfirmation(
 	event *types.ConfirmationPoCEvent,
 	epochGroupData *types.EpochGroupData,
 	currentValidatorWeights map[string]int64,
-	weightScaleFactor mathsdk.LegacyDec,
+	pocParams *types.PocParams,
 	useV2 bool,
 	dryRun bool,
 ) {
 	var confirmationParticipants []*types.ActiveParticipant
 	if useV2 {
-		confirmationParticipants = am.updateConfirmationWeightsV2(ctx, event, currentValidatorWeights, weightScaleFactor)
+		confirmationParticipants = am.updateConfirmationWeightsV2(ctx, event, currentValidatorWeights)
 	} else {
+		weightScaleFactor := pocParams.GetWeightScaleFactorDec()
 		confirmationParticipants = am.UpdateConfirmationWeightsV1(ctx, event, currentValidatorWeights, weightScaleFactor)
 	}
 
@@ -474,7 +474,6 @@ func (am AppModule) updateConfirmationWeightsV2(
 	ctx context.Context,
 	event *types.ConfirmationPoCEvent,
 	currentValidatorWeights map[string]int64,
-	weightScaleFactor mathsdk.LegacyDec,
 ) []*types.ActiveParticipant {
 	// Get off-chain store commits using trigger_height as key
 	storeCommits, err := am.keeper.GetAllPoCV2StoreCommitsForStage(ctx, event.TriggerHeight)
@@ -500,11 +499,13 @@ func (am AppModule) updateConfirmationWeightsV2(
 	participants := make(map[string]types.Participant)
 	seeds := make(map[string]types.RandomSeed)
 
-	for participantAddress := range storeCommits {
+	for key := range storeCommits {
+		participantAddress := key.ParticipantAddress
 		participant, ok := am.keeper.GetParticipant(ctx, participantAddress)
 		if !ok {
 			am.LogWarn("updateConfirmationWeightsV2: Participant not found", types.PoC,
-				"address", participantAddress)
+				"address", participantAddress,
+				"modelId", key.ModelID)
 			continue
 		}
 		participants[participantAddress] = participant
@@ -586,11 +587,11 @@ func (am AppModule) updateConfirmationWeightsV2(
 		storeCommits,
 		weightDistributions,
 		validationsV2,
+		params.PocParams,
 		participants,
 		seeds,
 		event.TriggerHeight,
 		am,
-		weightScaleFactor,
 		timeNormalizationFactor,
 		guardianEnabled,
 		guardianSet,

@@ -121,6 +121,9 @@ func (s *Server) postPocProofs(ctx echo.Context) error {
 	}
 
 	// Validate required fields
+	if req.ModelId == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "model_id required")
+	}
 	if req.RootHash == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "root_hash required")
 	}

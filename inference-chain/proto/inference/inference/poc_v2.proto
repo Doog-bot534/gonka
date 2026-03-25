@@ -16,16 +16,16 @@ message PoCValidationV2 {
   string participant_address = 1;
   string validator_participant_address = 2;
   int64 poc_stage_start_block_height = 3;
-  string model_id = 4;
-  int64 validated_weight = 5;
+  int64 validated_weight = 4;
+  string model_id = 5;
 }
 
 // PoCValidationEntryV2 is the message payload for validation submission.
 // Height is at message level, validator derived from signer.
 message PoCValidationEntryV2 {
   string participant_address = 1;
-  string model_id = 2;
-  int64 validated_weight = 3;
+  int64 validated_weight = 2;
+  string model_id = 3;
 }
 
 // MLNodeWeight represents artifact count attributed to a single node.

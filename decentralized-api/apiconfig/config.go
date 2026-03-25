@@ -176,9 +176,20 @@ type BandwidthParamsCache struct {
 	MaxInferencesPerBlock     uint64  `koanf:"max_inferences_per_block" json:"max_inferences_per_block"`
 }
 
-type PoCParamsCache struct {
+type PoCModelConfigCache struct {
 	ModelId string `koanf:"model_id" json:"model_id"`
 	SeqLen  int64  `koanf:"seq_len" json:"seq_len"`
+}
+
+type PoCParamsCache struct {
+	Models []PoCModelConfigCache `koanf:"models" json:"models"`
+}
+
+func (p PoCParamsCache) PrimaryModel() *PoCModelConfigCache {
+	if len(p.Models) == 0 {
+		return nil
+	}
+	return &p.Models[0]
 }
 
 // TransferAgentAccessCache caches the allowed TA addresses for O(1) lookups.

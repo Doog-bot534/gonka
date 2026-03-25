@@ -697,10 +697,10 @@ message QueryAllPoCV2StoreCommitsForStageResponse {
 
 message PoCV2StoreCommitWithAddress {
   string participant_address = 1;
-  string model_id = 2;
-  uint32 count = 3;
-  bytes root_hash = 4;
-  string hex_pub_key = 5;
+  uint32 count = 2;
+  bytes root_hash = 3;
+  string hex_pub_key = 4;
+  string model_id = 5;
 }
 
 message QueryAllMLNodeWeightDistributionsForStageRequest {
@@ -713,8 +713,8 @@ message QueryAllMLNodeWeightDistributionsForStageResponse {
 
 message MLNodeWeightDistributionWithAddress {
   string participant_address = 1;
-  string model_id = 2;
-  repeated MLNodeWeight weights = 3;
+  repeated MLNodeWeight weights = 2;
+  string model_id = 3;
 }
 
 message QueryGetCurrentEpochRequest {}

@@ -49,9 +49,9 @@ func (k Keeper) SetPocValidationV2(ctx context.Context, validation types.PoCVali
 	return k.PoCValidationsV2.Set(ctx, pk, validation)
 }
 
-// GetPoCValidationsV2ByStage collects all PoCValidationV2 grouped by participant for a specific epoch.
-func (k Keeper) GetPoCValidationsV2ByStage(ctx context.Context, pocStageStartBlockHeight int64) (map[string][]types.PoCValidationV2, error) {
-	result := make(map[string][]types.PoCValidationV2)
+// GetPoCValidationsV2ByStage collects all PoCValidationV2 grouped by participant and model for a specific epoch.
+func (k Keeper) GetPoCValidationsV2ByStage(ctx context.Context, pocStageStartBlockHeight int64) (map[types.PoCParticipantModelKey][]types.PoCValidationV2, error) {
+	result := make(map[types.PoCParticipantModelKey][]types.PoCValidationV2)
 
 	iter, err := k.PoCValidationsV2.Iterate(ctx, collections.NewPrefixedTripleRange[int64, sdk.AccAddress, collections.Pair[string, sdk.AccAddress]](pocStageStartBlockHeight))
 	if err != nil {
@@ -64,15 +64,19 @@ func (k Keeper) GetPoCValidationsV2ByStage(ctx context.Context, pocStageStartBlo
 		if err != nil {
 			return nil, err
 		}
-		result[validation.ParticipantAddress] = append(result[validation.ParticipantAddress], validation)
+		key := types.PoCParticipantModelKey{
+			ParticipantAddress: validation.ParticipantAddress,
+			ModelID:            validation.ModelId,
+		}
+		result[key] = append(result[key], validation)
 	}
 
 	return result, nil
 }
 
-// GetAllPoCV2StoreCommitsForStage returns all store commits for a given PoC stage, keyed by participant address.
-func (k Keeper) GetAllPoCV2StoreCommitsForStage(ctx context.Context, pocStageStartBlockHeight int64) (map[string]types.PoCV2StoreCommit, error) {
-	result := make(map[string]types.PoCV2StoreCommit)
+// GetAllPoCV2StoreCommitsForStage returns all store commits for a given PoC stage, keyed by participant and model.
+func (k Keeper) GetAllPoCV2StoreCommitsForStage(ctx context.Context, pocStageStartBlockHeight int64) (map[types.PoCParticipantModelKey]types.PoCV2StoreCommit, error) {
+	result := make(map[types.PoCParticipantModelKey]types.PoCV2StoreCommit)
 
 	iter, err := k.PoCV2StoreCommits.Iterate(ctx, collections.NewPrefixedTripleRange[int64, sdk.AccAddress, string](pocStageStartBlockHeight))
 	if err != nil {
@@ -90,15 +94,18 @@ func (k Keeper) GetAllPoCV2StoreCommitsForStage(ctx context.Context, pocStageSta
 			return nil, err
 		}
 		addr := key.K2()
-		result[addr.String()] = value
+		result[types.PoCParticipantModelKey{
+			ParticipantAddress: addr.String(),
+			ModelID:            value.ModelId,
+		}] = value
 	}
 
 	return result, nil
 }
 
-// GetAllMLNodeWeightDistributionsForStage returns all weight distributions for a given PoC stage, keyed by participant address.
-func (k Keeper) GetAllMLNodeWeightDistributionsForStage(ctx context.Context, pocStageStartBlockHeight int64) (map[string]types.MLNodeWeightDistribution, error) {
-	result := make(map[string]types.MLNodeWeightDistribution)
+// GetAllMLNodeWeightDistributionsForStage returns all weight distributions for a given PoC stage, keyed by participant and model.
+func (k Keeper) GetAllMLNodeWeightDistributionsForStage(ctx context.Context, pocStageStartBlockHeight int64) (map[types.PoCParticipantModelKey]types.MLNodeWeightDistribution, error) {
+	result := make(map[types.PoCParticipantModelKey]types.MLNodeWeightDistribution)
 
 	iter, err := k.MLNodeWeightDistributions.Iterate(ctx, collections.NewPrefixedTripleRange[int64, sdk.AccAddress, string](pocStageStartBlockHeight))
 	if err != nil {
@@ -116,7 +123,10 @@ func (k Keeper) GetAllMLNodeWeightDistributionsForStage(ctx context.Context, poc
 			return nil, err
 		}
 		addr := key.K2()
-		result[addr.String()] = value
+		result[types.PoCParticipantModelKey{
+			ParticipantAddress: addr.String(),
+			ModelID:            value.ModelId,
+		}] = value
 	}
 
 	return result, nil

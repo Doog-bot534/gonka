@@ -45,11 +45,11 @@ import (
 func main() {
 	if len(os.Args) >= 2 && os.Args[1] == "status" {
 		logging.WithNoopLogger(func() (interface{}, error) {
-			config, err := apiconfig.LoadDefaultConfigManager()
+			configManager, err := apiconfig.LoadDefaultConfigManager()
 			if err != nil {
 				log.Fatalf("Error loading config: %v", err)
 			}
-			returnStatus(config)
+			returnStatus(configManager)
 			return nil, nil
 		})
 
@@ -59,16 +59,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	config, err := apiconfig.LoadDefaultConfigManager()
+	configManager, err := apiconfig.LoadDefaultConfigManager()
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
 
-	if config.GetApiConfig().TestMode {
+	if configManager.GetApiConfig().TestMode {
 		slog.SetLogLoggerLevel(slog.LevelDebug)
 	}
 
-	natssrv := server.NewServer(config.GetNatsConfig())
+	natssrv := server.NewServer(configManager.GetNatsConfig())
 	if err := natssrv.Start(); err != nil {
 		panic(err)
 	}
@@ -78,7 +78,7 @@ func main() {
 		"gonka",
 		20,
 		5*time.Second,
-		config,
+		configManager,
 	)
 	if err != nil {
 		panic(err)
@@ -101,10 +101,10 @@ func main() {
 		logging.Error("Failed to get participant info", types.Participants, "error", err)
 		return
 	}
-	chainBridge := broker.NewBrokerChainBridgeImpl(recorder, config.GetChainNodeConfig().Url)
-	nodeBroker := broker.NewBroker(chainBridge, chainPhaseTracker, participantInfo, config.GetApiConfig().PoCCallbackUrl, &mlnodeclient.HttpClientFactory{}, config)
+	chainBridge := broker.NewBrokerChainBridgeImpl(recorder, configManager.GetChainNodeConfig().Url)
+	nodeBroker := broker.NewBroker(chainBridge, chainPhaseTracker, participantInfo, configManager.GetApiConfig().PoCCallbackUrl, &mlnodeclient.HttpClientFactory{}, configManager)
 
-	nodes := config.GetNodes()
+	nodes := configManager.GetNodes()
 	for _, node := range nodes {
 		responseChan := nodeBroker.LoadNodeToBroker(&node)
 		if responseChan != nil {
@@ -119,7 +119,7 @@ func main() {
 		}
 	}
 
-	if err := participant.RegisterParticipantIfNeeded(recorder, config); err != nil {
+	if err := participant.RegisterParticipantIfNeeded(recorder, configManager); err != nil {
 		logging.Error("Failed to register participant", types.Participants, "error", err)
 		return
 	}
@@ -134,22 +134,22 @@ func main() {
 		participantInfo.GetPubKey(),
 		participantInfo.GetAddress(),
 		nodeBroker,
-		config.GetApiConfig().PoCCallbackUrl,
-		config.GetChainNodeConfig().Url,
+		configManager.GetApiConfig().PoCCallbackUrl,
+		configManager.GetChainNodeConfig().Url,
 		recorder,
 		chainPhaseTracker,
 	)
 	logging.Info("PoC orchestrator initialized", types.PoC)
 
 	tendermintClient := cosmosclient.TendermintClient{
-		ChainNodeUrl: config.GetChainNodeConfig().Url,
+		ChainNodeUrl: configManager.GetChainNodeConfig().Url,
 	}
 	// Create a cancellable context for the entire system
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // Ensure resources are cleaned up
 
 	// Start periodic config auto-flush of dynamic data to DB
-	config.StartAutoFlush(ctx, 60*time.Second)
+	configManager.StartAutoFlush(ctx, 60*time.Second)
 
 	// Optional off-chain inference stats storage (PostgreSQL-backed when PGHOST is configured).
 	statsStore, err := statsstorage.NewStatsStorage(ctx)
@@ -164,10 +164,10 @@ func main() {
 	training.NewAssigner(recorder, &tendermintClient, ctx)
 	trainingExecutor := training.NewExecutor(ctx, nodeBroker, recorder)
 
-	validator := validation.NewInferenceValidator(nodeBroker, config, recorder, chainPhaseTracker)
+	validator := validation.NewInferenceValidator(nodeBroker, configManager, recorder, chainPhaseTracker)
 	blsManager := bls.NewBlsManager(*recorder)
 	listener := event_listener.NewEventListener(
-		config,
+		configManager,
 		pocOrchestrator,
 		nodeBroker,
 		validator,
@@ -182,7 +182,7 @@ func main() {
 	go listener.Start(ctx)
 
 	mlnodeBackgroundManager := modelmanager.NewMLNodeBackgroundManager(
-		config,
+		configManager,
 		chainPhaseTracker,
 		nodeBroker,
 		&mlnodeclient.HttpClientFactory{},
@@ -190,7 +190,7 @@ func main() {
 	)
 	go mlnodeBackgroundManager.Start(ctx)
 
-	addr := fmt.Sprintf(":%v", config.GetApiConfig().PublicServerPort)
+	addr := fmt.Sprintf(":%v", configManager.GetApiConfig().PublicServerPort)
 	logging.Info("start public server on addr", types.Server, "addr", addr)
 
 	// Bridge external block queue
@@ -212,9 +212,9 @@ func main() {
 
 	// Create commit worker for time-based artifact commits and weight distribution
 	// Worker owns flush lifecycle, commits periodically (not per-request), and handles distribution
-	batchingCfg := config.GetTxBatchingConfig()
+	batchingCfg := configManager.GetTxBatchingConfig()
 	commitInterval := time.Duration(batchingCfg.PocCommitIntervalSeconds) * time.Second
-	commitWorker := poc.NewCommitWorker(artifactStore, recorder, chainPhaseTracker, participantInfo.GetAddress(), commitInterval)
+	commitWorker := poc.NewCommitWorker(artifactStore, configManager, recorder, chainPhaseTracker, participantInfo.GetAddress(), commitInterval)
 	defer commitWorker.Close()
 
 	subnetSigner, subnetSignerErr := internalsubnet.NewSignerFromKeyring(*recorder.GetKeyring(), recorder.GetApiAccount().SignerAccount.Name)
@@ -224,7 +224,7 @@ func main() {
 
 	publicServer := pserver.NewServer(
 		nodeBroker,
-		config,
+		configManager,
 		recorder,
 		trainingExecutor,
 		blockQueue,
@@ -237,8 +237,8 @@ func main() {
 	if subnetSigner != nil {
 		subnetBridge := internalsubnet.NewChainBridge(recorder)
 		httpClient := pserver.NewNoRedirectClient(5 * time.Minute)
-		subnetEngine := internalsubnet.NewEngineAdapter(nodeBroker, config.GetCurrentNodeVersion(), payloadStore, chainPhaseTracker, httpClient)
-		subnetValidator := internalsubnet.NewValidationAdapter(nodeBroker, config.GetCurrentNodeVersion(), chainPhaseTracker, httpClient, subnetBridge, recorder)
+		subnetEngine := internalsubnet.NewEngineAdapter(nodeBroker, configManager.GetCurrentNodeVersion(), payloadStore, chainPhaseTracker, httpClient)
+		subnetValidator := internalsubnet.NewValidationAdapter(nodeBroker, configManager.GetCurrentNodeVersion(), chainPhaseTracker, httpClient, subnetBridge, recorder)
 		// TODO: move to SubnetConfig when config consolidation happens.
 		subnetStore, storeErr := subnetstorage.NewSQLite("/root/.dapi/data/subnet.db")
 		if storeErr != nil {
@@ -254,17 +254,17 @@ func main() {
 	}
 	publicServer.Start(addr)
 
-	addr = fmt.Sprintf(":%v", config.GetApiConfig().MLServerPort)
+	addr = fmt.Sprintf(":%v", configManager.GetApiConfig().MLServerPort)
 	logging.Info("start ml server on addr", types.Server, "addr", addr)
 	mlServer := mlserver.NewServer(recorder, nodeBroker, mlserver.WithArtifactStore(artifactStore))
 	mlServer.Start(addr)
 
-	addr = fmt.Sprintf(":%v", config.GetApiConfig().AdminServerPort)
+	addr = fmt.Sprintf(":%v", configManager.GetApiConfig().AdminServerPort)
 	logging.Info("start admin server on addr", types.Server, "addr", addr)
-	adminServer := adminserver.NewServer(recorder, nodeBroker, config, validator, blockQueue, payloadStore)
+	adminServer := adminserver.NewServer(recorder, nodeBroker, configManager, validator, blockQueue, payloadStore)
 	adminServer.Start(addr)
 
-	mlGrpcServerPort := config.GetApiConfig().MlGrpcServerPort
+	mlGrpcServerPort := configManager.GetApiConfig().MlGrpcServerPort
 	if mlGrpcServerPort == 0 {
 		mlGrpcServerPort = 9300
 		logging.Info("ml grpc server port not set, using default port 9300", types.Server)
@@ -292,18 +292,18 @@ func main() {
 	ctxFlush, cancelFlush := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelFlush()
 	logging.Info("Flushing config to the DB on app exit", types.Config)
-	_ = config.FlushNow(ctxFlush)
+	_ = configManager.FlushNow(ctxFlush)
 
 	// Close DB gracefully
-	if db := config.SqlDb().GetDb(); db != nil {
+	if db := configManager.SqlDb().GetDb(); db != nil {
 		_ = db.Close()
 	}
 
 	os.Exit(1) // Exit with an error for cosmovisor to restart the process
 }
 
-func returnStatus(config *apiconfig.ConfigManager) {
-	height := config.GetHeight()
+func returnStatus(configManager *apiconfig.ConfigManager) {
+	height := configManager.GetHeight()
 	status := map[string]interface{}{
 		"sync_info": map[string]string{
 			"latest_block_height": strconv.FormatInt(height, 10),

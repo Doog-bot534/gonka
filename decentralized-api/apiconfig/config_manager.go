@@ -748,7 +748,7 @@ func (cm *ConfigManager) migrateDynamicDataToDb(ctx context.Context) (bool, erro
 		_ = KVSetJSON(ctx, cm.sqlDb.GetDb(), kvKeyBandwidthParams, config.BandwidthParams)
 	}
 	var pp PoCParamsCache
-	if ok, _ := func() (bool, error) { return KVGetJSON(ctx, cm.sqlDb.GetDb(), kvKeyPoCParams, &pp) }(); !ok && (config.PoCParams.ModelId != "" || config.PoCParams.SeqLen != 0) {
+	if ok, _ := func() (bool, error) { return KVGetJSON(ctx, cm.sqlDb.GetDb(), kvKeyPoCParams, &pp) }(); !ok && len(config.PoCParams.Models) > 0 {
 		_ = KVSetJSON(ctx, cm.sqlDb.GetDb(), kvKeyPoCParams, config.PoCParams)
 	}
 

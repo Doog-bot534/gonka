@@ -52,6 +52,8 @@ The aggregation rule should satisfy:
 - governance can add or adjust coefficients without changing the PoC mechanism itself
 - higher-value models can contribute more consensus power if the chain wants to incentivize scarce hardware
 
+Implementation note: the current intended shape is one `WeightCalculator` over all model-scoped validations for the stage. Keep this simple unless profiling shows multi-model validation volume makes the calculator path too heavy.
+
 ### Open design questions
 - Should coefficients be static governance params or derived partly from observed demand?
 - Should consensus weight from a new group be capped until the group is mature?

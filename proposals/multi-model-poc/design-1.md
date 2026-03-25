@@ -143,6 +143,7 @@ PoC-derived participants:
   - `totalWeight = commit.count * combinedFactor`
   - `nodeWeight = distribution.weight * combinedFactor`
 - `combinedFactor = weight_scale_factor * timeNormalizationFactor` when normalization is enabled.
+- Current intended shape is one `WeightCalculator` over all model-scoped validations for the stage. Keep this simple unless profiling shows multi-model validation volume makes the calculator path too heavy.
 - `pocValidated()` decides whether the participant passes:
   - With `validation_slots == 0`, votes are weighted by current validator weight.
   - Threshold is `validWeight > totalWeight * 2 / 3`.
@@ -257,11 +258,15 @@ message PoCModelConfig {
 
 `PocParams.models` replaces the singular `model_id`, `seq_len`, `stat_test`, and `weight_scale_factor` fields. The list defines which models participate in PoC. Global fields (`validation_sample_size`, `validation_slots`, `poc_normalization_enabled`) stay on PocParams.
 
+The singular fields may remain in protobuf definitions temporarily for compatibility and migration, but active logic must treat `PocParams.models` as the only source of truth.
+
+Temporary single-model convenience paths may still read the first entry of `PocParams.models` during intermediate phases. That is only an implementation bridge. By the end of the last phase, there must be no concept of a primary PoC model left in active logic.
+
 With one model, behavior is equivalent to current system.
 
 ### 2. Per-model storage identity
 
-Every PoC-v2 record binds to `(stage, model_id)` scope. Adding `model_id` to keeper storage is not enough on its own. The local MMR, proof API, artifact callbacks, commit pipeline, and validation pipeline must all follow the same `(stage, model_id)` scoping.
+Every PoC-v2 record that represents participant work binds to `(stage, model_id)` scope. Adding `model_id` to keeper storage is not enough on its own. The local MMR, proof API, artifact callbacks, commit pipeline, and validation pipeline must all follow the same `(stage, model_id)` scoping.
 
 Storage keys gain `model_id`:
 
@@ -270,10 +275,13 @@ Storage keys gain `model_id`:
 | Commit | (stage, participant) | (stage, participant, model_id) |
 | Distribution | (stage, participant) | (stage, participant, model_id) |
 | Validation | (stage, participant, validator) | (stage, participant, validator, model_id) |
+| Validation snapshot | (stage) | (stage) |
+
+`PoCValidationSnapshot` is the exception. In phase 1 it stays stage-global because it stores chain-global validator weights, `app_hash`, and timing data, not model-local validator-set state.
 
 Local artifact stores become stage-first: one store path per stage, with one model-scoped store under it. Conceptually the identity is still `(stage, model_id)`, but pruning stays stage-based with no new pruning logic. Proof requests include `model_id`.
 
-Query APIs and internal readers must follow the same identity change. The current V2 flow depends on participant-level and stage-level PoC queries. In multi-model mode those queries must become model-aware too. Stage-wide readers should return atomic `(participant, model)` records, not participant records with repeated model entries that are split client-side.
+Query APIs and internal readers must follow the same identity change. The current V2 flow depends on participant-level and stage-level PoC queries. In multi-model mode commit, distribution, and validation queries must become model-aware. Stage-wide readers should return atomic `(participant, model)` records, not participant records with repeated model entries that are split client-side. `PoCValidationSnapshot` readers stay stage-scoped in phase 1 because the snapshot itself stays stage-global.
 
 ### 3. TX messages
 
@@ -330,7 +338,7 @@ Validation work items keyed by `(participant, model)`. One validation result per
 
 Slot sampling seed: `SHA256(validatorPubKey:blockHash:blockHeight:modelId)`. Different models get independent sampling.
 
-`PoCValidationSnapshot` stays stage-global in phase 1. It stores chain-global validator weights and timing data, not model-local validator-set state.
+`PoCValidationSnapshot` stays stage-global in phase 1. It stores chain-global validator weights and timing data, not model-local validator-set state. Later phases in this document do not introduce per-model validation snapshots unless a future design explicitly says so.
 
 Both O(N^2) and slot-based modes use model-scoped validator sets. Vote eligibility is model-local, but vote power stays participant-global aggregated weight. The acceptance rule stays unchanged from current PoC: `>2/3` valid accepts, `>2/3` invalid rejects, otherwise guardians can break the tie with the existing unanimous-voters rule.
 
@@ -396,7 +404,8 @@ The final multi-model testermint coverage will be added only after the last phas
 ### Phase 1. Storage and protocol primitives
 - `PoCModelConfig` message and `repeated models` in PocParams
 - `model_id` in storage keys for commits, distributions, validations
-- model-aware query/API changes for commit, distribution, validation, and validation-snapshot readers
+- model-aware query/API changes for commit, distribution, and validation readers
+- `PoCValidationSnapshot` stays stage-global; validation-snapshot readers stay stage-scoped
 - Per-model entries in TX messages
 - `model_id` in proof requests
 - regenerate protobuf Go code after proto changes:
@@ -404,8 +413,6 @@ The final multi-model testermint coverage will be added only after the last phas
 ```bash
 cd inference-chain && ignite generate proto-go
 ```
-
-- Prune old PoC-v2 records in upgrade handler
 
 Exit:
 - every PoC-v2 record has model-aware identity
@@ -417,6 +424,7 @@ Exit:
 - Artifact callbacks bound to model-aware stores
 - Proof serving bound to `(stage, participant, model_id)`
 - Confirmation PoC reads from model-aware paths
+- Commit-worker local state keyed by `(stage, model_id)`, not just stage
 
 Exit:
 - one store per `(stage, model_id)`
@@ -430,6 +438,7 @@ Exit:
 - Validation executors filtered by model membership
 - Slot sampling seed includes `model_id`
 - O(N^2) and slot-based validation both model-aware
+- Remove temporary first-model shortcuts in broker, commit worker, and validation callback wiring
 
 Exit:
 - generation and validation for model X use only model-X nodes
@@ -450,7 +459,9 @@ Exit:
 
 ### Phase 5. Subgroup state and cleanup
 - `addToModelGroups()` writes per-model weight
+- the next real upgrade handler, not a historical upgrade, prunes legacy PoC-v2 records and migrates singular PoC params into `models`
 - Remove single-model enforcement
+- Remove silent fallback to the first model for unknown `model_id`
 - Regression coverage: multi-model PoC, subgroup weights, slot mode, confirmation PoC
 
 Exit:

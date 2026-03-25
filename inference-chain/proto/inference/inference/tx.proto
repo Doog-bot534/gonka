@@ -252,7 +252,9 @@ message MsgPoCV2StoreCommit {
   option (cosmos.msg.v1.signer) = "creator";
   string creator = 1;
   int64 poc_stage_start_block_height = 2;
-  repeated PoCV2CommitEntry entries = 3;
+  uint32 count = 3 [deprecated = true];
+  bytes root_hash = 4 [deprecated = true];
+  repeated PoCV2CommitEntry entries = 5;
 }
 
 message MsgPoCV2StoreCommitResponse {}
@@ -262,7 +264,8 @@ message MsgMLNodeWeightDistribution {
   option (cosmos.msg.v1.signer) = "creator";
   string creator = 1;
   int64 poc_stage_start_block_height = 2;
-  repeated MLNodeDistributionEntry entries = 3;
+  repeated MLNodeWeight weights = 3 [deprecated = true];
+  repeated MLNodeDistributionEntry entries = 4;
 }
 
 message MsgMLNodeWeightDistributionResponse {}
