@@ -3,6 +3,9 @@ package app
 import (
 	"testing"
 
+	"cosmossdk.io/log"
+	"cosmossdk.io/math"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
@@ -14,6 +17,11 @@ import (
 	blstypes "github.com/productscience/inference/x/bls/types"
 )
 
+// newTestContext creates a minimal sdk.Context suitable for unit tests.
+func newTestContext() sdk.Context {
+	return sdk.NewContext(nil, cmtproto.Header{}, false, log.NewNopLogger())
+}
+
 // --- Test FeeTx implementation ---
 
 type testFeeTx struct {
@@ -23,12 +31,11 @@ type testFeeTx struct {
 }
 
 func (t testFeeTx) GetMsgs() []sdk.Msg                    { return t.msgs }
-func (t testFeeTx) ValidateBasic() error                  { return nil }
 func (t testFeeTx) GetMsgsV2() ([]protov2.Message, error) { return nil, nil }
 func (t testFeeTx) GetFee() sdk.Coins                     { return t.fee }
 func (t testFeeTx) GetGas() uint64                        { return t.gas }
-func (t testFeeTx) FeePayer() sdk.AccAddress               { return nil }
-func (t testFeeTx) FeeGranter() sdk.AccAddress             { return nil }
+func (t testFeeTx) FeePayer() []byte                       { return nil }
+func (t testFeeTx) FeeGranter() []byte                     { return nil }
 
 // --- NetworkDutyFeeBypassDecorator tests ---
 
@@ -55,7 +62,7 @@ func TestNetworkDutyBypass_AllExemptMessages(t *testing.T) {
 
 	for _, msg := range exemptMsgs {
 		tx := testFeeTx{msgs: []sdk.Msg{msg}, gas: 100_000}
-		ctx := sdk.Context{}.WithMinGasPrices(sdk.DecCoins{sdk.NewDecCoin("ngonka", sdk.NewInt(10))})
+		ctx := newTestContext().WithMinGasPrices(sdk.DecCoins{sdk.NewDecCoin("ngonka", math.NewInt(10))})
 
 		nextCalled := false
 		_, err := decorator.AnteHandle(ctx, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
@@ -88,7 +95,7 @@ func TestNetworkDutyBypass_NonExemptMessages(t *testing.T) {
 
 	for _, msg := range nonExemptMsgs {
 		tx := testFeeTx{msgs: []sdk.Msg{msg}, gas: 100_000}
-		ctx := sdk.Context{}.WithMinGasPrices(sdk.DecCoins{sdk.NewDecCoin("ngonka", sdk.NewInt(10))})
+		ctx := newTestContext().WithMinGasPrices(sdk.DecCoins{sdk.NewDecCoin("ngonka", math.NewInt(10))})
 
 		nextCalled := false
 		_, err := decorator.AnteHandle(ctx, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
@@ -119,7 +126,7 @@ func TestNetworkDutyBypass_MixedMessages_NoBypass(t *testing.T) {
 		},
 		gas: 100_000,
 	}
-	ctx := sdk.Context{}.WithMinGasPrices(sdk.DecCoins{sdk.NewDecCoin("ngonka", sdk.NewInt(10))})
+	ctx := newTestContext().WithMinGasPrices(sdk.DecCoins{sdk.NewDecCoin("ngonka", math.NewInt(10))})
 
 	_, err := decorator.AnteHandle(ctx, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
 		require.False(t, IsNetworkDutyBypassed(ctx), "mixed tx should NOT be bypassed")
@@ -140,7 +147,7 @@ func TestNetworkDutyBypass_GasCapEnforced(t *testing.T) {
 		msgs: []sdk.Msg{&inferencetypes.MsgValidation{}},
 		gas:  2_000_000, // exceeds 1M cap
 	}
-	ctx := sdk.Context{}
+	ctx := newTestContext()
 
 	_, err := decorator.AnteHandle(ctx, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
 		t.Fatal("next should not be called when gas exceeds cap")
@@ -185,10 +192,10 @@ func TestGonkaFeeChecker_SufficientFee(t *testing.T) {
 
 	tx := testFeeTx{
 		msgs: []sdk.Msg{&banktypes.MsgSend{}},
-		fee:  sdk.NewCoins(sdk.NewCoin("ngonka", sdk.NewInt(0))),
+		fee:  sdk.NewCoins(sdk.NewCoin("ngonka", math.NewInt(0))),
 		gas:  100_000,
 	}
-	ctx := sdk.Context{}
+	ctx := newTestContext()
 
 	feeCoins, priority, err := checker(ctx, tx)
 	require.NoError(t, err)
@@ -205,7 +212,7 @@ func TestGonkaFeeChecker_BypassFlag(t *testing.T) {
 		fee:  sdk.Coins{},
 		gas:  100_000,
 	}
-	ctx := sdk.Context{}.WithValue(networkDutyBypassKey{}, true)
+	ctx := newTestContext().WithValue(networkDutyBypassKey{}, true)
 
 	feeCoins, _, err := checker(ctx, tx)
 	require.NoError(t, err)
@@ -218,10 +225,10 @@ func TestGonkaFeeChecker_Priority(t *testing.T) {
 	// Higher fee = higher priority
 	tx := testFeeTx{
 		msgs: []sdk.Msg{&banktypes.MsgSend{}},
-		fee:  sdk.NewCoins(sdk.NewCoin("ngonka", sdk.NewInt(1_000_000))),
+		fee:  sdk.NewCoins(sdk.NewCoin("ngonka", math.NewInt(1_000_000))),
 		gas:  100_000,
 	}
-	ctx := sdk.Context{}
+	ctx := newTestContext()
 
 	_, priority, err := checker(ctx, tx)
 	require.NoError(t, err)

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"cosmossdk.io/math"
 	ctypes "github.com/cometbft/cometbft/rpc/core/types"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/tx"
@@ -939,7 +940,7 @@ func (m *manager) getSignedBytes(id string, unsignedTx client.TxBuilder, factory
 	// PoC, inference) are fee-exempt via NetworkDutyFeeBypassDecorator, so fee amount
 	// is set but will not be charged for exempt messages.
 	unsignedTx.SetGasLimit(10_000_000)
-	unsignedTx.SetFeeAmount(sdk.NewCoins(sdk.NewCoin("ngonka", sdk.NewInt(10_000_000*10))))
+	unsignedTx.SetFeeAmount(sdk.NewCoins(sdk.NewCoin("ngonka", math.NewInt(10_000_000*10))))
 	unsignedTx.SetUnordered(true)
 	unsignedTx.SetTimeoutTimestamp(timestamp)
 	name := m.apiAccount.SignerAccount.Name

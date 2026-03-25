@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 
+	"cosmossdk.io/math"
 	errorsmod "cosmossdk.io/errors"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
@@ -178,7 +179,7 @@ func NewGonkaFeeChecker(inferenceKeeper *inferencemodulekeeper.Keeper) ante.TxFe
 
 		// Calculate required fee: gas * min_gas_price (integer math, no rounding needed).
 		requiredAmount := gas * minGasPriceNgonka
-		requiredFee := sdk.NewCoin("ngonka", sdk.NewIntFromUint64(requiredAmount))
+		requiredFee := sdk.NewCoin("ngonka", math.NewIntFromUint64(requiredAmount))
 
 		if !feeCoins.IsAnyGTE(sdk.NewCoins(requiredFee)) {
 			return nil, 0, errorsmod.Wrapf(sdkerrors.ErrInsufficientFee,
