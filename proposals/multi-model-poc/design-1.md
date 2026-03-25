@@ -324,9 +324,9 @@ Each handler unpacks entries and persists one record per model-scoped key.
 
 Broker reads `PocParams.models`. For each `PoCModelConfig`, dispatches generation only to MLNodes assigned to that model in the current epoch. Each model's artifacts go to a separate local store keyed by `(stage, model_id)` under the stage directory.
 
-Callback identity must include `model_id` so artifact callbacks route to the correct store.
+Callback identity must include `model_id` so artifact callbacks route to the correct store. The Phase 2 implementation may carry this identity in the callback URL path instead of adding a separate `model_id` field to the callback payload.
 
-Proof and callback signatures must also bind `model_id`, not just routing and storage keys.
+Proof requests and proof signatures must bind `model_id`, not just routing and storage keys. Callback routing must also be model-scoped.
 
 ### 5. PoC validation
 
@@ -370,7 +370,7 @@ With one model, subgroup weight equals raw PoC weight and participant weight equ
 
 ### 8. Remove single-model enforcement
 
-`enforced_model.go` defaults all nodes to one model. Remove or make test-only.
+`enforced_model.go` defaulted all nodes to one model. That bridge blocks meaningful runtime multi-model verification, so remove it as soon as the runtime paths can preserve configured model maps directly. Keep single-model behavior by configuration (`PocParams.models` or node config containing one model), not by silently rewriting node state.
 
 ### 9. Boundary with design-2.md
 
@@ -399,6 +399,8 @@ The implementation is complete only after the last phase. At that point:
 
 The final multi-model testermint coverage will be added only after the last phase lands. At that point decide whether to extend `testermint/src/test/kotlin/MultiModelTests.kt` or to add a separate PoC-focused multi-model test. Do not treat the current `MultiModelTests.kt` inference coverage as sufficient coverage for this document.
 
+Before that final testermint coverage lands, it is still useful to add Go-side runtime tests that exercise real multi-model callback routing, local stores, commit/distribution batching, and proof/state reads.
+
 ## Phases
 
 ### Phase 1. Storage and protocol primitives
@@ -422,6 +424,7 @@ Exit:
 ### Phase 2. Model-aware artifact stores and proof plumbing
 - Local artifact store keyed by `(stage, model_id)`
 - Artifact callbacks bound to model-aware stores
+- Callback route identity may carry `model_id` in the callback URL path segment when that is the simplest way to keep callback routing explicit
 - Proof serving bound to `(stage, participant, model_id)`
 - Confirmation PoC reads from model-aware paths
 - Commit-worker local state keyed by `(stage, model_id)`, not just stage
@@ -460,7 +463,7 @@ Exit:
 ### Phase 5. Subgroup state and cleanup
 - `addToModelGroups()` writes per-model weight
 - the next real upgrade handler, not a historical upgrade, prunes legacy PoC-v2 records and migrates singular PoC params into `models`
-- Remove single-model enforcement
+- verify no single-model enforcement bridge remains
 - Remove silent fallback to the first model for unknown `model_id`
 - Regression coverage: multi-model PoC, subgroup weights, slot mode, confirmation PoC
 

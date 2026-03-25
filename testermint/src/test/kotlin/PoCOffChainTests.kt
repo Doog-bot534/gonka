@@ -58,7 +58,8 @@ class PoCOffChainTests : TestermintTest() {
         // === Part 2: Query DAPI artifact store and proofs ===
         logSection("Querying artifact store state from DAPI")
 
-        val artifactState = genesis.api.getPocArtifactsState(pocStartHeight)
+        val modelId = defaultModel
+        val artifactState = genesis.api.getPocArtifactsState(pocStartHeight, modelId)
         Logger.info("Artifact store state: count=${artifactState.count}, rootHash=${artifactState.rootHash}")
 
         if (artifactState.count == 0L) {
@@ -78,6 +79,7 @@ class PoCOffChainTests : TestermintTest() {
 
         val signPayload = buildPocProofsSignPayload(
             pocStartHeight,
+            modelId,
             Base64.getDecoder().decode(rootHash),
             count,
             leafIndices,
@@ -89,6 +91,7 @@ class PoCOffChainTests : TestermintTest() {
 
         val request = PocProofsRequest(
             pocStageStartBlockHeight = pocStartHeight,
+            modelId = modelId,
             rootHash = rootHash,
             count = count,
             leafIndices = leafIndices,
@@ -239,6 +242,7 @@ class PoCOffChainTests : TestermintTest() {
          */
         fun buildPocProofsSignPayload(
             pocStageStartBlockHeight: Long,
+            modelId: String,
             rootHash: ByteArray,
             count: Long,
             leafIndices: List<Long>,
@@ -247,13 +251,14 @@ class PoCOffChainTests : TestermintTest() {
             validatorSignerAddress: String
         ): ByteArray {
             // Calculate buffer size
-            val size = 8 + 32 + 4 + (leafIndices.size * 4) + 8 +
+            val size = 8 + modelId.toByteArray().size + 32 + 4 + (leafIndices.size * 4) + 8 +
                     validatorAddress.toByteArray().size + validatorSignerAddress.toByteArray().size
 
             val buffer = ByteBuffer.allocate(size)
             buffer.order(ByteOrder.LITTLE_ENDIAN)
 
             buffer.putLong(pocStageStartBlockHeight)
+            buffer.put(modelId.toByteArray())
             buffer.put(rootHash)
             buffer.putInt(count.toInt())
             leafIndices.forEach { buffer.putInt(it.toInt()) }

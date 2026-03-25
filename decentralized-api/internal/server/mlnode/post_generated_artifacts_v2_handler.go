@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"net/url"
 
 	cosmos_client "decentralized-api/cosmosclient"
 	"decentralized-api/logging"
@@ -14,6 +15,17 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/productscience/inference/x/inference/types"
 )
+
+func decodeCallbackModelID(encoded string) (string, error) {
+	if encoded == "" {
+		return "", echo.NewHTTPError(http.StatusBadRequest, "model_id required")
+	}
+	modelID, err := url.PathUnescape(encoded)
+	if err != nil || modelID == "" {
+		return "", echo.NewHTTPError(http.StatusBadRequest, "invalid model_id")
+	}
+	return modelID, nil
+}
 
 // postGeneratedArtifactsV2 handles PoC v2 artifact batch callbacks from MLNode.
 // Stores artifacts locally for off-chain proofs. Store commits and weight distributions
@@ -35,8 +47,13 @@ func (s *Server) postGeneratedArtifactsV2(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
 
+	modelID, err := decodeCallbackModelID(ctx.Param("model_id"))
+	if err != nil {
+		return err
+	}
 	logging.Debug("ArtifactBatchV2-callback. Received", types.PoC,
 		"blockHeight", body.BlockHeight,
+		"modelId", modelID,
 		"publicKey", body.PublicKey,
 		"nodeId", body.NodeId,
 		"artifactsCount", len(body.Artifacts))
@@ -82,10 +99,11 @@ func (s *Server) postGeneratedArtifactsV2(ctx echo.Context) error {
 	// Store artifacts locally for off-chain proofs
 	// Store commits (MsgPoCV2StoreCommit) are submitted by CommitWorker
 	// Weight distributions (MsgMLNodeWeightDistribution) are submitted at end of generation
-	totalCount, nodeDistribution := s.addToLocalStorage(body.BlockHeight, nodeId, protoArtifacts)
+	totalCount, nodeDistribution := s.addToLocalStorage(body.BlockHeight, modelID, nodeId, protoArtifacts)
 
 	logging.Debug("ArtifactBatchV2-callback. Stored locally", types.PoC,
 		"blockHeight", body.BlockHeight,
+		"modelId", modelID,
 		"nodeId", nodeId,
 		"artifactsCount", len(protoArtifacts),
 		"totalInStore", totalCount,
@@ -115,6 +133,11 @@ func (s *Server) postValidatedArtifactsV2(ctx echo.Context) error {
 		"nTotal", body.NTotal,
 		"fraudDetected", body.FraudDetected)
 
+	modelID, err := decodeCallbackModelID(ctx.Param("model_id"))
+	if err != nil {
+		return err
+	}
+
 	epochState := s.broker.GetPhaseTracker().GetCurrentEpochState()
 	if !poc.ShouldAcceptValidatedArtifacts(epochState) {
 		logging.Warn("ValidatedArtifactsV2-callback. Rejected - not in PoC validate phase", types.PoC,
@@ -136,7 +159,6 @@ func (s *Server) postValidatedArtifactsV2(ctx echo.Context) error {
 
 	// Convert fraud_detected + n_total to validated_weight
 	validatedWeight := body.ToValidatedWeight()
-	modelID := s.getPrimaryPoCModelID()
 
 	logging.Info("ValidatedArtifactsV2-callback. Submitting validation", types.PoC,
 		"participant", address,
@@ -166,15 +188,15 @@ func (s *Server) postValidatedArtifactsV2(ctx echo.Context) error {
 	return ctx.NoContent(http.StatusOK)
 }
 
-func (s *Server) addToLocalStorage(pocStageStartHeight int64, nodeId string, protoArtifacts []*types.PoCArtifactV2) (uint32, map[string]uint32) {
+func (s *Server) addToLocalStorage(pocStageStartHeight int64, modelID, nodeId string, protoArtifacts []*types.PoCArtifactV2) (uint32, map[string]uint32) {
 	if s.artifactStore == nil {
 		return 0, nil
 	}
 
-	store, err := s.artifactStore.GetOrCreateStore(pocStageStartHeight)
+	store, err := s.artifactStore.GetOrCreateStore(pocStageStartHeight, modelID)
 	if err != nil {
 		logging.Error("Failed to get artifact store", types.PoC,
-			"pocStageStartHeight", pocStageStartHeight, "error", err)
+			"pocStageStartHeight", pocStageStartHeight, "modelId", modelID, "error", err)
 		return 0, nil
 	}
 
@@ -188,11 +210,4 @@ func (s *Server) addToLocalStorage(pocStageStartHeight int64, nodeId string, pro
 	}
 
 	return store.Count(), store.GetNodeCounts()
-}
-
-func (s *Server) getPrimaryPoCModelID() string {
-	if s.broker == nil {
-		return ""
-	}
-	return s.broker.GetPrimaryPoCModelID()
 }

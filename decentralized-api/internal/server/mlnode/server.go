@@ -50,9 +50,9 @@ func NewServer(recorder cosmos_client.CosmosMessageClient, broker *broker.Broker
 	g.POST("poc-batches/validated", s.postValidatedBatchesV1)
 	e.POST("/v1/poc-batches/validated", s.postValidatedBatchesV1)
 
-	// V2 callback routes (off-chain artifacts, used when poc_v2_enabled=true)
-	e.POST("/v2/poc-batches/generated", s.postGeneratedArtifactsV2)
-	e.POST("/v2/poc-batches/validated", s.postValidatedArtifactsV2)
+	// V2 callback routes.
+	e.POST("/v2/poc-batches/:model_id/generated", s.postGeneratedArtifactsV2)
+	e.POST("/v2/poc-batches/:model_id/validated", s.postValidatedArtifactsV2)
 	return s
 }
 

@@ -5,9 +5,14 @@ import (
 	"decentralized-api/logging"
 	"decentralized-api/mlnodeclient"
 	"errors"
+	"net/url"
 
 	"github.com/productscience/inference/x/inference/types"
 )
+
+func encodeCallbackModelID(modelID string) string {
+	return url.PathEscape(url.PathEscape(modelID))
+}
 
 // NodeWorkerCommand defines the interface for commands executed by NodeWorker
 type NodeWorkerCommand interface {
@@ -306,7 +311,7 @@ func (c StartPoCNodeCommandV2) Execute(ctx context.Context, worker *NodeWorker) 
 			Model:  c.Model,
 			SeqLen: c.SeqLen,
 		},
-		URL: c.CallbackUrl,
+		URL: c.CallbackUrl + "/" + encodeCallbackModelID(c.Model),
 	}
 
 	if _, err := worker.GetClient().InitGenerateV2(ctx, req); err != nil {

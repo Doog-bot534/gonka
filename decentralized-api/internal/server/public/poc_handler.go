@@ -101,6 +101,7 @@ type PocProofsResponse struct {
 // PocArtifactsStateResponse is the response for GET /v1/poc/artifacts/state
 type PocArtifactsStateResponse struct {
 	PocStageStartBlockHeight int64  `json:"poc_stage_start_block_height"`
+	ModelId                  string `json:"model_id"`
 	Count                    uint32 `json:"count"`
 	RootHash                 string `json:"root_hash"` // base64-encoded 32 bytes, empty if count=0
 }
@@ -190,10 +191,12 @@ func (s *Server) postPocProofs(ctx echo.Context) error {
 	}
 
 	// Get stage-specific artifact store
-	stageStore, err := s.artifactStore.GetStore(int64(req.PocStageStartBlockHeight))
+	stageStore, err := s.artifactStore.GetStore(int64(req.PocStageStartBlockHeight), req.ModelId)
 	if err != nil {
 		logging.Warn("Stage store not found", types.Validation,
-			"pocStageStartBlockHeight", req.PocStageStartBlockHeight, "error", err)
+			"pocStageStartBlockHeight", req.PocStageStartBlockHeight,
+			"modelId", req.ModelId,
+			"error", err)
 		return echo.NewHTTPError(http.StatusNotFound, "not found for height (may be pruned or not yet created)")
 	}
 
@@ -310,7 +313,12 @@ func (s *Server) getPocArtifactsState(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid height parameter")
 	}
 
-	store, err := s.artifactStore.GetStore(height)
+	modelID := ctx.QueryParam("model_id")
+	if modelID == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "model_id query parameter required")
+	}
+
+	store, err := s.artifactStore.GetStore(height, modelID)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "not found for height (may be pruned or not yet created)")
 	}
@@ -324,6 +332,7 @@ func (s *Server) getPocArtifactsState(ctx echo.Context) error {
 
 	return ctx.JSON(http.StatusOK, PocArtifactsStateResponse{
 		PocStageStartBlockHeight: height,
+		ModelId:                  modelID,
 		Count:                    count,
 		RootHash:                 rootHashB64,
 	})

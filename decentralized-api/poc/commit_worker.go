@@ -25,6 +25,11 @@ type commitState struct {
 	rootHash []byte
 }
 
+type commitKey struct {
+	stage   int64
+	modelID string
+}
+
 type CommitWorker struct {
 	store              *artifacts.ManagedArtifactStore
 	configManager      *apiconfig.ConfigManager
@@ -39,7 +44,7 @@ type CommitWorker struct {
 	mu                      sync.Mutex
 	currentPocHeight        int64
 	lastDistributionAttempt time.Time
-	lastCommitted           map[int64]commitState
+	lastCommitted           map[commitKey]commitState
 }
 
 // NewCommitWorker creates and starts a new commit worker.
@@ -61,7 +66,7 @@ func NewCommitWorker(
 		interval:           interval,
 		stop:               make(chan struct{}),
 		done:               make(chan struct{}),
-		lastCommitted:      make(map[int64]commitState),
+		lastCommitted:      make(map[commitKey]commitState),
 	}
 
 	// Start flush - always on (same interval as commits)
@@ -113,7 +118,7 @@ func (w *CommitWorker) tick() {
 	if pocHeight > 0 && w.currentPocHeight != pocHeight {
 		w.currentPocHeight = pocHeight
 		w.lastDistributionAttempt = time.Time{}
-		w.lastCommitted = make(map[int64]commitState)
+		w.lastCommitted = make(map[commitKey]commitState)
 	}
 
 	if pocHeight > 0 {
@@ -130,50 +135,61 @@ func (w *CommitWorker) tick() {
 	if ShouldHaveDistributedWeights(epochState) && pocHeight > 0 {
 		shouldRetry := w.lastDistributionAttempt.IsZero() ||
 			time.Since(w.lastDistributionAttempt) > distributionRetryInterval
-		onChain := w.isDistributionOnChain(pocHeight)
 		logging.Debug("CommitWorker: distribution check", types.PoC,
 			"pocHeight", pocHeight,
 			"shouldRetry", shouldRetry,
-			"lastAttemptIsZero", w.lastDistributionAttempt.IsZero(),
-			"onChain", onChain)
-		if shouldRetry && !onChain {
+			"lastAttemptIsZero", w.lastDistributionAttempt.IsZero())
+		if shouldRetry {
 			w.submitWeightDistribution(pocHeight)
 		}
 	}
 }
 
 func (w *CommitWorker) maybeSubmitCommit(pocHeight int64) {
-	store, err := w.store.GetStore(pocHeight)
-	if err != nil || store == nil {
-		logging.Debug("CommitWorker: no store for height", types.PoC, "pocHeight", pocHeight)
+	stageStores, err := w.store.GetStoresForStage(pocHeight)
+	if err != nil {
+		logging.Debug("CommitWorker: no stores for height", types.PoC, "pocHeight", pocHeight, "error", err)
+		return
+	}
+	if len(stageStores) == 0 {
+		logging.Debug("CommitWorker: no stores for height", types.PoC, "pocHeight", pocHeight)
 		return
 	}
 
-	count, rootHash := store.GetFlushedRoot()
-	if count == 0 || rootHash == nil {
-		logging.Debug("CommitWorker: no flushed data", types.PoC, "pocHeight", pocHeight, "count", count)
-		return
-	}
+	entries := make([]*types.PoCV2CommitEntry, 0, len(stageStores))
+	committedStates := make(map[commitKey]commitState, len(stageStores))
+	for _, stageStore := range stageStores {
+		if stageStore.Store == nil {
+			continue
+		}
+		count, rootHash := stageStore.Store.GetFlushedRoot()
+		if count == 0 || rootHash == nil {
+			continue
+		}
 
-	// Skip if unchanged since last commit
-	last := w.lastCommitted[pocHeight]
-	if last.count == count && bytes.Equal(last.rootHash, rootHash) {
-		return
-	}
+		key := commitKey{stage: pocHeight, modelID: stageStore.ModelID}
+		last := w.lastCommitted[key]
+		if last.count == count && bytes.Equal(last.rootHash, rootHash) {
+			continue
+		}
 
-	modelID, ok := w.queryPrimaryPoCModelID()
-	if !ok {
-		logging.Warn("CommitWorker: failed to resolve primary PoC model", types.PoC, "pocHeight", pocHeight)
+		entries = append(entries, &types.PoCV2CommitEntry{
+			ModelId:  stageStore.ModelID,
+			Count:    count,
+			RootHash: rootHash,
+		})
+		committedStates[key] = commitState{
+			count:    count,
+			rootHash: bytes.Clone(rootHash),
+		}
+	}
+	if len(entries) == 0 {
 		return
 	}
 
 	msg := &types.MsgPoCV2StoreCommit{
 		PocStageStartBlockHeight: pocHeight,
-		Entries: []*types.PoCV2CommitEntry{{
-			ModelId:  modelID,
-			Count:    count,
-			RootHash: rootHash,
-		}},
+		Entries:                 entries,
 	}
 
 	if err := w.recorder.SubmitPoCV2StoreCommit(msg); err != nil {
@@ -182,86 +198,90 @@ func (w *CommitWorker) maybeSubmitCommit(pocHeight int64) {
 		return
 	}
 
-	w.lastCommitted[pocHeight] = commitState{count, rootHash}
+	for key, state := range committedStates {
+		w.lastCommitted[key] = state
+	}
 	logging.Debug("CommitWorker: committed", types.PoC,
-		"pocHeight", pocHeight, "count", count)
-}
-
-func (w *CommitWorker) isDistributionOnChain(pocHeight int64) bool {
-	if w.participantAddress == "" {
-		return false
-	}
-	modelID, ok := w.queryPrimaryPoCModelID()
-	if !ok {
-		return false
-	}
-	queryClient := w.recorder.NewInferenceQueryClient()
-	resp, err := queryClient.MLNodeWeightDistribution(context.Background(), &types.QueryMLNodeWeightDistributionRequest{
-		PocStageStartBlockHeight: pocHeight,
-		ParticipantAddress:       w.participantAddress,
-		ModelId:                  modelID,
-	})
-	return err == nil && resp.Found
+		"pocHeight", pocHeight, "models", len(entries))
 }
 
 func (w *CommitWorker) submitWeightDistribution(pocHeight int64) {
-	store, err := w.store.GetStore(pocHeight)
-	if err != nil || store == nil {
-		logging.Debug("CommitWorker: no store", types.PoC, "pocHeight", pocHeight)
-		return
-	}
-
 	if w.participantAddress == "" {
 		logging.Debug("CommitWorker: no participant address", types.PoC)
 		return
 	}
 
-	modelID, ok := w.queryPrimaryPoCModelID()
-	if !ok {
-		logging.Warn("CommitWorker: failed to resolve primary PoC model", types.PoC, "pocHeight", pocHeight)
+	stageStores, err := w.store.GetStoresForStage(pocHeight)
+	if err != nil {
+		logging.Debug("CommitWorker: no stores for distribution", types.PoC, "pocHeight", pocHeight, "error", err)
+		return
+	}
+	if len(stageStores) == 0 {
+		logging.Debug("CommitWorker: no stores for distribution", types.PoC, "pocHeight", pocHeight)
 		return
 	}
 
 	queryClient := w.recorder.NewInferenceQueryClient()
-	resp, err := queryClient.PoCV2StoreCommit(context.Background(), &types.QueryPoCV2StoreCommitRequest{
-		PocStageStartBlockHeight: pocHeight,
-		ParticipantAddress:       w.participantAddress,
-		ModelId:                  modelID,
-	})
-	if err != nil {
-		logging.Warn("CommitWorker: failed to query last commit", types.PoC,
-			"pocHeight", pocHeight, "error", err)
-		return
-	}
-	if !resp.Found || resp.Count == 0 {
-		logging.Debug("CommitWorker: no committed snapshot", types.PoC,
-			"pocHeight", pocHeight, "found", resp.Found, "count", resp.Count)
-		return
-	}
+	entries := make([]*types.MLNodeDistributionEntry, 0, len(stageStores))
+	totalNodes := 0
+	for _, stageStore := range stageStores {
+		if stageStore.Store == nil {
+			continue
+		}
+		if err := stageStore.Store.Flush(); err != nil {
+			logging.Warn("CommitWorker: flush failed", types.PoC,
+				"pocHeight", pocHeight, "modelId", stageStore.ModelID, "error", err)
+		}
 
-	if err := store.Flush(); err != nil {
-		logging.Warn("CommitWorker: flush failed", types.PoC, "pocHeight", pocHeight, "error", err)
-	}
+		commitResp, err := queryClient.PoCV2StoreCommit(context.Background(), &types.QueryPoCV2StoreCommitRequest{
+			PocStageStartBlockHeight: pocHeight,
+			ParticipantAddress:       w.participantAddress,
+			ModelId:                  stageStore.ModelID,
+		})
+		if err != nil {
+			logging.Warn("CommitWorker: failed to query last commit", types.PoC,
+				"pocHeight", pocHeight, "modelId", stageStore.ModelID, "error", err)
+			continue
+		}
+		if !commitResp.Found || commitResp.Count == 0 {
+			continue
+		}
 
-	distribution := store.GetNodeDistribution()
-	if len(distribution) == 0 {
-		logging.Debug("CommitWorker: empty distribution", types.PoC, "pocHeight", pocHeight)
-		return
-	}
+		distributionResp, err := queryClient.MLNodeWeightDistribution(context.Background(), &types.QueryMLNodeWeightDistributionRequest{
+			PocStageStartBlockHeight: pocHeight,
+			ParticipantAddress:       w.participantAddress,
+			ModelId:                  stageStore.ModelID,
+		})
+		if err == nil && distributionResp.Found {
+			continue
+		}
 
-	weights, err := getWeightDistribution(distribution, resp.Count)
-	if err != nil {
-		logging.Error("CommitWorker: failed to build weight distribution", types.PoC,
-			"pocHeight", pocHeight, "error", err)
+		distribution := stageStore.Store.GetNodeDistribution()
+		if len(distribution) == 0 {
+			continue
+		}
+
+		weights, err := getWeightDistribution(distribution, commitResp.Count)
+		if err != nil {
+			logging.Error("CommitWorker: failed to build weight distribution", types.PoC,
+				"pocHeight", pocHeight, "modelId", stageStore.ModelID, "error", err)
+			continue
+		}
+
+		entries = append(entries, &types.MLNodeDistributionEntry{
+			ModelId: stageStore.ModelID,
+			Weights: weights,
+		})
+		totalNodes += len(weights)
+	}
+	if len(entries) == 0 {
+		logging.Debug("CommitWorker: all model distributions already on chain", types.PoC, "pocHeight", pocHeight)
 		return
 	}
 
 	msg := &types.MsgMLNodeWeightDistribution{
 		PocStageStartBlockHeight: pocHeight,
-		Entries: []*types.MLNodeDistributionEntry{{
-			ModelId: modelID,
-			Weights: weights,
-		}},
+		Entries:                 entries,
 	}
 
 	if err := w.recorder.SubmitMLNodeWeightDistribution(msg); err != nil {
@@ -273,8 +293,7 @@ func (w *CommitWorker) submitWeightDistribution(pocHeight int64) {
 	w.lastDistributionAttempt = time.Now()
 
 	logging.Info("CommitWorker: distributed weights", types.PoC,
-		"pocHeight", pocHeight, "nodes", len(weights), "count", resp.Count,
-		"distribution", formatWeightDistribution(weights))
+		"pocHeight", pocHeight, "models", len(entries), "nodes", totalNodes)
 }
 
 func getWeightDistribution(distribution map[string]uint32, targetCount uint32) ([]*types.MLNodeWeight, error) {
@@ -335,21 +354,6 @@ func getWeightDistribution(distribution map[string]uint32, targetCount uint32) (
 	}
 
 	return weights, nil
-}
-
-func (w *CommitWorker) queryPrimaryPoCModelID() (string, bool) {
-	if w.participantAddress == "" {
-		return "", true
-	}
-	if w.configManager == nil {
-		return "", false
-	}
-	model := w.configManager.GetPoCParams().PrimaryModel()
-	if model == nil {
-		return "", false
-	}
-	modelID := model.ModelId
-	return modelID, modelID != ""
 }
 
 func formatWeightDistribution(weights []*types.MLNodeWeight) string {
