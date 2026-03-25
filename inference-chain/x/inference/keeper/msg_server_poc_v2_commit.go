@@ -96,9 +96,9 @@ func (k msgServer) PoCV2StoreCommit(goCtx context.Context, msg *types.MsgPoCV2St
 	feeParams := k.Keeper.GetFeeParams(ctx)
 	if isFirstCommit {
 		ctx.GasMeter().ConsumeGas(storetypes.Gas(feeParams.BaseValidationGas), "poc_validation_base")
-		ctx.GasMeter().ConsumeGas(storetypes.Gas(msg.Count*feeParams.GasPerPoCCount), "poc_commit_count")
+		ctx.GasMeter().ConsumeGas(storetypes.Gas(uint64(msg.Count)*feeParams.GasPerPoCCount), "poc_commit_count")
 	} else {
-		delta := msg.Count - existing.Count
+		delta := uint64(msg.Count - existing.Count)
 		ctx.GasMeter().ConsumeGas(storetypes.Gas(delta*feeParams.GasPerPoCCount), "poc_commit_count_delta")
 	}
 
