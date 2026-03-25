@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testPoCModelID = "test-poc-model"
+
 // Test SetPocValidationV2 error handling (no panic)
 func TestSetPocValidationV2_InvalidAddress(t *testing.T) {
 	k, ctx, _ := keepertest.InferenceKeeperReturningMocks(t)
@@ -49,6 +51,7 @@ func TestSetPoCV2StoreCommit_InvalidAddress(t *testing.T) {
 		Count:                    10,
 		RootHash:                 make([]byte, 32),
 		CommitBlockHeight:        100,
+		ModelId:                  "",
 	}
 	err := k.SetPoCV2StoreCommit(sdkCtx, commit)
 	require.Error(t, err)
@@ -66,6 +69,7 @@ func TestSetMLNodeWeightDistribution_InvalidAddress(t *testing.T) {
 		Weights: []*types.MLNodeWeight{
 			{NodeId: "node-1", Weight: 10},
 		},
+		ModelId: "",
 	}
 	err := k.SetMLNodeWeightDistribution(sdkCtx, distribution)
 	require.Error(t, err)
@@ -104,9 +108,10 @@ func TestSubmitPocValidationsV2_DuplicateSkipped(t *testing.T) {
 	msg := &types.MsgSubmitPocValidationsV2{
 		Creator:                  testutil.Validator,
 		PocStageStartBlockHeight: 100,
-		Validations: []*types.PoCValidationPayloadV2{
+		Validations: []*types.PoCValidationEntryV2{
 			{
 				ParticipantAddress: testutil.Executor,
+				ModelId:            testPoCModelID,
 				ValidatedWeight:    100,
 			},
 		},
@@ -119,7 +124,7 @@ func TestSubmitPocValidationsV2_DuplicateSkipped(t *testing.T) {
 	require.NoError(t, err) // No error - duplicate is skipped, not rejected
 
 	// Verify only one validation exists
-	exists, err := k.HasPocValidationV2(sdkCtx, 100, testutil.Executor, testutil.Validator)
+	exists, err := k.HasPocValidationV2(sdkCtx, 100, testutil.Executor, testPoCModelID, testutil.Validator)
 	require.NoError(t, err)
 	require.True(t, exists)
 }
@@ -154,17 +159,20 @@ func TestSubmitPocValidationsV2_PartialSuccess(t *testing.T) {
 	msg := &types.MsgSubmitPocValidationsV2{
 		Creator:                  testutil.Validator,
 		PocStageStartBlockHeight: 100,
-		Validations: []*types.PoCValidationPayloadV2{
+		Validations: []*types.PoCValidationEntryV2{
 			{
 				ParticipantAddress: testutil.Executor, // valid
+				ModelId:            testPoCModelID,
 				ValidatedWeight:    100,
 			},
 			{
 				ParticipantAddress: "invalid_address", // invalid - will be skipped
+				ModelId:            testPoCModelID,
 				ValidatedWeight:    50,
 			},
 			{
 				ParticipantAddress: testutil.Executor2, // valid
+				ModelId:            testPoCModelID,
 				ValidatedWeight:    200,
 			},
 		},
@@ -173,11 +181,11 @@ func TestSubmitPocValidationsV2_PartialSuccess(t *testing.T) {
 	require.NoError(t, err) // Message succeeds even with invalid entry
 
 	// Verify valid ones were stored
-	exists1, err := k.HasPocValidationV2(sdkCtx, 100, testutil.Executor, testutil.Validator)
+	exists1, err := k.HasPocValidationV2(sdkCtx, 100, testutil.Executor, testPoCModelID, testutil.Validator)
 	require.NoError(t, err)
 	require.True(t, exists1)
 
-	exists2, err := k.HasPocValidationV2(sdkCtx, 100, testutil.Executor2, testutil.Validator)
+	exists2, err := k.HasPocValidationV2(sdkCtx, 100, testutil.Executor2, testPoCModelID, testutil.Validator)
 	require.NoError(t, err)
 	require.True(t, exists2)
 }
@@ -188,7 +196,7 @@ func TestHasPocValidationV2(t *testing.T) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
 	// Initially should not exist
-	exists, err := k.HasPocValidationV2(sdkCtx, 100, testutil.Executor, testutil.Validator)
+	exists, err := k.HasPocValidationV2(sdkCtx, 100, testutil.Executor, "", testutil.Validator)
 	require.NoError(t, err)
 	require.False(t, exists)
 
@@ -197,28 +205,29 @@ func TestHasPocValidationV2(t *testing.T) {
 		ParticipantAddress:          testutil.Executor,
 		ValidatorParticipantAddress: testutil.Validator,
 		PocStageStartBlockHeight:    100,
+		ModelId:                     "",
 		ValidatedWeight:             100,
 	}
 	err = k.SetPocValidationV2(sdkCtx, validation)
 	require.NoError(t, err)
 
 	// Now should exist
-	exists, err = k.HasPocValidationV2(sdkCtx, 100, testutil.Executor, testutil.Validator)
+	exists, err = k.HasPocValidationV2(sdkCtx, 100, testutil.Executor, "", testutil.Validator)
 	require.NoError(t, err)
 	require.True(t, exists)
 
 	// Different validator should not exist
-	exists, err = k.HasPocValidationV2(sdkCtx, 100, testutil.Executor, testutil.Validator2)
+	exists, err = k.HasPocValidationV2(sdkCtx, 100, testutil.Executor, "", testutil.Validator2)
 	require.NoError(t, err)
 	require.False(t, exists)
 
 	// Different participant should not exist
-	exists, err = k.HasPocValidationV2(sdkCtx, 100, testutil.Executor2, testutil.Validator)
+	exists, err = k.HasPocValidationV2(sdkCtx, 100, testutil.Executor2, "", testutil.Validator)
 	require.NoError(t, err)
 	require.False(t, exists)
 
 	// Different stage should not exist
-	exists, err = k.HasPocValidationV2(sdkCtx, 200, testutil.Executor, testutil.Validator)
+	exists, err = k.HasPocValidationV2(sdkCtx, 200, testutil.Executor, "", testutil.Validator)
 	require.NoError(t, err)
 	require.False(t, exists)
 }
@@ -254,8 +263,11 @@ func TestPoCV2StoreCommit_InvalidCreatorAddress(t *testing.T) {
 	msg := &types.MsgPoCV2StoreCommit{
 		Creator:                  "invalid_address",
 		PocStageStartBlockHeight: 100,
-		Count:                    10,
-		RootHash:                 make([]byte, 32),
+		Entries: []*types.PoCV2CommitEntry{{
+			ModelId:  "",
+			Count:    10,
+			RootHash: make([]byte, 32),
+		}},
 	}
 	_, err = msgServer.PoCV2StoreCommit(sdkCtx, msg)
 	require.Error(t, err)

@@ -826,6 +826,17 @@ func request_Query_PoCV2StoreCommit_0(ctx context.Context, marshaler runtime.Mar
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "participant_address", err)
 	}
 
+	val, ok = pathParams["model_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "model_id")
+	}
+
+	protoReq.ModelId, err = runtime.String(val)
+
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "model_id", err)
+	}
+
 	msg, err := client.PoCV2StoreCommit(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 
@@ -862,6 +873,17 @@ func local_request_Query_PoCV2StoreCommit_0(ctx context.Context, marshaler runti
 
 	if err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "participant_address", err)
+	}
+
+	val, ok = pathParams["model_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "model_id")
+	}
+
+	protoReq.ModelId, err = runtime.String(val)
+
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "model_id", err)
 	}
 
 	msg, err := server.PoCV2StoreCommit(ctx, &protoReq)
@@ -902,6 +924,17 @@ func request_Query_MLNodeWeightDistribution_0(ctx context.Context, marshaler run
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "participant_address", err)
 	}
 
+	val, ok = pathParams["model_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "model_id")
+	}
+
+	protoReq.ModelId, err = runtime.String(val)
+
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "model_id", err)
+	}
+
 	msg, err := client.MLNodeWeightDistribution(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
 
@@ -938,6 +971,17 @@ func local_request_Query_MLNodeWeightDistribution_0(ctx context.Context, marshal
 
 	if err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "participant_address", err)
+	}
+
+	val, ok = pathParams["model_id"]
+	if !ok {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "model_id")
+	}
+
+	protoReq.ModelId, err = runtime.String(val)
+
+	if err != nil {
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "model_id", err)
 	}
 
 	msg, err := server.MLNodeWeightDistribution(ctx, &protoReq)
@@ -7527,9 +7571,9 @@ var (
 
 	pattern_Query_PocV2ValidationsForStage_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"productscience", "inference", "poc_v2_validations_for_stage", "block_height"}, "", runtime.AssumeColonVerbOpt(true)))
 
-	pattern_Query_PoCV2StoreCommit_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 1, 0, 4, 1, 5, 4}, []string{"productscience", "inference", "poc_v2_store_commit", "poc_stage_start_block_height", "participant_address"}, "", runtime.AssumeColonVerbOpt(true)))
+	pattern_Query_PoCV2StoreCommit_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 1, 0, 4, 1, 5, 4, 1, 0, 4, 1, 5, 5}, []string{"productscience", "inference", "poc_v2_store_commit", "poc_stage_start_block_height", "participant_address", "model_id"}, "", runtime.AssumeColonVerbOpt(true)))
 
-	pattern_Query_MLNodeWeightDistribution_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 1, 0, 4, 1, 5, 4}, []string{"productscience", "inference", "mlnode_weight_distribution", "poc_stage_start_block_height", "participant_address"}, "", runtime.AssumeColonVerbOpt(true)))
+	pattern_Query_MLNodeWeightDistribution_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3, 1, 0, 4, 1, 5, 4, 1, 0, 4, 1, 5, 5}, []string{"productscience", "inference", "mlnode_weight_distribution", "poc_stage_start_block_height", "participant_address", "model_id"}, "", runtime.AssumeColonVerbOpt(true)))
 
 	pattern_Query_AllPoCV2StoreCommitsForStage_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"productscience", "inference", "all_poc_v2_store_commits", "poc_stage_start_block_height"}, "", runtime.AssumeColonVerbOpt(true)))
 

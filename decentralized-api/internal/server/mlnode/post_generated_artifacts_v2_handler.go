@@ -12,7 +12,6 @@ import (
 	"decentralized-api/poc/artifacts"
 
 	"github.com/labstack/echo/v4"
-	"github.com/productscience/inference/api/inference/inference"
 	"github.com/productscience/inference/x/inference/types"
 )
 
@@ -61,7 +60,7 @@ func (s *Server) postGeneratedArtifactsV2(ctx echo.Context) error {
 		"nodeNum", body.NodeId)
 
 	// Convert artifacts from JSON format to proto format for local storage
-	protoArtifacts := make([]*inference.PoCArtifactV2, 0, len(body.Artifacts))
+	protoArtifacts := make([]*types.PoCArtifactV2, 0, len(body.Artifacts))
 	for _, a := range body.Artifacts {
 		vectorBytes, err := base64.StdEncoding.DecodeString(a.VectorB64)
 		if err != nil {
@@ -74,7 +73,7 @@ func (s *Server) postGeneratedArtifactsV2(ctx echo.Context) error {
 				"nonce", a.Nonce)
 			return echo.NewHTTPError(http.StatusBadRequest, "empty artifact vector")
 		}
-		protoArtifacts = append(protoArtifacts, &inference.PoCArtifactV2{
+		protoArtifacts = append(protoArtifacts, &types.PoCArtifactV2{
 			Nonce:  int32(a.Nonce),
 			Vector: vectorBytes,
 		})
@@ -137,18 +136,21 @@ func (s *Server) postValidatedArtifactsV2(ctx echo.Context) error {
 
 	// Convert fraud_detected + n_total to validated_weight
 	validatedWeight := body.ToValidatedWeight()
+	modelID := s.getPrimaryPoCModelID()
 
 	logging.Info("ValidatedArtifactsV2-callback. Submitting validation", types.PoC,
 		"participant", address,
+		"modelId", modelID,
 		"validatedWeight", validatedWeight,
 		"fraudDetected", body.FraudDetected)
 
 	// Use batch submission (even for single validation - no single-validation RPC exists)
-	msg := &inference.MsgSubmitPocValidationsV2{
+	msg := &types.MsgSubmitPocValidationsV2{
 		PocStageStartBlockHeight: body.BlockHeight,
-		Validations: []*inference.PoCValidationPayloadV2{
+		Validations: []*types.PoCValidationEntryV2{
 			{
 				ParticipantAddress: address,
+				ModelId:            modelID,
 				ValidatedWeight:    validatedWeight,
 			},
 		},
@@ -164,7 +166,7 @@ func (s *Server) postValidatedArtifactsV2(ctx echo.Context) error {
 	return ctx.NoContent(http.StatusOK)
 }
 
-func (s *Server) addToLocalStorage(pocStageStartHeight int64, nodeId string, protoArtifacts []*inference.PoCArtifactV2) (uint32, map[string]uint32) {
+func (s *Server) addToLocalStorage(pocStageStartHeight int64, nodeId string, protoArtifacts []*types.PoCArtifactV2) (uint32, map[string]uint32) {
 	if s.artifactStore == nil {
 		return 0, nil
 	}
@@ -186,4 +188,11 @@ func (s *Server) addToLocalStorage(pocStageStartHeight int64, nodeId string, pro
 	}
 
 	return store.Count(), store.GetNodeCounts()
+}
+
+func (s *Server) getPrimaryPoCModelID() string {
+	if s.broker == nil {
+		return ""
+	}
+	return s.broker.GetPrimaryPoCModelID()
 }

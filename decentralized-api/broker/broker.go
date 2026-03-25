@@ -1219,11 +1219,23 @@ func (b *Broker) enrichWithPocParams(params *pocParams) {
 	}
 
 	if paramsResp.Params.PocParams != nil {
-		params.modelId = paramsResp.Params.PocParams.ModelId
-		params.seqLen = paramsResp.Params.PocParams.SeqLen
+		modelConfig := paramsResp.Params.PocParams.GetPrimaryModelConfig()
+		params.modelId = modelConfig.ModelId
+		params.seqLen = modelConfig.SeqLen
+		_ = b.configManager.SetPoCParams(apiconfig.PoCParamsCache{
+			ModelId: params.modelId,
+			SeqLen:  params.seqLen,
+		})
 		logging.Info("Using PoC params", types.PoC,
 			"model_id", params.modelId, "seq_len", params.seqLen)
 	}
+}
+
+func (b *Broker) GetPrimaryPoCModelID() string {
+	if b == nil || b.configManager == nil {
+		return ""
+	}
+	return b.configManager.GetPoCParams().ModelId
 }
 
 func (b *Broker) getCommandForState(nodeState *NodeState, pocGenParams *pocParams, pocGenErr error, totalNodes int, confirmationEvent *types.ConfirmationPoCEvent) NodeWorkerCommand {

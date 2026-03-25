@@ -41,9 +41,9 @@ type (
 		PoCBatches     collections.Map[collections.Triple[int64, sdk.AccAddress, string], types.PoCBatch]
 		PoCValidations collections.Map[collections.Triple[int64, sdk.AccAddress, sdk.AccAddress], types.PoCValidation]
 		// PoC v2 collections
-		PoCValidationsV2          collections.Map[collections.Triple[int64, sdk.AccAddress, sdk.AccAddress], types.PoCValidationV2]
-		PoCV2StoreCommits         collections.Map[collections.Pair[int64, sdk.AccAddress], types.PoCV2StoreCommit]
-		MLNodeWeightDistributions collections.Map[collections.Pair[int64, sdk.AccAddress], types.MLNodeWeightDistribution]
+		PoCValidationsV2          collections.Map[collections.Triple[int64, sdk.AccAddress, collections.Pair[string, sdk.AccAddress]], types.PoCValidationV2]
+		PoCV2StoreCommits         collections.Map[collections.Triple[int64, sdk.AccAddress, string], types.PoCV2StoreCommit]
+		MLNodeWeightDistributions collections.Map[collections.Triple[int64, sdk.AccAddress, string], types.MLNodeWeightDistribution]
 		// Dynamic pricing collections
 		ModelCurrentPriceMap                collections.Map[string, uint64]
 		ModelCapacityMap                    collections.Map[string, uint64]
@@ -179,21 +179,21 @@ func NewKeeper(
 			sb,
 			types.PoCValidationV2Prefix,
 			"poc_validation_v2",
-			collections.TripleKeyCodec(collections.Int64Key, sdk.AccAddressKey, sdk.AccAddressKey),
+			collections.TripleKeyCodec(collections.Int64Key, sdk.AccAddressKey, collections.PairKeyCodec(collections.StringKey, sdk.AccAddressKey)),
 			codec.CollValue[types.PoCValidationV2](cdc),
 		),
 		PoCV2StoreCommits: collections.NewMap(
 			sb,
 			types.PoCV2StoreCommitPrefix,
 			"poc_v2_store_commit",
-			collections.PairKeyCodec(collections.Int64Key, sdk.AccAddressKey),
+			collections.TripleKeyCodec(collections.Int64Key, sdk.AccAddressKey, collections.StringKey),
 			codec.CollValue[types.PoCV2StoreCommit](cdc),
 		),
 		MLNodeWeightDistributions: collections.NewMap(
 			sb,
 			types.MLNodeWeightDistributionPrefix,
 			"mlnode_weight_distribution",
-			collections.PairKeyCodec(collections.Int64Key, sdk.AccAddressKey),
+			collections.TripleKeyCodec(collections.Int64Key, sdk.AccAddressKey, collections.StringKey),
 			codec.CollValue[types.MLNodeWeightDistribution](cdc),
 		),
 		// dynamic pricing collections

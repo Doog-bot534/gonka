@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"cosmossdk.io/collections"
 	sdkerrors "cosmossdk.io/errors"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/productscience/inference/x/inference/types"
@@ -36,12 +35,8 @@ func (k msgServer) PoCV2StoreCommit(goCtx context.Context, msg *types.MsgPoCV2St
 		return nil, sdkerrors.Wrap(types.ErrNotSupported, "V2 disabled when poc_v2_enabled=false")
 	}
 
-	// Validate count and root_hash
-	if msg.Count == 0 {
-		return nil, sdkerrors.Wrap(types.ErrIllegalState, "count must be greater than 0")
-	}
-	if len(msg.RootHash) != 32 {
-		return nil, sdkerrors.Wrap(types.ErrIllegalState, fmt.Sprintf("root_hash must be 32 bytes, got %d", len(msg.RootHash)))
+	if len(msg.Entries) == 0 {
+		return nil, sdkerrors.Wrap(types.ErrIllegalState, "entries must not be empty")
 	}
 
 	// Validate PoC window
@@ -69,42 +64,55 @@ func (k msgServer) PoCV2StoreCommit(goCtx context.Context, msg *types.MsgPoCV2St
 		}
 	}
 
-	// Check existing commit for rate limit and count increase
 	addr, err := sdk.AccAddressFromBech32(msg.Creator)
 	if err != nil {
 		return nil, sdkerrors.Wrap(types.ErrInvalidAddress, fmt.Sprintf("invalid creator address: %v", err))
 	}
-	pk := collections.Join(startBlockHeight, addr)
-	existing, err := k.PoCV2StoreCommits.Get(ctx, pk)
-	if err == nil {
-		// Same-block rate limit: only one commit per block allowed
-		if existing.CommitBlockHeight == currentBlockHeight {
-			return nil, sdkerrors.Wrap(types.ErrIllegalState, "only one commit per block allowed")
+
+	for _, entry := range msg.Entries {
+		if entry.Count == 0 {
+			return nil, sdkerrors.Wrap(types.ErrIllegalState, "entry count must be greater than 0")
 		}
-		// Strict count increase: new count must be greater than previous
-		if msg.Count <= existing.Count {
-			return nil, sdkerrors.Wrap(types.ErrIllegalState,
-				fmt.Sprintf("count must increase: got %d, last recorded %d", msg.Count, existing.Count))
+		if len(entry.RootHash) != 32 {
+			return nil, sdkerrors.Wrap(types.ErrIllegalState, fmt.Sprintf("root_hash must be 32 bytes, got %d", len(entry.RootHash)))
 		}
-	}
 
-	// Store commit with block height
-	commit := types.PoCV2StoreCommit{
-		ParticipantAddress:       msg.Creator,
-		PocStageStartBlockHeight: startBlockHeight,
-		Count:                    msg.Count,
-		RootHash:                 msg.RootHash,
-		CommitBlockHeight:        currentBlockHeight,
-	}
+		modelID := entry.ModelId
+		if modelID == "" {
+			return nil, sdkerrors.Wrap(types.ErrIllegalState, "model_id must not be empty")
+		}
 
-	if err := k.PoCV2StoreCommits.Set(ctx, pk, commit); err != nil {
-		return nil, sdkerrors.Wrap(types.ErrIllegalState, fmt.Sprintf("failed to store commit: %v", err))
-	}
+		pk := pocV2StoreCommitKey(startBlockHeight, addr, modelID)
+		existing, err := k.PoCV2StoreCommits.Get(ctx, pk)
+		if err == nil {
+			if existing.CommitBlockHeight == currentBlockHeight {
+				return nil, sdkerrors.Wrap(types.ErrIllegalState, "only one commit per block allowed")
+			}
+			if entry.Count <= existing.Count {
+				return nil, sdkerrors.Wrap(types.ErrIllegalState,
+					fmt.Sprintf("count must increase: got %d, last recorded %d", entry.Count, existing.Count))
+			}
+		}
 
-	k.LogInfo("[PoCV2StoreCommit] Stored", types.PoC,
-		"participant", msg.Creator,
-		"startBlockHeight", startBlockHeight,
-		"count", msg.Count)
+		commit := types.PoCV2StoreCommit{
+			ParticipantAddress:       msg.Creator,
+			PocStageStartBlockHeight: startBlockHeight,
+			Count:                    entry.Count,
+			RootHash:                 entry.RootHash,
+			CommitBlockHeight:        currentBlockHeight,
+			ModelId:                  modelID,
+		}
+
+		if err := k.PoCV2StoreCommits.Set(ctx, pk, commit); err != nil {
+			return nil, sdkerrors.Wrap(types.ErrIllegalState, fmt.Sprintf("failed to store commit: %v", err))
+		}
+
+		k.LogInfo("[PoCV2StoreCommit] Stored", types.PoC,
+			"participant", msg.Creator,
+			"model_id", modelID,
+			"startBlockHeight", startBlockHeight,
+			"count", entry.Count)
+	}
 
 	return &types.MsgPoCV2StoreCommitResponse{}, nil
 }
@@ -135,8 +143,8 @@ func (k msgServer) MLNodeWeightDistribution(goCtx context.Context, msg *types.Ms
 		return nil, sdkerrors.Wrap(types.ErrNotSupported, "V2 disabled when poc_v2_enabled=false")
 	}
 
-	if len(msg.Weights) == 0 {
-		return nil, sdkerrors.Wrap(types.ErrIllegalState, "weights must not be empty")
+	if len(msg.Entries) == 0 {
+		return nil, sdkerrors.Wrap(types.ErrIllegalState, "entries must not be empty")
 	}
 
 	// Validate window: accept from exchange window through end of validation
@@ -177,41 +185,53 @@ func (k msgServer) MLNodeWeightDistribution(goCtx context.Context, msg *types.Ms
 		}
 	}
 
-	// Validate weight sum matches committed count
 	addr, err := sdk.AccAddressFromBech32(msg.Creator)
 	if err != nil {
 		return nil, sdkerrors.Wrap(types.ErrInvalidAddress, fmt.Sprintf("invalid creator address: %v", err))
 	}
-	pk := collections.Join(startBlockHeight, addr)
-	commit, err := k.PoCV2StoreCommits.Get(ctx, pk)
-	if err != nil {
-		return nil, sdkerrors.Wrap(types.ErrIllegalState, "no store commit found for this stage")
-	}
 
-	var sum uint64
-	for _, w := range msg.Weights {
-		sum += uint64(w.Weight)
-	}
-	if sum != uint64(commit.Count) {
-		return nil, sdkerrors.Wrap(types.ErrIllegalState,
-			fmt.Sprintf("weight sum %d does not match committed count %d", sum, commit.Count))
-	}
+	for _, entry := range msg.Entries {
+		if len(entry.Weights) == 0 {
+			return nil, sdkerrors.Wrap(types.ErrIllegalState, "entry weights must not be empty")
+		}
 
-	// Store distribution
-	distribution := types.MLNodeWeightDistribution{
-		ParticipantAddress:       msg.Creator,
-		PocStageStartBlockHeight: startBlockHeight,
-		Weights:                  msg.Weights,
-	}
+		modelID := entry.ModelId
+		if modelID == "" {
+			return nil, sdkerrors.Wrap(types.ErrIllegalState, "model_id must not be empty")
+		}
 
-	if err := k.MLNodeWeightDistributions.Set(ctx, pk, distribution); err != nil {
-		return nil, sdkerrors.Wrap(types.ErrIllegalState, fmt.Sprintf("failed to store distribution: %v", err))
-	}
+		pk := pocV2StoreCommitKey(startBlockHeight, addr, modelID)
+		commit, err := k.PoCV2StoreCommits.Get(ctx, pk)
+		if err != nil {
+			return nil, sdkerrors.Wrap(types.ErrIllegalState, "no store commit found for this stage and model")
+		}
 
-	k.LogInfo("[MLNodeWeightDistribution] Stored", types.PoC,
-		"participant", msg.Creator,
-		"startBlockHeight", startBlockHeight,
-		"nodeCount", len(msg.Weights))
+		var sum uint64
+		for _, w := range entry.Weights {
+			sum += uint64(w.Weight)
+		}
+		if sum != uint64(commit.Count) {
+			return nil, sdkerrors.Wrap(types.ErrIllegalState,
+				fmt.Sprintf("weight sum %d does not match committed count %d", sum, commit.Count))
+		}
+
+		distribution := types.MLNodeWeightDistribution{
+			ParticipantAddress:       msg.Creator,
+			PocStageStartBlockHeight: startBlockHeight,
+			Weights:                  entry.Weights,
+			ModelId:                  modelID,
+		}
+
+		if err := k.MLNodeWeightDistributions.Set(ctx, pk, distribution); err != nil {
+			return nil, sdkerrors.Wrap(types.ErrIllegalState, fmt.Sprintf("failed to store distribution: %v", err))
+		}
+
+		k.LogInfo("[MLNodeWeightDistribution] Stored", types.PoC,
+			"participant", msg.Creator,
+			"model_id", modelID,
+			"startBlockHeight", startBlockHeight,
+			"nodeCount", len(entry.Weights))
+	}
 
 	return &types.MsgMLNodeWeightDistributionResponse{}, nil
 }

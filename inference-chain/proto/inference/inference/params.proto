@@ -130,20 +130,29 @@ message PoCStatTestParams {
   Decimal p_value_threshold = 3;   // P-value cutoff to declare fraud (default: 0.05)
 }
 
+message PoCModelConfig {
+  option (gogoproto.equal) = true;
+  string model_id = 1;
+  int64 seq_len = 2;
+  PoCStatTestParams stat_test = 3;
+  Decimal weight_scale_factor = 4;
+}
+
 message PocParams {
   option (gogoproto.equal) = true;
   int32 default_difficulty = 1;
   int32 validation_sample_size = 2;
   uint64 poc_data_pruning_epoch_threshold = 3;
-  Decimal weight_scale_factor = 4;
+  Decimal weight_scale_factor = 4 [deprecated = true]; // Deprecated: use models[*].weight_scale_factor
   PoCModelParams model_params = 5 [deprecated = true]; // V1 model architecture params, deprecated
-  string model_id = 6;  // Model identifier for PoC generation/validation
-  int64 seq_len = 7;    // Sequence length for PoC generation/validation
+  string model_id = 6 [deprecated = true];  // Deprecated: use models[*].model_id
+  int64 seq_len = 7 [deprecated = true];    // Deprecated: use models[*].seq_len
   bool poc_v2_enabled = 8;  // false = V1 (on-chain batches), true = V2 (off-chain commits). Default: true
   bool confirmation_poc_v2_enabled = 9;  // Enables V2 for Confirmation PoC only. Migration mode: poc_v2_enabled=false + confirmation_poc_v2_enabled=true
-  PoCStatTestParams stat_test = 10;  // Statistical test parameters for V2 validation
+  PoCStatTestParams stat_test = 10 [deprecated = true];  // Deprecated: use models[*].stat_test
   uint32 validation_slots = 11;  // Number of slots sampled per participant (0 = disabled)
   bool poc_normalization_enabled = 12;  // Enables time-based weight normalization for PoC
+  repeated PoCModelConfig models = 13;
 }
 
 message Decimal {

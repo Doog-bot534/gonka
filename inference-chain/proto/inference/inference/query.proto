@@ -131,12 +131,12 @@ service Query {
 
   // PoC v2 off-chain commit queries
   rpc PoCV2StoreCommit (QueryPoCV2StoreCommitRequest) returns (QueryPoCV2StoreCommitResponse) {
-    option (google.api.http).get = "/productscience/inference/inference/poc_v2_store_commit/{poc_stage_start_block_height}/{participant_address}";
+    option (google.api.http).get = "/productscience/inference/inference/poc_v2_store_commit/{poc_stage_start_block_height}/{participant_address}/{model_id}";
 
   }
 
   rpc MLNodeWeightDistribution (QueryMLNodeWeightDistributionRequest) returns (QueryMLNodeWeightDistributionResponse) {
-    option (google.api.http).get = "/productscience/inference/inference/mlnode_weight_distribution/{poc_stage_start_block_height}/{participant_address}";
+    option (google.api.http).get = "/productscience/inference/inference/mlnode_weight_distribution/{poc_stage_start_block_height}/{participant_address}/{model_id}";
 
   }
 
@@ -660,12 +660,14 @@ message PoCValidationsWithParticipantsV2 {
            string           pub_key        = 2;
            string           hex_pub_key    = 3;
   repeated PoCValidationV2  poc_validation = 4 [(gogoproto.nullable) = false];
+           string           model_id       = 5;
 }
 
 // PoC v2 off-chain commit query messages
 message QueryPoCV2StoreCommitRequest {
   int64  poc_stage_start_block_height = 1;
   string participant_address = 2;
+  string model_id = 3;
 }
 
 message QueryPoCV2StoreCommitResponse {
@@ -677,6 +679,7 @@ message QueryPoCV2StoreCommitResponse {
 message QueryMLNodeWeightDistributionRequest {
   int64  poc_stage_start_block_height = 1;
   string participant_address = 2;
+  string model_id = 3;
 }
 
 message QueryMLNodeWeightDistributionResponse {
@@ -694,9 +697,10 @@ message QueryAllPoCV2StoreCommitsForStageResponse {
 
 message PoCV2StoreCommitWithAddress {
   string participant_address = 1;
-  uint32 count = 2;
-  bytes root_hash = 3;
-  string hex_pub_key = 4;
+  string model_id = 2;
+  uint32 count = 3;
+  bytes root_hash = 4;
+  string hex_pub_key = 5;
 }
 
 message QueryAllMLNodeWeightDistributionsForStageRequest {
@@ -709,7 +713,8 @@ message QueryAllMLNodeWeightDistributionsForStageResponse {
 
 message MLNodeWeightDistributionWithAddress {
   string participant_address = 1;
-  repeated MLNodeWeight weights = 2;
+  string model_id = 2;
+  repeated MLNodeWeight weights = 3;
 }
 
 message QueryGetCurrentEpochRequest {}

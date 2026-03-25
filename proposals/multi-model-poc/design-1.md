@@ -330,7 +330,7 @@ Validation work items keyed by `(participant, model)`. One validation result per
 
 Slot sampling seed: `SHA256(validatorPubKey:blockHash:blockHeight:modelId)`. Different models get independent sampling.
 
-`PoCValidationSnapshot` and its query path must also become model-aware. A stage-global snapshot is not sufficient once slot assignment is model-scoped.
+`PoCValidationSnapshot` stays stage-global in phase 1. It stores chain-global validator weights and timing data, not model-local validator-set state.
 
 Both O(N^2) and slot-based modes use model-scoped validator sets. Vote eligibility is model-local, but vote power stays participant-global aggregated weight. The acceptance rule stays unchanged from current PoC: `>2/3` valid accepts, `>2/3` invalid rejects, otherwise guardians can break the tie with the existing unanimous-voters rule.
 

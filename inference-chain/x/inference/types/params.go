@@ -222,6 +222,7 @@ func DefaultPocParams() *PocParams {
 		ModelId:                      "",                      // Model identifier for PoC
 		SeqLen:                       256,                     // Sequence length for PoC
 		StatTest:                     DefaultPoCStatTestParams(),
+		Models:                       []*PoCModelConfig{DefaultPoCModelConfig()},
 	}
 }
 
@@ -230,6 +231,15 @@ func DefaultPoCStatTestParams() *PoCStatTestParams {
 		DistThreshold:   DecimalFromFloat(0.4),
 		PMismatch:       DecimalFromFloat(0.1),
 		PValueThreshold: DecimalFromFloat(0.05),
+	}
+}
+
+func DefaultPoCModelConfig() *PoCModelConfig {
+	return &PoCModelConfig{
+		ModelId:           "",
+		SeqLen:            256,
+		StatTest:          DefaultPoCStatTestParams(),
+		WeightScaleFactor: DecimalFromFloat(1.0),
 	}
 }
 
@@ -514,8 +524,13 @@ func (p *PocParams) Validate() error {
 	if p == nil {
 		return nil
 	}
-	if p.SeqLen < 0 {
-		return fmt.Errorf("poc_params.seq_len cannot be negative")
+	for _, model := range p.GetModelConfigs() {
+		if model == nil {
+			return fmt.Errorf("poc_params.models cannot contain nil entries")
+		}
+		if model.SeqLen < 0 {
+			return fmt.Errorf("poc_params.models.seq_len cannot be negative")
+		}
 	}
 	return nil
 }
@@ -1040,8 +1055,40 @@ func DecimalFromFloat32(f float32) *Decimal {
 	return &Decimal{Value: d.CoefficientInt64(), Exponent: d.Exponent()}
 }
 
+func (p *PocParams) GetModelConfigs() []*PoCModelConfig {
+	if p == nil {
+		return nil
+	}
+	return p.Models
+}
+
+func (p *PocParams) GetPrimaryModelConfig() *PoCModelConfig {
+	configs := p.GetModelConfigs()
+	if len(configs) == 0 || configs[0] == nil {
+		return DefaultPoCModelConfig()
+	}
+	return configs[0]
+}
+
+func (p *PocParams) GetModelConfig(modelID string) (*PoCModelConfig, bool) {
+	configs := p.GetModelConfigs()
+	if len(configs) == 0 {
+		return nil, false
+	}
+	for _, config := range configs {
+		if config != nil && config.ModelId == modelID {
+			return config, true
+		}
+	}
+	return nil, false
+}
+
 func (p *PocParams) GetWeightScaleFactorDec() sdkmath.LegacyDec {
-	if p.WeightScaleFactor == nil || (p.WeightScaleFactor.Value == 0 && p.WeightScaleFactor.Exponent == 0) {
+	return p.GetPrimaryModelConfig().GetWeightScaleFactorDec()
+}
+
+func (p *PoCModelConfig) GetWeightScaleFactorDec() sdkmath.LegacyDec {
+	if p == nil || p.WeightScaleFactor == nil || (p.WeightScaleFactor.Value == 0 && p.WeightScaleFactor.Exponent == 0) {
 		return sdkmath.LegacyOneDec()
 	}
 	dec, err := p.WeightScaleFactor.ToLegacyDec()

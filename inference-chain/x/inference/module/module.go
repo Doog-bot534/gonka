@@ -724,7 +724,6 @@ func (am AppModule) captureValidationSnapshot(ctx context.Context, blockHeight, 
 		"snapshotKey", snapshotKey,
 		"snapshotHeight", blockHeight,
 		"numValidators", len(currentValidatorWeights),
-		"generationStartTimestamp", generationStartTimestamp,
 		"exchangeEndTimestamp", blockTime,
 	)
 }

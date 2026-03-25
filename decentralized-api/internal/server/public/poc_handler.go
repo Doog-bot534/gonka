@@ -71,6 +71,7 @@ func (s *StringUint32) UnmarshalJSON(data []byte) error {
 // Uses StringInt64/StringUint32 to accept both number and string JSON encoding
 type PocProofsRequest struct {
 	PocStageStartBlockHeight StringInt64    `json:"poc_stage_start_block_height"`
+	ModelId                  string         `json:"model_id"`
 	RootHash                 string         `json:"root_hash"`    // base64-encoded 32 bytes
 	Count                    StringUint32   `json:"count"`        // snapshot leaf count
 	LeafIndices              []StringUint32 `json:"leaf_indices"` // 0-based indices
@@ -263,6 +264,7 @@ func (s *Server) postPocProofs(ctx echo.Context) error {
 
 	signPayload := buildPocProofsResponseSignPayload(
 		int64(req.PocStageStartBlockHeight),
+		req.ModelId,
 		rootHash,
 		reqCount,
 		proofs,
@@ -325,7 +327,7 @@ func (s *Server) getPocArtifactsState(ctx echo.Context) error {
 }
 
 // buildPocProofsSignPayload builds the binary payload for signature verification.
-// Format: hex(SHA256(poc_stage_start_block_height(LE64) || root_hash(32) || count(LE32) ||
+// Format: hex(SHA256(poc_stage_start_block_height(LE64) || model_id || root_hash(32) || count(LE32) ||
 //
 //	leaf_indices(LE32 each) || timestamp(LE64) || validator_address || validator_signer_address))
 //
@@ -334,6 +336,7 @@ func buildPocProofsSignPayload(req *PocProofsRequest, rootHash []byte) []byte {
 	buf := new(bytes.Buffer)
 
 	binary.Write(buf, binary.LittleEndian, int64(req.PocStageStartBlockHeight))
+	buf.WriteString(req.ModelId)
 	buf.Write(rootHash)
 	binary.Write(buf, binary.LittleEndian, uint32(req.Count))
 	for _, idx := range req.LeafIndices {
@@ -372,13 +375,14 @@ func verifyPocProofsSignatureWithPubkey(req *PocProofsRequest, rootHash []byte, 
 }
 
 // buildPocProofsResponseSignPayload builds the binary payload for response signature.
-// Format: hex(SHA256(poc_stage_start_block_height(LE64) || root_hash(32) || count(LE32) ||
+// Format: hex(SHA256(poc_stage_start_block_height(LE64) || model_id || root_hash(32) || count(LE32) ||
 //
 //	proofs_hash(32) || timestamp(LE64) || signer_address))
 //
 // proofs_hash = SHA256(concatenated: leaf_index(LE32) || nonce_value(LE32) || vector_bytes || proof_hashes...)
 func buildPocProofsResponseSignPayload(
 	pocStageStartBlockHeight int64,
+	modelID string,
 	rootHash []byte,
 	count uint32,
 	proofs []PocProofItem,
@@ -400,6 +404,7 @@ func buildPocProofsResponseSignPayload(
 	// Build final payload
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, pocStageStartBlockHeight)
+	buf.WriteString(modelID)
 	buf.Write(rootHash)
 	binary.Write(buf, binary.LittleEndian, count)
 	buf.Write(proofsHash[:])

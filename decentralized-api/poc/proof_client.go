@@ -42,6 +42,7 @@ type ProofClient struct {
 // ProofRequest contains the parameters for requesting proofs.
 type ProofRequest struct {
 	PocStageStartBlockHeight int64
+	ModelId                  string
 	RootHash                 []byte
 	Count                    uint32
 	LeafIndices              []uint32
@@ -103,6 +104,7 @@ func (c *ProofClient) FetchAndVerifyProofs(
 	// Build signature payload
 	signPayload := buildProofSignPayload(
 		req.PocStageStartBlockHeight,
+		req.ModelId,
 		req.RootHash,
 		req.Count,
 		req.LeafIndices,
@@ -125,6 +127,7 @@ func (c *ProofClient) FetchAndVerifyProofs(
 
 	requestBody := map[string]interface{}{
 		"poc_stage_start_block_height": req.PocStageStartBlockHeight,
+		"model_id":                     req.ModelId,
 		"root_hash":                    base64.StdEncoding.EncodeToString(req.RootHash),
 		"count":                        req.Count,
 		"leaf_indices":                 leafIndicesInt,
@@ -276,6 +279,7 @@ func validateLeafCoverage(requested []uint32, proofs []ProofItem) error {
 //	leaf_indices(LE32 each) || timestamp(LE64) || validator_address || validator_signer_address))
 func buildProofSignPayload(
 	pocStageStartBlockHeight int64,
+	modelID string,
 	rootHash []byte,
 	count uint32,
 	leafIndices []uint32,
@@ -286,6 +290,7 @@ func buildProofSignPayload(
 	buf := new(bytes.Buffer)
 
 	binary.Write(buf, binary.LittleEndian, pocStageStartBlockHeight)
+	buf.WriteString(modelID)
 	buf.Write(rootHash)
 	binary.Write(buf, binary.LittleEndian, count)
 	for _, idx := range leafIndices {

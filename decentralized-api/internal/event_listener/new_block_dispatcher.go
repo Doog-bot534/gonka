@@ -235,6 +235,11 @@ func (d *OnNewBlockDispatcher) ProcessNewBlock(ctx context.Context, blockInfo ch
 
 			// Update PoC V2 enabled flags for runtime V1/V2 switching
 			if params.Params.PocParams != nil {
+				modelConfig := params.Params.PocParams.GetPrimaryModelConfig()
+				_ = d.configManager.SetPoCParams(apiconfig.PoCParamsCache{
+					ModelId: modelConfig.ModelId,
+					SeqLen:  modelConfig.SeqLen,
+				})
 				d.phaseTracker.UpdatePocV2Enabled(params.Params.PocParams.PocV2Enabled)
 				d.phaseTracker.UpdateConfirmationPocV2Enabled(params.Params.PocParams.ConfirmationPocV2Enabled)
 			}

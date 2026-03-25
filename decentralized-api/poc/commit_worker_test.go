@@ -10,7 +10,6 @@ import (
 	"decentralized-api/cosmosclient"
 	"decentralized-api/poc/artifacts"
 
-	"github.com/productscience/inference/api/inference/inference"
 	"github.com/productscience/inference/x/inference/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -135,7 +134,7 @@ func TestCommitWorker_MaybeSubmitCommit_SkipsUnchanged(t *testing.T) {
 	assert.NoError(t, err)
 
 	// First commit should submit
-	mockRecorder.On("SubmitPoCV2StoreCommit", mock.AnythingOfType("*inference.MsgPoCV2StoreCommit")).Return(nil).Once()
+	mockRecorder.On("SubmitPoCV2StoreCommit", mock.AnythingOfType("*types.MsgPoCV2StoreCommit")).Return(nil).Once()
 
 	worker.maybeSubmitCommit(pocHeight)
 	mockRecorder.AssertExpectations(t)
@@ -399,7 +398,7 @@ func TestGetWeightDistribution_AlwaysExactSum(t *testing.T) {
 	}
 }
 
-func assertWeightSum(t *testing.T, weights []*inference.MLNodeWeight, expected uint32) {
+func assertWeightSum(t *testing.T, weights []*types.MLNodeWeight, expected uint32) {
 	t.Helper()
 	var sum uint32
 	for _, w := range weights {

@@ -271,6 +271,8 @@ data class PocParams(
     val validationSampleSize: Int,
     @SerializedName("poc_data_pruning_epoch_threshold")
     val pocDataPruningEpochThreshold: Long,
+    @SerializedName("models")
+    val models: List<PoCModelConfig> = emptyList(),
     @SerializedName("weight_scale_factor")
     val weightScaleFactor: Decimal? = null,
     @SerializedName("model_params")
@@ -289,6 +291,27 @@ data class PocParams(
     val validationSlots: Long = 2,
     @SerializedName("poc_normalization_enabled")
     val pocNormalizationEnabled: Boolean = false,  // Disabled by default in tests
+) {
+    fun primaryModelConfig(): PoCModelConfig? {
+        return models.firstOrNull()
+    }
+
+    val effectiveModelId: String?
+        get() = primaryModelConfig()?.modelId
+
+    val effectiveSeqLen: Long?
+        get() = primaryModelConfig()?.seqLen
+}
+
+data class PoCModelConfig(
+    @SerializedName("model_id")
+    val modelId: String? = null,
+    @SerializedName("seq_len")
+    val seqLen: Long? = null,
+    @SerializedName("stat_test")
+    val statTest: PoCStatTestParams? = null,
+    @SerializedName("weight_scale_factor")
+    val weightScaleFactor: Decimal? = null,
 )
 
 data class PoCStatTestParams(

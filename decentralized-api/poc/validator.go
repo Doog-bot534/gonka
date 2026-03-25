@@ -17,7 +17,6 @@ import (
 	"decentralized-api/logging"
 	"decentralized-api/mlnodeclient"
 
-	"github.com/productscience/inference/api/inference/inference"
 	"github.com/productscience/inference/x/inference/calculations"
 	"github.com/productscience/inference/x/inference/types"
 )
@@ -66,6 +65,7 @@ const (
 // participantWork represents a single participant to validate.
 type participantWork struct {
 	address    string
+	modelId    string
 	url        string
 	pubKey     string
 	count      uint32
@@ -267,6 +267,7 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 
 		workItems = append(workItems, participantWork{
 			address:  commit.ParticipantAddress,
+			modelId:  commit.ModelId,
 			url:      participantResp.Participant.InferenceUrl,
 			pubKey:   commit.HexPubKey,
 			count:    commit.Count,
@@ -404,7 +405,8 @@ func (v *OffChainValidator) worker(
 				sampleSize,
 			)
 
-			var reportAddr string
+			var reportParticipant string
+			var reportModelID string
 
 			statsMu.Lock()
 			switch result {
@@ -416,7 +418,8 @@ func (v *OffChainValidator) worker(
 				*pendingCount--
 				// Report participant as invalid to chain
 				// Uncomment when stabilized
-				reportAddr = work.address
+				reportParticipant = work.address
+				reportModelID = work.modelId
 			case validateFailRetry:
 				// Re-queue for retry if under max attempts
 				if work.attempt < v.config.MaxRetries-1 {
@@ -446,8 +449,8 @@ func (v *OffChainValidator) worker(
 			done := *pendingCount <= 0
 			statsMu.Unlock()
 
-			if reportAddr != "" {
-				v.reportInvalidParticipant(pocHeight, reportAddr)
+			if reportParticipant != "" {
+				v.reportInvalidParticipant(pocHeight, reportParticipant, reportModelID)
 			}
 
 			if done {
@@ -485,6 +488,7 @@ func (v *OffChainValidator) validateParticipant(
 	// Fetch and verify proofs
 	verified, err := proofClient.FetchAndVerifyProofs(ctx, work.url, ProofRequest{
 		PocStageStartBlockHeight: pocHeight,
+		ModelId:                  work.modelId,
 		RootHash:                 work.rootHash,
 		Count:                    work.count,
 		LeafIndices:              leafIndices,
@@ -531,6 +535,10 @@ func (v *OffChainValidator) validateParticipant(
 	// Send to ML node for statistical validation
 	// IMPORTANT: Use pocStartBlockHash (not samplingBlockHash) to match generation seed
 	validationCallbackUrl := v.callbackUrl + "/v2/poc-batches"
+	modelConfig, ok := pocParams.GetModelConfig(work.modelId)
+	if !ok {
+		modelConfig = pocParams.GetPrimaryModelConfig()
+	}
 	validationReq := mlnodeclient.PoCGenerateRequestV2{
 		BlockHash:   pocStartBlockHash, // Must match the hash used during generation
 		BlockHeight: pocHeight,
@@ -538,14 +546,14 @@ func (v *OffChainValidator) validateParticipant(
 		NodeCount:   len(nodes),
 		Nonces:      nonces,
 		Params: mlnodeclient.PoCParamsV2{
-			Model:  pocParams.ModelId,
-			SeqLen: pocParams.SeqLen,
+			Model:  modelConfig.ModelId,
+			SeqLen: modelConfig.SeqLen,
 		},
 		URL: validationCallbackUrl,
 		Validation: &mlnodeclient.ValidationV2{
 			Artifacts: artifacts,
 		},
-		StatTest: mlnodeclient.StatTestParamsFromChain(pocParams.StatTest),
+		StatTest: mlnodeclient.StatTestParamsFromChain(modelConfig.StatTest),
 	}
 
 	// Try sending to ML node (single attempt per call - retries handled by queue)
@@ -801,12 +809,13 @@ func filterNodesForValidation(nodes []broker.NodeResponse, latestEpoch uint64, c
 
 // reportInvalidParticipant submits a validation result with ValidatedWeight=-1 (invalid) to chain.
 // This is called when validation fails permanently (e.g., retry exhaustion).
-func (v *OffChainValidator) reportInvalidParticipant(pocHeight int64, participantAddress string) {
-	msg := &inference.MsgSubmitPocValidationsV2{
+func (v *OffChainValidator) reportInvalidParticipant(pocHeight int64, participantAddress, modelID string) {
+	msg := &types.MsgSubmitPocValidationsV2{
 		PocStageStartBlockHeight: pocHeight,
-		Validations: []*inference.PoCValidationPayloadV2{
+		Validations: []*types.PoCValidationEntryV2{
 			{
 				ParticipantAddress: participantAddress,
+				ModelId:            modelID,
 				ValidatedWeight:    -1, // Invalid
 			},
 		},

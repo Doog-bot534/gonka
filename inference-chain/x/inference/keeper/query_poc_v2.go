@@ -24,8 +24,20 @@ func (k Keeper) PocV2ValidationsForStage(goCtx context.Context, req *types.Query
 		return nil, status.Error(codes.Internal, "failed to get PoC v2 validations")
 	}
 
-	pocValidationsWithParticipants := make([]types.PoCValidationsWithParticipantsV2, 0, len(pocValidations))
-	for participantIndex, validations := range pocValidations {
+	grouped := make(map[string]map[string][]types.PoCValidationV2)
+	for _, validations := range pocValidations {
+		for _, validation := range validations {
+			participantGroups, found := grouped[validation.ParticipantAddress]
+			if !found {
+				participantGroups = make(map[string][]types.PoCValidationV2)
+				grouped[validation.ParticipantAddress] = participantGroups
+			}
+			participantGroups[validation.ModelId] = append(participantGroups[validation.ModelId], validation)
+		}
+	}
+
+	pocValidationsWithParticipants := make([]types.PoCValidationsWithParticipantsV2, 0, len(grouped))
+	for participantIndex, byModel := range grouped {
 		addr, err := sdk.AccAddressFromBech32(participantIndex)
 		if err != nil {
 			k.LogError("PocV2ValidationsForStage. Invalid address", types.PoC, "address", participantIndex, "err", err)
@@ -44,12 +56,15 @@ func (k Keeper) PocV2ValidationsForStage(goCtx context.Context, req *types.Query
 			continue
 		}
 
-		pocValidationsWithParticipants = append(pocValidationsWithParticipants, types.PoCValidationsWithParticipantsV2{
-			Participant:   participantIndex,
-			PocValidation: validations,
-			PubKey:        utils.PubKeyToString(pubKey),
-			HexPubKey:     utils.PubKeyToHexString(pubKey),
-		})
+		for modelID, validations := range byModel {
+			pocValidationsWithParticipants = append(pocValidationsWithParticipants, types.PoCValidationsWithParticipantsV2{
+				Participant:   participantIndex,
+				PocValidation: validations,
+				PubKey:        utils.PubKeyToString(pubKey),
+				HexPubKey:     utils.PubKeyToHexString(pubKey),
+				ModelId:       modelID,
+			})
+		}
 	}
 
 	return &types.QueryPocV2ValidationsForStageResponse{

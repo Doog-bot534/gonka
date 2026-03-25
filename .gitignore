@@ -22,6 +22,7 @@ prod-local/
 /payload.json
 /prod-local/genesis
 /inference-chain/output/
+/inference-chain/inferenced
 /decentralized-api/output/
 /jq_test/
 /public-html/

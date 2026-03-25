@@ -23,6 +23,7 @@ type Config struct {
 	LastUsedVersion          string                   `koanf:"last_used_version" json:"last_used_version"`
 	ValidationParams         ValidationParamsCache    `koanf:"validation_params" json:"validation_params"`
 	BandwidthParams          BandwidthParamsCache     `koanf:"bandwidth_params" json:"bandwidth_params"`
+	PoCParams                PoCParamsCache           `koanf:"poc_params" json:"poc_params"`
 	TransferAgentAccessCache TransferAgentAccessCache `koanf:"-" json:"-"` // not persisted, synced from chain
 }
 
@@ -173,6 +174,11 @@ type BandwidthParamsCache struct {
 	KbPerInputToken           float64 `koanf:"kb_per_input_token" json:"kb_per_input_token"`
 	KbPerOutputToken          float64 `koanf:"kb_per_output_token" json:"kb_per_output_token"`
 	MaxInferencesPerBlock     uint64  `koanf:"max_inferences_per_block" json:"max_inferences_per_block"`
+}
+
+type PoCParamsCache struct {
+	ModelId string `koanf:"model_id" json:"model_id"`
+	SeqLen  int64  `koanf:"seq_len" json:"seq_len"`
 }
 
 // TransferAgentAccessCache caches the allowed TA addresses for O(1) lookups.

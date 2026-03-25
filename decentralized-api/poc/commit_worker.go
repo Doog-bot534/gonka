@@ -14,7 +14,6 @@ import (
 	"decentralized-api/logging"
 	"decentralized-api/poc/artifacts"
 
-	"github.com/productscience/inference/api/inference/inference"
 	"github.com/productscience/inference/x/inference/types"
 )
 
@@ -158,10 +157,19 @@ func (w *CommitWorker) maybeSubmitCommit(pocHeight int64) {
 		return
 	}
 
-	msg := &inference.MsgPoCV2StoreCommit{
+	modelID, ok := w.queryPrimaryPoCModelID()
+	if !ok {
+		logging.Warn("CommitWorker: failed to resolve primary PoC model", types.PoC, "pocHeight", pocHeight)
+		return
+	}
+
+	msg := &types.MsgPoCV2StoreCommit{
 		PocStageStartBlockHeight: pocHeight,
-		Count:                    count,
-		RootHash:                 rootHash,
+		Entries: []*types.PoCV2CommitEntry{{
+			ModelId:  modelID,
+			Count:    count,
+			RootHash: rootHash,
+		}},
 	}
 
 	if err := w.recorder.SubmitPoCV2StoreCommit(msg); err != nil {
@@ -179,10 +187,15 @@ func (w *CommitWorker) isDistributionOnChain(pocHeight int64) bool {
 	if w.participantAddress == "" {
 		return false
 	}
+	modelID, ok := w.queryPrimaryPoCModelID()
+	if !ok {
+		return false
+	}
 	queryClient := w.recorder.NewInferenceQueryClient()
 	resp, err := queryClient.MLNodeWeightDistribution(context.Background(), &types.QueryMLNodeWeightDistributionRequest{
 		PocStageStartBlockHeight: pocHeight,
 		ParticipantAddress:       w.participantAddress,
+		ModelId:                  modelID,
 	})
 	return err == nil && resp.Found
 }
@@ -199,10 +212,17 @@ func (w *CommitWorker) submitWeightDistribution(pocHeight int64) {
 		return
 	}
 
+	modelID, ok := w.queryPrimaryPoCModelID()
+	if !ok {
+		logging.Warn("CommitWorker: failed to resolve primary PoC model", types.PoC, "pocHeight", pocHeight)
+		return
+	}
+
 	queryClient := w.recorder.NewInferenceQueryClient()
 	resp, err := queryClient.PoCV2StoreCommit(context.Background(), &types.QueryPoCV2StoreCommitRequest{
 		PocStageStartBlockHeight: pocHeight,
 		ParticipantAddress:       w.participantAddress,
+		ModelId:                  modelID,
 	})
 	if err != nil {
 		logging.Warn("CommitWorker: failed to query last commit", types.PoC,
@@ -232,9 +252,12 @@ func (w *CommitWorker) submitWeightDistribution(pocHeight int64) {
 		return
 	}
 
-	msg := &inference.MsgMLNodeWeightDistribution{
+	msg := &types.MsgMLNodeWeightDistribution{
 		PocStageStartBlockHeight: pocHeight,
-		Weights:                  weights,
+		Entries: []*types.MLNodeDistributionEntry{{
+			ModelId: modelID,
+			Weights: weights,
+		}},
 	}
 
 	if err := w.recorder.SubmitMLNodeWeightDistribution(msg); err != nil {
@@ -250,7 +273,7 @@ func (w *CommitWorker) submitWeightDistribution(pocHeight int64) {
 		"distribution", formatWeightDistribution(weights))
 }
 
-func getWeightDistribution(distribution map[string]uint32, targetCount uint32) ([]*inference.MLNodeWeight, error) {
+func getWeightDistribution(distribution map[string]uint32, targetCount uint32) ([]*types.MLNodeWeight, error) {
 	if len(distribution) == 0 {
 		return nil, fmt.Errorf("empty distribution")
 	}
@@ -268,9 +291,9 @@ func getWeightDistribution(distribution map[string]uint32, targetCount uint32) (
 	}
 
 	if localSum == targetCount {
-		weights := make([]*inference.MLNodeWeight, 0, len(distribution))
+		weights := make([]*types.MLNodeWeight, 0, len(distribution))
 		for nodeId, count := range distribution {
-			weights = append(weights, &inference.MLNodeWeight{
+			weights = append(weights, &types.MLNodeWeight{
 				NodeId: nodeId,
 				Weight: count,
 			})
@@ -289,12 +312,12 @@ func getWeightDistribution(distribution map[string]uint32, targetCount uint32) (
 	}
 	sort.Strings(keys)
 
-	weights := make([]*inference.MLNodeWeight, 0, len(distribution))
+	weights := make([]*types.MLNodeWeight, 0, len(distribution))
 	var scaledSum uint32
 	for _, nodeId := range keys {
 		count := distribution[nodeId]
 		scaled := uint32(float64(count) * ratio)
-		weights = append(weights, &inference.MLNodeWeight{
+		weights = append(weights, &types.MLNodeWeight{
 			NodeId: nodeId,
 			Weight: scaled,
 		})
@@ -310,7 +333,19 @@ func getWeightDistribution(distribution map[string]uint32, targetCount uint32) (
 	return weights, nil
 }
 
-func formatWeightDistribution(weights []*inference.MLNodeWeight) string {
+func (w *CommitWorker) queryPrimaryPoCModelID() (string, bool) {
+	if w.participantAddress == "" {
+		return "", true
+	}
+	queryClient := w.recorder.NewInferenceQueryClient()
+	paramsResp, err := queryClient.Params(context.Background(), &types.QueryParamsRequest{})
+	if err != nil || paramsResp == nil || paramsResp.Params.PocParams == nil {
+		return "", false
+	}
+	return paramsResp.Params.PocParams.GetPrimaryModelConfig().ModelId, true
+}
+
+func formatWeightDistribution(weights []*types.MLNodeWeight) string {
 	if len(weights) == 0 {
 		return "{}"
 	}
