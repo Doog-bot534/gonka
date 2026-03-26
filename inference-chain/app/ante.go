@@ -160,7 +160,9 @@ func (d LiquidityPoolFeeBypassDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, 
 				inferencetypes.System, "poolAddress", poolAddress, "wrappedCodeID", wrappedCodeID)
 		}
 		// Waive min-gas-prices (fees) but keep metering; optionally raise priority.
+		// Set the fee bypass flag so the custom TxFeeChecker also allows zero fees.
 		ctx = ctx.WithMinGasPrices(sdk.DecCoins{})
+		ctx = ctx.WithValue(networkDutyFeeBypassKey{}, true)
 		if d.Priority != 0 {
 			ctx = ctx.WithPriority(d.Priority)
 		}
