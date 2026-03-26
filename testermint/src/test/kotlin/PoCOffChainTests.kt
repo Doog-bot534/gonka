@@ -136,34 +136,29 @@ class PoCOffChainTests : TestermintTest() {
         val pocStartHeight = epochData.latestEpoch.pocStartBlockHeight
         val participantAddress = genesis.node.getColdAddress()
 
-        // First verify individual store commit works
-        logSection("Verifying individual store commit query")
-        val storeCommit = genesis.node.getPoCV2StoreCommit(pocStartHeight, participantAddress)
-        Logger.info("Individual store commit: found=${storeCommit.found}, count=${storeCommit.count}")
+        val modelId = defaultModel
 
-        // Query all store commits for the stage using the new endpoint
-        logSection("Querying all store commits for stage using new endpoint")
+        // Query all store commits for the stage
+        logSection("Querying all store commits for stage")
         val allCommits = genesis.node.getAllPoCV2StoreCommitsForStage(pocStartHeight)
         Logger.info("All commits for stage: ${allCommits.commits.size} participants")
 
         // Verify results
-        if (storeCommit.found) {
-            // If we have an individual commit, it should appear in all commits
-            assertThat(allCommits.commits).isNotEmpty()
-            
-            // Find our participant in the list
-            val ourCommit = allCommits.commits.find { it.participantAddress == participantAddress }
-            if (ourCommit != null) {
-                Logger.info("Found our commit in all commits: count=${ourCommit.count}")
-                assertThat(ourCommit.count).isEqualTo(storeCommit.count)
-            } else {
-                Logger.warn("Our participant not found in all commits (may have been filtered)")
-            }
+        assertThat(allCommits.commits).isNotEmpty()
+
+        val ourCommit = allCommits.commits.find {
+            it.participantAddress == participantAddress && it.modelId == modelId
         }
+        assertThat(ourCommit)
+            .describedAs("Expected stage commit for participant %s and model %s", participantAddress, modelId)
+            .isNotNull
+        Logger.info("Found our commit in all commits: count=${ourCommit!!.count}, model=${ourCommit.modelId}")
+        assertThat(ourCommit.count).isGreaterThan(0)
 
         allCommits.commits.forEach { commit ->
-            Logger.info("Commit: participant=${commit.participantAddress}, count=${commit.count}")
+            Logger.info("Commit: participant=${commit.participantAddress}, model=${commit.modelId}, count=${commit.count}")
             assertThat(commit.participantAddress).isNotEmpty()
+            assertThat(commit.modelId).isNotEmpty()
             assertThat(commit.count).isGreaterThanOrEqualTo(0)
         }
 

@@ -749,6 +749,7 @@ data class ApplicationCLI(
                     "poc-v2-store-commit",
                     epochStartHeight.toString(),
                     participantAddress,
+                    "--model-id",
                     modelId
                 )
             )
@@ -763,6 +764,7 @@ data class ApplicationCLI(
                     "mlnode-weight-distribution",
                     epochStartHeight.toString(),
                     participantAddress,
+                    "--model-id",
                     modelId
                 )
             )
@@ -868,6 +870,8 @@ data class ApplicationCLI(
         @JsonProperty("participant_address")
         val participantAddress: String = "",
         val count: Long = 0,
+        @JsonProperty("model_id")
+        val modelId: String = "",
         @JsonProperty("root_hash")
         val rootHash: String? = null
     )
