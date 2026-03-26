@@ -1175,13 +1175,17 @@ func (b *Broker) resolvePoCModelForNode(nodeState *NodeState, params *pocParams)
 		return apiconfig.PoCModelConfigCache{}, false
 	}
 
-	if len(nodeState.EpochMLNodes) > 0 {
+	if len(nodeState.EpochMLNodes) == 1 {
 		for modelID := range nodeState.EpochMLNodes {
 			modelConfig, ok := params.models[modelID]
 			if ok {
 				return modelConfig, true
 			}
 		}
+		return apiconfig.PoCModelConfigCache{}, false
+	}
+
+	if len(nodeState.EpochMLNodes) > 1 {
 		return apiconfig.PoCModelConfigCache{}, false
 	}
 

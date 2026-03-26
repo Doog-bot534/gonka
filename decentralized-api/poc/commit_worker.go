@@ -168,9 +168,29 @@ func (w *CommitWorker) maybeSubmitCommit(pocHeight int64) {
 		}
 
 		key := commitKey{stage: pocHeight, modelID: stageStore.ModelID}
-		last := w.lastCommitted[key]
-		if last.count == count && bytes.Equal(last.rootHash, rootHash) {
-			continue
+		last, hasLast := w.lastCommitted[key]
+		
+		if !hasLast && w.participantAddress != "" {
+			queryClient := w.recorder.NewInferenceQueryClient()
+			resp, err := queryClient.PoCV2StoreCommit(context.Background(), &types.QueryPoCV2StoreCommitRequest{
+				PocStageStartBlockHeight: pocHeight,
+				ParticipantAddress:       w.participantAddress,
+				ModelId:                  stageStore.ModelID,
+			})
+			if err == nil && resp.Found {
+				last = commitState{count: resp.Count}
+				w.lastCommitted[key] = last
+				hasLast = true
+			}
+		}
+
+		if hasLast {
+			if last.count == count && (last.rootHash == nil || bytes.Equal(last.rootHash, rootHash)) {
+				continue
+			}
+			if count <= last.count {
+				continue
+			}
 		}
 
 		entries = append(entries, &types.PoCV2CommitEntry{
