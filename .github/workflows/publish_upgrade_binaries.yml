@@ -6,12 +6,6 @@ on:
     tags:
       - 'release/v[0-9]*.[0-9]*.[0-9]*'
       - 'release/v[0-9]*.[0-9]*.[0-9]*-*'
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "Tag name to use for release (e.g. release/v0.2.11-testnet-7-subnet)"
-        required: true
-        type: string
 jobs:
   build_and_release:
     runs-on: ubuntu-latest
@@ -22,7 +16,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v3.0.0
         with:
-          go-version: '1.24.2' # Replace with your Go version
+          go-version: '1.24.2'
 
       - name: Checkout code
         uses: actions/checkout@v3
@@ -73,10 +67,10 @@ jobs:
           repository: product-science/race-releases
 
           # --- Release Details ---
-          tag_name: ${{ github.event.inputs.release_tag || github.ref_name }} # Use manual input if dispatched, else use push tag
-          name: Release ${{ github.event.inputs.release_tag || github.ref_name }}   # Use manual input if dispatched, else use push tag
+          tag_name: ${{ github.ref_name }} # Use the tag from the push event
+          name: Release ${{ github.ref_name }}   # Use the tag for the release name
           body: |
-            Automated release created from main source tag ${{ github.event.inputs.release_tag || github.ref_name }}.
+            Automated release created from main source tag ${{ github.ref_name }}.
             Build artifacts from the `build-for-upgrade` target.
           draft: false
           prerelease: false # Set to true if these are pre-releases
