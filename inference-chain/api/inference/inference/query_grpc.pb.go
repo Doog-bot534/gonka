@@ -79,6 +79,7 @@ const (
 	Query_LiquidityPool_FullMethodName                             = "/inference.inference.Query/LiquidityPool"
 	Query_WrappedTokenBalances_FullMethodName                      = "/inference.inference.Query/WrappedTokenBalances"
 	Query_ValidateWrappedTokenForTrade_FullMethodName              = "/inference.inference.Query/ValidateWrappedTokenForTrade"
+	Query_ValidateIbcTokenForTrade_FullMethodName                  = "/inference.inference.Query/ValidateIbcTokenForTrade"
 	Query_ApprovedTokensForTrade_FullMethodName                    = "/inference.inference.Query/ApprovedTokensForTrade"
 	Query_TrainingKvRecord_FullMethodName                          = "/inference.inference.Query/TrainingKvRecord"
 	Query_ListTrainingKvRecordKeys_FullMethodName                  = "/inference.inference.Query/ListTrainingKvRecordKeys"
@@ -98,7 +99,11 @@ const (
 	Query_ExcludedParticipants_FullMethodName                      = "/inference.inference.Query/ExcludedParticipants"
 	Query_ActiveConfirmationPoCEvent_FullMethodName                = "/inference.inference.Query/ActiveConfirmationPoCEvent"
 	Query_ListConfirmationPoCEvents_FullMethodName                 = "/inference.inference.Query/ListConfirmationPoCEvents"
+	Query_ListRandomSeeds_FullMethodName                           = "/inference.inference.Query/ListRandomSeeds"
 	Query_ParticipantsWithBalances_FullMethodName                  = "/inference.inference.Query/ParticipantsWithBalances"
+	Query_PoCValidationSnapshot_FullMethodName                     = "/inference.inference.Query/PoCValidationSnapshot"
+	Query_SubnetEscrow_FullMethodName                              = "/inference.inference.Query/SubnetEscrow"
+	Query_SubnetHostEpochStats_FullMethodName                      = "/inference.inference.Query/SubnetHostEpochStats"
 )
 
 // QueryClient is the client API for Query service.
@@ -206,6 +211,8 @@ type QueryClient interface {
 	WrappedTokenBalances(ctx context.Context, in *QueryWrappedTokenBalancesRequest, opts ...grpc.CallOption) (*QueryWrappedTokenBalancesResponse, error)
 	// Validates a wrapped token for trading through liquidity pools
 	ValidateWrappedTokenForTrade(ctx context.Context, in *QueryValidateWrappedTokenForTradeRequest, opts ...grpc.CallOption) (*QueryValidateWrappedTokenForTradeResponse, error)
+	// Validates an IBC token for trading through liquidity pools
+	ValidateIbcTokenForTrade(ctx context.Context, in *QueryValidateIbcTokenForTradeRequest, opts ...grpc.CallOption) (*QueryValidateIbcTokenForTradeResponse, error)
 	// Queries all approved bridge tokens for trading
 	ApprovedTokensForTrade(ctx context.Context, in *QueryApprovedTokensForTradeRequest, opts ...grpc.CallOption) (*QueryApprovedTokensForTradeResponse, error)
 	// Queries a list of TrainingKvRecord items.
@@ -241,7 +248,13 @@ type QueryClient interface {
 	ActiveConfirmationPoCEvent(ctx context.Context, in *QueryActiveConfirmationPoCEventRequest, opts ...grpc.CallOption) (*QueryActiveConfirmationPoCEventResponse, error)
 	// Queries confirmation PoC events for a specific epoch.
 	ListConfirmationPoCEvents(ctx context.Context, in *QueryConfirmationPoCEventsRequest, opts ...grpc.CallOption) (*QueryConfirmationPoCEventsResponse, error)
+	// Queries random seeds for a specific epoch.
+	ListRandomSeeds(ctx context.Context, in *QueryRandomSeedsRequest, opts ...grpc.CallOption) (*QueryRandomSeedsResponse, error)
 	ParticipantsWithBalances(ctx context.Context, in *QueryParticipantsWithBalancesRequest, opts ...grpc.CallOption) (*QueryParticipantsWithBalancesResponse, error)
+	// Queries PoC validation snapshot for deterministic sampling synchronization.
+	PoCValidationSnapshot(ctx context.Context, in *QueryPoCValidationSnapshotRequest, opts ...grpc.CallOption) (*QueryPoCValidationSnapshotResponse, error)
+	SubnetEscrow(ctx context.Context, in *QueryGetSubnetEscrowRequest, opts ...grpc.CallOption) (*QueryGetSubnetEscrowResponse, error)
+	SubnetHostEpochStats(ctx context.Context, in *QueryGetSubnetHostEpochStatsRequest, opts ...grpc.CallOption) (*QueryGetSubnetHostEpochStatsResponse, error)
 }
 
 type queryClient struct {
@@ -792,6 +805,15 @@ func (c *queryClient) ValidateWrappedTokenForTrade(ctx context.Context, in *Quer
 	return out, nil
 }
 
+func (c *queryClient) ValidateIbcTokenForTrade(ctx context.Context, in *QueryValidateIbcTokenForTradeRequest, opts ...grpc.CallOption) (*QueryValidateIbcTokenForTradeResponse, error) {
+	out := new(QueryValidateIbcTokenForTradeResponse)
+	err := c.cc.Invoke(ctx, Query_ValidateIbcTokenForTrade_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *queryClient) ApprovedTokensForTrade(ctx context.Context, in *QueryApprovedTokensForTradeRequest, opts ...grpc.CallOption) (*QueryApprovedTokensForTradeResponse, error) {
 	out := new(QueryApprovedTokensForTradeResponse)
 	err := c.cc.Invoke(ctx, Query_ApprovedTokensForTrade_FullMethodName, in, out, opts...)
@@ -963,9 +985,45 @@ func (c *queryClient) ListConfirmationPoCEvents(ctx context.Context, in *QueryCo
 	return out, nil
 }
 
+func (c *queryClient) ListRandomSeeds(ctx context.Context, in *QueryRandomSeedsRequest, opts ...grpc.CallOption) (*QueryRandomSeedsResponse, error) {
+	out := new(QueryRandomSeedsResponse)
+	err := c.cc.Invoke(ctx, Query_ListRandomSeeds_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *queryClient) ParticipantsWithBalances(ctx context.Context, in *QueryParticipantsWithBalancesRequest, opts ...grpc.CallOption) (*QueryParticipantsWithBalancesResponse, error) {
 	out := new(QueryParticipantsWithBalancesResponse)
 	err := c.cc.Invoke(ctx, Query_ParticipantsWithBalances_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryClient) PoCValidationSnapshot(ctx context.Context, in *QueryPoCValidationSnapshotRequest, opts ...grpc.CallOption) (*QueryPoCValidationSnapshotResponse, error) {
+	out := new(QueryPoCValidationSnapshotResponse)
+	err := c.cc.Invoke(ctx, Query_PoCValidationSnapshot_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryClient) SubnetEscrow(ctx context.Context, in *QueryGetSubnetEscrowRequest, opts ...grpc.CallOption) (*QueryGetSubnetEscrowResponse, error) {
+	out := new(QueryGetSubnetEscrowResponse)
+	err := c.cc.Invoke(ctx, Query_SubnetEscrow_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryClient) SubnetHostEpochStats(ctx context.Context, in *QueryGetSubnetHostEpochStatsRequest, opts ...grpc.CallOption) (*QueryGetSubnetHostEpochStatsResponse, error) {
+	out := new(QueryGetSubnetHostEpochStatsResponse)
+	err := c.cc.Invoke(ctx, Query_SubnetHostEpochStats_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1077,6 +1135,8 @@ type QueryServer interface {
 	WrappedTokenBalances(context.Context, *QueryWrappedTokenBalancesRequest) (*QueryWrappedTokenBalancesResponse, error)
 	// Validates a wrapped token for trading through liquidity pools
 	ValidateWrappedTokenForTrade(context.Context, *QueryValidateWrappedTokenForTradeRequest) (*QueryValidateWrappedTokenForTradeResponse, error)
+	// Validates an IBC token for trading through liquidity pools
+	ValidateIbcTokenForTrade(context.Context, *QueryValidateIbcTokenForTradeRequest) (*QueryValidateIbcTokenForTradeResponse, error)
 	// Queries all approved bridge tokens for trading
 	ApprovedTokensForTrade(context.Context, *QueryApprovedTokensForTradeRequest) (*QueryApprovedTokensForTradeResponse, error)
 	// Queries a list of TrainingKvRecord items.
@@ -1112,7 +1172,13 @@ type QueryServer interface {
 	ActiveConfirmationPoCEvent(context.Context, *QueryActiveConfirmationPoCEventRequest) (*QueryActiveConfirmationPoCEventResponse, error)
 	// Queries confirmation PoC events for a specific epoch.
 	ListConfirmationPoCEvents(context.Context, *QueryConfirmationPoCEventsRequest) (*QueryConfirmationPoCEventsResponse, error)
+	// Queries random seeds for a specific epoch.
+	ListRandomSeeds(context.Context, *QueryRandomSeedsRequest) (*QueryRandomSeedsResponse, error)
 	ParticipantsWithBalances(context.Context, *QueryParticipantsWithBalancesRequest) (*QueryParticipantsWithBalancesResponse, error)
+	// Queries PoC validation snapshot for deterministic sampling synchronization.
+	PoCValidationSnapshot(context.Context, *QueryPoCValidationSnapshotRequest) (*QueryPoCValidationSnapshotResponse, error)
+	SubnetEscrow(context.Context, *QueryGetSubnetEscrowRequest) (*QueryGetSubnetEscrowResponse, error)
+	SubnetHostEpochStats(context.Context, *QueryGetSubnetHostEpochStatsRequest) (*QueryGetSubnetHostEpochStatsResponse, error)
 	mustEmbedUnimplementedQueryServer()
 }
 
@@ -1300,6 +1366,9 @@ func (UnimplementedQueryServer) WrappedTokenBalances(context.Context, *QueryWrap
 func (UnimplementedQueryServer) ValidateWrappedTokenForTrade(context.Context, *QueryValidateWrappedTokenForTradeRequest) (*QueryValidateWrappedTokenForTradeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ValidateWrappedTokenForTrade not implemented")
 }
+func (UnimplementedQueryServer) ValidateIbcTokenForTrade(context.Context, *QueryValidateIbcTokenForTradeRequest) (*QueryValidateIbcTokenForTradeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ValidateIbcTokenForTrade not implemented")
+}
 func (UnimplementedQueryServer) ApprovedTokensForTrade(context.Context, *QueryApprovedTokensForTradeRequest) (*QueryApprovedTokensForTradeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ApprovedTokensForTrade not implemented")
 }
@@ -1357,8 +1426,20 @@ func (UnimplementedQueryServer) ActiveConfirmationPoCEvent(context.Context, *Que
 func (UnimplementedQueryServer) ListConfirmationPoCEvents(context.Context, *QueryConfirmationPoCEventsRequest) (*QueryConfirmationPoCEventsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListConfirmationPoCEvents not implemented")
 }
+func (UnimplementedQueryServer) ListRandomSeeds(context.Context, *QueryRandomSeedsRequest) (*QueryRandomSeedsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListRandomSeeds not implemented")
+}
 func (UnimplementedQueryServer) ParticipantsWithBalances(context.Context, *QueryParticipantsWithBalancesRequest) (*QueryParticipantsWithBalancesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ParticipantsWithBalances not implemented")
+}
+func (UnimplementedQueryServer) PoCValidationSnapshot(context.Context, *QueryPoCValidationSnapshotRequest) (*QueryPoCValidationSnapshotResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PoCValidationSnapshot not implemented")
+}
+func (UnimplementedQueryServer) SubnetEscrow(context.Context, *QueryGetSubnetEscrowRequest) (*QueryGetSubnetEscrowResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SubnetEscrow not implemented")
+}
+func (UnimplementedQueryServer) SubnetHostEpochStats(context.Context, *QueryGetSubnetHostEpochStatsRequest) (*QueryGetSubnetHostEpochStatsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SubnetHostEpochStats not implemented")
 }
 func (UnimplementedQueryServer) mustEmbedUnimplementedQueryServer() {}
 
@@ -2453,6 +2534,24 @@ func _Query_ValidateWrappedTokenForTrade_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Query_ValidateIbcTokenForTrade_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryValidateIbcTokenForTradeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).ValidateIbcTokenForTrade(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_ValidateIbcTokenForTrade_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).ValidateIbcTokenForTrade(ctx, req.(*QueryValidateIbcTokenForTradeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Query_ApprovedTokensForTrade_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(QueryApprovedTokensForTradeRequest)
 	if err := dec(in); err != nil {
@@ -2795,6 +2894,24 @@ func _Query_ListConfirmationPoCEvents_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Query_ListRandomSeeds_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryRandomSeedsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).ListRandomSeeds(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_ListRandomSeeds_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).ListRandomSeeds(ctx, req.(*QueryRandomSeedsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Query_ParticipantsWithBalances_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(QueryParticipantsWithBalancesRequest)
 	if err := dec(in); err != nil {
@@ -2809,6 +2926,60 @@ func _Query_ParticipantsWithBalances_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(QueryServer).ParticipantsWithBalances(ctx, req.(*QueryParticipantsWithBalancesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Query_PoCValidationSnapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryPoCValidationSnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).PoCValidationSnapshot(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_PoCValidationSnapshot_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).PoCValidationSnapshot(ctx, req.(*QueryPoCValidationSnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Query_SubnetEscrow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryGetSubnetEscrowRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).SubnetEscrow(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_SubnetEscrow_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).SubnetEscrow(ctx, req.(*QueryGetSubnetEscrowRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Query_SubnetHostEpochStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryGetSubnetHostEpochStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).SubnetHostEpochStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_SubnetHostEpochStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).SubnetHostEpochStats(ctx, req.(*QueryGetSubnetHostEpochStatsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3061,6 +3232,10 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Query_ValidateWrappedTokenForTrade_Handler,
 		},
 		{
+			MethodName: "ValidateIbcTokenForTrade",
+			Handler:    _Query_ValidateIbcTokenForTrade_Handler,
+		},
+		{
 			MethodName: "ApprovedTokensForTrade",
 			Handler:    _Query_ApprovedTokensForTrade_Handler,
 		},
@@ -3137,8 +3312,24 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Query_ListConfirmationPoCEvents_Handler,
 		},
 		{
+			MethodName: "ListRandomSeeds",
+			Handler:    _Query_ListRandomSeeds_Handler,
+		},
+		{
 			MethodName: "ParticipantsWithBalances",
 			Handler:    _Query_ParticipantsWithBalances_Handler,
+		},
+		{
+			MethodName: "PoCValidationSnapshot",
+			Handler:    _Query_PoCValidationSnapshot_Handler,
+		},
+		{
+			MethodName: "SubnetEscrow",
+			Handler:    _Query_SubnetEscrow_Handler,
+		},
+		{
+			MethodName: "SubnetHostEpochStats",
+			Handler:    _Query_SubnetHostEpochStats_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

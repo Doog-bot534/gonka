@@ -37,6 +37,10 @@ const (
 	ExecutorContext AuthKeyContext = 2
 	// BothContexts indicates the AuthKey was used for both transfer and executor requests
 	BothContexts = TransferContext | ExecutorContext
+
+	// MaxRequestBodySize is the maximum allowed size for request bodies (10 MB)
+	// This prevents memory exhaustion attacks from oversized requests
+	MaxRequestBodySize = 10 * 1024 * 1024
 )
 
 // Package-level variables for AuthKey reuse prevention
@@ -57,8 +61,9 @@ var (
 	configManagerRef *apiconfig.ConfigManager
 )
 
-func NewNoRedirectClient() *http.Client {
+func NewNoRedirectClient(timeout time.Duration) *http.Client {
 	return &http.Client{
+		Timeout: timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
@@ -119,10 +124,10 @@ func emptyButParseableResponsePayload(inferenceId, model string, promptTokens ui
 // checkAndRecordAuthKey checks if an AuthKey has been used before and records it if not
 // Returns true if the key has been used before in the specified context, false otherwise
 func checkAndRecordAuthKey(authKey string, currentBlockHeight int64, context AuthKeyContext) bool {
-	authKeysMutex.RLock()
-	existingContext, exists := usedAuthKeys[authKey]
-	authKeysMutex.RUnlock()
+	authKeysMutex.Lock()
+	defer authKeysMutex.Unlock()
 
+	existingContext, exists := usedAuthKeys[authKey]
 	if exists {
 		// If the key exists, check if it's been used in the current context
 		if existingContext&context != 0 {
@@ -130,20 +135,12 @@ func checkAndRecordAuthKey(authKey string, currentBlockHeight int64, context Aut
 		}
 
 		// Key exists but hasn't been used in this context, update the context
-		authKeysMutex.Lock()
-		defer authKeysMutex.Unlock()
-
-		// Update the context to include the new context
 		usedAuthKeys[authKey] = existingContext | context
 		return false // Key wasn't used before in this context
 	}
 
 	// Key doesn't exist, add it with the current context
-	authKeysMutex.Lock()
-	defer authKeysMutex.Unlock()
-
 	usedAuthKeys[authKey] = context
-
 	authKeysByBlock[currentBlockHeight] = append(authKeysByBlock[currentBlockHeight], authKey)
 
 	if oldestBlockHeight == 0 {
@@ -207,7 +204,7 @@ func cleanupExpiredAuthKeys(currentBlockHeight int64) {
 func (s *Server) postChat(ctx echo.Context) error {
 	logging.Debug("PostChat. Received request", types.Inferences, "path", ctx.Request().URL.Path)
 
-	chatRequest, err := readRequest(ctx.Request(), s.recorder.GetAccountAddress())
+	chatRequest, err := readRequest(ctx.Request(), ctx.Response().Writer, s.recorder.GetAccountAddress())
 	if err != nil {
 		return err
 	}
@@ -397,7 +394,7 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 	req.Header.Set(utils.XPromptHashHeader, inferenceRequest.PromptHash)
 	req.Header.Set("Content-Type", request.Request.Header.Get("Content-Type"))
 
-	resp, err := NewNoRedirectClient().Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		logging.Error("Failed to make http request to executor", types.Inferences, "error", err, "url", executor.Url)
 		return err
@@ -407,7 +404,7 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 	logging.Info("Proxying response from executor", types.Inferences,
 		"inferenceId", inferenceUUID,
 		"executor", executor.Address)
-	proxyResponse(resp, ctx.Response().Writer, false, nil, inferenceUUID)
+	ProxyResponse(resp, ctx.Response().Writer, false, nil, inferenceUUID)
 	return nil
 }
 
@@ -469,7 +466,7 @@ func (s *Server) getPromptTokenCount(text string, model string) (int, error) {
 			return nil, broker.NewApplicationActionError(err)
 		}
 
-		resp, postErr := http.Post(
+		resp, postErr := s.httpClient.Post(
 			tokenizeUrl,
 			"application/json",
 			bytes.NewReader(jsonData),
@@ -535,7 +532,11 @@ func (s *Server) handleExecutorRequest(ctx echo.Context, request *ChatRequest, w
 		logging.Error("Failed to compute prompt hash", types.Inferences, "error", err)
 		return echo.NewHTTPError(http.StatusBadRequest, "Failed to compute prompt hash")
 	}
-	if request.PromptHash != "" && computedPromptHash != request.PromptHash {
+	if request.PromptHash == "" {
+		logging.Error("Empty prompt hash", types.Inferences)
+		return echo.NewHTTPError(http.StatusBadRequest, "Prompt hash is missing")
+	}
+	if computedPromptHash != request.PromptHash {
 		logging.Error("Prompt hash mismatch", types.Inferences,
 			"expected", request.PromptHash, "computed", computedPromptHash)
 		return echo.NewHTTPError(http.StatusBadRequest, "Prompt hash mismatch")
@@ -551,7 +552,7 @@ func (s *Server) handleExecutorRequest(ctx echo.Context, request *ChatRequest, w
 		if err != nil {
 			return nil, broker.NewApplicationActionError(err)
 		}
-		resp, postErr := http.Post(
+		resp, postErr := s.httpClient.Post(
 			completionsUrl,
 			request.Request.Header.Get("Content-Type"),
 			bytes.NewReader(modifiedRequestBody.NewBody),
@@ -596,7 +597,7 @@ func (s *Server) handleExecutorRequest(ctx echo.Context, request *ChatRequest, w
 
 	responseProcessor := completionapi.NewExecutorResponseProcessor(request.InferenceId)
 	logging.Debug("Proxying response from inference node", types.Inferences, "inferenceId", request.InferenceId)
-	proxyResponse(resp, w, true, responseProcessor, inferenceId)
+	ProxyResponse(resp, w, true, responseProcessor, inferenceId)
 
 	logging.Debug("Processing response from inference node", types.Inferences, "inferenceId", request.InferenceId)
 	completionResponse, err := responseProcessor.GetResponse()
@@ -922,8 +923,8 @@ func getInferenceErrorMessage(resp *http.Response) string {
 	}
 }
 
-func readRequest(request *http.Request, transferAddress string) (*ChatRequest, error) {
-	body, err := readRequestBody(request)
+func readRequest(request *http.Request, writer http.ResponseWriter, transferAddress string) (*ChatRequest, error) {
+	body, err := readRequestBody(request, writer)
 	if err != nil {
 		logging.Error("Unable to read request body", types.Server, "error", err)
 		return nil, err
@@ -958,12 +959,15 @@ func readRequest(request *http.Request, transferAddress string) (*ChatRequest, e
 	}, nil
 }
 
-func readRequestBody(r *http.Request) ([]byte, error) {
+func readRequestBody(r *http.Request, writer http.ResponseWriter) ([]byte, error) {
+	// Limit request body size to prevent memory exhaustion attacks
+	r.Body = http.MaxBytesReader(writer, r.Body, MaxRequestBodySize)
+	defer r.Body.Close()
+
 	var buf bytes.Buffer
 	if _, err := io.Copy(&buf, r.Body); err != nil {
 		return nil, err
 	}
-	defer r.Body.Close()
 	return buf.Bytes(), nil
 }
 

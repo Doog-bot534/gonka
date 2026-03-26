@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"slices"
 	"sync"
 	"time"
 
@@ -17,17 +18,19 @@ import (
 	"decentralized-api/mlnodeclient"
 
 	"github.com/productscience/inference/api/inference/inference"
+	"github.com/productscience/inference/x/inference/calculations"
 	"github.com/productscience/inference/x/inference/types"
 )
 
 // OffChainValidator handles off-chain PoC validation using MMR proofs.
 type OffChainValidator struct {
-	recorder     cosmosclient.CosmosMessageClient
-	nodeBroker   *broker.Broker
-	phaseTracker *chainphase.ChainPhaseTracker
-	callbackUrl  string
-	pubKey       string
-	chainNodeUrl string
+	recorder         cosmosclient.CosmosMessageClient
+	nodeBroker       *broker.Broker
+	phaseTracker     *chainphase.ChainPhaseTracker
+	callbackUrl      string
+	pubKey           string
+	validatorAddress string
+	chainNodeUrl     string
 
 	config ValidationConfig
 }
@@ -57,6 +60,7 @@ const (
 	validateSuccess       validateResult = iota // Validation succeeded
 	validateFailPermanent                       // Permanent failure (fraud, invalid proof) - no retry
 	validateFailRetry                           // Transient failure (network, ML node) - can retry
+	porosityThreshold     = 100.0
 )
 
 // participantWork represents a single participant to validate.
@@ -70,6 +74,36 @@ type participantWork struct {
 	retryAfter time.Time // don't process before this time
 }
 
+// absInt32 returns the absolute value of an int32 as int64,
+// safely handling math.MinInt32 which overflows when negated in int32.
+func absInt32(n int32) int64 {
+	v := int64(n)
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+func maxNonceValue(artifacts []VerifiedArtifact) int64 {
+	var maxAbs int64
+	for _, artifact := range artifacts {
+		if a := absInt32(artifact.Nonce); a > maxAbs {
+			maxAbs = a
+		}
+	}
+	return maxAbs
+}
+
+func isPorosityTooHigh(artifacts []VerifiedArtifact, totalCount uint32) (maxNonce int64, porosity float64, tooHigh bool) {
+	if len(artifacts) == 0 || totalCount == 0 {
+		return 0, 0, false
+	}
+
+	maxNonce = maxNonceValue(artifacts)
+	porosity = float64(maxNonce) / float64(totalCount)
+	return maxNonce, porosity, porosity >= porosityThreshold
+}
+
 // NewOffChainValidator creates a new off-chain validator.
 func NewOffChainValidator(
 	recorder cosmosclient.CosmosMessageClient,
@@ -77,17 +111,19 @@ func NewOffChainValidator(
 	phaseTracker *chainphase.ChainPhaseTracker,
 	callbackUrl string,
 	pubKey string,
+	validatorAddress string,
 	chainNodeUrl string,
 	config ValidationConfig,
 ) *OffChainValidator {
 	return &OffChainValidator{
-		recorder:     recorder,
-		nodeBroker:   nodeBroker,
-		phaseTracker: phaseTracker,
-		callbackUrl:  callbackUrl,
-		pubKey:       pubKey,
-		chainNodeUrl: chainNodeUrl,
-		config:       config,
+		recorder:         recorder,
+		nodeBroker:       nodeBroker,
+		phaseTracker:     phaseTracker,
+		callbackUrl:      callbackUrl,
+		pubKey:           pubKey,
+		validatorAddress: validatorAddress,
+		chainNodeUrl:     chainNodeUrl,
+		config:           config,
 	}
 }
 
@@ -164,9 +200,49 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 	logging.Info("OffChainValidator: found participants with commits", types.PoC,
 		"count", len(commitsResp.Commits))
 
+	// Query validation snapshot for sampling (if enabled)
+	validationSlots := int(pocParams.ValidationSlots)
+	var snapshotWeights map[string]int64
+	var snapshotAppHash string
+	var sortedValidatorEntries []calculations.WeightEntry
+	var validatorTotalWeight int64
+	if validationSlots > 0 {
+		snapshotResp, err := queryClient.PoCValidationSnapshot(context.Background(),
+			&types.QueryPoCValidationSnapshotRequest{
+				PocStageStartHeight: pocStageStartBlockHeight,
+			})
+		if err != nil {
+			logging.Warn("OffChainValidator: failed to query validation snapshot, falling back to O(N^2)", types.PoC,
+				"error", err)
+			validationSlots = 0 // Disable sampling on error
+		} else if snapshotResp.Found && snapshotResp.Snapshot != nil && snapshotResp.Snapshot.ValidatorWeights != nil {
+			snapshotWeights = validatorWeightsSliceToMap(snapshotResp.Snapshot.ValidatorWeights)
+			snapshotAppHash = snapshotResp.Snapshot.AppHash
+			sortedValidatorEntries, validatorTotalWeight = calculations.PrepareSortedEntries(snapshotWeights)
+			logging.Info("OffChainValidator: using validation snapshot for sampling", types.PoC,
+				"appHash", snapshotAppHash,
+				"validationSlots", validationSlots,
+				"numValidators", len(snapshotWeights),
+			)
+		} else {
+			logging.Warn("OffChainValidator: validation snapshot not found, falling back to O(N^2)", types.PoC)
+			validationSlots = 0 // Disable sampling
+		}
+	}
+
 	// Build work items with participant URLs
 	workItems := make([]participantWork, 0, len(commitsResp.Commits))
+	skippedNotAssigned := 0
 	for _, commit := range commitsResp.Commits {
+		// If sampling is enabled, check if we're assigned to validate this participant
+		if validationSlots > 0 && sortedValidatorEntries != nil {
+			assignedValidators := calculations.GetSlotsFromSorted(snapshotAppHash, commit.ParticipantAddress, sortedValidatorEntries, validatorTotalWeight, validationSlots)
+			if !slices.Contains(assignedValidators, v.validatorAddress) {
+				skippedNotAssigned++
+				continue
+			}
+		}
+
 		// Get participant's inference URL
 		participantResp, err := queryClient.Participant(context.Background(),
 			&types.QueryGetParticipantRequest{Index: commit.ParticipantAddress})
@@ -196,6 +272,14 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 			count:    commit.Count,
 			rootHash: commit.RootHash,
 		})
+	}
+
+	if validationSlots > 0 {
+		logging.Info("OffChainValidator: filtered work items by sampling", types.PoC,
+			"totalCommits", len(commitsResp.Commits),
+			"assignedToUs", len(workItems),
+			"skippedNotAssigned", skippedNotAssigned,
+		)
 	}
 
 	if len(workItems) == 0 {
@@ -332,7 +416,7 @@ func (v *OffChainValidator) worker(
 				*pendingCount--
 				// Report participant as invalid to chain
 				// Uncomment when stabilized
-				// reportAddr = work.address
+				reportAddr = work.address
 			case validateFailRetry:
 				// Re-queue for retry if under max attempts
 				if work.attempt < v.config.MaxRetries-1 {
@@ -409,8 +493,8 @@ func (v *OffChainValidator) validateParticipant(
 	if err != nil {
 		logging.Warn("OffChainValidator: proof fetch/verify failed", types.PoC,
 			"participant", work.address, "attempt", work.attempt, "error", err)
-		// Proof verification failures and incomplete coverage are permanent - no point retrying
-		if errors.Is(err, ErrProofVerificationFailed) || errors.Is(err, ErrIncompleteCoverage) {
+		// Proof verification failures, incomplete coverage, and invalid vector data are permanent - no point retrying
+		if errors.Is(err, ErrProofVerificationFailed) || errors.Is(err, ErrIncompleteCoverage) || errors.Is(err, ErrInvalidVectorData) {
 			return validateFailPermanent
 		}
 		// Transient error (network/timeout) - retry
@@ -421,6 +505,15 @@ func (v *OffChainValidator) validateParticipant(
 	if err := CheckDuplicateNonces(verified); err != nil {
 		logging.Warn("OffChainValidator: duplicate nonces detected (fraud)", types.PoC,
 			"participant", work.address, "error", err)
+		return validateFailPermanent
+	}
+
+	if maxNonce, porosity, invalid := isPorosityTooHigh(verified, work.count); invalid {
+		logging.Warn("OffChainValidator: porosity too high", types.PoC,
+			"participant", work.address,
+			"maxNonce", maxNonce,
+			"count", work.count,
+			"porosity", porosity)
 		return validateFailPermanent
 	}
 
@@ -452,7 +545,7 @@ func (v *OffChainValidator) validateParticipant(
 		Validation: &mlnodeclient.ValidationV2{
 			Artifacts: artifacts,
 		},
-		StatTest: mlnodeclient.DefaultStatTestParamsV2(),
+		StatTest: mlnodeclient.StatTestParamsFromChain(pocParams.StatTest),
 	}
 
 	// Try sending to ML node (single attempt per call - retries handled by queue)
@@ -621,7 +714,15 @@ func (v *OffChainValidator) getNodesWithRetryConfig(
 			"numNodes", len(nodes),
 			"attempt", attempt)
 
-		nodes = filterNodesForValidation(nodes)
+		epochState := v.phaseTracker.GetCurrentEpochState()
+		if epochState == nil {
+			logging.Error("OffChainValidator: epoch state is nil during node filtering", types.PoC,
+				"pocStageStartBlockHeight", pocStageStartBlockHeight,
+				"attempt", attempt)
+			return nil, errors.New("epoch state is nil during node filtering")
+		}
+
+		nodes = filterNodesForValidation(nodes, epochState.LatestEpoch.EpochIndex, epochState.CurrentPhase)
 		logging.Info("OffChainValidator: filtered nodes for validation", types.PoC,
 			"numNodes", len(nodes),
 			"attempt", attempt)
@@ -647,9 +748,9 @@ func (v *OffChainValidator) getNodesWithRetryConfig(
 
 // filterNodesForValidation returns nodes available for PoC validation.
 // - Accept nodes in POC status with any sub-status
-// - Accept nodes in INFERENCE status
-// - Exclude FAILED or administratively disabled nodes
-func filterNodesForValidation(nodes []broker.NodeResponse) []broker.NodeResponse {
+// - Accept nodes in INFERENCE status (unless preserved for inference via POC_SLOT)
+// - Exclude FAILED, nodes that are not operational for the current epoch/phase, or POC_SLOT-preserved nodes
+func filterNodesForValidation(nodes []broker.NodeResponse, latestEpoch uint64, currentPhase types.EpochPhase) []broker.NodeResponse {
 	filtered := make([]broker.NodeResponse, 0, len(nodes))
 	for _, node := range nodes {
 		// Exclude failed nodes
@@ -664,9 +765,19 @@ func filterNodesForValidation(nodes []broker.NodeResponse) []broker.NodeResponse
 			continue
 		}
 
-		// Exclude administratively disabled nodes
-		if !node.State.AdminState.Enabled {
-			logging.Debug("filterNodesForValidation: Skipping administratively disabled node", types.PoC, "node_id", node.Node.Id)
+		// Exclude nodes that are not operational for the current epoch/phase.
+		if !node.State.ShouldBeOperational(latestEpoch, currentPhase) {
+			logging.Debug("filterNodesForValidation: Skipping non-operational node", types.PoC,
+				"node_id", node.Node.Id,
+				"latest_epoch", latestEpoch,
+				"current_phase", currentPhase,
+				"admin_state", node.State.AdminState)
+			continue
+		}
+
+		// Exclude nodes preserved for inference (POC_SLOT allocation)
+		if node.State.ShouldContinueInference() {
+			logging.Debug("filterNodesForValidation: Skipping node preserved for inference", types.PoC, "node_id", node.Node.Id)
 			continue
 		}
 
@@ -707,4 +818,12 @@ func (v *OffChainValidator) reportInvalidParticipant(pocHeight int64, participan
 		logging.Info("OffChainValidator: reported participant as invalid", types.PoC,
 			"participant", participantAddress)
 	}
+}
+
+func validatorWeightsSliceToMap(weights []*types.ValidatorWeight) map[string]int64 {
+	result := make(map[string]int64, len(weights))
+	for _, w := range weights {
+		result[w.Address] = w.Weight
+	}
+	return result
 }

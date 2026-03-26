@@ -70,17 +70,19 @@ func LoadConfigManagerWithPaths(configPath, sqlitePath, nodeConfigPath string) (
 		return nil, err
 	}
 
-	err = manager.migrateDynamicDataToDb(ctx)
+	migrated, err := manager.migrateDynamicDataToDb(ctx)
 	if err != nil {
 		log.Printf("Error migrating dynamic data to DB: %+v", err)
 		return nil, err
 	}
 
-	if err = manager.Write(); err != nil {
-		log.Printf("Error writing config: %+v", err)
-		return nil, err
+	if migrated {
+		if err = manager.Write(); err != nil {
+			log.Printf("Error writing config: %+v", err)
+			return nil, err
+		}
+		logging.Info("Saved static config after initial migration", types.Config)
 	}
-	log.Printf("Saved static config after load")
 
 	// Hydrate in-memory dynamic state from DB once
 	if err := manager.HydrateFromDB(context.Background()); err != nil {
@@ -129,18 +131,26 @@ func (cm *ConfigManager) Load() error {
 // Need to make sure we pass back a COPY of the ChainNodeConfig to make sure
 // we don't modify the original
 func (cm *ConfigManager) GetChainNodeConfig() ChainNodeConfig {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
 	return cm.currentConfig.ChainNode
 }
 
 func (cm *ConfigManager) GetApiConfig() ApiConfig {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
 	return cm.currentConfig.Api
 }
 
 func (cm *ConfigManager) GetNatsConfig() NatsServerConfig {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
 	return cm.currentConfig.Nats
 }
 
 func (cm *ConfigManager) GetTxBatchingConfig() TxBatchingConfig {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
 	cfg := cm.currentConfig.TxBatching
 	if cfg.FlushSize == 0 {
 		cfg.FlushSize = 50
@@ -161,6 +171,8 @@ func (cm *ConfigManager) GetTxBatchingConfig() TxBatchingConfig {
 }
 
 func (cm *ConfigManager) GetNodes() []InferenceNodeConfig {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
 	nodes := make([]InferenceNodeConfig, len(cm.currentConfig.Nodes))
 	copy(nodes, cm.currentConfig.Nodes)
 	return nodes
@@ -183,7 +195,11 @@ func (cm *ConfigManager) GetConfig() Config {
 	return cm.currentConfig
 }
 
-func (cm *ConfigManager) GetUpgradePlan() UpgradePlan { return cm.currentConfig.UpgradePlan }
+func (cm *ConfigManager) GetUpgradePlan() UpgradePlan {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+	return cm.currentConfig.UpgradePlan
+}
 
 func (cm *ConfigManager) SetUpgradePlan(plan UpgradePlan) error {
 	cm.mutex.Lock()
@@ -210,6 +226,8 @@ func (cm *ConfigManager) SetHeight(height int64) error {
 }
 
 func (cm *ConfigManager) GetLastProcessedHeight() int64 {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
 	return cm.currentConfig.LastProcessedHeight
 }
 
@@ -222,6 +240,8 @@ func (cm *ConfigManager) SetLastProcessedHeight(height int64) error {
 }
 
 func (cm *ConfigManager) GetCurrentNodeVersion() string {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
 	return cm.currentConfig.CurrentNodeVersion
 }
 
@@ -277,6 +297,8 @@ func (cm *ConfigManager) SetValidationParams(params ValidationParamsCache) error
 }
 
 func (cm *ConfigManager) GetValidationParams() ValidationParamsCache {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
 	return cm.currentConfig.ValidationParams
 }
 
@@ -289,6 +311,8 @@ func (cm *ConfigManager) SetBandwidthParams(params BandwidthParamsCache) error {
 }
 
 func (cm *ConfigManager) GetBandwidthParams() BandwidthParamsCache {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
 	return cm.currentConfig.BandwidthParams
 }
 
@@ -305,10 +329,14 @@ func (cm *ConfigManager) GetTransferAgentAccessCache() TransferAgentAccessCache 
 }
 
 func (cm *ConfigManager) GetHeight() int64 {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
 	return cm.currentConfig.CurrentHeight
 }
 
 func (cm *ConfigManager) GetLastUsedVersion() string {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
 	return cm.currentConfig.LastUsedVersion
 }
 
@@ -359,6 +387,8 @@ func (cm *ConfigManager) IsPreviousSeedClaimed() bool {
 }
 
 func (cm *ConfigManager) GetPreviousSeed() SeedInfo {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
 	return cm.currentConfig.PreviousSeed
 }
 
@@ -371,6 +401,8 @@ func (cm *ConfigManager) SetCurrentSeed(seed SeedInfo) error {
 }
 
 func (cm *ConfigManager) GetCurrentSeed() SeedInfo {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
 	return cm.currentConfig.CurrentSeed
 }
 
@@ -383,6 +415,8 @@ func (cm *ConfigManager) SetUpcomingSeed(seed SeedInfo) error {
 }
 
 func (cm *ConfigManager) GetUpcomingSeed() SeedInfo {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
 	return cm.currentConfig.UpcomingSeed
 }
 
@@ -635,15 +669,15 @@ func parseInferenceNodesFromNodeConfigJson(nodeConfigPath string) ([]InferenceNo
 	return newNodes, nil
 }
 
-func (cm *ConfigManager) migrateDynamicDataToDb(ctx context.Context) error {
+func (cm *ConfigManager) migrateDynamicDataToDb(ctx context.Context) (bool, error) {
 	if err := cm.ensureDbReady(ctx); err != nil {
-		return err
+		return false, err
 	}
 	// Only migrate once, gated by a KV flag
 	var migrated bool
 	if ok, err := KVGetJSON(ctx, cm.sqlDb.GetDb(), kvKeyConfigMigrated, &migrated); err == nil && ok && migrated {
 		logging.Info("Config migration already completed. Skipping", types.Config)
-		return nil
+		return false, nil
 	}
 	config := cm.currentConfig
 	// If YAML indicates nodes were already merged historically, persist the flag so LoadNodeConfig skips
@@ -653,7 +687,7 @@ func (cm *ConfigManager) migrateDynamicDataToDb(ctx context.Context) error {
 	// Nodes: upsert unconditionally (idempotent)
 	if err := WriteNodes(ctx, cm.sqlDb.GetDb(), config.Nodes); err != nil {
 		logging.Error("Error writing nodes to DB", types.Config, "error", err)
-		return err
+		return false, err
 	}
 
 	// Per-key idempotent migrations: only populate if missing
@@ -708,7 +742,7 @@ func (cm *ConfigManager) migrateDynamicDataToDb(ctx context.Context) error {
 
 	// Mark migration as done
 	_ = KVSetJSON(ctx, cm.sqlDb.GetDb(), kvKeyConfigMigrated, true)
-	return nil
+	return true, nil
 }
 
 // HydrateFromDB loads dynamic fields from DB into memory ONCE during startup.
