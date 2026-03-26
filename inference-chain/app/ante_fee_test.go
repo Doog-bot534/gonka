@@ -184,11 +184,11 @@ func TestIsExemptMessageType(t *testing.T) {
 	require.False(t, isExemptMessageType(&stakingtypes.MsgDelegate{}))
 }
 
-// --- NewGonkaFeeChecker tests ---
+// --- GonkaFeeChecker tests ---
 
 func TestGonkaFeeChecker_SufficientFee(t *testing.T) {
 	// nil keeper = 0 min gas price = any fee accepted
-	checker := NewGonkaFeeChecker(nil)
+	checker := GonkaFeeChecker(nil)
 
 	tx := testFeeTx{
 		msgs: []sdk.Msg{&banktypes.MsgSend{}},
@@ -204,7 +204,7 @@ func TestGonkaFeeChecker_SufficientFee(t *testing.T) {
 }
 
 func TestGonkaFeeChecker_BypassFlag(t *testing.T) {
-	checker := NewGonkaFeeChecker(nil)
+	checker := GonkaFeeChecker(nil)
 
 	// Zero fee tx with bypass flag: should pass
 	tx := testFeeTx{
@@ -220,7 +220,7 @@ func TestGonkaFeeChecker_BypassFlag(t *testing.T) {
 }
 
 func TestGonkaFeeChecker_Priority(t *testing.T) {
-	checker := NewGonkaFeeChecker(nil)
+	checker := GonkaFeeChecker(nil)
 
 	// Higher fee = higher priority
 	tx := testFeeTx{
