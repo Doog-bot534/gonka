@@ -33,8 +33,7 @@ jobs:
           DO_NOT_TRACK: 1
         run: |
           set -euo pipefail
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-          go install github.com/ignite/cli/v28/ignite@latest
+          curl -sL https://get.ignite.com/cli@v28.11.2! | bash
           ignite chain build --release --release.prefix "${{ steps.vars.outputs.tarball_prefix }}" -t linux:amd64 -y
 
       - name: Package inferenced-amd64.zip for upgrade
