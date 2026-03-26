@@ -936,11 +936,12 @@ func (m *manager) getSignedBytes(id string, unsignedTx client.TxBuilder, factory
 
 	timestamp := getTimestamp(blockTs.UnixNano(), m.defaultTimeout)
 
-	// Set high gas limit for batch transactions. Network-duty messages (validations,
-	// PoC, inference) are fee-exempt via NetworkDutyFeeBypassDecorator, so fee amount
-	// is set but will not be charged for exempt messages.
-	unsignedTx.SetGasLimit(10_000_000)
-	unsignedTx.SetFeeAmount(sdk.NewCoins(sdk.NewCoin("ngonka", math.NewInt(10_000_000*10))))
+	// Gas limit must not exceed NetworkDutyFeeBypassDecorator.GasCap (1,000,000).
+	// Network-duty messages (validations, PoC, inference) are fee-exempt via
+	// the bypass decorator, so fee amount is set as a safety margin but will
+	// not be charged for exempt messages.
+	unsignedTx.SetGasLimit(1_000_000)
+	unsignedTx.SetFeeAmount(sdk.NewCoins(sdk.NewCoin("ngonka", math.NewInt(1_000_000*10))))
 	unsignedTx.SetUnordered(true)
 	unsignedTx.SetTimeoutTimestamp(timestamp)
 	name := m.apiAccount.SignerAccount.Name
