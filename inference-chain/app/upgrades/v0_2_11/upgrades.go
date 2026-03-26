@@ -275,21 +275,7 @@ func setParameters(ctx context.Context, k keeper.Keeper) error {
 		MaxEscrowsPerEpoch: 100,
 		GroupSize:          16,
 		TokenPrice:         10,
-		AllowedCreatorAddresses: []string{
-			"gonka10fynmy2npvdvew0vj2288gz8ljfvmjs35lat8n",
-			"gonka1uyqp5z3dveamfw4pmw7p7rfvwdvgzewnqrzhsu",
-			"gonka1sy7ug80wrnm6gk47creak0j5eagjpf7maqcqwk",
-			"gonka1w66aw6jayepglwgz66qtunetr5nyw9ls7evq5g",
-			"gonka1v8gk5z7gcv72447yfcd2y8g78qk05yc4f3nk4w",
-			"gonka1gndhek2h2y5849wf6tmw6gnw9qn4vysgljed0u",
-			"gonka1z66ec2zedwpapp6jrj9raxgl93e5ec9z5my52h",
-			"gonka1jw6xg0wun3g8m2fjm8lula82dw5p6jl8yp28mn",
-			"gonka15sjedpgseutpnrjx2ge3mgau3s8ft5qzym9waa",
-			"gonka1l4a2wtls9rgd2mnnj6mheml5xlq3kknngj4p7h",
-			"gonka1f3yg5385n3f9pdw2g3dcjcnfqyej67hcu9vfet",
-			"gonka15g5pu70k7l6hvdt8xl80h4mxe332762csupaeg",
-			"gonka1p0uanq0aay6n3l4gtnshg63cy6vx3zgvkyc5lc",
-		},
+		AllowedCreatorAddresses: []string{},
 	}
 	if err := k.SetParams(ctx, params); err != nil {
 		k.LogError("failed to set params with safety window", types.Upgrades, "error", err)
