@@ -42,8 +42,12 @@ jobs:
           rm -rf ../public-html/v2/inferenced/* ../public-html/v2/checksums.txt ../public-html/v2/urls.txt
           mkdir -p ../public-html/v2/inferenced
 
-          Z=$(ls ./release/*inferenced*linux*amd64*.zip 2>/dev/null | awk 'NR==1{print; exit}')
-          test -n "$Z"
+          Z="$(ls -1 ./release/*.zip 2>/dev/null | awk '/inferenced/ && /linux/ && /amd64/ {print; exit}' || true)"
+          if [ -z "$Z" ]; then
+            echo "No inferenced linux amd64 zip found in ./release"
+            ls -la ./release || true
+            exit 1
+          fi
           cp "$Z" ../public-html/v2/inferenced/inferenced-amd64.zip
 
           echo "inferenced-amd64.zip $(sha256sum ../public-html/v2/inferenced/inferenced-amd64.zip | awk '{print $1}')" >> ../public-html/v2/checksums.txt
