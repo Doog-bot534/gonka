@@ -50,17 +50,12 @@ jobs:
           TMP_DIR="$(mktemp -d)"
           tar -xzf "$T" -C "$TMP_DIR"
 
-          BIN="$(find "$TMP_DIR" -type f -name inferenced -print -quit || true)"
-          if [ -z "$BIN" ]; then
-            echo "No inferenced binary found inside tarball"
-            echo "Tarball: $T"
-            find "$TMP_DIR" -maxdepth 3 -type f -print || true
-            exit 1
-          fi
-          chmod +x "$BIN"
-
           OUT_ZIP="../public-html/v2/inferenced/inferenced-linux-amd64.zip"
-          zip -j -q "$OUT_ZIP" "$BIN"
+          rm -f "$OUT_ZIP"
+          (
+            cd "$TMP_DIR"
+            zip -r -q "$OUT_ZIP" .
+          )
 
           echo "inferenced-linux-amd64.zip $(sha256sum "$OUT_ZIP" | awk '{print $1}')" >> ../public-html/v2/checksums.txt
 
