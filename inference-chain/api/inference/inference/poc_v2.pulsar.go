@@ -487,8 +487,8 @@ var (
 	fd_PoCValidationV2_participant_address           protoreflect.FieldDescriptor
 	fd_PoCValidationV2_validator_participant_address protoreflect.FieldDescriptor
 	fd_PoCValidationV2_poc_stage_start_block_height  protoreflect.FieldDescriptor
-	fd_PoCValidationV2_model_id                      protoreflect.FieldDescriptor
 	fd_PoCValidationV2_validated_weight              protoreflect.FieldDescriptor
+	fd_PoCValidationV2_model_id                      protoreflect.FieldDescriptor
 )
 
 func init() {
@@ -497,8 +497,8 @@ func init() {
 	fd_PoCValidationV2_participant_address = md_PoCValidationV2.Fields().ByName("participant_address")
 	fd_PoCValidationV2_validator_participant_address = md_PoCValidationV2.Fields().ByName("validator_participant_address")
 	fd_PoCValidationV2_poc_stage_start_block_height = md_PoCValidationV2.Fields().ByName("poc_stage_start_block_height")
-	fd_PoCValidationV2_model_id = md_PoCValidationV2.Fields().ByName("model_id")
 	fd_PoCValidationV2_validated_weight = md_PoCValidationV2.Fields().ByName("validated_weight")
+	fd_PoCValidationV2_model_id = md_PoCValidationV2.Fields().ByName("model_id")
 }
 
 var _ protoreflect.Message = (*fastReflection_PoCValidationV2)(nil)
@@ -584,15 +584,15 @@ func (x *fastReflection_PoCValidationV2) Range(f func(protoreflect.FieldDescript
 			return
 		}
 	}
-	if x.ModelId != "" {
-		value := protoreflect.ValueOfString(x.ModelId)
-		if !f(fd_PoCValidationV2_model_id, value) {
-			return
-		}
-	}
 	if x.ValidatedWeight != int64(0) {
 		value := protoreflect.ValueOfInt64(x.ValidatedWeight)
 		if !f(fd_PoCValidationV2_validated_weight, value) {
+			return
+		}
+	}
+	if x.ModelId != "" {
+		value := protoreflect.ValueOfString(x.ModelId)
+		if !f(fd_PoCValidationV2_model_id, value) {
 			return
 		}
 	}
@@ -617,10 +617,10 @@ func (x *fastReflection_PoCValidationV2) Has(fd protoreflect.FieldDescriptor) bo
 		return x.ValidatorParticipantAddress != ""
 	case "inference.inference.PoCValidationV2.poc_stage_start_block_height":
 		return x.PocStageStartBlockHeight != int64(0)
-	case "inference.inference.PoCValidationV2.model_id":
-		return x.ModelId != ""
 	case "inference.inference.PoCValidationV2.validated_weight":
 		return x.ValidatedWeight != int64(0)
+	case "inference.inference.PoCValidationV2.model_id":
+		return x.ModelId != ""
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCValidationV2"))
@@ -643,10 +643,10 @@ func (x *fastReflection_PoCValidationV2) Clear(fd protoreflect.FieldDescriptor) 
 		x.ValidatorParticipantAddress = ""
 	case "inference.inference.PoCValidationV2.poc_stage_start_block_height":
 		x.PocStageStartBlockHeight = int64(0)
-	case "inference.inference.PoCValidationV2.model_id":
-		x.ModelId = ""
 	case "inference.inference.PoCValidationV2.validated_weight":
 		x.ValidatedWeight = int64(0)
+	case "inference.inference.PoCValidationV2.model_id":
+		x.ModelId = ""
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCValidationV2"))
@@ -672,12 +672,12 @@ func (x *fastReflection_PoCValidationV2) Get(descriptor protoreflect.FieldDescri
 	case "inference.inference.PoCValidationV2.poc_stage_start_block_height":
 		value := x.PocStageStartBlockHeight
 		return protoreflect.ValueOfInt64(value)
-	case "inference.inference.PoCValidationV2.model_id":
-		value := x.ModelId
-		return protoreflect.ValueOfString(value)
 	case "inference.inference.PoCValidationV2.validated_weight":
 		value := x.ValidatedWeight
 		return protoreflect.ValueOfInt64(value)
+	case "inference.inference.PoCValidationV2.model_id":
+		value := x.ModelId
+		return protoreflect.ValueOfString(value)
 	default:
 		if descriptor.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCValidationV2"))
@@ -704,10 +704,10 @@ func (x *fastReflection_PoCValidationV2) Set(fd protoreflect.FieldDescriptor, va
 		x.ValidatorParticipantAddress = value.Interface().(string)
 	case "inference.inference.PoCValidationV2.poc_stage_start_block_height":
 		x.PocStageStartBlockHeight = value.Int()
-	case "inference.inference.PoCValidationV2.model_id":
-		x.ModelId = value.Interface().(string)
 	case "inference.inference.PoCValidationV2.validated_weight":
 		x.ValidatedWeight = value.Int()
+	case "inference.inference.PoCValidationV2.model_id":
+		x.ModelId = value.Interface().(string)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCValidationV2"))
@@ -734,10 +734,10 @@ func (x *fastReflection_PoCValidationV2) Mutable(fd protoreflect.FieldDescriptor
 		panic(fmt.Errorf("field validator_participant_address of message inference.inference.PoCValidationV2 is not mutable"))
 	case "inference.inference.PoCValidationV2.poc_stage_start_block_height":
 		panic(fmt.Errorf("field poc_stage_start_block_height of message inference.inference.PoCValidationV2 is not mutable"))
-	case "inference.inference.PoCValidationV2.model_id":
-		panic(fmt.Errorf("field model_id of message inference.inference.PoCValidationV2 is not mutable"))
 	case "inference.inference.PoCValidationV2.validated_weight":
 		panic(fmt.Errorf("field validated_weight of message inference.inference.PoCValidationV2 is not mutable"))
+	case "inference.inference.PoCValidationV2.model_id":
+		panic(fmt.Errorf("field model_id of message inference.inference.PoCValidationV2 is not mutable"))
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCValidationV2"))
@@ -757,10 +757,10 @@ func (x *fastReflection_PoCValidationV2) NewField(fd protoreflect.FieldDescripto
 		return protoreflect.ValueOfString("")
 	case "inference.inference.PoCValidationV2.poc_stage_start_block_height":
 		return protoreflect.ValueOfInt64(int64(0))
-	case "inference.inference.PoCValidationV2.model_id":
-		return protoreflect.ValueOfString("")
 	case "inference.inference.PoCValidationV2.validated_weight":
 		return protoreflect.ValueOfInt64(int64(0))
+	case "inference.inference.PoCValidationV2.model_id":
+		return protoreflect.ValueOfString("")
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCValidationV2"))
@@ -841,12 +841,12 @@ func (x *fastReflection_PoCValidationV2) ProtoMethods() *protoiface.Methods {
 		if x.PocStageStartBlockHeight != 0 {
 			n += 1 + runtime.Sov(uint64(x.PocStageStartBlockHeight))
 		}
+		if x.ValidatedWeight != 0 {
+			n += 1 + runtime.Sov(uint64(x.ValidatedWeight))
+		}
 		l = len(x.ModelId)
 		if l > 0 {
 			n += 1 + l + runtime.Sov(uint64(l))
-		}
-		if x.ValidatedWeight != 0 {
-			n += 1 + runtime.Sov(uint64(x.ValidatedWeight))
 		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
@@ -877,17 +877,17 @@ func (x *fastReflection_PoCValidationV2) ProtoMethods() *protoiface.Methods {
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
 		}
-		if x.ValidatedWeight != 0 {
-			i = runtime.EncodeVarint(dAtA, i, uint64(x.ValidatedWeight))
-			i--
-			dAtA[i] = 0x28
-		}
 		if len(x.ModelId) > 0 {
 			i -= len(x.ModelId)
 			copy(dAtA[i:], x.ModelId)
 			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.ModelId)))
 			i--
-			dAtA[i] = 0x22
+			dAtA[i] = 0x2a
+		}
+		if x.ValidatedWeight != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.ValidatedWeight))
+			i--
+			dAtA[i] = 0x20
 		}
 		if x.PocStageStartBlockHeight != 0 {
 			i = runtime.EncodeVarint(dAtA, i, uint64(x.PocStageStartBlockHeight))
@@ -1041,6 +1041,25 @@ func (x *fastReflection_PoCValidationV2) ProtoMethods() *protoiface.Methods {
 					}
 				}
 			case 4:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field ValidatedWeight", wireType)
+				}
+				x.ValidatedWeight = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.ValidatedWeight |= int64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+			case 5:
 				if wireType != 2 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field ModelId", wireType)
 				}
@@ -1072,25 +1091,6 @@ func (x *fastReflection_PoCValidationV2) ProtoMethods() *protoiface.Methods {
 				}
 				x.ModelId = string(dAtA[iNdEx:postIndex])
 				iNdEx = postIndex
-			case 5:
-				if wireType != 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field ValidatedWeight", wireType)
-				}
-				x.ValidatedWeight = 0
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
-					}
-					if iNdEx >= l {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					x.ValidatedWeight |= int64(b&0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
 			default:
 				iNdEx = preIndex
 				skippy, err := runtime.Skip(dAtA[iNdEx:])
@@ -1129,16 +1129,16 @@ func (x *fastReflection_PoCValidationV2) ProtoMethods() *protoiface.Methods {
 var (
 	md_PoCValidationEntryV2                     protoreflect.MessageDescriptor
 	fd_PoCValidationEntryV2_participant_address protoreflect.FieldDescriptor
-	fd_PoCValidationEntryV2_model_id            protoreflect.FieldDescriptor
 	fd_PoCValidationEntryV2_validated_weight    protoreflect.FieldDescriptor
+	fd_PoCValidationEntryV2_model_id            protoreflect.FieldDescriptor
 )
 
 func init() {
 	file_inference_inference_poc_v2_proto_init()
 	md_PoCValidationEntryV2 = File_inference_inference_poc_v2_proto.Messages().ByName("PoCValidationEntryV2")
 	fd_PoCValidationEntryV2_participant_address = md_PoCValidationEntryV2.Fields().ByName("participant_address")
-	fd_PoCValidationEntryV2_model_id = md_PoCValidationEntryV2.Fields().ByName("model_id")
 	fd_PoCValidationEntryV2_validated_weight = md_PoCValidationEntryV2.Fields().ByName("validated_weight")
+	fd_PoCValidationEntryV2_model_id = md_PoCValidationEntryV2.Fields().ByName("model_id")
 }
 
 var _ protoreflect.Message = (*fastReflection_PoCValidationEntryV2)(nil)
@@ -1212,15 +1212,15 @@ func (x *fastReflection_PoCValidationEntryV2) Range(f func(protoreflect.FieldDes
 			return
 		}
 	}
-	if x.ModelId != "" {
-		value := protoreflect.ValueOfString(x.ModelId)
-		if !f(fd_PoCValidationEntryV2_model_id, value) {
-			return
-		}
-	}
 	if x.ValidatedWeight != int64(0) {
 		value := protoreflect.ValueOfInt64(x.ValidatedWeight)
 		if !f(fd_PoCValidationEntryV2_validated_weight, value) {
+			return
+		}
+	}
+	if x.ModelId != "" {
+		value := protoreflect.ValueOfString(x.ModelId)
+		if !f(fd_PoCValidationEntryV2_model_id, value) {
 			return
 		}
 	}
@@ -1241,10 +1241,10 @@ func (x *fastReflection_PoCValidationEntryV2) Has(fd protoreflect.FieldDescripto
 	switch fd.FullName() {
 	case "inference.inference.PoCValidationEntryV2.participant_address":
 		return x.ParticipantAddress != ""
-	case "inference.inference.PoCValidationEntryV2.model_id":
-		return x.ModelId != ""
 	case "inference.inference.PoCValidationEntryV2.validated_weight":
 		return x.ValidatedWeight != int64(0)
+	case "inference.inference.PoCValidationEntryV2.model_id":
+		return x.ModelId != ""
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCValidationEntryV2"))
@@ -1263,10 +1263,10 @@ func (x *fastReflection_PoCValidationEntryV2) Clear(fd protoreflect.FieldDescrip
 	switch fd.FullName() {
 	case "inference.inference.PoCValidationEntryV2.participant_address":
 		x.ParticipantAddress = ""
-	case "inference.inference.PoCValidationEntryV2.model_id":
-		x.ModelId = ""
 	case "inference.inference.PoCValidationEntryV2.validated_weight":
 		x.ValidatedWeight = int64(0)
+	case "inference.inference.PoCValidationEntryV2.model_id":
+		x.ModelId = ""
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCValidationEntryV2"))
@@ -1286,12 +1286,12 @@ func (x *fastReflection_PoCValidationEntryV2) Get(descriptor protoreflect.FieldD
 	case "inference.inference.PoCValidationEntryV2.participant_address":
 		value := x.ParticipantAddress
 		return protoreflect.ValueOfString(value)
-	case "inference.inference.PoCValidationEntryV2.model_id":
-		value := x.ModelId
-		return protoreflect.ValueOfString(value)
 	case "inference.inference.PoCValidationEntryV2.validated_weight":
 		value := x.ValidatedWeight
 		return protoreflect.ValueOfInt64(value)
+	case "inference.inference.PoCValidationEntryV2.model_id":
+		value := x.ModelId
+		return protoreflect.ValueOfString(value)
 	default:
 		if descriptor.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCValidationEntryV2"))
@@ -1314,10 +1314,10 @@ func (x *fastReflection_PoCValidationEntryV2) Set(fd protoreflect.FieldDescripto
 	switch fd.FullName() {
 	case "inference.inference.PoCValidationEntryV2.participant_address":
 		x.ParticipantAddress = value.Interface().(string)
-	case "inference.inference.PoCValidationEntryV2.model_id":
-		x.ModelId = value.Interface().(string)
 	case "inference.inference.PoCValidationEntryV2.validated_weight":
 		x.ValidatedWeight = value.Int()
+	case "inference.inference.PoCValidationEntryV2.model_id":
+		x.ModelId = value.Interface().(string)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCValidationEntryV2"))
@@ -1340,10 +1340,10 @@ func (x *fastReflection_PoCValidationEntryV2) Mutable(fd protoreflect.FieldDescr
 	switch fd.FullName() {
 	case "inference.inference.PoCValidationEntryV2.participant_address":
 		panic(fmt.Errorf("field participant_address of message inference.inference.PoCValidationEntryV2 is not mutable"))
-	case "inference.inference.PoCValidationEntryV2.model_id":
-		panic(fmt.Errorf("field model_id of message inference.inference.PoCValidationEntryV2 is not mutable"))
 	case "inference.inference.PoCValidationEntryV2.validated_weight":
 		panic(fmt.Errorf("field validated_weight of message inference.inference.PoCValidationEntryV2 is not mutable"))
+	case "inference.inference.PoCValidationEntryV2.model_id":
+		panic(fmt.Errorf("field model_id of message inference.inference.PoCValidationEntryV2 is not mutable"))
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCValidationEntryV2"))
@@ -1359,10 +1359,10 @@ func (x *fastReflection_PoCValidationEntryV2) NewField(fd protoreflect.FieldDesc
 	switch fd.FullName() {
 	case "inference.inference.PoCValidationEntryV2.participant_address":
 		return protoreflect.ValueOfString("")
-	case "inference.inference.PoCValidationEntryV2.model_id":
-		return protoreflect.ValueOfString("")
 	case "inference.inference.PoCValidationEntryV2.validated_weight":
 		return protoreflect.ValueOfInt64(int64(0))
+	case "inference.inference.PoCValidationEntryV2.model_id":
+		return protoreflect.ValueOfString("")
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PoCValidationEntryV2"))
@@ -1436,12 +1436,12 @@ func (x *fastReflection_PoCValidationEntryV2) ProtoMethods() *protoiface.Methods
 		if l > 0 {
 			n += 1 + l + runtime.Sov(uint64(l))
 		}
+		if x.ValidatedWeight != 0 {
+			n += 1 + runtime.Sov(uint64(x.ValidatedWeight))
+		}
 		l = len(x.ModelId)
 		if l > 0 {
 			n += 1 + l + runtime.Sov(uint64(l))
-		}
-		if x.ValidatedWeight != 0 {
-			n += 1 + runtime.Sov(uint64(x.ValidatedWeight))
 		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
@@ -1472,17 +1472,17 @@ func (x *fastReflection_PoCValidationEntryV2) ProtoMethods() *protoiface.Methods
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
 		}
-		if x.ValidatedWeight != 0 {
-			i = runtime.EncodeVarint(dAtA, i, uint64(x.ValidatedWeight))
-			i--
-			dAtA[i] = 0x18
-		}
 		if len(x.ModelId) > 0 {
 			i -= len(x.ModelId)
 			copy(dAtA[i:], x.ModelId)
 			i = runtime.EncodeVarint(dAtA, i, uint64(len(x.ModelId)))
 			i--
-			dAtA[i] = 0x12
+			dAtA[i] = 0x1a
+		}
+		if x.ValidatedWeight != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.ValidatedWeight))
+			i--
+			dAtA[i] = 0x10
 		}
 		if len(x.ParticipantAddress) > 0 {
 			i -= len(x.ParticipantAddress)
@@ -1573,6 +1573,25 @@ func (x *fastReflection_PoCValidationEntryV2) ProtoMethods() *protoiface.Methods
 				x.ParticipantAddress = string(dAtA[iNdEx:postIndex])
 				iNdEx = postIndex
 			case 2:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field ValidatedWeight", wireType)
+				}
+				x.ValidatedWeight = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.ValidatedWeight |= int64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+			case 3:
 				if wireType != 2 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field ModelId", wireType)
 				}
@@ -1604,25 +1623,6 @@ func (x *fastReflection_PoCValidationEntryV2) ProtoMethods() *protoiface.Methods
 				}
 				x.ModelId = string(dAtA[iNdEx:postIndex])
 				iNdEx = postIndex
-			case 3:
-				if wireType != 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field ValidatedWeight", wireType)
-				}
-				x.ValidatedWeight = 0
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
-					}
-					if iNdEx >= l {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					x.ValidatedWeight |= int64(b&0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
 			default:
 				iNdEx = preIndex
 				skippy, err := runtime.Skip(dAtA[iNdEx:])
@@ -4650,8 +4650,8 @@ type PoCValidationV2 struct {
 	ParticipantAddress          string `protobuf:"bytes,1,opt,name=participant_address,json=participantAddress,proto3" json:"participant_address,omitempty"`
 	ValidatorParticipantAddress string `protobuf:"bytes,2,opt,name=validator_participant_address,json=validatorParticipantAddress,proto3" json:"validator_participant_address,omitempty"`
 	PocStageStartBlockHeight    int64  `protobuf:"varint,3,opt,name=poc_stage_start_block_height,json=pocStageStartBlockHeight,proto3" json:"poc_stage_start_block_height,omitempty"`
-	ModelId                     string `protobuf:"bytes,4,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
-	ValidatedWeight             int64  `protobuf:"varint,5,opt,name=validated_weight,json=validatedWeight,proto3" json:"validated_weight,omitempty"`
+	ValidatedWeight             int64  `protobuf:"varint,4,opt,name=validated_weight,json=validatedWeight,proto3" json:"validated_weight,omitempty"`
+	ModelId                     string `protobuf:"bytes,5,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
 }
 
 func (x *PoCValidationV2) Reset() {
@@ -4695,18 +4695,18 @@ func (x *PoCValidationV2) GetPocStageStartBlockHeight() int64 {
 	return 0
 }
 
-func (x *PoCValidationV2) GetModelId() string {
-	if x != nil {
-		return x.ModelId
-	}
-	return ""
-}
-
 func (x *PoCValidationV2) GetValidatedWeight() int64 {
 	if x != nil {
 		return x.ValidatedWeight
 	}
 	return 0
+}
+
+func (x *PoCValidationV2) GetModelId() string {
+	if x != nil {
+		return x.ModelId
+	}
+	return ""
 }
 
 // PoCValidationEntryV2 is the message payload for validation submission.
@@ -4717,8 +4717,8 @@ type PoCValidationEntryV2 struct {
 	unknownFields protoimpl.UnknownFields
 
 	ParticipantAddress string `protobuf:"bytes,1,opt,name=participant_address,json=participantAddress,proto3" json:"participant_address,omitempty"`
-	ModelId            string `protobuf:"bytes,2,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
-	ValidatedWeight    int64  `protobuf:"varint,3,opt,name=validated_weight,json=validatedWeight,proto3" json:"validated_weight,omitempty"`
+	ValidatedWeight    int64  `protobuf:"varint,2,opt,name=validated_weight,json=validatedWeight,proto3" json:"validated_weight,omitempty"`
+	ModelId            string `protobuf:"bytes,3,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
 }
 
 func (x *PoCValidationEntryV2) Reset() {
@@ -4748,18 +4748,18 @@ func (x *PoCValidationEntryV2) GetParticipantAddress() string {
 	return ""
 }
 
-func (x *PoCValidationEntryV2) GetModelId() string {
-	if x != nil {
-		return x.ModelId
-	}
-	return ""
-}
-
 func (x *PoCValidationEntryV2) GetValidatedWeight() int64 {
 	if x != nil {
 		return x.ValidatedWeight
 	}
 	return 0
+}
+
+func (x *PoCValidationEntryV2) GetModelId() string {
+	if x != nil {
+		return x.ModelId
+	}
+	return ""
 }
 
 // MLNodeWeight represents artifact count attributed to a single node.
@@ -5059,20 +5059,20 @@ var file_inference_inference_poc_v2_proto_rawDesc = []byte{
 	0x72, 0x74, 0x5f, 0x62, 0x6c, 0x6f, 0x63, 0x6b, 0x5f, 0x68, 0x65, 0x69, 0x67, 0x68, 0x74, 0x18,
 	0x03, 0x20, 0x01, 0x28, 0x03, 0x52, 0x18, 0x70, 0x6f, 0x63, 0x53, 0x74, 0x61, 0x67, 0x65, 0x53,
 	0x74, 0x61, 0x72, 0x74, 0x42, 0x6c, 0x6f, 0x63, 0x6b, 0x48, 0x65, 0x69, 0x67, 0x68, 0x74, 0x12,
-	0x19, 0x0a, 0x08, 0x6d, 0x6f, 0x64, 0x65, 0x6c, 0x5f, 0x69, 0x64, 0x18, 0x04, 0x20, 0x01, 0x28,
-	0x09, 0x52, 0x07, 0x6d, 0x6f, 0x64, 0x65, 0x6c, 0x49, 0x64, 0x12, 0x29, 0x0a, 0x10, 0x76, 0x61,
-	0x6c, 0x69, 0x64, 0x61, 0x74, 0x65, 0x64, 0x5f, 0x77, 0x65, 0x69, 0x67, 0x68, 0x74, 0x18, 0x05,
-	0x20, 0x01, 0x28, 0x03, 0x52, 0x0f, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x65, 0x64, 0x57,
-	0x65, 0x69, 0x67, 0x68, 0x74, 0x22, 0x8d, 0x01, 0x0a, 0x14, 0x50, 0x6f, 0x43, 0x56, 0x61, 0x6c,
+	0x29, 0x0a, 0x10, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x65, 0x64, 0x5f, 0x77, 0x65, 0x69,
+	0x67, 0x68, 0x74, 0x18, 0x04, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0f, 0x76, 0x61, 0x6c, 0x69, 0x64,
+	0x61, 0x74, 0x65, 0x64, 0x57, 0x65, 0x69, 0x67, 0x68, 0x74, 0x12, 0x19, 0x0a, 0x08, 0x6d, 0x6f,
+	0x64, 0x65, 0x6c, 0x5f, 0x69, 0x64, 0x18, 0x05, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x6d, 0x6f,
+	0x64, 0x65, 0x6c, 0x49, 0x64, 0x22, 0x8d, 0x01, 0x0a, 0x14, 0x50, 0x6f, 0x43, 0x56, 0x61, 0x6c,
 	0x69, 0x64, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x45, 0x6e, 0x74, 0x72, 0x79, 0x56, 0x32, 0x12, 0x2f,
 	0x0a, 0x13, 0x70, 0x61, 0x72, 0x74, 0x69, 0x63, 0x69, 0x70, 0x61, 0x6e, 0x74, 0x5f, 0x61, 0x64,
 	0x64, 0x72, 0x65, 0x73, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x12, 0x70, 0x61, 0x72,
 	0x74, 0x69, 0x63, 0x69, 0x70, 0x61, 0x6e, 0x74, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x12,
-	0x19, 0x0a, 0x08, 0x6d, 0x6f, 0x64, 0x65, 0x6c, 0x5f, 0x69, 0x64, 0x18, 0x02, 0x20, 0x01, 0x28,
-	0x09, 0x52, 0x07, 0x6d, 0x6f, 0x64, 0x65, 0x6c, 0x49, 0x64, 0x12, 0x29, 0x0a, 0x10, 0x76, 0x61,
-	0x6c, 0x69, 0x64, 0x61, 0x74, 0x65, 0x64, 0x5f, 0x77, 0x65, 0x69, 0x67, 0x68, 0x74, 0x18, 0x03,
-	0x20, 0x01, 0x28, 0x03, 0x52, 0x0f, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x65, 0x64, 0x57,
-	0x65, 0x69, 0x67, 0x68, 0x74, 0x22, 0x3f, 0x0a, 0x0c, 0x4d, 0x4c, 0x4e, 0x6f, 0x64, 0x65, 0x57,
+	0x29, 0x0a, 0x10, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x65, 0x64, 0x5f, 0x77, 0x65, 0x69,
+	0x67, 0x68, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x03, 0x52, 0x0f, 0x76, 0x61, 0x6c, 0x69, 0x64,
+	0x61, 0x74, 0x65, 0x64, 0x57, 0x65, 0x69, 0x67, 0x68, 0x74, 0x12, 0x19, 0x0a, 0x08, 0x6d, 0x6f,
+	0x64, 0x65, 0x6c, 0x5f, 0x69, 0x64, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x6d, 0x6f,
+	0x64, 0x65, 0x6c, 0x49, 0x64, 0x22, 0x3f, 0x0a, 0x0c, 0x4d, 0x4c, 0x4e, 0x6f, 0x64, 0x65, 0x57,
 	0x65, 0x69, 0x67, 0x68, 0x74, 0x12, 0x17, 0x0a, 0x07, 0x6e, 0x6f, 0x64, 0x65, 0x5f, 0x69, 0x64,
 	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x6e, 0x6f, 0x64, 0x65, 0x49, 0x64, 0x12, 0x16,
 	0x0a, 0x06, 0x77, 0x65, 0x69, 0x67, 0x68, 0x74, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x06,

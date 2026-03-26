@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net/url"
 	"slices"
 	"sync"
 	"time"
@@ -72,6 +73,10 @@ type participantWork struct {
 	rootHash   []byte
 	attempt    int       // current attempt number (0-based)
 	retryAfter time.Time // don't process before this time
+}
+
+func buildValidationCallbackURL(callbackBase, modelID string) string {
+	return callbackBase + "/v2/poc-batches/" + url.PathEscape(url.PathEscape(modelID))
 }
 
 // absInt32 returns the absolute value of an int32 as int64,
@@ -483,7 +488,7 @@ func (v *OffChainValidator) validateParticipant(
 		"worker", workerID, "participant", work.address, "count", work.count, "attempt", work.attempt)
 
 	// Sample leaf indices using fresh hash (anti-cheat: prevents validators from predicting sample)
-	leafIndices := sampleLeafIndices(v.pubKey, samplingBlockHash, pocHeight, work.count, sampleSize)
+	leafIndices := sampleLeafIndices(v.pubKey, samplingBlockHash, pocHeight, work.modelId, work.count, sampleSize)
 
 	// Fetch and verify proofs
 	verified, err := proofClient.FetchAndVerifyProofs(ctx, work.url, ProofRequest{
@@ -534,10 +539,12 @@ func (v *OffChainValidator) validateParticipant(
 
 	// Send to ML node for statistical validation
 	// IMPORTANT: Use pocStartBlockHash (not samplingBlockHash) to match generation seed
-	validationCallbackUrl := v.callbackUrl + "/v2/poc-batches"
+	validationCallbackUrl := buildValidationCallbackURL(v.callbackUrl, work.modelId)
 	modelConfig, ok := pocParams.GetModelConfig(work.modelId)
 	if !ok {
-		modelConfig = pocParams.GetPrimaryModelConfig()
+		logging.Warn("OffChainValidator: missing model config for validation work", types.PoC,
+			"participant", work.address, "modelId", work.modelId)
+		return validateFailPermanent
 	}
 	validationReq := mlnodeclient.PoCGenerateRequestV2{
 		BlockHash:   pocStartBlockHash, // Must match the hash used during generation
@@ -577,7 +584,7 @@ func (v *OffChainValidator) validateParticipant(
 
 // sampleLeafIndices generates deterministic leaf indices using lazy Fisher-Yates.
 // Important: count comes from on-chain commits and can be very large - must stay O(sampleSize).
-func sampleLeafIndices(validatorPubKey string, blockHash string, blockHeight int64, count uint32, sampleSize int) []uint32 {
+func sampleLeafIndices(validatorPubKey string, blockHash string, blockHeight int64, modelId string, count uint32, sampleSize int) []uint32 {
 	if count == 0 {
 		return nil
 	}
@@ -594,7 +601,7 @@ func sampleLeafIndices(validatorPubKey string, blockHash string, blockHeight int
 		return indices
 	}
 
-	seedInput := fmt.Sprintf("%s:%s:%d", validatorPubKey, blockHash, blockHeight)
+	seedInput := fmt.Sprintf("%s:%s:%d:%s", validatorPubKey, blockHash, blockHeight, modelId)
 	hash := sha256.Sum256([]byte(seedInput))
 	seed := int64(binary.BigEndian.Uint64(hash[:8]))
 

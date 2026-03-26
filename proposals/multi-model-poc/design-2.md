@@ -113,6 +113,35 @@ So the intended pipeline is:
 - whether bootstrap groups need special protection or caps
 - whether a model group can serve inference before it is eligible for consensus weight
 
+## Problems
+
+### Mid-epoch model change
+
+Operator changes a node from model A to B during epoch N. PoC for epoch N+1 starts at the first block of N+1. There is no warm-up window.
+
+That creates a direct conflict:
+- if the node stays on A until the epoch boundary, it cannot load B in time for PoC in N+1
+- if the node switches to B early, it can no longer be trusted as an A node for the rest of epoch N
+
+Skipping all of N+1 is too expensive. It can mean about 24 hours of wasted server rent.
+
+So the intended rule is:
+- operator may redeploy the node to B during epoch N
+- once that happens, the node drops out of current-epoch scheduling under A
+- at the start of N+1, the node participates only if B is already loaded and healthy
+
+This is an operator-risk action. In practice it should happen near the end of the epoch to minimize lost participation time.
+
+### No warm-up window
+
+No warm-up between epochs is critical for confirmation PoC security. Giving nodes extra time to prepare a model before a challenge is a direct attack vector.
+
+A warm-up window is less problematic for regular PoC, but keeping one rule for both paths is simpler and safer:
+- no designated warm-up window
+- no trust in model B until the node is actually serving B and can be challenged
+
+If a node is not ready at epoch start, it misses that cycle. That is operator risk, not a protocol failure.
+
 ## Relationship To `README.md`
 `README.md` already contains the core proposal idea:
 - per-model PoC

@@ -276,7 +276,14 @@ func createIntegrationTestSetup(reconcilialtionConfig *MlNodeReconciliationConfi
 	}, nil)
 	mockChainBridge.On("GetParams").Return(&types.QueryParamsResponse{
 		Params: types.Params{
-			PocParams: types.DefaultPocParams(),
+			PocParams: &types.PocParams{
+				Models: []*types.PoCModelConfig{
+					{
+						ModelId: "test-model",
+						SeqLen:  256,
+					},
+				},
+			},
 		},
 	}, nil)
 

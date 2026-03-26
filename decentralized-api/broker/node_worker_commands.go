@@ -70,12 +70,11 @@ func (c InferenceUpNodeCommand) Execute(ctx context.Context, worker *NodeWorker)
 		if healthy, _ := worker.GetClient().InferenceHealth(ctx); healthy {
 			// Check if loaded model matches expected
 			modelMatches := true
-			var expectedModel string
-			for modelId := range worker.node.State.EpochModels {
-				expectedModel = modelId
-				break
+			expectedModel, ok := resolveSingleModelID(worker.node.State.EpochModels, worker.node.State.EpochMLNodes)
+			if !ok || expectedModel == "" {
+				expectedModel, ok = selectConfiguredModelID(worker.node.Node.Models)
 			}
-			if expectedModel != "" {
+			if ok && expectedModel != "" {
 				if loadedModels, err := worker.GetClient().GetLoadedModels(ctx); err != nil {
 					logging.Debug("GetLoadedModels failed, assuming model match", types.Nodes, "node_id", worker.nodeId, "error", err)
 				} else if len(loadedModels) > 0 && loadedModels[0] != expectedModel {
@@ -119,7 +118,17 @@ func (c InferenceUpNodeCommand) Execute(ctx context.Context, worker *NodeWorker)
 	}
 
 	var selectedModel *types.Model
-	if len(worker.node.State.EpochModels) == 0 {
+	expectedModelID, ok := resolveSingleModelID(worker.node.State.EpochModels, worker.node.State.EpochMLNodes)
+	if !ok || expectedModelID == "" {
+		expectedModelID, ok = selectConfiguredModelID(worker.node.Node.Models)
+	}
+	if ok && expectedModelID != "" {
+		if model, exists := worker.node.State.EpochModels[expectedModelID]; exists {
+			selectedModel = &model
+		}
+	}
+
+	if selectedModel == nil {
 		govModels, err := worker.broker.chainBridge.GetGovernanceModels()
 		if err != nil {
 			result.Succeeded = false
@@ -129,16 +138,7 @@ func (c InferenceUpNodeCommand) Execute(ctx context.Context, worker *NodeWorker)
 			return result
 		}
 
-		hasIntersection := false
-		for _, govModel := range govModels.Model {
-			if _, ok := worker.node.Node.Models[govModel.Id]; ok {
-				hasIntersection = true
-				selectedModel = &govModel
-				break
-			}
-		}
-
-		if !hasIntersection {
+		if !ok || expectedModelID == "" {
 			result.Succeeded = false
 			result.Error = "No epoch models available for this node"
 			result.FinalStatus = types.HardwareNodeStatus_FAILED
@@ -146,12 +146,22 @@ func (c InferenceUpNodeCommand) Execute(ctx context.Context, worker *NodeWorker)
 			return result
 		}
 
-		logging.Info("No epoch models configured for this node, using a governance model from one the supported by the node", types.Nodes, "node_id", worker.nodeId, "selectedModel", selectedModel)
-	} else {
-		for _, m := range worker.node.State.EpochModels {
-			selectedModel = &m
-			break
+		for i := range govModels.Model {
+			if govModels.Model[i].Id == expectedModelID {
+				selectedModel = &govModels.Model[i]
+				break
+			}
 		}
+
+		if selectedModel == nil {
+			result.Succeeded = false
+			result.Error = "No epoch models available for this node"
+			result.FinalStatus = types.HardwareNodeStatus_FAILED
+			logging.Error(result.Error, types.Nodes, "node_id", worker.nodeId)
+			return result
+		}
+
+		logging.Info("No epoch model snapshot configured for this node, using deterministic configured governance model", types.Nodes, "node_id", worker.nodeId, "selectedModel", selectedModel)
 	}
 
 	if selectedModel == nil || selectedModel.Id == "" {

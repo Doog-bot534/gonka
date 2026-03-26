@@ -192,6 +192,15 @@ func (p PoCParamsCache) PrimaryModel() *PoCModelConfigCache {
 	return &p.Models[0]
 }
 
+func (p PoCParamsCache) GetModelConfig(modelID string) (PoCModelConfigCache, bool) {
+	for _, model := range p.Models {
+		if model.ModelId == modelID {
+			return model, true
+		}
+	}
+	return PoCModelConfigCache{}, false
+}
+
 // TransferAgentAccessCache caches the allowed TA addresses for O(1) lookups.
 type TransferAgentAccessCache struct {
 	AllowedAddresses map[string]struct{} // O(1) lookup

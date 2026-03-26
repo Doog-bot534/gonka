@@ -322,7 +322,11 @@ Each handler unpacks entries and persists one record per model-scoped key.
 
 ### 4. PoC generation
 
-Broker reads `PocParams.models`. For each `PoCModelConfig`, dispatches generation only to MLNodes assigned to that model in the current epoch. Each model's artifacts go to a separate local store keyed by `(stage, model_id)` under the stage directory.
+At upcoming epoch creation time, chain creates one empty subgroup for each entry in `PocParams.models`. That makes `SubGroupModels` explicit before PoC starts and avoids the bootstrap case where the upcoming epoch exists but its parent model list is still empty.
+
+Broker resolves a node's PoC model from epoch membership, not from a global primary model. `EpochMLNodes` is the preferred source because it is the explicit per-node assignment in the current epoch subgroup. `EpochModels` is only a narrow fallback when exactly one epoch model snapshot exists for the node but explicit `EpochMLNodes` data is still absent. Local MLNode config may still need a deterministic single-model choice for decentralized-api runtime decisions, but that is not the source of truth for PoC assignment. If assignment is still ambiguous, broker skips PoC scheduling for that node.
+
+For a node with a resolved assignment, broker dispatches generation only to the MLNode serving that assigned model in the current epoch. Each model's artifacts go to a separate local store keyed by `(stage, model_id)` under the stage directory.
 
 Callback identity must include `model_id` so artifact callbacks route to the correct store. The Phase 2 implementation may carry this identity in the callback URL path instead of adding a separate `model_id` field to the callback payload.
 
@@ -330,7 +334,7 @@ Proof requests and proof signatures must bind `model_id`, not just routing and s
 
 ### 5. PoC validation
 
-Direct validation for model X only by MLNodes serving model X. If a validator has no MLNode for model X, it skips model X in phase 1. No cross-model delegation yet.
+Direct validation for model X only by MLNodes serving model X. If a validator has no MLNode for model X, it skips model X in phase 1. No cross-model delegation yet. Validation callback routing uses the same model-scoped callback path contract as generation: `/v2/poc-batches/:model_id/validated`.
 
 Proof requests include `model_id` to route to the correct artifact store.
 
@@ -436,6 +440,8 @@ Exit:
 - all existing unit tests and existing testermint tests pass in CI/CD
 
 ### Phase 3. Model-aware execution
+- Broker resolves per-node PoC generation model from epoch membership, preferring `EpochMLNodes` and using `EpochModels` only as a transition fallback
+- Nodes without explicit epoch assignment are skipped for PoC generation
 - Broker dispatches per-model generation to correct MLNodes
 - Validation work items keyed by `(participant, model)`
 - Validation executors filtered by model membership

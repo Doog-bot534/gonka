@@ -446,6 +446,11 @@ func (am AppModule) EndBlock(ctx context.Context) error {
 			am.LogError("Unable to create epoch group", types.EpochGroup, "error", err.Error())
 			return err
 		}
+		err = am.initializeUpcomingEpochModelGroups(ctx, newGroup)
+		if err != nil {
+			am.LogError("Unable to initialize epoch sub-groups", types.EpochGroup, "error", err.Error())
+			return err
+		}
 
 		am.captureGenerationStartTimestamp(ctx, blockTime, upcomingEpoch.PocStartBlockHeight)
 	}
@@ -487,6 +492,34 @@ func createNewEpoch(prevEpoch types.Epoch, blockHeight int64) *types.Epoch {
 		Index:               getNextEpochIndex(prevEpoch),
 		PocStartBlockHeight: int64(blockHeight),
 	}
+}
+
+func (am AppModule) initializeUpcomingEpochModelGroups(ctx context.Context, parentGroup *epochgroup.EpochGroup) error {
+	if parentGroup == nil {
+		return nil
+	}
+
+	params, err := am.keeper.GetParams(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, modelConfig := range params.PocParams.GetModelConfigs() {
+		if modelConfig == nil || modelConfig.ModelId == "" {
+			continue
+		}
+
+		model, found := am.keeper.GetGovernanceModel(ctx, modelConfig.ModelId)
+		if !found || model == nil {
+			return fmt.Errorf("poc model %q missing from governance models", modelConfig.ModelId)
+		}
+
+		if _, err := parentGroup.CreateSubGroup(ctx, model); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func getNextEpochIndex(prevEpoch types.Epoch) uint64 {
