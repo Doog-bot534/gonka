@@ -176,6 +176,52 @@ else
         }"
 fi
 
+# Subnet proxy routing (dynamic resolution via Docker DNS)
+if [ "${DISABLE_SUBNET_PROXY:-true}" = "false" ]; then
+    echo "   Subnet proxy: Enabled (/subnet/<escrow-id>/...)"
+
+    # Per-escrow routing: /subnet/<escrow-id>/...
+    SUBNET_PROXY_LOCATION="location ~ ^/subnet/([^/]+)/(.*) {
+            set \$\$escrow_id \$\$1;
+            set \$\$subnet_path \$\$2;
+            proxy_pass http://subnetctl-\$\$escrow_id:8080/\$\$subnet_path\$\$is_args\$\$args;
+            proxy_set_header Host \$\$host;
+            proxy_set_header X-Real-IP \$\$remote_addr;
+            proxy_set_header X-Forwarded-For \$\$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$\$scheme;
+
+            ${STREAMING_CONFIG}
+
+            proxy_connect_timeout ${GONKA_API_CONNECT_TIMEOUT}s;
+            proxy_send_timeout ${GONKA_API_TRANSFER_TIMEOUT}s;
+            proxy_read_timeout ${GONKA_API_TRANSFER_TIMEOUT}s;
+        }"
+
+    # Load-balanced pool: /subnet/v1/... auto-discovers via Docker DNS alias "subnet-pool"
+    SUBNET_PROXY_LOCATION="${SUBNET_PROXY_LOCATION}
+
+        location /subnet/v1/ {
+            set \$\$subnet_pool subnet-pool;
+            proxy_pass http://\$\$subnet_pool:8080/v1/;
+            proxy_set_header Host \$\$host;
+            proxy_set_header X-Real-IP \$\$remote_addr;
+            proxy_set_header X-Forwarded-For \$\$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$\$scheme;
+
+            ${STREAMING_CONFIG}
+
+            proxy_connect_timeout ${GONKA_API_CONNECT_TIMEOUT}s;
+            proxy_send_timeout ${GONKA_API_TRANSFER_TIMEOUT}s;
+            proxy_read_timeout ${GONKA_API_TRANSFER_TIMEOUT}s;
+        }"
+    echo "   Subnet pool: Auto-discovery via DNS alias 'subnet-pool' -> /subnet/v1/..."
+
+    export SUBNET_PROXY_LOCATION
+else
+    echo "   Subnet proxy: Disabled"
+    export SUBNET_PROXY_LOCATION="# Subnet proxy not configured"
+fi
+
 # If SSL is intended, ensure certificates are present (attempt issuance if missing)
 if [ "$SSL_ENABLED" = "true" ]; then
     if [ ! -f "/etc/nginx/ssl/cert.pem" ] || [ ! -f "/etc/nginx/ssl/private.key" ]; then
@@ -720,7 +766,7 @@ ENVSUBST_VARS="${ENVSUBST_VARS},\$CHAIN_GRPC_CONNECT_TIMEOUT,\$CHAIN_GRPC_TRANSF
 # Group 6: Rate Limiting Rules
 ENVSUBST_VARS="${ENVSUBST_VARS},\$LIMIT_REQ_RULE_GLOBAL,\$LIMIT_REQ_RULE_GONKA_API"
 ENVSUBST_VARS="${ENVSUBST_VARS},\$LIMIT_REQ_RULE_CHAIN_RPC,\$LIMIT_REQ_RULE_CHAIN_API,\$LIMIT_REQ_RULE_CHAIN_GRPC"
-ENVSUBST_VARS="${ENVSUBST_VARS},\$BLOCKED_ROUTES_CONFIG,\$EXEMPT_ROUTES_CONFIG,\$API_VERSION_LOCATIONS"
+ENVSUBST_VARS="${ENVSUBST_VARS},\$BLOCKED_ROUTES_CONFIG,\$EXEMPT_ROUTES_CONFIG,\$API_VERSION_LOCATIONS,\$SUBNET_PROXY_LOCATION"
 
 echo "Rendering unified nginx configuration (mode: $NGINX_MODE, server_name: $SERVER_NAME)"
 envsubst "$ENVSUBST_VARS" < /etc/nginx/nginx.unified.conf.template | sed 's/\$\$/$/g' > /etc/nginx/nginx.conf
@@ -764,6 +810,10 @@ echo "   /api/*         -> API backend"
 echo "   /chain-rpc/*   -> Chain RPC"
 echo "   /chain-api/*   -> Chain REST API"
 echo "   /chain-grpc/*  -> Chain gRPC"
+if [ "${DISABLE_SUBNET_PROXY:-true}" = "false" ]; then
+    echo "   /subnet/<id>/* -> Subnet proxy (per-escrow)"
+    echo "   /subnet/v1/*   -> Subnet proxy (load-balanced pool)"
+fi
 echo "   /health        -> Health check"
 
 # Execute the command passed to the container
