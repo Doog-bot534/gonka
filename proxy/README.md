@@ -61,6 +61,8 @@ Key runtime environment variables:
 | `DISABLE_CHAIN_RPC` | false | Set to `true` to disable `/chain-rpc/` routes |
 | `DISABLE_CHAIN_API` | false | Set to `true` to disable `/chain-api/` routes |
 | `DISABLE_CHAIN_GRPC` | false | Set to `true` to disable `/chain-grpc/` routes |
+| `DISABLE_VALIDATOR_WHITELIST` | true | **Unset or `true`** keeps participant IP whitelist sync **off** (all clients use per-IP rate limits only). Set to **`false`** to sync participant inference IPs into nginx (separate rate-limit key and log tag `INT` vs `EXT`). |
+| `DISABLE_FAIL2BAN` | true | **Unset or `true`** disables automatic IP banning from access logs. Set to **`false`** to enable scoring (401/403/400 by default) and temporary nginx bans via `geo $is_banned`. Validator IPs are exempt from bans when validator whitelist sync is enabled (`DISABLE_VALIDATOR_WHITELIST=false`). |
 | `CORS_ALLOW_ORIGIN` | * | Allowed Origin for CORS headers. Defaults to wildcard `*`. |
 | `GLOBAL_RATE_LIMIT_RPS` | 1000 | Global "safety net" rate limit (default: 1000). |
 | `GLOBAL_RATE_UNIT` | s | Unit for global limit (`s` or `m`). |

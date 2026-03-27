@@ -435,7 +435,9 @@ fi
 # --------------------------------------------------------------------------------
 # Fail2Ban Configuration (Sidecar)
 # --------------------------------------------------------------------------------
-export ENABLE_FAIL2BAN=${ENABLE_FAIL2BAN:-"true"}
+# Validator nginx whitelist / Fail2Ban: same semantics as DISABLE_CHAIN_* — unset or true = off, false = on.
+export DISABLE_VALIDATOR_WHITELIST=${DISABLE_VALIDATOR_WHITELIST:-true}
+export DISABLE_FAIL2BAN=${DISABLE_FAIL2BAN:-true}
 export FAIL2BAN_BAN_DURATION=${FAIL2BAN_BAN_DURATION:-"10m"}
 # Note: Retries is used as the "Score Threshold" (e.g. 20 points)
 export FAIL2BAN_MAX_RETRIES=${FAIL2BAN_MAX_RETRIES:-20}
@@ -463,7 +465,16 @@ echo "geo \$is_banned { default 0; }" > /etc/nginx/conf.d/blacklist_ips.conf
 chmod 644 /etc/nginx/conf.d/blacklist_ips.conf
 
 # Start sidecar in background with auto-restart logic
-echo "Starting Validator Whitelist Sidecar..."
+if [ "$DISABLE_VALIDATOR_WHITELIST" = "false" ]; then
+    echo "Proxy sidecar: validator IP whitelist sync enabled (DISABLE_VALIDATOR_WHITELIST=false)"
+else
+    echo "Proxy sidecar: validator IP whitelist disabled (default; set DISABLE_VALIDATOR_WHITELIST=false to enable)"
+fi
+if [ "$DISABLE_FAIL2BAN" = "false" ]; then
+    echo "Proxy sidecar: Fail2Ban-style IP banning enabled (DISABLE_FAIL2BAN=false)"
+else
+    echo "Proxy sidecar: Fail2Ban-style IP banning disabled (set DISABLE_FAIL2BAN=false to enable)"
+fi
 (
     while true; do
         /usr/local/bin/sidecar || echo "Sidecar crashed with exit code $?"

@@ -442,9 +442,9 @@ func main() {
 	// Handles requests from both Whitelist Syncer and Fail2Ban
 	GlobalReloadManager = NewReloadManager(5 * time.Second)
 
-	// 0b. Initialize Ban Manager (Fail2Ban)
-	enableFail2Ban := os.Getenv("ENABLE_FAIL2BAN")
-	if enableFail2Ban == "" || enableFail2Ban == "true" {
+	// 0b. Initialize Ban Manager (Fail2Ban-style IP bans from nginx JSON access logs)
+	// Same semantics as DISABLE_CHAIN_*: unset or "true" = off; "false" = on.
+	if !proxyFeatureDisabled("DISABLE_FAIL2BAN") {
 		banDurStr := os.Getenv("FAIL2BAN_BAN_DURATION")
 		if banDurStr == "" {
 			banDurStr = "10m"
@@ -475,7 +475,7 @@ func main() {
 		// Start Log Watcher in background
 		go tailLogs()
 	} else {
-		logSys("Fail2Ban is DISABLED (ENABLE_FAIL2BAN=%s)", enableFail2Ban)
+		logSys("Fail2Ban-style banning is disabled (unset or DISABLE_FAIL2BAN=true; set DISABLE_FAIL2BAN=false to enable).")
 	}
 
 	// Always start Log Rotator (Nginx writes JSON logs regardless of Fail2Ban)
@@ -506,6 +506,11 @@ func main() {
 	}
 	NodeRPCUrl = fmt.Sprintf("http://%s:%s", rpcHost, rpcPort)
 	logSys("Configured Node RPC URL: %s", NodeRPCUrl)
+
+	if !validatorWhitelistEnabled() {
+		logSys("Validator IP whitelist sync disabled (unset or DISABLE_VALIDATOR_WHITELIST=true; set DISABLE_VALIDATOR_WHITELIST=false to enable).")
+		select {}
+	}
 
 	// Initial State
 	state := State{
@@ -925,6 +930,20 @@ func getEnvInt(key string, defaultVal int) int {
 		}
 	}
 	return defaultVal
+}
+
+func validatorWhitelistEnabled() bool {
+	return !proxyFeatureDisabled("DISABLE_VALIDATOR_WHITELIST")
+}
+
+// proxyFeatureDisabled matches entrypoint DISABLE_CHAIN_* behavior: empty or "true" means disabled;
+// only explicit "false" turns the feature on.
+func proxyFeatureDisabled(key string) bool {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return true
+	}
+	return strings.EqualFold(v, "true")
 }
 
 func tailLogs() {
