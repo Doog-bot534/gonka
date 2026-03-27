@@ -13,7 +13,9 @@ func (k Keeper) GetFeeParams(ctx context.Context) types.FeeParams {
 	store := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
 	bz := store.Get(types.FeeParamsKey)
 	if bz == nil {
-		return types.DefaultFeeParams()
+		// Not yet set: return zero values (no fee enforcement).
+		// Production defaults are applied by the v0.2.12 upgrade migration.
+		return types.FeeParams{}
 	}
 	fp, err := types.UnmarshalFeeParams(bz)
 	if err != nil {
