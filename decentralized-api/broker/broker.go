@@ -1080,7 +1080,7 @@ func (b *Broker) reconcile(epochState chainphase.EpochState) {
 		// TODO: we should make reindexing as some indexes might be skipped
 		totalNumNodes := b.curMaxNodesNum.Load() + 1
 		// Create and dispatch the command
-		cmd := b.getCommandForState(id, &node.State, currentPoCParams, pocParamsErr, int(totalNumNodes), epochState.ActiveConfirmationPoCEvent)
+		cmd := b.getCommandForState(id, &node.State, node.Node.Models, currentPoCParams, pocParamsErr, int(totalNumNodes), epochState.ActiveConfirmationPoCEvent)
 		if cmd != nil {
 			logging.Info("Dispatching reconciliation command", types.Nodes,
 				"node_id", id, "target_status", node.State.IntendedStatus, "target_poc_status", node.State.PocIntendedStatus, "blockHeight", blockHeight)
@@ -1170,7 +1170,7 @@ func (b *Broker) enrichWithPocParams(params *pocParams) {
 	}
 }
 
-func (b *Broker) resolvePoCModelForNode(nodeState *NodeState, params *pocParams) (apiconfig.PoCModelConfigCache, bool) {
+func (b *Broker) resolvePoCModelForNode(nodeState *NodeState, nodeModels map[string]ModelArgs, params *pocParams) (apiconfig.PoCModelConfigCache, bool) {
 	if nodeState == nil || params == nil || len(params.models) == 0 {
 		return apiconfig.PoCModelConfigCache{}, false
 	}
@@ -1189,16 +1189,16 @@ func (b *Broker) resolvePoCModelForNode(nodeState *NodeState, params *pocParams)
 		return apiconfig.PoCModelConfigCache{}, false
 	}
 
-	if len(nodeState.EpochModels) == 1 {
-		for modelID := range nodeState.EpochModels {
-			modelConfig, ok := params.models[modelID]
-			if ok {
-				return modelConfig, true
-			}
-		}
+	modelID, ok := selectConfiguredModelID(nodeModels)
+	if !ok {
+		return apiconfig.PoCModelConfigCache{}, false
 	}
 
-	return apiconfig.PoCModelConfigCache{}, false
+	modelConfig, ok := params.models[modelID]
+	if !ok {
+		return apiconfig.PoCModelConfigCache{}, false
+	}
+	return modelConfig, true
 }
 
 func resolveSingleModelID(epochModels map[string]types.Model, epochMLNodes map[string]types.MLNodeInfo) (string, bool) {
@@ -1230,7 +1230,7 @@ func selectConfiguredModelID(nodeModels map[string]ModelArgs) (string, bool) {
 	return modelIDs[0], true
 }
 
-func (b *Broker) getCommandForState(nodeId string, nodeState *NodeState, pocGenParams *pocParams, pocGenErr error, totalNodes int, confirmationEvent *types.ConfirmationPoCEvent) NodeWorkerCommand {
+func (b *Broker) getCommandForState(nodeId string, nodeState *NodeState, nodeModels map[string]ModelArgs, pocGenParams *pocParams, pocGenErr error, totalNodes int, confirmationEvent *types.ConfirmationPoCEvent) NodeWorkerCommand {
 	switch nodeState.IntendedStatus {
 	case types.HardwareNodeStatus_INFERENCE:
 		return InferenceUpNodeCommand{}
@@ -1238,9 +1238,9 @@ func (b *Broker) getCommandForState(nodeId string, nodeState *NodeState, pocGenP
 		switch nodeState.PocIntendedStatus {
 		case PocStatusGenerating:
 			if pocGenParams != nil && pocGenParams.startPoCBlockHeight > 0 {
-				modelConfig, ok := b.resolvePoCModelForNode(nodeState, pocGenParams)
+				modelConfig, ok := b.resolvePoCModelForNode(nodeState, nodeModels, pocGenParams)
 				if !ok {
-					logging.Warn("Skipping PoC scheduling without explicit model assignment", types.PoC, "node_id", nodeId)
+					logging.Warn("Skipping PoC scheduling without resolvable model", types.PoC, "node_id", nodeId)
 					return nil
 				}
 				// Dispatch V1 or V2 based on governance parameter and migration mode

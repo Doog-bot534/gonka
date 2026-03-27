@@ -440,13 +440,14 @@ Exit:
 - all existing unit tests and existing testermint tests pass in CI/CD
 
 ### Phase 3. Model-aware execution
-- Broker resolves per-node PoC generation model from epoch membership, preferring `EpochMLNodes` and using `EpochModels` only as a transition fallback
-- Nodes without explicit epoch assignment are skipped for PoC generation
+- Broker resolves per-node PoC generation model from epoch membership when present, otherwise from deterministic configured model for operational fresh nodes
+- Fresh nodes may generate PoC before subgroup membership exists; this is expected during `0 -> 1` bootstrap and for newly added ML nodes
 - Broker dispatches per-model generation to correct MLNodes
 - Validation work items keyed by `(participant, model)`
-- Validation executors filtered by model membership
+- Validation executors filtered by explicit model membership
 - Slot sampling seed includes `model_id`
 - O(N^2) and slot-based validation both model-aware
+- `TimeslotAllocation[1] == true` keeps a node in broker `INFERENCE` intent during PoC; subgroup membership is authoritative for preserved inference and validation routing, not for fresh-node generation eligibility
 - Remove temporary first-model shortcuts in broker, commit worker, and validation callback wiring
 
 Exit:

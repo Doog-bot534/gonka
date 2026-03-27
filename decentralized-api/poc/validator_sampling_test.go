@@ -3,7 +3,10 @@ package poc
 import (
 	"testing"
 
+	"decentralized-api/broker"
+
 	"github.com/stretchr/testify/assert"
+	"github.com/productscience/inference/x/inference/types"
 )
 
 func TestSampleLeafIndices_ZeroCount(t *testing.T) {
@@ -79,4 +82,85 @@ func TestSampleLeafIndices_LargeCount(t *testing.T) {
 		assert.False(t, seen[idx])
 		seen[idx] = true
 	}
+}
+
+func TestFilterValidationNodesForModel_UsesExplicitMembership(t *testing.T) {
+	nodes := []broker.NodeResponse{
+		{
+			Node: broker.Node{Id: "node-a"},
+			State: broker.NodeState{
+				EpochMLNodes: map[string]types.MLNodeInfo{
+					"model-a": {NodeId: "node-a"},
+				},
+			},
+		},
+		{
+			Node: broker.Node{Id: "node-b"},
+			State: broker.NodeState{
+				EpochMLNodes: map[string]types.MLNodeInfo{
+					"model-b": {NodeId: "node-b"},
+				},
+			},
+		},
+		{
+			Node: broker.Node{Id: "node-c"},
+			State: broker.NodeState{
+				EpochMLNodes: map[string]types.MLNodeInfo{
+					"model-a": {NodeId: "node-c"},
+					"model-b": {NodeId: "node-c"},
+				},
+			},
+		},
+	}
+
+	filtered := filterValidationNodesForModel(nodes, "model-a")
+	if assert.Len(t, filtered, 2) {
+		assert.Equal(t, "node-a", filtered[0].Node.Id)
+		assert.Equal(t, "node-c", filtered[1].Node.Id)
+	}
+}
+
+func TestFilterValidationNodesForModel_UsesConfiguredFallbackWithoutEpochMembership(t *testing.T) {
+	nodes := []broker.NodeResponse{
+		{
+			Node: broker.Node{
+				Id: "node-a",
+				Models: map[string]broker.ModelArgs{
+					"model-a": {},
+				},
+			},
+			State: broker.NodeState{
+				EpochModels: map[string]types.Model{
+					"model-a": {Id: "model-a"},
+				},
+				EpochMLNodes: map[string]types.MLNodeInfo{},
+			},
+		},
+	}
+
+	filtered := filterValidationNodesForModel(nodes, "model-a")
+	if assert.Len(t, filtered, 1) {
+		assert.Equal(t, "node-a", filtered[0].Node.Id)
+	}
+}
+
+func TestFilterValidationNodesForModel_DoesNotUseFallbackWhenExplicitMembershipExists(t *testing.T) {
+	nodes := []broker.NodeResponse{
+		{
+			Node: broker.Node{
+				Id: "node-a",
+				Models: map[string]broker.ModelArgs{
+					"model-a": {},
+				},
+			},
+			State: broker.NodeState{
+				EpochMLNodes: map[string]types.MLNodeInfo{
+					"model-b": {NodeId: "node-a"},
+				},
+			},
+		},
+	}
+
+	filtered := filterValidationNodesForModel(nodes, "model-a")
+	assert.Empty(t, filtered)
 }

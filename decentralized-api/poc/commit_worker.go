@@ -135,11 +135,13 @@ func (w *CommitWorker) tick() {
 	if ShouldHaveDistributedWeights(epochState) && pocHeight > 0 {
 		shouldRetry := w.lastDistributionAttempt.IsZero() ||
 			time.Since(w.lastDistributionAttempt) > distributionRetryInterval
+		pendingDistribution := w.hasPendingWeightDistribution(pocHeight)
 		logging.Debug("CommitWorker: distribution check", types.PoC,
 			"pocHeight", pocHeight,
 			"shouldRetry", shouldRetry,
-			"lastAttemptIsZero", w.lastDistributionAttempt.IsZero())
-		if shouldRetry {
+			"lastAttemptIsZero", w.lastDistributionAttempt.IsZero(),
+			"pendingDistribution", pendingDistribution)
+		if shouldRetry && pendingDistribution {
 			w.submitWeightDistribution(pocHeight)
 		}
 	}
@@ -240,6 +242,9 @@ func (w *CommitWorker) submitWeightDistribution(pocHeight int64) {
 		logging.Debug("CommitWorker: no stores for distribution", types.PoC, "pocHeight", pocHeight)
 		return
 	}
+	defer func() {
+		w.lastDistributionAttempt = time.Now()
+	}()
 
 	queryClient := w.recorder.NewInferenceQueryClient()
 	entries := make([]*types.MLNodeDistributionEntry, 0, len(stageStores))
@@ -310,10 +315,49 @@ func (w *CommitWorker) submitWeightDistribution(pocHeight int64) {
 		return
 	}
 
-	w.lastDistributionAttempt = time.Now()
-
 	logging.Info("CommitWorker: distributed weights", types.PoC,
 		"pocHeight", pocHeight, "models", len(entries), "nodes", totalNodes)
+}
+
+func (w *CommitWorker) hasPendingWeightDistribution(pocHeight int64) bool {
+	if w.participantAddress == "" {
+		return false
+	}
+
+	stageStores, err := w.store.GetStoresForStage(pocHeight)
+	if err != nil || len(stageStores) == 0 {
+		return false
+	}
+
+	queryClient := w.recorder.NewInferenceQueryClient()
+	for _, stageStore := range stageStores {
+		if stageStore.Store == nil {
+			continue
+		}
+
+		commitResp, err := queryClient.PoCV2StoreCommit(context.Background(), &types.QueryPoCV2StoreCommitRequest{
+			PocStageStartBlockHeight: pocHeight,
+			ParticipantAddress:       w.participantAddress,
+			ModelId:                  stageStore.ModelID,
+		})
+		if err != nil {
+			return true
+		}
+		if !commitResp.Found || commitResp.Count == 0 {
+			continue
+		}
+
+		distributionResp, err := queryClient.MLNodeWeightDistribution(context.Background(), &types.QueryMLNodeWeightDistributionRequest{
+			PocStageStartBlockHeight: pocHeight,
+			ParticipantAddress:       w.participantAddress,
+			ModelId:                  stageStore.ModelID,
+		})
+		if err != nil || !distributionResp.Found {
+			return true
+		}
+	}
+
+	return false
 }
 
 func getWeightDistribution(distribution map[string]uint32, targetCount uint32) ([]*types.MLNodeWeight, error) {

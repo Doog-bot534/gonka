@@ -186,18 +186,19 @@ func TestResolvePoCModelForNode_PrefersEpochMLNodes(t *testing.T) {
 		},
 	}
 
-	model, ok := broker.resolvePoCModelForNode(nodeState, params)
+	model, ok := broker.resolvePoCModelForNode(nodeState, map[string]ModelArgs{
+		"model-a": {},
+		"model-b": {},
+	}, params)
 	require.True(t, ok)
 	assert.Equal(t, "model-b", model.ModelId)
 	assert.Equal(t, int64(256), model.SeqLen)
 }
 
-func TestResolvePoCModelForNode_FallsBackToSingleEpochModel(t *testing.T) {
+func TestResolvePoCModelForNode_FallsBackToConfiguredModel(t *testing.T) {
 	broker := NewTestBroker()
 	nodeState := &NodeState{
-		EpochModels: map[string]types.Model{
-			"model-a": {Id: "model-a"},
-		},
+		EpochModels:  map[string]types.Model{},
 		EpochMLNodes: map[string]types.MLNodeInfo{},
 	}
 	params := &pocParams{
@@ -206,18 +207,17 @@ func TestResolvePoCModelForNode_FallsBackToSingleEpochModel(t *testing.T) {
 		},
 	}
 
-	model, ok := broker.resolvePoCModelForNode(nodeState, params)
+	model, ok := broker.resolvePoCModelForNode(nodeState, map[string]ModelArgs{
+		"model-a": {},
+	}, params)
 	require.True(t, ok)
 	assert.Equal(t, "model-a", model.ModelId)
 }
 
-func TestResolvePoCModelForNode_SkipsWithoutExplicitAssignment(t *testing.T) {
+func TestResolvePoCModelForNode_SkipsWithoutResolvableModel(t *testing.T) {
 	broker := NewTestBroker()
 	nodeState := &NodeState{
-		EpochModels: map[string]types.Model{
-			"model-a": {Id: "model-a"},
-			"model-b": {Id: "model-b"},
-		},
+		EpochModels:  map[string]types.Model{},
 		EpochMLNodes: map[string]types.MLNodeInfo{},
 	}
 	params := &pocParams{
@@ -227,7 +227,7 @@ func TestResolvePoCModelForNode_SkipsWithoutExplicitAssignment(t *testing.T) {
 		},
 	}
 
-	_, ok := broker.resolvePoCModelForNode(nodeState, params)
+	_, ok := broker.resolvePoCModelForNode(nodeState, map[string]ModelArgs{}, params)
 	assert.False(t, ok)
 }
 
@@ -241,19 +241,19 @@ func TestSelectConfiguredModelID_SortsKeys(t *testing.T) {
 	assert.Equal(t, "a-model", modelID)
 }
 
-func TestGetCommandForState_SkipsPoCWithoutExplicitAssignment(t *testing.T) {
+func TestGetCommandForState_UsesConfiguredFallbackForGeneration(t *testing.T) {
 	broker := NewTestBroker()
 	nodeState := &NodeState{
 		IntendedStatus:    types.HardwareNodeStatus_POC,
 		PocIntendedStatus: PocStatusGenerating,
-		EpochModels: map[string]types.Model{
-			"model-a": {Id: "model-a"},
-			"model-b": {Id: "model-b"},
-		},
+		EpochModels:  map[string]types.Model{},
 		EpochMLNodes: map[string]types.MLNodeInfo{},
 	}
 
-	cmd := broker.getCommandForState("node-1", nodeState, &pocParams{
+	cmd := broker.getCommandForState("node-1", nodeState, map[string]ModelArgs{
+		"model-a": {},
+		"model-b": {},
+	}, &pocParams{
 		startPoCBlockHeight: 100,
 		startPoCBlockHash:   "hash",
 		models: map[string]apiconfig.PoCModelConfigCache{
@@ -262,7 +262,10 @@ func TestGetCommandForState_SkipsPoCWithoutExplicitAssignment(t *testing.T) {
 		},
 	}, nil, 2, nil)
 
-	assert.Nil(t, cmd)
+	generateCmd, ok := cmd.(StartPoCNodeCommandV2)
+	require.True(t, ok)
+	assert.Equal(t, "model-a", generateCmd.Model)
+	assert.Equal(t, int64(128), generateCmd.SeqLen)
 }
 
 func TestGetCommandForState_UsesNodeAssignedModel(t *testing.T) {
@@ -279,7 +282,10 @@ func TestGetCommandForState_UsesNodeAssignedModel(t *testing.T) {
 		},
 	}
 
-	cmd := broker.getCommandForState("node-1", nodeState, &pocParams{
+	cmd := broker.getCommandForState("node-1", nodeState, map[string]ModelArgs{
+		"model-a": {},
+		"model-b": {},
+	}, &pocParams{
 		startPoCBlockHeight: 100,
 		startPoCBlockHash:   "hash",
 		models: map[string]apiconfig.PoCModelConfigCache{

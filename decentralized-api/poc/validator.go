@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"sort"
 	"net/url"
 	"slices"
 	"sync"
@@ -483,6 +484,12 @@ func (v *OffChainValidator) validateParticipant(
 	sampleSize int,
 ) validateResult {
 	ctx := context.Background()
+	modelNodes := filterValidationNodesForModel(nodes, work.modelId)
+	if len(modelNodes) == 0 {
+		logging.Warn("OffChainValidator: no validation executors for model", types.PoC,
+			"participant", work.address, "modelId", work.modelId)
+		return validateFailRetry
+	}
 
 	logging.Debug("OffChainValidator: validating participant", types.PoC,
 		"worker", workerID, "participant", work.address, "count", work.count, "attempt", work.attempt)
@@ -550,7 +557,7 @@ func (v *OffChainValidator) validateParticipant(
 		BlockHash:   pocStartBlockHash, // Must match the hash used during generation
 		BlockHeight: pocHeight,
 		PublicKey:   work.pubKey,
-		NodeCount:   len(nodes),
+		NodeCount:   len(modelNodes),
 		Nonces:      nonces,
 		Params: mlnodeclient.PoCParamsV2{
 			Model:  modelConfig.ModelId,
@@ -564,7 +571,7 @@ func (v *OffChainValidator) validateParticipant(
 	}
 
 	// Try sending to ML node (single attempt per call - retries handled by queue)
-	node := nodes[*nodeCounter%len(nodes)]
+	node := modelNodes[*nodeCounter%len(modelNodes)]
 	*nodeCounter++
 
 	validationReq.NodeId = int(node.Node.NodeNum)
@@ -812,6 +819,38 @@ func filterNodesForValidation(nodes []broker.NodeResponse, latestEpoch uint64, c
 			"node_id", node.Node.Id, "status", node.State.CurrentStatus.String())
 	}
 	return filtered
+}
+
+func filterValidationNodesForModel(nodes []broker.NodeResponse, modelID string) []broker.NodeResponse {
+	filtered := make([]broker.NodeResponse, 0, len(nodes))
+	for _, node := range nodes {
+		if len(node.State.EpochMLNodes) > 0 {
+			if _, ok := node.State.EpochMLNodes[modelID]; !ok {
+				continue
+			}
+			filtered = append(filtered, node)
+			continue
+		}
+
+		fallbackModelID, ok := selectConfiguredValidationModelID(node.Node.Models)
+		if !ok || fallbackModelID != modelID {
+			continue
+		}
+		filtered = append(filtered, node)
+	}
+	return filtered
+}
+
+func selectConfiguredValidationModelID(nodeModels map[string]broker.ModelArgs) (string, bool) {
+	modelIDs := make([]string, 0, len(nodeModels))
+	for modelID := range nodeModels {
+		modelIDs = append(modelIDs, modelID)
+	}
+	sort.Strings(modelIDs)
+	if len(modelIDs) == 0 {
+		return "", false
+	}
+	return modelIDs[0], true
 }
 
 // reportInvalidParticipant submits a validation result with ValidatedWeight=-1 (invalid) to chain.

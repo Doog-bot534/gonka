@@ -421,6 +421,85 @@ func TestCommitWorker_SubmitWeightDistribution_OneModelAlreadyOnChain(t *testing
 	mockRecorder.AssertExpectations(t)
 }
 
+func TestCommitWorker_HasPendingWeightDistribution(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "commit_worker_test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	store := artifacts.NewManagedArtifactStore(tmpDir, 5)
+	defer store.Close()
+
+	for _, modelID := range []string{"model-a", "model-b"} {
+		artifactStore, err := store.GetOrCreateStore(100, modelID)
+		assert.NoError(t, err)
+		assert.NoError(t, artifactStore.AddWithNode(1, []byte("vec"), "node-"+modelID))
+		assert.NoError(t, artifactStore.Flush())
+	}
+
+	queryClient, cleanup := newCommitWorkerQueryClient(t, &commitWorkerQueryServer{
+		commitCounts: map[string]uint32{
+			"100|participant_addr|model-a": 1,
+			"100|participant_addr|model-b": 1,
+		},
+		distributionOnChain: map[string]bool{
+			"100|participant_addr|model-a": true,
+			"100|participant_addr|model-b": false,
+		},
+	})
+	defer cleanup()
+
+	mockRecorder := &cosmosclient.MockCosmosMessageClient{}
+	mockRecorder.On("NewInferenceQueryClient").Return(queryClient)
+
+	worker := &CommitWorker{
+		store:              store,
+		recorder:           mockRecorder,
+		participantAddress: "participant_addr",
+		lastCommitted:      make(map[commitKey]commitState),
+	}
+
+	assert.True(t, worker.hasPendingWeightDistribution(100))
+	mockRecorder.AssertExpectations(t)
+}
+
+func TestCommitWorker_SubmitWeightDistribution_UpdatesLastAttemptOnNoOp(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "commit_worker_test")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	store := artifacts.NewManagedArtifactStore(tmpDir, 5)
+	defer store.Close()
+
+	artifactStore, err := store.GetOrCreateStore(100, "model-a")
+	assert.NoError(t, err)
+	assert.NoError(t, artifactStore.AddWithNode(1, []byte("vec"), "node-a"))
+	assert.NoError(t, artifactStore.Flush())
+
+	queryClient, cleanup := newCommitWorkerQueryClient(t, &commitWorkerQueryServer{
+		commitCounts: map[string]uint32{
+			"100|participant_addr|model-a": 1,
+		},
+		distributionOnChain: map[string]bool{
+			"100|participant_addr|model-a": true,
+		},
+	})
+	defer cleanup()
+
+	mockRecorder := &cosmosclient.MockCosmosMessageClient{}
+	mockRecorder.On("NewInferenceQueryClient").Return(queryClient)
+
+	worker := &CommitWorker{
+		store:              store,
+		recorder:           mockRecorder,
+		participantAddress: "participant_addr",
+		lastCommitted:      make(map[commitKey]commitState),
+	}
+
+	worker.submitWeightDistribution(100)
+	assert.False(t, worker.lastDistributionAttempt.IsZero())
+	mockRecorder.AssertExpectations(t)
+}
+
 func TestGetWeightDistribution_ExactMatch(t *testing.T) {
 	distribution := map[string]uint32{
 		"node1": 100,
