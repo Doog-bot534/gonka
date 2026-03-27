@@ -12,12 +12,7 @@ jobs:
       run:
         working-directory: ./inference-chain
     steps:
-      - name: Set up Go
-        uses: actions/setup-go@v3.0.0
-        with:
-          go-version: '1.24.2'
-
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
@@ -27,38 +22,23 @@ jobs:
         uses: ignite/cli/actions/release/vars@main
 
       - name: Issue Release Assets
+        uses: ignite/cli/actions/cli@main
         if: ${{ steps.vars.outputs.should_release == 'true' }}
+        with:
+          args: chain build --release --release.prefix ${{ steps.vars.outputs.tarball_prefix }} -t linux:amd64 -t darwin:amd64 -t darwin:arm64 -y
         env:
           DO_NOT_TRACK: 1
-        run: |
-          set -euo pipefail
-          curl -sL https://get.ignite.com/cli@v28.11.2! | bash
-          ignite chain build --release --release.prefix "${{ steps.vars.outputs.tarball_prefix }}" -t linux:amd64 -y
 
-      - name: Package inferenced-linux-amd64.zip
+      - name: Prepare inferenced release asset
+        if: ${{ steps.vars.outputs.should_release == 'true' }}
         run: |
           set -euo pipefail
           rm -rf ../public-html/v2/inferenced/* ../public-html/v2/checksums.txt ../public-html/v2/urls.txt
           mkdir -p ../public-html/v2/inferenced
-
-          T="$(ls -1 ./release/*.tar.gz 2>/dev/null | awk '/linux/ && /amd64/ {print; exit}' || true)"
-          if [ -z "$T" ]; then
-            echo "No linux amd64 tarball found in ./release"
-            ls -la ./release || true
-            exit 1
-          fi
-          TMP_DIR="$(mktemp -d)"
-          tar -xzf "$T" -C "$TMP_DIR"
-
-          OUT_DIR="$(pwd)/../public-html/v2/inferenced"
-          OUT_ZIP="$OUT_DIR/inferenced-linux-amd64.zip"
-          rm -f "$OUT_ZIP"
-          (
-            cd "$TMP_DIR"
-            zip -r -q "$OUT_ZIP" .
-          )
-
-          echo "inferenced-linux-amd64.zip $(sha256sum "$OUT_ZIP" | awk '{print $1}')" >> ../public-html/v2/checksums.txt
+          SRC="$(ls -1 ./release/*linux*amd64*.zip 2>/dev/null | awk 'NR==1{print; exit}')"
+          test -n "$SRC"
+          cp "$SRC" ../public-html/v2/inferenced/inferenced-linux-amd64.zip
+          echo "inferenced-linux-amd64.zip $(sha256sum ../public-html/v2/inferenced/inferenced-linux-amd64.zip | awk '{print $1}')" >> ../public-html/v2/checksums.txt
 
       - name: Build decentralized-api for upgrade
         run: make -C ../decentralized-api build-for-upgrade
@@ -81,7 +61,7 @@ jobs:
           name: Release ${{ github.ref_name }}
           body: |
             Automated release created from main source tag ${{ github.ref_name }}.
-            Build artifacts from the `build-for-upgrade` target.
+            Build artifacts from the release workflow.
           draft: false
           prerelease: false
           files: |
