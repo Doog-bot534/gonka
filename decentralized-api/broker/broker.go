@@ -1189,16 +1189,18 @@ func (b *Broker) resolvePoCModelForNode(nodeState *NodeState, nodeModels map[str
 		return apiconfig.PoCModelConfigCache{}, false
 	}
 
-	modelID, ok := selectConfiguredModelID(nodeModels)
-	if !ok {
-		return apiconfig.PoCModelConfigCache{}, false
+	modelIDs := make([]string, 0, len(nodeModels))
+	for modelID := range nodeModels {
+		modelIDs = append(modelIDs, modelID)
 	}
-
-	modelConfig, ok := params.models[modelID]
-	if !ok {
-		return apiconfig.PoCModelConfigCache{}, false
+	sort.Strings(modelIDs)
+	for _, modelID := range modelIDs {
+		modelConfig, ok := params.models[modelID]
+		if ok {
+			return modelConfig, true
+		}
 	}
-	return modelConfig, true
+	return apiconfig.PoCModelConfigCache{}, false
 }
 
 func resolveSingleModelID(epochModels map[string]types.Model, epochMLNodes map[string]types.MLNodeInfo) (string, bool) {
@@ -1515,7 +1517,7 @@ func (b *Broker) UpdateNodeWithEpochData(epochState *chainphase.EpochState) erro
 		logging.Error("Parent epoch group data is nil", types.Nodes, "epoch_index", epochState.LatestEpoch.EpochIndex, "epoch_poc_start_block_height", epochState.LatestEpoch.PocStartBlockHeight, "epoch_group_data_poc_start_block_height")
 		return nil
 	}
-	if len(parentGroupResp.EpochGroupData.SubGroupModels) == 0 {
+	if len(parentGroupResp.EpochGroupData.SubGroupModels) == 0 || parentGroupResp.EpochGroupData.TotalWeight == 0 {
 		logging.Warn("Parent epoch group SubGroupModels are empty", types.Nodes, "epoch_index", epochState.LatestEpoch.EpochIndex, "epoch_poc_start_block_height", epochState.LatestEpoch.PocStartBlockHeight, "epoch_group_data_poc_start_block_height", parentGroupResp.EpochGroupData.PocStartBlockHeight)
 		return nil
 	}

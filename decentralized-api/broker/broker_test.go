@@ -214,6 +214,27 @@ func TestResolvePoCModelForNode_FallsBackToConfiguredModel(t *testing.T) {
 	assert.Equal(t, "model-a", model.ModelId)
 }
 
+func TestResolvePoCModelForNode_FallsBackToFirstConfiguredModelPresentInParams(t *testing.T) {
+	broker := NewTestBroker()
+	nodeState := &NodeState{
+		EpochModels:  map[string]types.Model{},
+		EpochMLNodes: map[string]types.MLNodeInfo{},
+	}
+	params := &pocParams{
+		models: map[string]apiconfig.PoCModelConfigCache{
+			"model-b": {ModelId: "model-b", SeqLen: 256},
+		},
+	}
+
+	model, ok := broker.resolvePoCModelForNode(nodeState, map[string]ModelArgs{
+		"model-a": {},
+		"model-b": {},
+	}, params)
+	require.True(t, ok)
+	assert.Equal(t, "model-b", model.ModelId)
+	assert.Equal(t, int64(256), model.SeqLen)
+}
+
 func TestResolvePoCModelForNode_SkipsWithoutResolvableModel(t *testing.T) {
 	broker := NewTestBroker()
 	nodeState := &NodeState{
@@ -302,6 +323,8 @@ func TestGetCommandForState_UsesNodeAssignedModel(t *testing.T) {
 
 func TestUpdateNodeWithEpochData_RetriesAfterEmptyParentGroup(t *testing.T) {
 	mockChainBridge := &MockBrokerChainBridge{}
+	broker := newTestBrokerWithChainBridge(mockChainBridge)
+	participantAddress := broker.participantInfo.GetAddress()
 	mockChainBridge.On("GetEpochGroupDataByModelId", uint64(100), "").Return(&types.QueryGetEpochGroupDataResponse{
 		EpochGroupData: types.EpochGroupData{
 			EpochIndex:     100,
@@ -312,16 +335,18 @@ func TestUpdateNodeWithEpochData_RetriesAfterEmptyParentGroup(t *testing.T) {
 		EpochGroupData: types.EpochGroupData{
 			EpochIndex:     100,
 			SubGroupModels: []string{"model-a"},
+			TotalWeight:    10,
 		},
 	}, nil).Once()
 	mockChainBridge.On("GetEpochGroupDataByModelId", uint64(100), "model-a").Return(&types.QueryGetEpochGroupDataResponse{
 		EpochGroupData: types.EpochGroupData{
 			EpochIndex:     100,
 			ModelSnapshot:  &types.Model{Id: "model-a"},
+			TotalWeight:    10,
 			SubGroupModels: nil,
 			ValidationWeights: []*types.ValidationWeight{
 				{
-					MemberAddress: "cosmos1dummyaddress",
+					MemberAddress: participantAddress,
 					MlNodes: []*types.MLNodeInfo{
 						{NodeId: "node-1"},
 					},
@@ -330,7 +355,6 @@ func TestUpdateNodeWithEpochData_RetriesAfterEmptyParentGroup(t *testing.T) {
 		},
 	}, nil).Once()
 
-	broker := newTestBrokerWithChainBridge(mockChainBridge)
 	broker.mu.Lock()
 	broker.nodes["node-1"] = &NodeWithState{
 		Node: Node{
