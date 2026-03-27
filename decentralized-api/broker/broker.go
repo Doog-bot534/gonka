@@ -1203,24 +1203,12 @@ func (b *Broker) resolvePoCModelForNode(nodeState *NodeState, nodeModels map[str
 	return apiconfig.PoCModelConfigCache{}, false
 }
 
-func resolveSingleModelID(epochModels map[string]types.Model, epochMLNodes map[string]types.MLNodeInfo) (string, bool) {
+func ResolveNodeModelID(epochMLNodes map[string]types.MLNodeInfo, nodeModels map[string]ModelArgs) (string, bool) {
 	if len(epochMLNodes) == 1 {
 		for modelID := range epochMLNodes {
 			return modelID, true
 		}
 	}
-	if len(epochMLNodes) > 1 {
-		return "", false
-	}
-	if len(epochModels) == 1 {
-		for modelID := range epochModels {
-			return modelID, true
-		}
-	}
-	return "", false
-}
-
-func selectConfiguredModelID(nodeModels map[string]ModelArgs) (string, bool) {
 	modelIDs := make([]string, 0, len(nodeModels))
 	for modelID := range nodeModels {
 		modelIDs = append(modelIDs, modelID)
@@ -1456,10 +1444,7 @@ func (b *Broker) queryNodeStatus(node Node, state NodeState) (*statusQueryResult
 		}
 		// Model check only if still INFERENCE (healthy)
 		if currentStatus == types.HardwareNodeStatus_INFERENCE {
-			expectedModel, ok := resolveSingleModelID(state.EpochModels, state.EpochMLNodes)
-			if !ok || expectedModel == "" {
-				expectedModel, ok = selectConfiguredModelID(node.Models)
-			}
+			expectedModel, ok := ResolveNodeModelID(state.EpochMLNodes, node.Models)
 			if ok && expectedModel != "" {
 				mctx, mcancel := context.WithTimeout(context.Background(), nodeStatusRequestTimeout)
 				defer mcancel()
@@ -1523,10 +1508,6 @@ func (b *Broker) UpdateNodeWithEpochData(epochState *chainphase.EpochState) erro
 	}
 
 	parentEpochData := parentGroupResp.GetEpochGroupData()
-	allowedModelIDs := make(map[string]struct{}, len(parentEpochData.SubGroupModels))
-	for _, modelID := range parentEpochData.SubGroupModels {
-		allowedModelIDs[modelID] = struct{}{}
-	}
 
 	b.clearNodeEpochData()
 
@@ -1576,7 +1557,7 @@ func (b *Broker) UpdateNodeWithEpochData(epochState *chainphase.EpochState) erro
 	b.mu.RUnlock()
 
 	for _, nodeId := range nodeIds {
-		if err := b.populateNodeWithConfiguredModelForEpoch(nodeId, allowedModelIDs); err != nil {
+		if err := b.populateNodeWithConfiguredModel(nodeId); err != nil {
 			logging.Warn("Failed to populate configured model for node not in epoch", types.Nodes, "node_id", nodeId, "error", err)
 		}
 	}
@@ -1652,10 +1633,6 @@ func (b *Broker) PopulateSingleNodeEpochData(nodeId string) error {
 	}
 
 	parentEpochData := parentGroupResp.GetEpochGroupData()
-	allowedModelIDs := make(map[string]struct{}, len(parentEpochData.SubGroupModels))
-	for _, modelID := range parentEpochData.SubGroupModels {
-		allowedModelIDs[modelID] = struct{}{}
-	}
 	foundInEpoch := false
 
 	// Iterate through each model subgroup to find this node
@@ -1694,7 +1671,7 @@ func (b *Broker) PopulateSingleNodeEpochData(nodeId string) error {
 	// If node not found in epoch data, populate a deterministic configured model
 	if !foundInEpoch {
 		logging.Info("Node not found in current epoch data, populating deterministic configured model", types.Nodes, "node_id", nodeId)
-		if err := b.populateNodeWithConfiguredModelForEpoch(nodeId, allowedModelIDs); err != nil {
+		if err := b.populateNodeWithConfiguredModel(nodeId); err != nil {
 			return err
 		}
 	}
@@ -1702,21 +1679,16 @@ func (b *Broker) PopulateSingleNodeEpochData(nodeId string) error {
 	return nil
 }
 
-func (b *Broker) populateNodeWithConfiguredModelForEpoch(nodeId string, allowedModelIDs map[string]struct{}) error {
+func (b *Broker) populateNodeWithConfiguredModel(nodeId string) error {
 	b.mu.RLock()
 	node, exists := b.nodes[nodeId]
 	if !exists {
 		b.mu.RUnlock()
 		return fmt.Errorf("node not found: %s", nodeId)
 	}
-	selectedModelID, ok := selectConfiguredModelID(node.Node.Models)
+	selectedModelID, ok := ResolveNodeModelID(node.State.EpochMLNodes, node.Node.Models)
 	b.mu.RUnlock()
-	if !ok {
-		return nil
-	}
-
-	if _, allowed := allowedModelIDs[selectedModelID]; !allowed {
-		logging.Info("Configured model is not part of the current epoch sub-groups", types.Nodes, "node_id", nodeId, "model_id", selectedModelID)
+	if !ok || selectedModelID == "" {
 		return nil
 	}
 

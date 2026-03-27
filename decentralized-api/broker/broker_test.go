@@ -252,14 +252,32 @@ func TestResolvePoCModelForNode_SkipsWithoutResolvableModel(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestSelectConfiguredModelID_SortsKeys(t *testing.T) {
-	modelID, ok := selectConfiguredModelID(map[string]ModelArgs{
+func TestResolveNodeModelID_SortsConfigKeys(t *testing.T) {
+	modelID, ok := ResolveNodeModelID(nil, map[string]ModelArgs{
 		"z-model": {},
 		"a-model": {},
 		"m-model": {},
 	})
 	require.True(t, ok)
 	assert.Equal(t, "a-model", modelID)
+}
+
+func TestResolveNodeModelID_PrefersEpochMLNode(t *testing.T) {
+	modelID, ok := ResolveNodeModelID(
+		map[string]types.MLNodeInfo{"model-b": {NodeId: "node-1"}},
+		map[string]ModelArgs{"model-a": {}, "model-b": {}},
+	)
+	require.True(t, ok)
+	assert.Equal(t, "model-b", modelID)
+}
+
+func TestResolveNodeModelID_FallsBackOnMultipleEpochEntries(t *testing.T) {
+	modelID, ok := ResolveNodeModelID(
+		map[string]types.MLNodeInfo{"model-a": {}, "model-b": {}},
+		map[string]ModelArgs{"model-c": {}, "model-d": {}},
+	)
+	require.True(t, ok)
+	assert.Equal(t, "model-c", modelID)
 }
 
 func TestGetCommandForState_UsesConfiguredFallbackForGeneration(t *testing.T) {

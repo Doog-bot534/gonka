@@ -132,6 +132,8 @@ So the intended rule is:
 
 This is an operator-risk action. In practice it should happen near the end of the epoch to minimize lost participation time.
 
+Implementation status: model change handling is not yet implemented or tested. The broker currently resolves a node's model at registration time and does not handle runtime model switches. This needs dedicated review, implementation, and test coverage before multi-model goes to production.
+
 ### No warm-up window
 
 No warm-up between epochs is critical for confirmation PoC security. Giving nodes extra time to prepare a model before a challenge is a direct attack vector.

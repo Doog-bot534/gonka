@@ -70,10 +70,7 @@ func (c InferenceUpNodeCommand) Execute(ctx context.Context, worker *NodeWorker)
 		if healthy, _ := worker.GetClient().InferenceHealth(ctx); healthy {
 			// Check if loaded model matches expected
 			modelMatches := true
-			expectedModel, ok := resolveSingleModelID(worker.node.State.EpochModels, worker.node.State.EpochMLNodes)
-			if !ok || expectedModel == "" {
-				expectedModel, ok = selectConfiguredModelID(worker.node.Node.Models)
-			}
+			expectedModel, ok := ResolveNodeModelID(worker.node.State.EpochMLNodes, worker.node.Node.Models)
 			if ok && expectedModel != "" {
 				if loadedModels, err := worker.GetClient().GetLoadedModels(ctx); err != nil {
 					logging.Debug("GetLoadedModels failed, assuming model match", types.Nodes, "node_id", worker.nodeId, "error", err)
@@ -118,10 +115,7 @@ func (c InferenceUpNodeCommand) Execute(ctx context.Context, worker *NodeWorker)
 	}
 
 	var selectedModel *types.Model
-	expectedModelID, ok := resolveSingleModelID(worker.node.State.EpochModels, worker.node.State.EpochMLNodes)
-	if !ok || expectedModelID == "" {
-		expectedModelID, ok = selectConfiguredModelID(worker.node.Node.Models)
-	}
+	expectedModelID, ok := ResolveNodeModelID(worker.node.State.EpochMLNodes, worker.node.Node.Models)
 	if ok && expectedModelID != "" {
 		if model, exists := worker.node.State.EpochModels[expectedModelID]; exists {
 			selectedModel = &model

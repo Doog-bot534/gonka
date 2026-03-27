@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
-	"sort"
 	"net/url"
 	"slices"
 	"sync"
@@ -825,32 +824,17 @@ func filterValidationNodesForModel(nodes []broker.NodeResponse, modelID string) 
 	filtered := make([]broker.NodeResponse, 0, len(nodes))
 	for _, node := range nodes {
 		if len(node.State.EpochMLNodes) > 0 {
-			if _, ok := node.State.EpochMLNodes[modelID]; !ok {
-				continue
+			if _, ok := node.State.EpochMLNodes[modelID]; ok {
+				filtered = append(filtered, node)
 			}
+			continue
+		}
+		nodeModelID, ok := broker.ResolveNodeModelID(node.State.EpochMLNodes, node.Node.Models)
+		if ok && nodeModelID == modelID {
 			filtered = append(filtered, node)
-			continue
 		}
-
-		fallbackModelID, ok := selectConfiguredValidationModelID(node.Node.Models)
-		if !ok || fallbackModelID != modelID {
-			continue
-		}
-		filtered = append(filtered, node)
 	}
 	return filtered
-}
-
-func selectConfiguredValidationModelID(nodeModels map[string]broker.ModelArgs) (string, bool) {
-	modelIDs := make([]string, 0, len(nodeModels))
-	for modelID := range nodeModels {
-		modelIDs = append(modelIDs, modelID)
-	}
-	sort.Strings(modelIDs)
-	if len(modelIDs) == 0 {
-		return "", false
-	}
-	return modelIDs[0], true
 }
 
 // reportInvalidParticipant submits a validation result with ValidatedWeight=-1 (invalid) to chain.
