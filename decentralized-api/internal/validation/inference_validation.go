@@ -890,6 +890,7 @@ func (s *InferenceValidator) validateWithPayloads(inference types.Inference, inf
 	if isEmptySentinel {
 		logging.Info("Detected empty sentinel response; replaying prompt without enforced tokens to verify executor failure", types.Validation,
 			"inferenceId", inference.InferenceId)
+		delete(requestMap, "enforced_tokens")
 	} else {
 		requestMap["enforced_tokens"] = enforcedTokens
 	}
