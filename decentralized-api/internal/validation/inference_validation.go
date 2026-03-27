@@ -1070,11 +1070,13 @@ func isEmptySentinelTokens(et completionapi.EnforcedTokens) bool {
 
 func hasNonNumericTokens(et completionapi.EnforcedTokens) bool {
 	for _, t := range et.Tokens {
-		if _, err := strconv.Atoi(t.Token); err != nil {
+		n, err := strconv.Atoi(t.Token)
+		if err != nil || n < 0 {
 			return true
 		}
 		for _, topToken := range t.TopTokens {
-			if _, err := strconv.Atoi(topToken); err != nil {
+			n, err := strconv.Atoi(topToken)
+			if err != nil || n < 0 {
 				return true
 			}
 		}
