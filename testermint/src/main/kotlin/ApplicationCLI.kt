@@ -681,6 +681,8 @@ data class ApplicationCLI(
         "60s",
         "--gas",
         "2000000",
+        "--gas-prices",
+        "10ngonka",
         "--gas-adjustment",
         "5.0",
         "--from",

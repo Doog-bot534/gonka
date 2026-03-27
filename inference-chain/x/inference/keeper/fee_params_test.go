@@ -8,11 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFeeParams_DefaultsWhenNotSet(t *testing.T) {
+func TestFeeParams_ZeroWhenNotSet(t *testing.T) {
 	k, ctx := testkeeper.InferenceKeeper(t)
 
+	// When not explicitly set, returns zero values (no fee enforcement).
+	// Production defaults are applied by the v0.2.12 upgrade migration.
 	fp := k.GetFeeParams(ctx)
-	require.Equal(t, types.DefaultFeeParams(), fp)
+	require.Equal(t, types.FeeParams{}, fp)
 }
 
 func TestFeeParams_SetAndGet(t *testing.T) {
