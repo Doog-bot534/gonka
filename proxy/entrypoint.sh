@@ -176,6 +176,36 @@ else
         }"
 fi
 
+# Timeout Configuration (Seconds)
+# Gonka API (Inference/Chat)
+# Connect: 75s (Generous handshake)
+# Transfer: 20m (Long inference)
+export GONKA_API_CONNECT_TIMEOUT=${GONKA_API_CONNECT_TIMEOUT:-75}
+export GONKA_API_TRANSFER_TIMEOUT=${GONKA_API_TRANSFER_TIMEOUT:-1200}
+
+# Chain API/RPC/gRPC
+# Connect: 30s (Standard)
+# Transfer: 2m (Standard)
+export CHAIN_API_CONNECT_TIMEOUT=${CHAIN_API_CONNECT_TIMEOUT:-30}
+export CHAIN_API_TRANSFER_TIMEOUT=${CHAIN_API_TRANSFER_TIMEOUT:-120}
+
+export CHAIN_RPC_CONNECT_TIMEOUT=${CHAIN_RPC_CONNECT_TIMEOUT:-30}
+export CHAIN_RPC_TRANSFER_TIMEOUT=${CHAIN_RPC_TRANSFER_TIMEOUT:-120}
+
+export CHAIN_GRPC_CONNECT_TIMEOUT=${CHAIN_GRPC_CONNECT_TIMEOUT:-30}
+export CHAIN_GRPC_TRANSFER_TIMEOUT=${CHAIN_GRPC_TRANSFER_TIMEOUT:-120}
+
+# Streaming Configuration (Gonka API)
+# Enables real-time token streaming by disabling buffering and enforcing HTTP/1.1
+export STREAMING_CONFIG='
+            # Streaming Support
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+            proxy_buffering off;
+            proxy_request_buffering off;
+            gzip off;'
+
 # Subnet proxy routing (dynamic resolution via Docker DNS)
 if [ "${DISABLE_SUBNET_PROXY:-true}" = "false" ]; then
     echo "   Subnet proxy: Enabled (/subnet/<escrow-id>/...)"
@@ -327,16 +357,6 @@ export CORS_CONFIG="
             add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
             add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;"
 
-# Streaming Configuration (Gonka API)
-# Enables real-time token streaming by disabling buffering and enforcing HTTP/1.1
-export STREAMING_CONFIG='
-            # Streaming Support
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection $connection_upgrade;
-            proxy_buffering off;
-            proxy_request_buffering off;
-            gzip off;'
 
 # Configure DNS resolver for dynamic upstream re-resolution
 if [ -n "${RESOLVER:-}" ]; then
@@ -386,24 +406,6 @@ CHAIN_GRPC_RATE_LIMIT_VAL=${CHAIN_GRPC_RATE_LIMIT_RPS:-20}
 CHAIN_GRPC_RATE_UNIT=${CHAIN_GRPC_RATE_UNIT:-m}
 CHAIN_GRPC_BURST=${CHAIN_GRPC_BURST:-200}
 
-# Timeout Configuration (Seconds)
-# Gonka API (Inference/Chat)
-# Connect: 75s (Generous handshake)
-# Transfer: 20m (Long inference)
-export GONKA_API_CONNECT_TIMEOUT=${GONKA_API_CONNECT_TIMEOUT:-75}
-export GONKA_API_TRANSFER_TIMEOUT=${GONKA_API_TRANSFER_TIMEOUT:-1200}
-
-# Chain API/RPC/gRPC
-# Connect: 30s (Standard)
-# Transfer: 2m (Standard)
-export CHAIN_API_CONNECT_TIMEOUT=${CHAIN_API_CONNECT_TIMEOUT:-30}
-export CHAIN_API_TRANSFER_TIMEOUT=${CHAIN_API_TRANSFER_TIMEOUT:-120}
-
-export CHAIN_RPC_CONNECT_TIMEOUT=${CHAIN_RPC_CONNECT_TIMEOUT:-30}
-export CHAIN_RPC_TRANSFER_TIMEOUT=${CHAIN_RPC_TRANSFER_TIMEOUT:-120}
-
-export CHAIN_GRPC_CONNECT_TIMEOUT=${CHAIN_GRPC_CONNECT_TIMEOUT:-30}
-export CHAIN_GRPC_TRANSFER_TIMEOUT=${CHAIN_GRPC_TRANSFER_TIMEOUT:-120}
 
 echo "Timeouts (Connect/Transfer):"
 echo "   App API: ${GONKA_API_CONNECT_TIMEOUT}s / ${GONKA_API_TRANSFER_TIMEOUT}s"
