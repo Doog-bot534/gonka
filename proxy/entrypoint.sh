@@ -213,8 +213,10 @@ if [ "${DISABLE_SUBNET_PROXY:-true}" = "false" ]; then
     # Load-balanced pool: /subnet/v1/... auto-discovers via Docker DNS alias "subnet-pool"
     # Must come before the regex to avoid /subnet/v1/... matching as escrow_id=v1
     SUBNET_PROXY_LOCATION="location ^~ /subnet/v1/ {
+            set \$\$limit_zone_name SUBNET;
             set \$\$subnet_pool subnet-pool;
-            proxy_pass http://\$\$subnet_pool:8080/v1/;
+            rewrite ^/subnet(/v1/.*)\$\$ \$\$1 break;
+            proxy_pass http://\$\$subnet_pool:8080;
             proxy_set_header Host \$\$host;
             proxy_set_header X-Real-IP \$\$remote_addr;
             proxy_set_header X-Forwarded-For \$\$proxy_add_x_forwarded_for;
