@@ -1,7 +1,7 @@
 services:
   subnetctl:
     container_name: subnetctl-${SUBNET_ESCROW_ID}
-    image: libermans/gonka-subnet-proxy:0.2.11
+    image: libermans/gonka-subnet-proxy:0.2.12
     environment:
       - SUBNET_PRIVATE_KEY=${SUBNET_PRIVATE_KEY}
       - SUBNET_ESCROW_ID=${SUBNET_ESCROW_ID}
@@ -9,16 +9,15 @@ services:
       - SUBNET_MODEL=${SUBNET_MODEL:-Qwen/Qwen2.5-7B-Instruct}
       - SUBNET_PORT=8080
       - SUBNET_STORAGE_PATH=/root/.subnetctl/subnet-${SUBNET_ESCROW_ID}.db
+      - SUBNET_API_KEYS=${SUBNET_API_KEYS:-}
     volumes:
       - .subnetctl-${SUBNET_ESCROW_ID}:/root/.subnetctl
     expose:
       - "8080"
     networks:
-      default:
+      join_default:
         aliases:
           - subnet-pool
-    depends_on:
-      - node
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/v1/status"]
@@ -26,3 +25,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+networks:
+  join_default:
+    external: true

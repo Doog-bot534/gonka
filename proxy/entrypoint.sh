@@ -180,11 +180,11 @@ fi
 if [ "${DISABLE_SUBNET_PROXY:-true}" = "false" ]; then
     echo "   Subnet proxy: Enabled (/subnet/<escrow-id>/...)"
 
-    # Per-escrow routing: /subnet/<escrow-id>/...
-    SUBNET_PROXY_LOCATION="location ~ ^/subnet/([^/]+)/(.*) {
-            set \$\$escrow_id \$\$1;
-            set \$\$subnet_path \$\$2;
-            proxy_pass http://subnetctl-\$\$escrow_id:8080/\$\$subnet_path\$\$is_args\$\$args;
+    # Load-balanced pool: /subnet/v1/... auto-discovers via Docker DNS alias "subnet-pool"
+    # Must come before the regex to avoid /subnet/v1/... matching as escrow_id=v1
+    SUBNET_PROXY_LOCATION="location ^~ /subnet/v1/ {
+            set \$\$subnet_pool subnet-pool;
+            proxy_pass http://\$\$subnet_pool:8080/v1/;
             proxy_set_header Host \$\$host;
             proxy_set_header X-Real-IP \$\$remote_addr;
             proxy_set_header X-Forwarded-For \$\$proxy_add_x_forwarded_for;
@@ -197,12 +197,13 @@ if [ "${DISABLE_SUBNET_PROXY:-true}" = "false" ]; then
             proxy_read_timeout ${GONKA_API_TRANSFER_TIMEOUT}s;
         }"
 
-    # Load-balanced pool: /subnet/v1/... auto-discovers via Docker DNS alias "subnet-pool"
+    # Per-escrow routing: /subnet/<escrow-id>/...
     SUBNET_PROXY_LOCATION="${SUBNET_PROXY_LOCATION}
 
-        location /subnet/v1/ {
-            set \$\$subnet_pool subnet-pool;
-            proxy_pass http://\$\$subnet_pool:8080/v1/;
+        location ~ ^/subnet/([^/]+)/(.*) {
+            set \$\$escrow_id \$\$1;
+            set \$\$subnet_path \$\$2;
+            proxy_pass http://subnetctl-\$\$escrow_id:8080/\$\$subnet_path\$\$is_args\$\$args;
             proxy_set_header Host \$\$host;
             proxy_set_header X-Real-IP \$\$remote_addr;
             proxy_set_header X-Forwarded-For \$\$proxy_add_x_forwarded_for;
