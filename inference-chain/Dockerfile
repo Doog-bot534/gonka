@@ -55,7 +55,7 @@ RUN --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build \
     --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod \
     if [ "$BLST_PORTABLE" = "1" ]; then export CGO_CFLAGS="$CGO_CFLAGS -D__BLST_PORTABLE__"; fi; \
     CGO_ENABLED=1 CC=gcc \
-    go build -mod=readonly -tags="muslc ${TAGS}" -ldflags "${LDFLAGS}" \
+    go build -mod=readonly -tags="muslc pebbledb ${TAGS}" -ldflags "${LDFLAGS}" \
     -o ./build/inferenced \
     ./cmd/inferenced/main.go \
     && patchelf --set-rpath '$ORIGIN:$ORIGIN/current:/root/.inference/cosmovisor/current' ./build/inferenced
