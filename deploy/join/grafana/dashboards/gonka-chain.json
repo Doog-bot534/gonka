@@ -773,7 +773,7 @@
       "fieldConfig": {
         "defaults": {
           "decimals": 3,
-          "unit": "s"
+          "unit": "ms"
         }
       },
       "gridPos": {
