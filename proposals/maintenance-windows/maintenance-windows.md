@@ -49,6 +49,26 @@ The desired system should let participants schedule brief maintenance windows, g
 
 The chain introduces scheduled maintenance reservations keyed by participant and block height range.
 
+Reservation lifecycle is block-driven and materialized on-chain. Reservations transition through the following statuses:
+
+1. Scheduled
+2. Active
+3. Completed
+4. Canceled
+
+The lifecycle transitions are driven by a maintenance state machine in `BeginBlock`:
+
+1. `Scheduled -> Active` when `block_height == start_height`
+2. `Active -> Completed` when `block_height == start_height + duration_blocks`
+
+The equality semantics are important. `BeginBlock` should process only transitions scheduled for the exact current block height. It should not scan for `<= current_height` or any other broader range.
+
+The proposal requires the following performance properties:
+
+1. `BeginBlock` must use exact-height transition lookup, not inequality scans.
+2. `BeginBlock` must not rely on broad iteration over unrelated participant or reservation state.
+3. The lifecycle path must be bounded by the number of transitions scheduled for the exact current height.
+
 When a participant enters an active maintenance window:
 
 1. Consensus liveness accounting is frozen for that participant.
@@ -85,9 +105,16 @@ During an active maintenance window, the participant is still subject to:
 
 ### Rewards and Credit During Maintenance
 
-Under the current proposal, maintenance does not pause rewards or maintenance-credit earning. Participants may continue to receive the rewards they would otherwise receive under the protocol, and successful epoch-based maintenance-credit earning remains in place.
+Maintenance does not pause ordinary reward eligibility. Participants may continue to receive the rewards they would otherwise receive under the protocol.
 
-This is an explicit policy choice and not an implementation accident. It is called out again in Open Issues because it may create incentives to maximize maintenance usage.
+However, maintenance-credit earning is paused for any epoch in which a maintenance window was activated for that participant.
+
+This means:
+
+1. A participant may still claim ordinary rewards for a maintenance-used epoch if otherwise eligible.
+2. A participant does not earn new maintenance credit for that epoch.
+
+This rule ensures that every use of maintenance has a net credit cost and prevents small repeated windows from becoming self-replenishing.
 
 ---
 
@@ -109,8 +136,28 @@ Maintenance windows:
 2. May be canceled before activation.
 3. May not be extended once active.
 4. Are bounded by a governance-controlled maximum duration.
+5. Must not overlap the epoch-critical PoC commit / exchange phase.
+6. Must not overlap the epoch-critical DKG phase.
+7. A participant may have at most one future scheduled maintenance window at a time.
 
 If a participant is already down, marked down, or jailed before the window begins, scheduling maintenance does not repair or alter that status. The maintenance reservation exists, but it does not undo existing protocol state.
+
+### Epoch-Critical Phase Restrictions
+
+The first version explicitly rejects maintenance windows that overlap the following critical ranges:
+
+1. PoC commit / exchange window
+2. DKG phase
+
+The rationale is operational and safety-oriented:
+
+1. A participant in maintenance during the PoC commit window can fail to submit the PoC data required for next-epoch inclusion.
+2. A participant in maintenance during DKG can create next-epoch start failures, because DKG currently has no recovery path.
+
+Suggested scheduling errors:
+
+1. `ErrMaintenanceOverlapsPoCPhase`
+2. `ErrMaintenanceOverlapsDKGPhase`
 
 ---
 
@@ -123,15 +170,17 @@ Participants accumulate maintenance credit over time and spend that credit when 
 This proposal assumes:
 
 1. Credit is capped.
-2. Credit is earned per successful epoch.
+2. Credit is earned per successful epoch, unless maintenance was activated in that epoch.
 3. The earn amount per successful epoch is parameterized.
 4. The maximum stored credit is parameterized.
 
 For this proposal, a successful epoch is defined as an epoch for which the participant would normally receive epoch rewards.
 
-Maintenance credit should be granted in the reward-claim flow for that epoch. In other words, when a participant successfully claims normal epoch rewards, the participant also receives the configured maintenance-credit allotment for that epoch.
+Maintenance credit should be granted in the reward-claim flow for that epoch. In other words, when a participant successfully claims normal epoch rewards, the participant also receives the configured maintenance-credit allotment for that epoch, unless the participant used maintenance in that epoch.
 
 All participants begin with zero maintenance credit when the feature is introduced. No retroactive credit is granted for epochs completed before the feature exists.
+
+The implementation should track whether maintenance was activated for the participant in the relevant epoch and suppress credit accrual accordingly.
 
 ---
 
@@ -220,6 +269,7 @@ Each reservation record should include:
 3. Duration in blocks.
 4. Creator / scheduler identity.
 5. Reservation status.
+6. Optional advisory activation-time warning / violation metadata
 
 Suggested statuses:
 
@@ -228,19 +278,31 @@ Suggested statuses:
 3. Completed
 4. Canceled
 
-### Maintenance Credit Balance
+Reservations should be addressable by a stable primary identifier so they can be updated, queried, and referenced from transition state without ambiguity.
 
-Maintenance credit should be stored on the participant record itself as a field measured in blocks.
+### Maintenance State
 
-This proposal prefers extending the existing participant record over introducing a separate maintenance-credit table.
+Participant maintenance metadata should be stored in a dedicated `MaintenanceState`, keyed by participant address and separate from the hot participant record itself.
+
+`MaintenanceState` should contain at least:
+
+1. Current maintenance credit in blocks
+2. Last epoch in which maintenance was activated for that participant
+3. Reference to the participant's currently active reservation, if any
+4. Reference to the participant's next scheduled reservation, if any
+
+This preserves the main rationale for decoupling maintenance accounting from the participant object while avoiding fragmentation into multiple per-participant maintenance buckets.
+
+The `MaintenanceState` lookup must still use direct keyed Cosmos SDK collections access rather than any iterative access path.
 
 ### Indexing
 
 The implementation should support efficient lookup by:
 
 1. Participant
-2. Current height
-3. Scheduled future windows
+2. Reservation ID
+3. Exact transition block height
+4. Reservation start-time overlap for scheduling checks
 
 This is necessary for both slashing-path checks and query endpoints.
 
@@ -267,6 +329,8 @@ Validation should include:
 5. Participant has enough maintenance credit.
 6. Concurrent-count and concurrent-power caps are satisfied.
 7. Reservation does not overlap another active or scheduled reservation for the same participant.
+8. Reservation does not overlap the restricted PoC commit / exchange window.
+9. Reservation does not overlap the restricted DKG window.
 
 ### `MsgCancelMaintenance`
 
@@ -298,6 +362,7 @@ Recommended queries:
 4. Maintenance status for a participant at the current height.
 5. Concurrent reserved participant count and reserved power at a height.
 6. A scheduling-availability query that answers whether a maintenance window could be scheduled for a proposed participant, start height, and duration.
+7. Reservation warning / advisory status for windows that activated despite violating current caps after a governance change.
 
 The scheduling-availability query is important operationally. Participants should be able to query whether a requested maintenance window is currently schedulable before constructing and broadcasting `MsgScheduleMaintenance`, so they can avoid wasting gas on a request that would be rejected.
 
@@ -340,6 +405,26 @@ This is a possible attack surface or policy edge case, but it is not expected to
 
 The same logic should be exposed through the scheduling-availability query so operators can preflight candidate windows before sending a transaction.
 
+### Activation-Time Advisory Re-Check
+
+The first version should also re-check concurrency caps at activation time in the `BeginBlock` lifecycle transition.
+
+This re-check exists to detect drift between:
+
+1. The caps that existed when the reservation was scheduled
+2. The caps that exist when the reservation activates
+3. The weight of the participant when they schedule vs when they activate the window
+
+This can happen if governance lowers concurrency limits after scheduling.
+
+If the activation-time re-check finds that the reservation would exceed current caps:
+
+1. The reservation should still activate
+2. A warning event should be emitted
+3. The reservation should persist queryable advisory metadata indicating that it activated despite violating current caps at activation time
+
+This preserves operator predictability while still making governance-policy drift visible to monitoring and query clients.
+
 ---
 
 ## Logging and Observability
@@ -353,6 +438,7 @@ The implementation should emit standard structured logs through the existing log
 5. Consensus liveness exemption applied.
 6. Application-layer assignment suppression applied.
 7. Application-layer penalty waiver applied.
+8. Activation-time concurrency advisory warning emitted.
 
 This proposal does not require additional analytics/reporting systems in the first version.
 
@@ -368,6 +454,8 @@ The decisive protocol behavior is:
 
 1. Freeze missed-signature accounting during active maintenance.
 2. Skip downtime-driven jailing/slashing during active maintenance.
+
+The lifecycle transitions that make a reservation active or completed should also run in `BeginBlock`, so that consensus liveness checks and maintenance state are evaluated against the same block-height boundary.
 
 Application-layer changes then mirror that protocol exemption:
 
@@ -385,7 +473,7 @@ The reason is that even if hook logic avoids collateral consequences, the partic
 This feature will require implementation work in at least two places:
 
 1. The maintained Cosmos SDK fork, for protocol-level liveness exemption behavior.
-2. The core inference-chain codebase, for maintenance state, assignment suppression, application-duty exemptions, and credit accounting.
+2. The core inference-chain codebase, for maintenance state, lifecycle transitions, assignment suppression, application-duty exemptions, and credit accounting.
 
 ---
 
@@ -397,11 +485,17 @@ If too many participants are simultaneously in maintenance, the network may lose
 
 ### Policy Risk from Preserved Rewards
 
-If maintenance preserves rewards and credit earning, participants may be incentivized to maximize maintenance usage. This may or may not be acceptable depending on how short the permitted windows are and how much maintenance credit can be accumulated.
+Ordinary rewards remain preserved during maintenance-used epochs. This may still require review, but maintenance-credit accrual is explicitly blocked in maintenance-used epochs to prevent self-replenishing maintenance usage.
 
 ### Complexity in Duty Suspension
 
 Removing participants from new assignment while keeping them in epoch groups is intentionally lighter-weight than structural epoch mutation, but it requires careful handling in assignment code and penalty code.
+
+### BeginBlock Performance Risk
+
+Reservation lifecycle transitions and activation-time checks occur in `BeginBlock`, so the maintenance state layout must support targeted direct lookups and bounded scans over relevant reservations only. No broad iteration over unrelated participant state is acceptable in the critical path.
+
+Scheduling-time overlap checks must also be bounded. The implementation should take advantage of the governance-controlled maximum maintenance-window length so that overlap validation does not devolve into an unbounded full-state scan.
 
 ### Testing and End-to-End Validation Risk
 
@@ -440,15 +534,7 @@ Current direction:
 
 ### 2. Incentive to Maximize Maintenance Usage
 
-Because the current proposal preserves rewards and maintenance-credit earning during maintenance, participants may be incentivized to maximize maintenance usage whenever possible.
-
-This may be partially mitigated if:
-
-1. Maximum single-window duration remains short.
-2. Credit accumulation is bounded.
-3. Concurrent maintenance is tightly capped.
-
-Even so, the incentive question should be treated as an open policy issue and explicitly reviewed before final implementation.
+Because maintenance-credit accrual is now blocked in maintenance-used epochs, the original self-replenishing-credit concern is substantially reduced. Remaining incentive review should focus on whether ordinary rewards during maintenance still create any undesirable edge-case behavior.
 
 ### 3. Subnet Interaction
 
@@ -471,7 +557,6 @@ This proposal adds a practical operational capability that long-epoch networks n
 The remaining unresolved questions are narrow and explicit:
 
 1. How to handle in-flight inferences when maintenance begins.
-2. Whether preserving rewards and credit earning creates unacceptable incentives to maximize maintenance usage.
-3. How maintenance windows should interact with subnet behavior.
+2. How maintenance windows should interact with subnet behavior.
 
 With those issues called out, this proposal is ready for technical review and refinement into an implementation plan.

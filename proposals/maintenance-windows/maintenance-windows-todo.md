@@ -68,22 +68,33 @@ Each task includes:
 - **Dependencies**: None
 
 #### 1.2 Add Maintenance State Types
-- **Task**: [ ] Define maintenance reservation state and participant credit field
+- **Task**: [ ] Define maintenance reservation state and per-participant `MaintenanceState`
 - **What**:
   - Add a `MaintenanceReservation` state type with:
+    - reservation ID
     - participant
     - start height
     - duration
     - created by
     - reservation status
-  - Extend the participant record to hold maintenance credit in blocks
+    - optional advisory activation-time warning / violation metadata
+  - Add a dedicated per-participant `MaintenanceState`, keyed by participant address, containing at least:
+    - maintenance credit in blocks
+    - last epoch in which maintenance was activated
+    - currently active reservation ID, if any
+    - next scheduled reservation ID, if any
+  - Add a dedicated transition schedule keyed by exact block height, storing:
+    - block height
+    - reservation ID
+    - transition type
+  - Add a dedicated scheduling-overlap index keyed by reservation start height
   - Ensure all participants begin with zero credit from feature introduction onward
   - Add validation helpers and enums/status constants as needed
 - **Where**:
   - `inference-chain/proto/inference/inference/*.proto`
   - `inference-chain/x/inference/types/`
-  - `inference-chain/x/inference/keeper/participant*.go`
-- **Why**: The proposal explicitly prefers extending the participant record rather than introducing a separate maintenance-credit table
+  - `inference-chain/x/inference/keeper/`
+- **Why**: The updated proposal now prefers a dedicated maintenance state object, separate from the hot participant object, while avoiding multiple fragmented per-participant maintenance buckets
 - **Dependencies**: 1.1
 
 #### 1.3 Add Governance Parameters
@@ -109,17 +120,46 @@ Each task includes:
 #### 1.4 Add Keeper Storage for Reservations
 - **Task**: [ ] Implement maintenance reservation persistence and indexes
 - **What**:
-  - Add keeper state for reservation CRUD
-  - Add indexes or efficient lookup paths for:
-    - by participant
-    - by current height / active window
-    - by future scheduled windows
+  - Add keeper state for:
+    - reservation primary storage by reservation ID
+    - per-participant `MaintenanceState`
+    - exact-height transition schedule for `BeginBlock` lifecycle execution only
+    - reservation start-height overlap index for scheduling-time range scans only
+  - Use direct keyed Cosmos SDK collections lookups for all primary access paths
+  - Do not rely on broad iteration over reservations or unrelated participant state in `BeginBlock`
+  - Be explicit about the intended storage shape. Target layout:
+    - `Map[reservation_id] -> MaintenanceReservation`
+    - `Map[participant_address] -> MaintenanceState`
+    - `Map[(block_height, reservation_id)] -> transition_type`
+    - `Map[(start_height, reservation_id)] -> reservation_id` or equivalent start-height index entry for bounded overlap checks
   - Keep pruning out of the first implementation, but structure storage so pruning can be added later
 - **Where**:
   - `inference-chain/x/inference/keeper/`
   - `inference-chain/x/inference/types/keys.go` or collections schema files
 - **Why**: Fast lookup is required both in slashing-path checks and in assignment suppression logic
 - **Dependencies**: 1.2
+
+#### 1.5 Add Reservation Lifecycle State Machine
+- **Task**: [ ] Implement reservation lifecycle transitions in `BeginBlock`
+- **What**:
+  - Add a maintenance lifecycle state machine that transitions:
+    - `Scheduled -> Active` when `block_height == start_height`
+    - `Active -> Completed` when `block_height == start_height + duration_blocks`
+  - Ensure lifecycle transitions happen in a deterministic block-driven path
+  - Implement the exact `BeginBlock` access pattern:
+    - one lookup for transition rows at the exact current block height
+    - iterate only the rows returned for that exact height
+    - one direct reservation lookup per returned row
+    - apply transition
+    - update the participant's `MaintenanceState` active/scheduled reservation references as needed
+    - delete consumed transition row
+  - Do not use `<= current_height` scans or any inequality-based reservation search in the critical path
+- **Where**:
+  - `inference-chain/x/inference/module/`
+  - `inference-chain/x/inference/keeper/`
+  - App/module wiring as needed
+- **Why**: The proposal now explicitly requires a block-driven lifecycle owner; status changes cannot be implicit
+- **Dependencies**: 1.4
 
 ### Section 2: Scheduling and Credit Logic
 
@@ -131,10 +171,15 @@ Each task includes:
     - sufficient lead time
     - duration within limits
     - enough maintenance credit
+    - participant has no other future scheduled maintenance window already recorded in `MaintenanceState`
     - no overlap for same participant
     - concurrency limits satisfied at scheduling time
+    - no overlap with restricted PoC commit / exchange phase
+    - no overlap with restricted DKG phase
   - Deduct reserved maintenance credit when the reservation is accepted
   - Persist the reservation in scheduled state
+  - Persist the participant's `next_scheduled_reservation_id`
+  - Add the exact start-height and exact transition-height index entries required for later lookups
 - **Where**:
   - `inference-chain/x/inference/keeper/msg_server*.go`
   - New maintenance-specific keeper files
@@ -162,10 +207,12 @@ Each task includes:
   - Include enough detail to tell the caller why it would fail:
     - insufficient credit
     - lead time failure
+    - participant already has a scheduled maintenance window
     - overlap
     - concurrent participant cap
     - concurrent power cap
   - Use the same scheduling-time concurrency logic as `MsgScheduleMaintenance`
+  - Include epoch-phase conflict answers for PoC commit / exchange and DKG overlap
 - **Where**:
   - `inference-chain/x/inference/keeper/grpc_query*.go`
   - `inference-chain/proto/inference/inference/query.proto`
@@ -178,13 +225,40 @@ Each task includes:
   - Identify the reward-claim path
   - Add maintenance-credit accrual there
   - Use the rule: if the participant would normally receive epoch rewards and successfully claims them, also grant the configured maintenance-credit amount
+  - Do not grant maintenance credit if maintenance was activated for that participant in the claimed epoch
   - Enforce cap
   - Make sure no retroactive credit is minted
 - **Where**:
   - Reward claim / settlement logic under `inference-chain/x/inference/keeper/`
-  - Participant persistence logic
+  - Maintenance credit / maintenance epoch-usage persistence logic
 - **Why**: The proposal resolves credit earning as part of reward claim rather than a separate epoch transition pass
 - **Dependencies**: 1.3
+
+#### 2.5 Mark Maintenance Usage Per Epoch
+- **Task**: [ ] Record maintenance activation usage for the current epoch
+- **What**:
+  - When a reservation transitions to active, mark that the participant used maintenance in that epoch
+  - Ensure the reward-claim path can check this cheaply
+  - Keep the state layout minimal and directly keyed
+- **Where**:
+  - `inference-chain/x/inference/keeper/`
+  - Lifecycle transition path in module begin block
+- **Why**: Credit suppression for maintenance-used epochs depends on a deterministic epoch-usage marker
+- **Dependencies**: 1.5
+
+#### 2.6 Implement Bounded Overlap Search
+- **Task**: [ ] Implement bounded scheduling-overlap lookup
+- **What**:
+  - Use the reservation start-height overlap index, not the `BeginBlock` transition schedule
+  - Use the `max_window_blocks` parameter to bound overlap search
+  - For a candidate interval `[start, end]`, range-scan only reservation start heights in the bounded interval needed to detect overlaps
+  - Confirm actual overlap by reading the referenced reservations and comparing computed end heights
+  - Do not perform an unbounded full-state scan for scheduling checks
+- **Where**:
+  - `inference-chain/x/inference/keeper/`
+  - Scheduling validation and scheduling-availability query paths
+- **Why**: Scheduling is not as latency-sensitive as `BeginBlock`, but overlap checks still need an explicit bounded strategy rather than hand-wavy iteration
+- **Dependencies**: 1.4
 
 ### Section 3: Consensus Liveness Exemption in Cosmos SDK Fork
 
@@ -209,6 +283,7 @@ Each task includes:
   - Decide and implement how the slashing path checks whether a participant is in active maintenance
   - Keep the lookup deterministic and cheap enough for begin-block usage
   - Ensure height-based semantics match the proposal exactly
+  - Ensure the lookup path is direct-key based and does not require iteration
 - **Where**:
   - Maintained Cosmos SDK fork
   - Inference-chain app wiring if interfaces or keeper plumbing are required
@@ -226,6 +301,23 @@ Each task includes:
 - **Why**: The proposal explicitly calls out hooks as defense in depth
 - **Dependencies**: 3.1
 
+#### 3.4 Add Activation-Time Advisory Re-Check
+- **Task**: [ ] Re-check concurrency caps at activation time and persist advisory warnings
+- **What**:
+  - During `Scheduled -> Active` transition, re-check concurrent participant count and power against current params
+  - If current caps would now reject the reservation:
+    - activate anyway
+    - emit warning event/log
+    - persist advisory warning / violation metadata on the reservation for queries
+  - Do not hard-cancel at activation time
+  - Update `MaintenanceState` so the active reservation reference is set even when activation carries an advisory warning
+- **Where**:
+  - `inference-chain/x/inference/module/`
+  - `inference-chain/x/inference/keeper/`
+  - Query/event paths as needed
+- **Why**: The proposal now grandfather-scheduled windows while still surfacing governance drift at activation time
+- **Dependencies**: 1.5
+
 ### Section 4: Inference-Chain Duty Exemptions
 
 #### 4.1 Suppress Random Inference Assignment
@@ -238,6 +330,20 @@ Each task includes:
   - `inference-chain/x/inference/module/`
   - `inference-chain/x/inference/keeper/`
 - **Why**: The proposal requires immediate assignment exclusion without epoch-group removal
+- **Dependencies**: 2.1
+
+#### 4.1a Enforce Epoch-Critical Phase Scheduling Rejections
+- **Task**: [ ] Reject maintenance windows that overlap PoC commit / exchange or DKG phases
+- **What**:
+  - Compute overlap against the current scheduling target epoch(s)
+  - Reject windows overlapping:
+    - PoC commit / exchange window
+    - DKG phase
+  - Introduce explicit scheduling errors for both cases
+- **Where**:
+  - `inference-chain/x/inference/keeper/`
+  - Maintenance scheduling validation logic
+- **Why**: These overlaps can silently break next-epoch participation or next-epoch start safety
 - **Dependencies**: 2.1
 
 #### 4.2 Waive Maintenance-Covered Inference Penalties
@@ -290,6 +396,8 @@ Each task includes:
   - Participant maintenance status
   - Concurrent reserved participant count/power
   - Scheduling availability
+  - Reservation advisory activation-time warning / violation status
+  - Consider whether participant maintenance status should surface the current active reservation ID and next scheduled reservation ID directly from `MaintenanceState`
 - **Where**:
   - `inference-chain/x/inference/keeper/grpc_query*.go`
   - Proto-generated query files
@@ -301,6 +409,7 @@ Each task includes:
 - **What**:
   - Emit logs/events for schedule, cancel, activate, complete
   - Emit logs/events for liveness exemption application and duty suppression
+  - Emit logs/events for activation-time concurrency warnings
   - Use the repo’s standard logging style
 - **Where**:
   - `inference-chain/x/inference/keeper/`
@@ -311,11 +420,12 @@ Each task includes:
 
 ### Section 6: Upgrade and Genesis Handling
 
-#### 6.1 Add Upgrade Path for Participant Credit Field and Params
+#### 6.1 Add Upgrade Path for Maintenance Credit State and Params
 - **Task**: [ ] Add upgrade handling for maintenance feature introduction
 - **What**:
   - Initialize maintenance credit to zero for all existing participants
   - Add new parameters with defaults
+  - Initialize maintenance epoch-usage state as empty
   - Ensure feature introduction is clean for existing chains
 - **Where**:
   - `inference-chain/app/upgrades*.go`
@@ -327,7 +437,7 @@ Each task includes:
 - **Task**: [ ] Verify maintenance state exports and imports cleanly
 - **What**:
   - Add reservation export/import if required
-  - Verify participant credit field is included correctly
+  - Verify `MaintenanceState` is included correctly
   - Confirm no unexpected interaction with existing export/reset logic
 - **Where**:
   - `inference-chain/app/export.go`
@@ -345,8 +455,11 @@ Each task includes:
   - Cancel success/failure cases
   - Credit cap and deduction behavior
   - Reward-claim credit accrual behavior
+  - No credit accrual in maintenance-used epochs
   - Scheduling-availability query correctness
   - Concurrency cap behavior by participant count and power
+  - Reservation advisory warning persistence
+  - Restricted PoC / DKG overlap rejection
 - **Where**:
   - `inference-chain/x/inference/keeper/*test.go`
 - **Why**: Core logic needs strong unit-level confidence before E2E work
@@ -374,6 +487,7 @@ Each task includes:
   - Maintenance inactive: normal liveness enforcement still works
   - Double-sign/evidence paths unaffected
   - Resume behavior after maintenance end
+  - Activation-time advisory warning path does not affect liveness exemption correctness
 - **Where**:
   - Maintained Cosmos SDK fork under `x/slashing/...`
 - **Why**: The most safety-critical change is in the protocol liveness path
@@ -390,6 +504,7 @@ Each task includes:
     - no maintenance-covered penalties
     - normal behavior resumes after maintenance ends
   - Include at least one test touching validation/CPoC expectations
+  - Include coverage that maintenance cannot be scheduled across restricted PoC / DKG phases
 - **Where**:
   - `testermint/`
   - Any orchestration scripts needed to pause participant execution cleanly
