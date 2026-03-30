@@ -305,10 +305,23 @@ func (ma *ModelAssigner) setModelsForParticipants(ctx context.Context, participa
 	for _, p := range participants {
 		ma.LogInfo("Processing participant", types.Allocation, "flow_context", FlowContext, "step", "participant_loop_start", "participant_index", p.Index)
 		hardwareNodes, found := ma.keeper.GetHardwareNodes(ctx, p.Index)
+		// TODO: should we do that? does it makes sense to rely on hardware nodes in general?
+		// Seems like makes pipeline complicated
 		if !found {
-			ma.LogInfo("No hardware nodes found for participant, skipping model assignment.", types.Allocation, "flow_context", FlowContext, "step", "no_hardware_nodes", "participant_index", p.Index)
-			p.Models = make([]string, 0)
-			p.MlNodes = make([]*types.ModelMLNodes, 0)
+			// Hardware not registered yet (e.g. genesis bootstrap race).
+			// Keep per-model assignments from Calculator -- the participant proved
+			// compute for those models. Only initialize TimeslotAllocation.
+			ma.LogInfo("No hardware nodes found, keeping Calculator assignments", types.Allocation,
+				"flow_context", FlowContext, "step", "no_hardware_nodes",
+				"participant_index", p.Index, "models", p.Models)
+			for _, modelNodes := range p.MlNodes {
+				if modelNodes != nil {
+					for _, mlNode := range modelNodes.MlNodes {
+						mlNode.TimeslotAllocation = []bool{true, false}
+					}
+				}
+			}
+			p.Weight = RecalculateWeight(p)
 			continue
 		}
 
