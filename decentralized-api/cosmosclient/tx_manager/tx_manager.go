@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"cosmossdk.io/math"
 	ctypes "github.com/cometbft/cometbft/rpc/core/types"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/tx"
@@ -51,6 +52,15 @@ const (
 	idHeader   = "TX_ID"
 
 	maxBlockTimeDrift = 120 * time.Second
+
+	// MinGasPriceNgonka is the minimum gas price in ngonka, matching the on-chain
+	// FeeParams.MinGasPriceNgonka default. Used for both the single-tx path
+	// (cosmosclient.go WithGasPrices) and the batch-tx path (getSignedBytes).
+	MinGasPriceNgonka = 10
+	// BatchGasLimit is the gas limit for batch transactions. Must not exceed
+	// NetworkDutyFeeBypassDecorator.GasCap (1,000,000) so that fee-exempt
+	// duty transactions are not rejected.
+	BatchGasLimit = 1_000_000
 )
 
 type TxManager interface {
@@ -915,8 +925,7 @@ func (m *manager) getFactory(id string) (*tx.Factory, error) {
 	factory := m.client.TxFactory.
 		WithAccountNumber(accountNumber).
 		WithGasAdjustment(10).
-		WithFees("").
-		WithGasPrices("").
+		WithGasPrices(fmt.Sprintf("%dngonka", MinGasPriceNgonka)).
 		WithGas(0).
 		WithUnordered(true).
 		WithKeybase(*m.GetKeyring())
@@ -936,9 +945,11 @@ func (m *manager) getSignedBytes(id string, unsignedTx client.TxBuilder, factory
 
 	timestamp := getTimestamp(blockTs.UnixNano(), m.defaultTimeout)
 
-	// Gas is not charged, but without a high gas limit the transactions fail
-	unsignedTx.SetGasLimit(10000000000000)
-	unsignedTx.SetFeeAmount(sdk.Coins{})
+	// Fee amount = gas limit × gas price. Network-duty messages (validations,
+	// PoC, inference) are fee-exempt via the bypass decorator, so this fee
+	// will not be charged for exempt messages.
+	unsignedTx.SetGasLimit(BatchGasLimit)
+	unsignedTx.SetFeeAmount(sdk.NewCoins(sdk.NewCoin("ngonka", math.NewInt(BatchGasLimit*MinGasPriceNgonka))))
 	unsignedTx.SetUnordered(true)
 	unsignedTx.SetTimeoutTimestamp(timestamp)
 	name := m.apiAccount.SignerAccount.Name
