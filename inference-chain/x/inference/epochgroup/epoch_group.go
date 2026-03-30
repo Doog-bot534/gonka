@@ -272,11 +272,20 @@ func (eg *EpochGroup) addToModelGroups(ctx context.Context, member EpochMember) 
 			}
 		}
 
-		// Copy only the MLNode array for this specific model
+		// Copy only the MLNode array for this specific model.
+		// Subgroup weight = sum of raw PocWeights for this model (no coefficient).
 		if modelIndex >= 0 && modelIndex < len(member.MlNodes) {
 			subMember.MlNodes = []*types.ModelMLNodes{member.MlNodes[modelIndex]}
+			modelWeight := int64(0)
+			for _, node := range member.MlNodes[modelIndex].MlNodes {
+				if node != nil {
+					modelWeight += node.PocWeight
+				}
+			}
+			subMember.Weight = modelWeight
 		} else {
 			subMember.MlNodes = []*types.ModelMLNodes{}
+			subMember.Weight = 0
 		}
 
 		err = subGroup.AddMember(ctx, subMember)

@@ -413,6 +413,11 @@ func (am AppModule) evaluateConfirmation(
 	var confirmationParticipants []*types.ActiveParticipant
 	if useV2 {
 		confirmationParticipants = am.updateConfirmationWeightsV2(ctx, event, currentValidatorWeights)
+		// Apply model coefficients (same aggregation as main PoC path)
+		coefficients := ModelCoefficients(pocParams)
+		for _, p := range confirmationParticipants {
+			p.Weight = AggregateConsensusWeight(ExtractModelWeights(p), coefficients)
+		}
 	} else {
 		weightScaleFactor := pocParams.GetWeightScaleFactorDec()
 		confirmationParticipants = am.UpdateConfirmationWeightsV1(ctx, event, currentValidatorWeights, weightScaleFactor)

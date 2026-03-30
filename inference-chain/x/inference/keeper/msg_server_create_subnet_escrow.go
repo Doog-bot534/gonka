@@ -64,7 +64,14 @@ func (k msgServer) CreateSubnetEscrow(goCtx context.Context, msg *types.MsgCreat
 	}
 	nextID := counter + 1
 
-	slots := calculations.GetSlotsFromSorted(appHash, fmt.Sprintf("subnet_escrow:%d", nextID), sortedEntries, totalWeight, int(ep.GroupSize))
+	slots := calculations.GetSlotsFromSorted(
+		appHash,
+		fmt.Sprintf("subnet_escrow:%d", nextID),
+		"",
+		sortedEntries,
+		totalWeight,
+		int(ep.GroupSize),
+	)
 
 	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
 	if err != nil {

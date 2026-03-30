@@ -68,6 +68,16 @@ func (e *EpochMLNodeData) Models() []string {
 	return sortedKeys(e.data)
 }
 
+// ForModel returns a single-model view of the data.
+// Threshold calculations use this to avoid comparing weights across models.
+func (e *EpochMLNodeData) ForModel(modelId string) *EpochMLNodeData {
+	view := NewEpochMLNodeData()
+	if modelData, ok := e.data[modelId]; ok {
+		view.data[modelId] = modelData
+	}
+	return view
+}
+
 func sortMLNodesByNodeId(nodes []*types.MLNodeInfo) {
 	slices.SortFunc(nodes, func(a, b *types.MLNodeInfo) int {
 		if a.NodeId < b.NodeId {
@@ -303,8 +313,10 @@ func (ma *ModelAssigner) setModelsForParticipants(ctx context.Context, participa
 		}
 
 		var originalMLNodes []*types.MLNodeInfo
-		if len(p.MlNodes) > 0 && p.MlNodes[0] != nil {
-			originalMLNodes = p.MlNodes[0].MlNodes
+		for _, modelNodes := range p.MlNodes {
+			if modelNodes != nil {
+				originalMLNodes = append(originalMLNodes, modelNodes.MlNodes...)
+			}
 		}
 		ma.LogInfo("Original MLNodes", types.Allocation, "flow_context", FlowContext, "step", "pre_legacy_distribution", "participant_index", p.Index, "ml_nodes", originalMLNodes)
 
@@ -318,9 +330,6 @@ func (ma *ModelAssigner) setModelsForParticipants(ctx context.Context, participa
 				"participant_index", p.Index,
 			)
 			originalMLNodes = dedupedNodes
-			if len(p.MlNodes) > 0 && p.MlNodes[0] != nil {
-				p.MlNodes[0].MlNodes = dedupedNodes
-			}
 		}
 
 		for _, mlNode := range originalMLNodes {
@@ -515,22 +524,6 @@ func filterNodesByThresholds(nodes []*types.MLNodeInfo, participantAddr string, 
 	return filterNodesByWeightAndCount(nodes, threshold, targetCount)
 }
 
-func buildEligibleParticipantSet(currentEpochData *EpochMLNodeData, thresholds thresholdSet) map[string]bool {
-	eligibleParticipantAddrs := make(map[string]bool)
-	for _, modelData := range currentEpochData.data {
-		for participantAddr, nodes := range modelData {
-			if eligibleParticipantAddrs[participantAddr] {
-				continue
-			}
-			filteredNodes := filterNodesByThresholds(nodes, participantAddr, thresholds)
-			if len(filteredNodes) > 0 {
-				eligibleParticipantAddrs[participantAddr] = true
-			}
-		}
-	}
-	return eligibleParticipantAddrs
-}
-
 // filterEligibleMLNodes filters which nodes are eligible for POC_SLOT=true allocation across all models.
 //
 // PURPOSE:
@@ -570,30 +563,30 @@ func (ma *ModelAssigner) filterEligibleMLNodes(
 ) *EpochMLNodeData {
 	allParticipantsHashStr := currentEpochData.GetAllParticipantsHash()
 
-	// Step 1: Calculate all thresholds (75% + 25% rule, IQR outlier detection)
-	thresholds := ma.calculateThresholds(currentEpochData)
-
-	// Step 2: Build set of eligible participants (those with nodes passing weight thresholds)
-	eligibleParticipantAddrs := buildEligibleParticipantSet(currentEpochData, thresholds)
-	for participantAddr, eligible := range eligibleParticipantAddrs {
-		ma.LogInfo("Eligible participant", types.Allocation, "flow_context", FlowContext, "sub_flow_context", SubFlowContext, "step", "eligible_participant", "participant", participantAddr, "eligible", eligible)
-	}
-	ma.LogInfo("Eligible participants", types.Allocation, "flow_context", FlowContext, "sub_flow_context", SubFlowContext, "participant_min_node_weights", thresholds.participantMinNodeWeights, "global_max_node_weight", thresholds.globalMaxNodeWeight)
-
-	// Step 3: Calculate Phase 3 voting constraint (max 34% non-voting weight)
+	// Step 1: Calculate Phase 3 voting constraint (max 34% non-voting weight)
 	maxAllowedNonVotingWeight := decimal.NewFromInt(34).Div(decimal.NewFromInt(100)).Mul(decimal.NewFromInt(totalCappedWeight)).IntPart()
 	totalNonVotingWeight := int64(0)
 	ma.LogInfo("Calculated voting constraint threshold", types.Allocation, "flow_context", FlowContext, "sub_flow_context", SubFlowContext, "step", "calculate_voting_constraint", "max_allowed_non_voting_weight", maxAllowedNonVotingWeight, "total_capped_weight", totalCappedWeight)
 
-	// Step 4: Apply thresholds and sample participants per model
+	// Step 2: Apply thresholds and sample participants per model.
+	// Thresholds are computed per model -- raw PocWeights from different models are not comparable.
 	eligibleNodesData := NewEpochMLNodeData()
 	for _, modelId := range currentEpochData.Models() {
+		modelView := currentEpochData.ForModel(modelId)
+		thresholds := ma.calculateThresholds(modelView)
+		ma.LogInfo("Calculated per-model thresholds", types.Allocation, "flow_context", FlowContext, "sub_flow_context", SubFlowContext,
+			"step", "per_model_thresholds", "model_id", modelId,
+			"participant_min_node_weights", thresholds.participantMinNodeWeights,
+			"global_max_node_weight", thresholds.globalMaxNodeWeight)
+
 		participantNodes := currentEpochData.GetForModel(modelId)
 		sortedParticipantAddrs := sortedKeys(participantNodes)
 
+		// Build eligible set for this model using per-model thresholds
 		var filteredParticipantAddrs []string
 		for _, addr := range sortedParticipantAddrs {
-			if eligibleParticipantAddrs[addr] {
+			nodes := filterNodesByThresholds(participantNodes[addr], addr, thresholds)
+			if len(nodes) > 0 {
 				filteredParticipantAddrs = append(filteredParticipantAddrs, addr)
 			}
 		}

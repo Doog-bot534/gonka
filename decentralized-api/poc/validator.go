@@ -241,7 +241,14 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 	for _, commit := range commitsResp.Commits {
 		// If sampling is enabled, check if we're assigned to validate this participant
 		if validationSlots > 0 && sortedValidatorEntries != nil {
-			assignedValidators := calculations.GetSlotsFromSorted(snapshotAppHash, commit.ParticipantAddress, sortedValidatorEntries, validatorTotalWeight, validationSlots)
+			assignedValidators := calculations.GetSlotsFromSorted(
+				snapshotAppHash,
+				commit.ParticipantAddress,
+				commit.ModelId,
+				sortedValidatorEntries,
+				validatorTotalWeight,
+				validationSlots,
+			)
 			if !slices.Contains(assignedValidators, v.validatorAddress) {
 				skippedNotAssigned++
 				continue

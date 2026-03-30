@@ -34,7 +34,7 @@ func (noopLogger) LogError(string, types.SubSystem, ...interface{}) {}
 func (noopLogger) LogWarn(string, types.SubSystem, ...interface{})  {}
 func (noopLogger) LogDebug(string, types.SubSystem, ...interface{}) {}
 
-func TestWeightCalculator_CalculateParticipantWeight_UsesPerModelWeightScaleFactor(t *testing.T) {
+func TestWeightCalculator_CalculateParticipantWeight_ProducesRawWeights(t *testing.T) {
 	modelAKey := types.PoCParticipantModelKey{
 		ParticipantAddress: testutil.Executor,
 		ModelID:            "model-a",
@@ -95,15 +95,28 @@ func TestWeightCalculator_CalculateParticipantWeight_UsesPerModelWeightScaleFact
 		TimeNormalizationFactor: mathsdk.LegacyOneDec(),
 	}
 
+	// PocWeight is raw (no coefficient) -- both models produce same raw weight
 	modelANodes, modelAWeight := wc.calculateParticipantWeight(modelAKey)
 	modelBNodes, modelBWeight := wc.calculateParticipantWeight(modelBKey)
 
-	require.Equal(t, int64(10), modelAWeight)
-	require.Equal(t, int64(20), modelBWeight)
+	require.Equal(t, int64(10), modelAWeight, "raw weight should not include coefficient")
+	require.Equal(t, int64(10), modelBWeight, "raw weight should not include coefficient")
 	require.Len(t, modelANodes, 1)
 	require.Len(t, modelBNodes, 1)
 	require.Equal(t, int64(10), modelANodes[0].weight)
-	require.Equal(t, int64(20), modelBNodes[0].weight)
+	require.Equal(t, int64(10), modelBNodes[0].weight)
+
+	// Coefficients are applied at aggregation
+	coefficients := ModelCoefficients(wc.PocParams)
+	consensusWeight := AggregateConsensusWeight(
+		[]ModelWeight{
+			{ModelID: "model-a", RawWeight: modelAWeight},
+			{ModelID: "model-b", RawWeight: modelBWeight},
+		},
+		coefficients,
+	)
+	// 1.0*10 + 2.0*10 = 30
+	require.Equal(t, int64(30), consensusWeight)
 }
 
 func TestUpdateConfirmationWeightsV2_UsesPerModelWeightScaleFactor(t *testing.T) {
@@ -208,7 +221,16 @@ func TestUpdateConfirmationWeightsV2_UsesPerModelWeightScaleFactor(t *testing.T)
 
 	require.Len(t, result, 1)
 	require.Equal(t, testutil.Executor, result[0].Index)
-	require.Equal(t, int64(30), result[0].Weight)
+	// Calculator produces raw weights (no coefficient)
+	require.Equal(t, int64(20), result[0].Weight, "raw weight = 10 + 10")
+	// Verify per-model structure
+	require.Equal(t, []string{"model-a", "model-b"}, result[0].Models)
+	require.Len(t, result[0].MlNodes, 2)
+
+	// Aggregation with coefficients produces consensus weight
+	coefficients := ModelCoefficients(params.PocParams)
+	consensusWeight := AggregateConsensusWeight(ExtractModelWeights(result[0]), coefficients)
+	require.Equal(t, int64(30), consensusWeight, "1.0*10 + 2.0*10 = 30")
 }
 
 func newMinimalInferenceKeeper(t *testing.T) (keeper.Keeper, sdk.Context) {

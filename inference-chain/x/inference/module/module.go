@@ -599,6 +599,19 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 	modelAssigner := NewModelAssigner(am.keeper, am.keeper)
 	modelAssigner.setModelsForParticipants(ctx, activeParticipants, *upcomingEpoch)
 
+	// Aggregate per-model raw weights into consensus weight using model coefficients.
+	// This is the ONE place where per-model weights combine.
+	// Participants without model assignment (e.g. no hardware nodes) get weight 0 and are excluded.
+	coefficients := ModelCoefficients(params.PocParams)
+	filtered := make([]*types.ActiveParticipant, 0, len(activeParticipants))
+	for _, p := range activeParticipants {
+		p.Weight = AggregateConsensusWeight(ExtractModelWeights(p), coefficients)
+		if p.Weight > 0 {
+			filtered = append(filtered, p)
+		}
+	}
+	activeParticipants = filtered
+
 	// Adjust weights based on collateral after the grace period. This modifies the weights in-place.
 	if err := am.keeper.AdjustWeightsByCollateral(ctx, activeParticipants); err != nil {
 		am.LogError("onSetNewValidatorsStage: failed to adjust weights by collateral", types.Tokenomics, "error", err)
