@@ -31,22 +31,36 @@ func deterministicHash(seed int64, inferenceID uint64) uint64 {
 	return binary.BigEndian.Uint64(sum[:8])
 }
 
+// uint64ProbabilityScale32 returns floor(numerator * 2^32 / denominator), clamped to [0, 2^32].
+// It represents a rational in [0, 1] at 32-bit fixed-point scale without floating-point.
+// denominator must be non-zero; callers guard that.
+func uint64ProbabilityScale32(numerator, denominator uint64) uint64 {
+	p := (numerator << 32) / denominator
+	const maxP = uint64(1) << 32
+	if p > maxP {
+		return maxP
+	}
+	return p
+}
+
 // ShouldValidate returns true if this validator should validate the given inference.
 // Uses integer math only (no float64) to avoid architecture-dependent state root splits.
-// probability = (rateBasisPoints/10000) * validatorSlotCount / (totalSlots - executorSlotCount)
-// Equivalent to: deterministicHash(seed,id)/2^64 < probability
-// Implemented as: (hash >> 32) < (probability * 2^32) using integer arithmetic.
+//
+// Float reference (not used at runtime):
+//   rate = rateBasisPoints / 10000
+//   probability = rate * validatorSlotCount / (totalSlots - executorSlotCount)
+// Combined (single division):
+//   probability = (rateBasisPoints * validatorSlotCount) / ((totalSlots - executorSlotCount) * 10000)
+//
+// Conceptually: accept iff deterministicHash(seed, id) / 2^64 < probability (uniform draw in [0,1)).
+// Implemented with 32-bit precision: (hash >> 32) < floor(probability * 2^32), using uint64ProbabilityScale32.
 func ShouldValidate(seed int64, inferenceID uint64, validatorSlotCount, executorSlotCount, totalSlots, rateBasisPoints uint32) bool {
 	if totalSlots <= executorSlotCount {
 		return false
 	}
-	denom := uint64(totalSlots - executorSlotCount) * 10000
-	// threshold = (rateBasisPoints * validatorSlotCount * 2^32) / (10000 * (totalSlots - executorSlotCount))
-	threshold := (uint64(rateBasisPoints) * uint64(validatorSlotCount) << 32) / denom
-	const maxThreshold = 1 << 32
-	if threshold > maxThreshold {
-		threshold = maxThreshold
-	}
+	numer := uint64(rateBasisPoints) * uint64(validatorSlotCount)
+	denom := uint64(totalSlots-executorSlotCount) * 10000
+	threshold := uint64ProbabilityScale32(numer, denom)
 	hashInt := deterministicHash(seed, inferenceID)
 	return (hashInt >> 32) < threshold
 }

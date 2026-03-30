@@ -32,6 +32,23 @@ func TestDeriveSeed_TooShort(t *testing.T) {
 	require.ErrorIs(t, err, types.ErrSeedTooShort)
 }
 
+func TestUint64ProbabilityScale32(t *testing.T) {
+	// 5000/10000 = 0.5 -> scale 32 is 2^31
+	half := uint64ProbabilityScale32(5000, 10000)
+	require.Equal(t, uint64(1)<<31, half)
+
+	// 10000/10000 = 1.0 -> clamped to 2^32
+	full := uint64ProbabilityScale32(10000, 10000)
+	require.Equal(t, uint64(1)<<32, full)
+
+	// 0 -> 0
+	require.Equal(t, uint64(0), uint64ProbabilityScale32(0, 1))
+
+	// Oversized ratio: clamp to 2^32 (same as old ShouldValidate cap)
+	clamped := uint64ProbabilityScale32(20000, 10000)
+	require.Equal(t, uint64(1)<<32, clamped)
+}
+
 func TestDeterministicHash_Deterministic(t *testing.T) {
 	a := deterministicHash(42, 100)
 	b := deterministicHash(42, 100)
