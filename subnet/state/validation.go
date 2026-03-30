@@ -43,6 +43,21 @@ func uint64ProbabilityScale32(numerator, denominator uint64) uint64 {
 	return p
 }
 
+// uint32CeilScaledSum32 returns ceil(sumScaled / 2^32), where sumScaled is a sum of
+// terms at 32-bit fixed-point scale (each term from uint64ProbabilityScale32).
+func uint32CeilScaledSum32(sumScaled uint64) uint32 {
+	const scale = uint64(1) << 32
+	return uint32((sumScaled + scale - 1) >> 32)
+}
+
+// penalizePerInferenceScaled32 returns the per-inference contribution at scale 2^32 for
+// unrevealed-seed penalty: floor((rateBasisPoints/10000) * validatorSlotCount / (totalSlots-executorSlots) * 2^32),
+// clamped like uint64ProbabilityScale32. Same as the legacy float
+// (rateBasisPoints/10000) * validatorSlotCount / denom in fixed point.
+func penalizePerInferenceScaled32(rateBasisPoints, validatorSlotCount, totalSlotsMinusExecutor uint64) uint64 {
+	return uint64ProbabilityScale32(rateBasisPoints*validatorSlotCount, 10000*totalSlotsMinusExecutor)
+}
+
 // ShouldValidate returns true if this validator should validate the given inference.
 // Uses integer math only (no float64) to avoid architecture-dependent state root splits.
 //

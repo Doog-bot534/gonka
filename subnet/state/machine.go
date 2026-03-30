@@ -963,8 +963,6 @@ func (sm *StateMachine) penalizeUnrevealedSeeds() {
 		}
 
 		validatorSlotCount := sm.addressToSlotCount[addr]
-		// Scale 2^32: per_inference = (rate * validatorSlotCount * 2^32) / (totalSlots - executorSlotCount)
-		// penaltyValidationRate=10000 -> rate=1, so per_inference = (validatorSlotCount << 32) / denom
 		var probSumScaled uint64
 		for _, infID := range slices.Sorted(maps.Keys(sm.state.Inferences)) {
 			rec := sm.state.Inferences[infID]
@@ -982,17 +980,10 @@ func (sm *StateMachine) penalizeUnrevealedSeeds() {
 				continue
 			}
 			denom := uint64(sm.totalSlots - executorSlotCount)
-			// p = (penaltyValidationRate/10000) * validatorSlotCount / denom, scaled by 2^32
-			pScaled := (uint64(penaltyValidationRate) * uint64(validatorSlotCount) << 32) / (10000 * denom)
-			const maxScaled = 1 << 32
-			if pScaled > maxScaled {
-				pScaled = maxScaled
-			}
-			probSumScaled += pScaled
+			probSumScaled += penalizePerInferenceScaled32(uint64(penaltyValidationRate), uint64(validatorSlotCount), denom)
 		}
 
-		// required = ceil(probSumScaled / 2^32)
-		required := uint32((probSumScaled + (1<<32)-1) >> 32)
+		required := uint32CeilScaledSum32(probSumScaled)
 		for _, slot := range slots {
 			if hs, ok := sm.state.HostStats[slot]; ok {
 				hs.RequiredValidations = required

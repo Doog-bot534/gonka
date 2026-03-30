@@ -1,6 +1,7 @@
 package state
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -47,6 +48,73 @@ func TestUint64ProbabilityScale32(t *testing.T) {
 	// Oversized ratio: clamp to 2^32 (same as old ShouldValidate cap)
 	clamped := uint64ProbabilityScale32(20000, 10000)
 	require.Equal(t, uint64(1)<<32, clamped)
+}
+
+func TestUint32CeilScaledSum32(t *testing.T) {
+	cases := []struct {
+		sum  uint64
+		want uint32
+	}{
+		{0, 0},
+		{1, 1},
+		{1<<32 - 1, 1},
+		{1 << 32, 1},
+		{1<<32 + 1, 2},
+		{(1 << 32) * 5, 5},
+	}
+	for _, tc := range cases {
+		require.Equal(t, tc.want, uint32CeilScaledSum32(tc.sum), "sum=%d", tc.sum)
+	}
+}
+
+// legacyPenalizeRequiredFloat matches pre-#893 penalizeUnrevealedSeeds: per-term
+// probability capped at 1.0, then sum, then math.Ceil (test reference only).
+func legacyPenalizeRequiredFloat(contributions []struct{ v, d uint64 }) uint32 {
+	rate := float64(penaltyValidationRate) / 10000.0
+	var probSum float64
+	for _, c := range contributions {
+		p := rate * float64(c.v) / float64(c.d)
+		if p > 1.0 {
+			p = 1.0
+		}
+		probSum += p
+	}
+	return uint32(math.Ceil(probSum))
+}
+
+func penalizeRequiredFromScaledTerms(contributions []struct{ v, d uint64 }) uint32 {
+	var sumScaled uint64
+	for _, c := range contributions {
+		sumScaled += penalizePerInferenceScaled32(uint64(penaltyValidationRate), c.v, c.d)
+	}
+	return uint32CeilScaledSum32(sumScaled)
+}
+
+func TestPenalizePerInferenceMatchesLegacyFloatReference(t *testing.T) {
+	// Single-inference cases: integer fixed-point path matches legacy float + Ceil.
+	for d := uint64(1); d <= 64; d++ {
+		for v := uint64(0); v <= 64; v++ {
+			cs := []struct{ v, d uint64 }{{v: v, d: d}}
+			leg := legacyPenalizeRequiredFloat(cs)
+			got := penalizeRequiredFromScaledTerms(cs)
+			require.Equal(t, leg, got, "v=%d d=%d", v, d)
+		}
+	}
+}
+
+func TestPenalizeRequiredMultiTermMatchesLegacyFloatReference(t *testing.T) {
+	// Same aggregation order as machine.penalizeUnrevealedSeeds: sum scaled terms, then ceil.
+	cases := [][]struct{ v, d uint64 }{
+		{{1, 3}, {1, 3}},
+		{{3, 7}, {2, 5}},
+		{{1, 2}, {1, 3}, {2, 7}},
+		{{10, 11}, {9, 10}, {1, 100}},
+	}
+	for i, cs := range cases {
+		leg := legacyPenalizeRequiredFloat(cs)
+		got := penalizeRequiredFromScaledTerms(cs)
+		require.Equal(t, leg, got, "case %d", i)
+	}
 }
 
 func TestDeterministicHash_Deterministic(t *testing.T) {
