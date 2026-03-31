@@ -271,13 +271,13 @@ func TestResolveNodeModelID_PrefersEpochMLNode(t *testing.T) {
 	assert.Equal(t, "model-b", modelID)
 }
 
-func TestResolveNodeModelID_FallsBackOnMultipleEpochEntries(t *testing.T) {
+func TestResolveNodeModelID_RejectsMultipleEpochEntries(t *testing.T) {
 	modelID, ok := ResolveNodeModelID(
 		map[string]types.MLNodeInfo{"model-a": {}, "model-b": {}},
 		map[string]ModelArgs{"model-c": {}, "model-d": {}},
 	)
-	require.True(t, ok)
-	assert.Equal(t, "model-c", modelID)
+	require.False(t, ok)
+	assert.Equal(t, "", modelID)
 }
 
 func TestGetCommandForState_UsesConfiguredFallbackForGeneration(t *testing.T) {

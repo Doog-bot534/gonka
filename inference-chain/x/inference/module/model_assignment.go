@@ -8,6 +8,8 @@ import (
 	"math/rand"
 	"slices"
 
+	mathsdk "cosmossdk.io/math"
+	"github.com/productscience/inference/x/inference/keeper"
 	"github.com/productscience/inference/x/inference/types"
 	"github.com/shopspring/decimal"
 )
@@ -268,6 +270,18 @@ func (e *EpochMLNodeData) GetParticipantWeight(participantAddr string) int64 {
 	return weight
 }
 
+// GetParticipantModelNodes returns model-grouped nodes for one participant.
+// Shape matches keeper.CoefficientAdjustedWeight input.
+func (e *EpochMLNodeData) GetParticipantModelNodes(participantAddr string) map[string][]*types.MLNodeInfo {
+	result := make(map[string][]*types.MLNodeInfo)
+	for modelId, modelData := range e.data {
+		if nodes, ok := modelData[participantAddr]; ok {
+			result[modelId] = nodes
+		}
+	}
+	return result
+}
+
 type ModelAssigner struct {
 	types.InferenceLogger
 	keeper KeeperForModelAssigner
@@ -490,9 +504,11 @@ func (ma *ModelAssigner) AllocateMLNodesForPoC(ctx context.Context, upcomingEpoc
 	}
 	ma.LogInfo("Built current epoch data map", types.Allocation, "flow_context", FlowContext, "sub_flow_context", SubFlowContext, "step", "build_current_epoch_data", "num_models", len(currentEpochData.Models()))
 
+	coefficients := ModelCoefficients(params.PocParams)
+
 	// Participants not in previousEpochData (no nodes in previous epoch for a model) cannot be selected as eligible:
 	// sampleEligibleParticipantsWithHistory only appends participants that have previousEpochData.GetForParticipant(modelId, addr) != nil.
-	eligibleNodesData := ma.filterEligibleMLNodes(upcomingEpoch, previousEpochData, currentEpochData, totalCurrentEpochWeight)
+	eligibleNodesData := ma.filterEligibleMLNodes(upcomingEpoch, previousEpochData, currentEpochData, totalCurrentEpochWeight, coefficients)
 	ma.LogInfo("Filtered eligible nodes for all models", types.Allocation, "flow_context", FlowContext, "sub_flow_context", SubFlowContext, "step", "filter_all_eligible", "num_models", len(eligibleNodesData.Models()))
 
 	for _, modelId := range sortedModelIds {
@@ -573,6 +589,7 @@ func (ma *ModelAssigner) filterEligibleMLNodes(
 	previousEpochData *EpochMLNodeData,
 	currentEpochData *EpochMLNodeData,
 	totalCappedWeight int64,
+	coefficients map[string]mathsdk.LegacyDec,
 ) *EpochMLNodeData {
 	allParticipantsHashStr := currentEpochData.GetAllParticipantsHash()
 
@@ -617,11 +634,20 @@ func (ma *ModelAssigner) filterEligibleMLNodes(
 			currentNodes := participantNodes[participantAddr]
 			filteredNodes := filterNodesByThresholds(currentNodes, participantAddr, thresholds)
 
-			// Add nodes with Phase 3 voting constraint check
-			totalParticipantWeight := currentEpochData.GetParticipantWeight(participantAddr)
+			// Add nodes with Phase 3 voting constraint check.
+			// Both sides use coefficient-adjusted weight so the comparison with
+			// maxAllowedNonVotingWeight (derived from capped consensus weight) is consistent.
+			totalParticipantWeight := keeper.CoefficientAdjustedWeight(
+				currentEpochData.GetParticipantModelNodes(participantAddr), coefficients, nil)
 			for _, node := range filteredNodes {
-				currentParticipantWeight := eligibleNodesData.GetParticipantWeight(participantAddr)
-				eligibleNodesWeightIfAdded := currentParticipantWeight + node.PocWeight
+				currentParticipantWeight := keeper.CoefficientAdjustedWeight(
+					eligibleNodesData.GetParticipantModelNodes(participantAddr), coefficients, nil)
+				coeff, ok := coefficients[modelId]
+				if !ok {
+					coeff = mathsdk.LegacyOneDec()
+				}
+				adjustedNodeWeight := coeff.MulInt64(node.PocWeight).TruncateInt64()
+				eligibleNodesWeightIfAdded := currentParticipantWeight + adjustedNodeWeight
 
 				// Phase 3: Check if adding this node would violate voting constraints
 				canAllocate, updatedWeight := canAllocateParticipantNode(

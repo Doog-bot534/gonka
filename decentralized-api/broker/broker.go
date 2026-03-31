@@ -1212,6 +1212,10 @@ func ResolveNodeModelID(epochMLNodes map[string]types.MLNodeInfo, nodeModels map
 			return modelID, true
 		}
 	}
+	if len(epochMLNodes) > 1 {
+		return "", false
+	}
+	// Fresh node, no epoch assignment -- governance fallback to first configured model
 	modelIDs := make([]string, 0, len(nodeModels))
 	for modelID := range nodeModels {
 		modelIDs = append(modelIDs, modelID)
