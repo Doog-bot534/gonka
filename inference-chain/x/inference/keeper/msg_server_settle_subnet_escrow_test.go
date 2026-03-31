@@ -266,6 +266,139 @@ func TestSettleSubnetEscrow_ZeroCostSettlement(t *testing.T) {
 	require.True(t, settled.Settled)
 }
 
+// TestSettleSubnetEscrow_UpdatesCurrentEpochStats verifies settlement aggregates host stats into CurrentEpochStats.
+func TestSettleSubnetEscrow_UpdatesCurrentEpochStats(t *testing.T) {
+	// Setup keeper, message server, and bech32 config.
+	k, ms, ctx, mocks := setupSubnetEscrowTest(t)
+	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
+
+	// Create one validator and persist participant.
+	keyA, err := dcrdsecp.GeneratePrivateKey()
+	require.NoError(t, err)
+	addrA := cosmosAddressFromDcrdKey(keyA).String()
+	err = k.SetParticipant(ctx, types.Participant{
+		Address: addrA,
+		Index:   addrA,
+		Status:  types.ParticipantStatus_ACTIVE,
+	})
+	require.NoError(t, err)
+
+	// Single-slot subnet with uniform host stats.
+	slots := []string{addrA}
+	keys := []*dcrdsecp.PrivateKey{keyA}
+	fixtureHostStats := types.SubnetSettlementHostStats{
+		SlotId:  0,
+		Missed:  1,
+		Invalid: 2,
+	}
+	hostStats := []*types.SubnetSettlementHostStats{&fixtureHostStats}
+
+	// Create escrow and settlement message with zero fees and costs.
+	creator := sdk.AccAddress(make([]byte, 20))
+	creator[0] = 0x22
+	escrow := types.SubnetEscrow{
+		Id:         1,
+		Creator:    creator.String(),
+		Amount:     1_000_000,
+		Slots:      slots,
+		EpochIndex: 5,
+		Settled:    false,
+	}
+	_, err = k.StoreSubnetEscrow(ctx, &escrow, 1)
+	require.NoError(t, err)
+	msg := buildSettlementTestData(t, escrow, keys, hostStats, 0)
+
+	// Expect full refund to the creator.
+	mocks.BankKeeper.EXPECT().
+		SendCoinsFromModuleToAccount(gomock.Any(), types.ModuleName, creator, gomock.Any(), gomock.Eq("subnet_escrow_refund")).
+		Return(nil)
+
+	// Settle and verify response.
+	resp, err := ms.SettleSubnetEscrow(ctx, msg)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Assert CurrentEpochStats aggregation for the single participant.
+	participantA, found := k.GetParticipant(ctx, addrA)
+	require.True(t, found)
+	require.NotNil(t, participantA.CurrentEpochStats)
+	require.Equal(t, uint64(fixtureHostStats.Missed), participantA.CurrentEpochStats.MissedRequests)
+	require.Equal(t, uint64(fixtureHostStats.Invalid), participantA.CurrentEpochStats.InvalidatedInferences)
+	require.Equal(t, uint64(0), participantA.CurrentEpochStats.InferenceCount)
+	require.Equal(t, uint64(0), participantA.CurrentEpochStats.ValidatedInferences)
+}
+
+// TestSettleSubnetEscrow_UpdatesSubnetHostEpochStats verifies SubnetHostEpochStatsMap aggregation on settlement.
+func TestSettleSubnetEscrow_UpdatesSubnetHostEpochStats(t *testing.T) {
+	// Setup keeper, message server, and bech32 config.
+	k, ms, ctx, mocks := setupSubnetEscrowTest(t)
+	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
+
+	// Create one validator and persist participant.
+	keyA, err := dcrdsecp.GeneratePrivateKey()
+	require.NoError(t, err)
+	addrA := cosmosAddressFromDcrdKey(keyA).String()
+	err = k.SetParticipant(ctx, types.Participant{
+		Address: addrA,
+		Index:   addrA,
+		Status:  types.ParticipantStatus_ACTIVE,
+	})
+	require.NoError(t, err)
+
+	// Single-slot subnet with varied host stats and expected totals.
+	slots := []string{addrA}
+	keys := []*dcrdsecp.PrivateKey{keyA}
+	fixtureHostStats := types.SubnetSettlementHostStats{
+		SlotId:               0,
+		Missed:               1,
+		Invalid:              2,
+		Cost:                 7,
+		RequiredValidations:  5,
+		CompletedValidations: 4,
+	}
+	hostStats := []*types.SubnetSettlementHostStats{&fixtureHostStats}
+
+	// Create escrow and settlement message with zero fees.
+	creator := sdk.AccAddress(make([]byte, 20))
+	creator[0] = 0x33
+	escrow := types.SubnetEscrow{
+		Id:         1,
+		Creator:    creator.String(),
+		Amount:     10_000_000,
+		Slots:      slots,
+		EpochIndex: 7,
+		Settled:    false,
+	}
+	_, err = k.StoreSubnetEscrow(ctx, &escrow, 1)
+	require.NoError(t, err)
+	msg := buildSettlementTestData(t, escrow, keys, hostStats, 0)
+
+	// Expect full refund to the creator.
+	mocks.BankKeeper.EXPECT().
+		SendCoinsFromModuleToAccount(gomock.Any(), types.ModuleName, creator, gomock.Any(), gomock.Eq("subnet_escrow_refund")).
+		Return(nil)
+	mocks.BankKeeper.EXPECT().LogSubAccountTransaction(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+
+	// Settle and verify response.
+	resp, err := ms.SettleSubnetEscrow(ctx, msg)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Assert SubnetHostEpochStatsMap aggregation for participant A.
+	participantA, err := sdk.AccAddressFromBech32(addrA)
+	require.NoError(t, err)
+	statsA, found := k.GetSubnetHostEpochStats(ctx, escrow.EpochIndex, participantA)
+	require.True(t, found)
+	require.Equal(t, addrA, statsA.Participant)
+	require.Equal(t, escrow.EpochIndex, statsA.EpochIndex)
+	require.Equal(t, fixtureHostStats.Missed, statsA.Missed)
+	require.Equal(t, fixtureHostStats.Invalid, statsA.Invalid)
+	require.Equal(t, fixtureHostStats.Cost, statsA.Cost)
+	require.Equal(t, fixtureHostStats.RequiredValidations, statsA.RequiredValidations)
+	require.Equal(t, fixtureHostStats.CompletedValidations, statsA.CompletedValidations)
+	require.Equal(t, uint32(1), statsA.EscrowCount)
+}
+
 func TestSettleSubnetEscrow_AllowlistBlocks(t *testing.T) {
 	k, ms, ctx, _ := setupSubnetEscrowTest(t)
 	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
