@@ -160,7 +160,7 @@ func TestEnrichWithPocParams_CachesAllModels(t *testing.T) {
 
 	broker := newTestBrokerWithChainBridge(mockChainBridge)
 	params := &pocParams{}
-	broker.enrichWithPocParams(params)
+	broker.loadPoCModels(params)
 
 	require.Len(t, params.models, 2)
 	assert.Equal(t, int64(128), params.models["model-a"].SeqLen)
@@ -285,8 +285,8 @@ func TestGetCommandForState_UsesConfiguredFallbackForGeneration(t *testing.T) {
 	nodeState := &NodeState{
 		IntendedStatus:    types.HardwareNodeStatus_POC,
 		PocIntendedStatus: PocStatusGenerating,
-		EpochModels:  map[string]types.Model{},
-		EpochMLNodes: map[string]types.MLNodeInfo{},
+		EpochModels:       map[string]types.Model{},
+		EpochMLNodes:      map[string]types.MLNodeInfo{},
 	}
 
 	cmd := broker.getCommandForState("node-1", nodeState, map[string]ModelArgs{

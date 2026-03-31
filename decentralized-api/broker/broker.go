@@ -1133,7 +1133,7 @@ func (b *Broker) prefetchPocParams(epochState chainphase.EpochState, nodesToDisp
 				startPoCBlockHeight: event.TriggerHeight,
 				startPoCBlockHash:   event.PocSeedBlockHash,
 			}
-			b.enrichWithPocParams(params)
+			b.loadPoCModels(params)
 			return params, nil
 		}
 
@@ -1148,8 +1148,8 @@ func (b *Broker) prefetchPocParams(epochState chainphase.EpochState, nodesToDisp
 	}
 }
 
-// enrichWithPocParams fetches PoC params from chain and enriches pocParams.
-func (b *Broker) enrichWithPocParams(params *pocParams) {
+// loadPoCModels fetches current PoC model configs into params.models.
+func (b *Broker) loadPoCModels(params *pocParams) {
 	paramsResp, err := b.chainBridge.GetParams()
 	if err != nil {
 		logging.Warn("Failed to query chain params", types.Nodes, "error", err)
@@ -1157,24 +1157,15 @@ func (b *Broker) enrichWithPocParams(params *pocParams) {
 	}
 
 	if paramsResp.Params.PocParams != nil {
-		modelConfigs := paramsResp.Params.PocParams.GetModelConfigs()
-		params.models = make(map[string]apiconfig.PoCModelConfigCache, len(modelConfigs))
-		cachedModels := make([]apiconfig.PoCModelConfigCache, 0, len(modelConfigs))
-		for _, modelConfig := range modelConfigs {
-			if modelConfig == nil || modelConfig.ModelId == "" {
-				continue
-			}
-			cached := apiconfig.PoCModelConfigCache{
-				ModelId: modelConfig.ModelId,
-				SeqLen:  modelConfig.SeqLen,
-			}
-			params.models[modelConfig.ModelId] = cached
-			cachedModels = append(cachedModels, cached)
+		cachedParams := apiconfig.NewPoCParamsCache(paramsResp.Params.PocParams.GetModelConfigs())
+		params.models = make(map[string]apiconfig.PoCModelConfigCache, len(cachedParams.Models))
+		for _, modelConfig := range cachedParams.Models {
+			params.models[modelConfig.ModelId] = modelConfig
 		}
 		if b.configManager != nil {
-			_ = b.configManager.SetPoCParams(apiconfig.PoCParamsCache{Models: cachedModels})
+			_ = b.configManager.SetPoCParams(cachedParams)
 		}
-		logging.Info("Using PoC params", types.PoC, "models_count", len(cachedModels))
+		logging.Info("Using PoC params", types.PoC, "models_count", len(cachedParams.Models))
 	}
 }
 
@@ -1329,7 +1320,7 @@ func (b *Broker) queryCurrentPoCParams(epochPoCStartHeight int64) (*pocParams, e
 		startPoCBlockHash:   hash,
 	}
 
-	b.enrichWithPocParams(params)
+	b.loadPoCModels(params)
 	return params, nil
 }
 

@@ -3,22 +3,24 @@ package apiconfig
 import (
 	"fmt"
 	"strings"
+
+	"github.com/productscience/inference/x/inference/types"
 )
 
 type Config struct {
-	Api                 ApiConfig             `koanf:"api" json:"api"`
-	Nodes               []InferenceNodeConfig `koanf:"nodes" json:"nodes"`
-	NodeConfigIsMerged  bool                  `koanf:"merged_node_config" json:"merged_node_config"`
-	ChainNode           ChainNodeConfig       `koanf:"chain_node" json:"chain_node"`
-	UpcomingSeed        SeedInfo              `koanf:"upcoming_seed" json:"upcoming_seed"`
-	CurrentSeed         SeedInfo              `koanf:"current_seed" json:"current_seed"`
-	PreviousSeed        SeedInfo              `koanf:"previous_seed" json:"previous_seed"`
-	CurrentHeight       int64                 `koanf:"current_height" json:"current_height"`
-	LastProcessedHeight int64                 `koanf:"last_processed_height" json:"last_processed_height"`
-	UpgradePlan         UpgradePlan           `koanf:"upgrade_plan" json:"upgrade_plan"`
-	MLNodeKeyConfig     MLNodeKeyConfig       `koanf:"ml_node_key_config" json:"ml_node_key_config"`
-	Nats                NatsServerConfig      `koanf:"nats" json:"nats"`
-	TxBatching          TxBatchingConfig      `koanf:"tx_batching" json:"tx_batching"`
+	Api                      ApiConfig                `koanf:"api" json:"api"`
+	Nodes                    []InferenceNodeConfig    `koanf:"nodes" json:"nodes"`
+	NodeConfigIsMerged       bool                     `koanf:"merged_node_config" json:"merged_node_config"`
+	ChainNode                ChainNodeConfig          `koanf:"chain_node" json:"chain_node"`
+	UpcomingSeed             SeedInfo                 `koanf:"upcoming_seed" json:"upcoming_seed"`
+	CurrentSeed              SeedInfo                 `koanf:"current_seed" json:"current_seed"`
+	PreviousSeed             SeedInfo                 `koanf:"previous_seed" json:"previous_seed"`
+	CurrentHeight            int64                    `koanf:"current_height" json:"current_height"`
+	LastProcessedHeight      int64                    `koanf:"last_processed_height" json:"last_processed_height"`
+	UpgradePlan              UpgradePlan              `koanf:"upgrade_plan" json:"upgrade_plan"`
+	MLNodeKeyConfig          MLNodeKeyConfig          `koanf:"ml_node_key_config" json:"ml_node_key_config"`
+	Nats                     NatsServerConfig         `koanf:"nats" json:"nats"`
+	TxBatching               TxBatchingConfig         `koanf:"tx_batching" json:"tx_batching"`
 	CurrentNodeVersion       string                   `koanf:"current_node_version" json:"current_node_version"`
 	LastUsedVersion          string                   `koanf:"last_used_version" json:"last_used_version"`
 	ValidationParams         ValidationParamsCache    `koanf:"validation_params" json:"validation_params"`
@@ -183,6 +185,20 @@ type PoCModelConfigCache struct {
 
 type PoCParamsCache struct {
 	Models []PoCModelConfigCache `koanf:"models" json:"models"`
+}
+
+func NewPoCParamsCache(modelConfigs []*types.PoCModelConfig) PoCParamsCache {
+	models := make([]PoCModelConfigCache, 0, len(modelConfigs))
+	for _, modelConfig := range modelConfigs {
+		if modelConfig == nil || modelConfig.ModelId == "" {
+			continue
+		}
+		models = append(models, PoCModelConfigCache{
+			ModelId: modelConfig.ModelId,
+			SeqLen:  modelConfig.SeqLen,
+		})
+	}
+	return PoCParamsCache{Models: models}
 }
 
 func (p PoCParamsCache) PrimaryModel() *PoCModelConfigCache {
