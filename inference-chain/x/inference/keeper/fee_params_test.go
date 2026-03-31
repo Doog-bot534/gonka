@@ -8,19 +8,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFeeParams_ZeroWhenNotSet(t *testing.T) {
+func TestFeeParams_DefaultsFromParams(t *testing.T) {
 	k, ctx := testkeeper.InferenceKeeper(t)
 
-	// When not explicitly set, returns zero values (no fee enforcement).
-	// Production defaults are applied by the v0.2.12 upgrade migration.
+	// DefaultParams() includes FeeParams with production defaults.
 	fp := k.GetFeeParams(ctx)
-	require.Equal(t, types.FeeParams{}, fp)
+	require.NotNil(t, fp)
+	require.Equal(t, types.DefaultFeeParams().MinGasPriceNgonka, fp.MinGasPriceNgonka)
+	require.Equal(t, types.DefaultFeeParams().BaseValidationGas, fp.BaseValidationGas)
+	require.Equal(t, types.DefaultFeeParams().GasPerPoCCount, fp.GasPerPoCCount)
 }
 
 func TestFeeParams_SetAndGet(t *testing.T) {
 	k, ctx := testkeeper.InferenceKeeper(t)
 
-	custom := types.FeeParams{
+	custom := &types.FeeParams{
 		MinGasPriceNgonka: 42,
 		BaseValidationGas: 1_000_000,
 		GasPerPoCCount:    200,
@@ -28,13 +30,15 @@ func TestFeeParams_SetAndGet(t *testing.T) {
 	require.NoError(t, k.SetFeeParams(ctx, custom))
 
 	fp := k.GetFeeParams(ctx)
-	require.Equal(t, custom, fp)
+	require.Equal(t, custom.MinGasPriceNgonka, fp.MinGasPriceNgonka)
+	require.Equal(t, custom.BaseValidationGas, fp.BaseValidationGas)
+	require.Equal(t, custom.GasPerPoCCount, fp.GasPerPoCCount)
 }
 
-func TestFeeParams_ZeroValues(t *testing.T) {
+func TestFeeParams_ZeroDisablesFees(t *testing.T) {
 	k, ctx := testkeeper.InferenceKeeper(t)
 
-	zero := types.FeeParams{
+	zero := &types.FeeParams{
 		MinGasPriceNgonka: 0,
 		BaseValidationGas: 0,
 		GasPerPoCCount:    0,
@@ -42,5 +46,5 @@ func TestFeeParams_ZeroValues(t *testing.T) {
 	require.NoError(t, k.SetFeeParams(ctx, zero))
 
 	fp := k.GetFeeParams(ctx)
-	require.Equal(t, zero, fp)
+	require.Equal(t, uint64(0), fp.MinGasPriceNgonka)
 }

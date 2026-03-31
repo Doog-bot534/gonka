@@ -159,6 +159,7 @@ func DefaultParams() Params {
 			AllowedTransferAddresses: nil, // nil = no restriction, all TAs allowed
 		},
 		SubnetEscrowParams: DefaultSubnetEscrowParams(),
+		FeeParams:          DefaultFeeParams(),
 	}
 }
 
@@ -503,6 +504,12 @@ func (p Params) Validate() error {
 
 	if p.SubnetEscrowParams != nil {
 		if err := p.SubnetEscrowParams.Validate(); err != nil {
+			return err
+		}
+	}
+
+	if p.FeeParams != nil {
+		if err := p.FeeParams.Validate(); err != nil {
 			return err
 		}
 	}

@@ -314,17 +314,16 @@ func TestDefaultFeeParams(t *testing.T) {
 }
 
 func TestFeeParamsMarshalRoundtrip(t *testing.T) {
-	fp := inferencetypes.FeeParams{
+	fp := &inferencetypes.FeeParams{
 		MinGasPriceNgonka: 42,
 		BaseValidationGas: 123_456,
 		GasPerPoCCount:    789,
 	}
 
-	codec := inferencetypes.FeeParamsValueCodec
-	bz, err := codec.Encode(fp)
+	bz, err := fp.Marshal()
 	require.NoError(t, err)
 
-	fp2, err := codec.Decode(bz)
-	require.NoError(t, err)
+	fp2 := &inferencetypes.FeeParams{}
+	require.NoError(t, fp2.Unmarshal(bz))
 	require.Equal(t, fp, fp2)
 }

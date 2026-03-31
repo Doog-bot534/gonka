@@ -93,8 +93,6 @@ type (
 		PunishmentGraceEpochs collections.Map[uint64, types.GraceEpochParams]
 		ActiveParticipantsSet collections.KeySet[collections.Pair[uint64, sdk.AccAddress]]
 		// Subnet escrow collections
-		// Fee params
-		FeeParamsItem collections.Item[types.FeeParams]
 		// Subnet escrow collections
 		SubnetEscrows           collections.Map[uint64, types.SubnetEscrow]
 		SubnetEscrowCounter     collections.Item[uint64]
@@ -506,12 +504,6 @@ func NewKeeper(
 			"subnet_escrows_by_epoch",
 			collections.PairKeyCodec(collections.Uint64Key, collections.Uint64Key),
 			collections.NoValue{},
-		),
-		FeeParamsItem: collections.NewItem(
-			sb,
-			types.FeeParamsPrefix,
-			"fee_params",
-			types.FeeParamsValueCodec,
 		),
 	}
 	// Build the collections schema

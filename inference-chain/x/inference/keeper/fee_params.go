@@ -3,44 +3,29 @@ package keeper
 import (
 	"context"
 
-	errorsmod "cosmossdk.io/errors"
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/productscience/inference/x/inference/types"
 )
 
-// GetFeeParams returns the fee parameters from the collections store.
-// Returns zero values if not yet set (no fee enforcement until upgrade migration
-// or governance sets them).
-func (k Keeper) GetFeeParams(ctx context.Context) types.FeeParams {
-	fp, err := k.FeeParamsItem.Get(ctx)
+// GetFeeParams returns the fee parameters from the Params store.
+// Returns a zero-value FeeParams (no fee enforcement) if not yet set.
+func (k Keeper) GetFeeParams(ctx context.Context) *types.FeeParams {
+	params, err := k.GetParams(ctx)
 	if err != nil {
-		// Not found or decode error: return zero values (no enforcement).
-		return types.FeeParams{}
+		k.LogError("Unable to get Params in GetFeeParams", types.System, "error", err)
+		return &types.FeeParams{}
 	}
-	return fp
+	if params.FeeParams == nil {
+		return &types.FeeParams{}
+	}
+	return params.FeeParams
 }
 
-// SetFeeParams stores the fee parameters in the collections store.
-func (k Keeper) SetFeeParams(ctx context.Context, fp types.FeeParams) error {
-	return k.FeeParamsItem.Set(ctx, fp)
-}
-
-// UpdateFeeParams is a governance-gated operation that updates fee parameters.
-// The caller must have governance authority (checked via msg.Authority).
-func (k msgServer) UpdateFeeParams(goCtx context.Context, authority string, fp types.FeeParams) error {
-	if err := k.CheckPermission(goCtx, &types.MsgUpdateParams{Authority: authority}, GovernancePermission); err != nil {
+// SetFeeParams updates just the FeeParams within the full Params store.
+func (k Keeper) SetFeeParams(ctx context.Context, fp *types.FeeParams) error {
+	params, err := k.GetParams(ctx)
+	if err != nil {
 		return err
 	}
-	if err := fp.Validate(); err != nil {
-		return errorsmod.Wrap(err, "invalid fee params")
-	}
-	ctx := sdk.UnwrapSDKContext(goCtx)
-	if err := k.SetFeeParams(ctx, fp); err != nil {
-		return err
-	}
-	k.LogInfo("fee params updated via governance", types.System,
-		"min_gas_price_ngonka", fp.MinGasPriceNgonka,
-		"base_validation_gas", fp.BaseValidationGas,
-		"gas_per_poc_count", fp.GasPerPoCCount)
-	return nil
+	params.FeeParams = fp
+	return k.SetParams(ctx, params)
 }
