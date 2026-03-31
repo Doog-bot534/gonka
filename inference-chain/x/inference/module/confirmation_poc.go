@@ -410,11 +410,12 @@ func (am AppModule) evaluateConfirmation(
 	useV2 bool,
 	dryRun bool,
 ) {
+	coefficients := ModelCoefficients(pocParams)
+
 	var confirmationParticipants []*types.ActiveParticipant
 	if useV2 {
 		confirmationParticipants = am.updateConfirmationWeightsV2(ctx, event, currentValidatorWeights)
 		// Apply model coefficients (same aggregation as main PoC path)
-		coefficients := ModelCoefficients(pocParams)
 		for _, p := range confirmationParticipants {
 			p.Weight = AggregateConsensusWeight(ExtractModelWeights(p), coefficients)
 		}
@@ -435,7 +436,7 @@ func (am AppModule) evaluateConfirmation(
 		return
 	}
 
-	notPreservedWeights, err := am.GetNotPreservedTotalWeightByParticipant(ctx, event.EpochIndex)
+	notPreservedWeights, err := am.GetNotPreservedTotalWeightByParticipant(ctx, event.EpochIndex, coefficients)
 	if err != nil {
 		am.LogError("evaluateConfirmation: Failed to get not preserved weights", types.PoC, "error", err)
 	}
@@ -471,7 +472,7 @@ func (am AppModule) evaluateConfirmation(
 			"epochIndex", event.EpochIndex)
 	}
 
-	am.checkConfirmationSlashing(ctx, epochGroupData)
+	am.checkConfirmationSlashing(ctx, epochGroupData, coefficients)
 }
 
 // updateConfirmationWeightsV2 calculates confirmation weights using off-chain store commits
@@ -609,12 +610,12 @@ func (am AppModule) updateConfirmationWeightsV2(
 }
 
 // checkConfirmationSlashing checks if participants should be slashed based on confirmation PoC results
-// Stub implementation - slashing logic not yet implemented
 func (am AppModule) checkConfirmationSlashing(
 	ctx context.Context,
 	epochGroupData *types.EpochGroupData,
+	coefficients map[string]mathsdk.LegacyDec,
 ) error {
-	notPreservedTotalWeight, err := am.GetNotPreservedTotalWeightByParticipant(ctx, epochGroupData.EpochIndex)
+	notPreservedTotalWeight, err := am.GetNotPreservedTotalWeightByParticipant(ctx, epochGroupData.EpochIndex, coefficients)
 	if err != nil {
 		return fmt.Errorf("failed to get not preserved total weight by participant: %w", err)
 	}
@@ -646,26 +647,36 @@ func (am AppModule) checkConfirmationSlashing(
 	return nil
 }
 
-func (am AppModule) GetNotPreservedTotalWeightByParticipant(ctx context.Context, epochId uint64) (map[string]int64, error) {
+func (am AppModule) GetNotPreservedTotalWeightByParticipant(ctx context.Context, epochId uint64, coefficients map[string]mathsdk.LegacyDec) (map[string]int64, error) {
 	participants, found := am.keeper.GetActiveParticipants(ctx, epochId)
 	if !found {
-		am.LogError("GetPreviousEpochMLNodesWithInferenceAllocation: Active participants not found", types.PoC, "epochId", epochId)
-		return nil, errors.New("GetPreviousEpochMLNodesWithInferenceAllocation: active participant not found. epochId: " + strconv.FormatUint(epochId, 10))
+		am.LogError("GetNotPreservedTotalWeightByParticipant: Active participants not found", types.PoC, "epochId", epochId)
+		return nil, errors.New("GetNotPreservedTotalWeightByParticipant: active participant not found. epochId: " + strconv.FormatUint(epochId, 10))
 	}
 
 	result := make(map[string]int64)
 
 	for _, p := range participants.Participants {
-		am.LogInfo("GetPreviousEpochMLNodesWithInferenceAllocation. GetPreservedNodesByParticipant: Processing participant", types.PoC,
-			"participantAddress", p.Index, "len(p.MlNodes)", len(p.MlNodes))
-
 		totalWeight := int64(0)
-		for _, nodeArray := range p.MlNodes {
+		for i, nodeArray := range p.MlNodes {
+			if nodeArray == nil {
+				continue
+			}
+			if i >= len(p.Models) || p.Models[i] == "" {
+				continue
+			}
+			modelId := p.Models[i]
+			coeff, ok := coefficients[modelId]
+			if !ok {
+				coeff = mathsdk.LegacyOneDec()
+			}
+			rawModel := int64(0)
 			for _, mlNode := range nodeArray.MlNodes {
-				if len(mlNode.TimeslotAllocation) > 1 && !mlNode.TimeslotAllocation[1] {
-					totalWeight += mlNode.PocWeight
+				if mlNode != nil && len(mlNode.TimeslotAllocation) > 1 && !mlNode.TimeslotAllocation[1] {
+					rawModel += mlNode.PocWeight
 				}
 			}
+			totalWeight += coeff.MulInt64(rawModel).TruncateInt64()
 		}
 		result[p.Index] = totalWeight
 	}

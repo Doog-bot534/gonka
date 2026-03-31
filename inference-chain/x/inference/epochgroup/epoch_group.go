@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	mathsdk "cosmossdk.io/math"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/query"
@@ -28,16 +29,16 @@ type EpochMember struct {
 	ConfirmationWeight int64 // Minimum confirmation weight from confirmation PoC events
 }
 
-func NewEpochMemberFromActiveParticipant(p *types.ActiveParticipant, reputation int64, confirmationWeight int64) EpochMember {
+func NewEpochMemberFromActiveParticipant(p *types.ActiveParticipant, reputation int64, confirmationWeight int64, coefficients map[string]mathsdk.LegacyDec) EpochMember {
 	seedSignature := ""
 	if p.Seed != nil {
 		seedSignature = p.Seed.Signature
 	}
 
-	// If the confirmation weight is not provided (0), initialize it with the weight of PoC participating nodes
-	// This is the baseline weight that can be verified through confirmation PoC
+	// If the confirmation weight is not provided (0), initialize it with the
+	// coefficient-adjusted weight of PoC participating nodes.
 	if confirmationWeight == 0 {
-		confirmationWeight = calculatePocParticipatingNodesWeight(p.MlNodes)
+		confirmationWeight = calculatePocParticipatingNodesWeight(p.Models, p.MlNodes, coefficients)
 	}
 
 	return EpochMember{
@@ -52,26 +53,35 @@ func NewEpochMemberFromActiveParticipant(p *types.ActiveParticipant, reputation 
 	}
 }
 
-// calculatePocParticipatingNodesWeight calculates the total weight of nodes participating in PoC
-func calculatePocParticipatingNodesWeight(mlNodes []*types.ModelMLNodes) int64 {
+// calculatePocParticipatingNodesWeight computes the coefficient-adjusted total weight
+// of PoC-participating nodes (POC_SLOT=false). Coefficients normalize cross-model values.
+func calculatePocParticipatingNodesWeight(models []string, mlNodes []*types.ModelMLNodes, coefficients map[string]mathsdk.LegacyDec) int64 {
 	totalWeight := int64(0)
 
-	for _, modelNodes := range mlNodes {
+	for i, modelNodes := range mlNodes {
 		if modelNodes == nil {
 			continue
 		}
 
+		if i >= len(models) || models[i] == "" {
+			continue
+		}
+		modelId := models[i]
+		coeff, ok := coefficients[modelId]
+		if !ok {
+			coeff = mathsdk.LegacyOneDec()
+		}
+
+		rawModel := int64(0)
 		for _, node := range modelNodes.MlNodes {
 			if node == nil {
 				continue
 			}
-
-			// POC_SLOT is at index 1 (second timeslot)
-			// false => participant in PoC phase, true => continues inference during PoC
 			if len(node.TimeslotAllocation) > 1 && !node.TimeslotAllocation[1] {
-				totalWeight += node.PocWeight
+				rawModel += node.PocWeight
 			}
 		}
+		totalWeight += coeff.MulInt64(rawModel).TruncateInt64()
 	}
 
 	return totalWeight

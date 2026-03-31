@@ -674,10 +674,10 @@ func (am AppModule) GetPreservedNodesByParticipant(
 
 		modelNodes := make(map[string][]*types.MLNodeInfo)
 		for i, nodeArray := range p.MlNodes {
-			modelId := ""
-			if i < len(p.Models) {
-				modelId = p.Models[i]
+			if i >= len(p.Models) || p.Models[i] == "" {
+				continue
 			}
+			modelId := p.Models[i]
 			for _, mlNode := range nodeArray.MlNodes {
 				if len(mlNode.TimeslotAllocation) > 1 && mlNode.TimeslotAllocation[1] { // POC_SLOT = true
 					preservedMLNode := &types.MLNodeInfo{

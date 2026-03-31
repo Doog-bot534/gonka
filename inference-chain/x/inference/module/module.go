@@ -786,6 +786,7 @@ func (am AppModule) addEpochMembers(ctx context.Context, upcomingEg *epochgroup.
 		return
 	}
 	validationParams := params.ValidationParams
+	coefficients := ModelCoefficients(params.PocParams)
 
 	for _, p := range activeParticipants {
 		reputation, err := am.calculateParticipantReputation(ctx, p, validationParams)
@@ -799,7 +800,7 @@ func (am AppModule) addEpochMembers(ctx context.Context, upcomingEg *epochgroup.
 			continue
 		}
 
-		member := epochgroup.NewEpochMemberFromActiveParticipant(p, reputation, 0)
+		member := epochgroup.NewEpochMemberFromActiveParticipant(p, reputation, 0, coefficients)
 		err = upcomingEg.AddMember(ctx, member)
 		if err != nil {
 			am.LogError("onSetNewValidatorsStage: Unable to add member", types.EpochGroup, "error", err.Error())
