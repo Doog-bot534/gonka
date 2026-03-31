@@ -821,14 +821,34 @@ func (h *Host) AccumulateGossipSig(nonce uint64, stateHash, sig []byte, senderSl
 }
 
 // ApplyRecoveredDiffs applies diffs fetched during gossip recovery.
+// For each nonce, if F is the BFT-finalized nonce from local signatures
+// (see computeFinalizedNonce), nonces at or below F may trust WarmKeyDelta from
+// the wire without mainnet resolution; nonces above F fall back to ResolveWarmKey.
 // Returns GossipSig for each successfully applied nonce.
 func (h *Host) ApplyRecoveredDiffs(ctx context.Context, diffs []types.DiffRecord) ([]gossip.GossipSig, error) {
+	_ = ctx // interface hook; recovery is synchronous under h.mu today
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
+
+	var latestNonce uint64
+	for _, rec := range diffs {
+		if rec.Nonce > latestNonce {
+			latestNonce = rec.Nonce
+		}
+	}
+
+	var finalized uint64
+	if h.store != nil {
+		finalized = computeFinalizedNonce(h.store, h.escrowID, latestNonce, h.group)
+	}
 
 	var sigs []gossip.GossipSig
 
 	for _, rec := range diffs {
+		if rec.Nonce <= finalized && len(rec.WarmKeyDelta) > 0 {
+			h.sm.InjectWarmKeys(rec.WarmKeyDelta)
+		}
 		if err := h.applyAndPersist(rec.Diff); err != nil {
 			return sigs, fmt.Errorf("apply recovered diff nonce %d: %w", rec.Nonce, err)
 		}
