@@ -90,6 +90,11 @@ class SubnetTests : TestermintTest() {
         val txResp = genesis.createSubnetEscrow(escrowAmount, from = userKeyName)
         assertThat(txResp.code).isEqualTo(0)
 
+        // Fetch the initial onchain balances for each host before the session begins.
+        val createdEscrow = genesis.node.querySubnetEscrow(1)
+        val slotAddresses = createdEscrow.escrow!!.slots.distinct()
+        val hostBalancesBeforeSettlement = slotAddresses.associateWith { genesis.getBalance(it) }
+
         logSection("Starting subnet proxy")
         val handle = genesis.startSubnetProxy(escrowId = 1, keyName = userKeyName)
 
@@ -148,6 +153,46 @@ class SubnetTests : TestermintTest() {
             logSection("Verifying user got refund")
             val balanceAfter = genesis.getBalance(userAddress)
             assertThat(balanceAfter).isEqualTo(fundAmount - totalPayout)
+
+            // Rewards should not be distributed to hosts upon settlement.
+            // That's done only at the end of the epoch.
+            logSection("Verifying host balances unchanged after settlement")
+            val hostBalancesAfterSettlement = slotAddresses.associateWith { genesis.getBalance(it) }
+            slotAddresses.forEach { address ->
+                assertThat(hostBalancesAfterSettlement[address])
+                    .withFailMessage("Host $address balance changed immediately after settlement")
+                    .isEqualTo(hostBalancesBeforeSettlement[address])
+            }
+
+            // Wait for the end of the epoch, and then claim rewards for the host in the first slot.
+            // We should see the balance increase by the reward amount after claiming.
+            val hostAddress = slotAddresses.firstOrNull()
+                ?: error("No host addresses found in escrow slots")
+            val hostPair = cluster.allPairs.firstOrNull { it.node.getColdAddress() == hostAddress }
+                ?: error("No host pair found for address $hostAddress")
+            val rewardSeed = hostPair.api.getConfig().currentSeed
+
+            genesis.markNeedsReboot()
+            hostPair.stopApiContainer()
+
+            logSection("Waiting for epoch end to claim host rewards")
+            genesis.waitForStage(EpochStage.CLAIM_REWARDS, offset = 2)
+
+            val hostBalanceBeforeClaim = hostPair.node.getSelfBalance()
+            val claimResponse = hostPair.submitTransaction(
+                listOf(
+                    "inference",
+                    "claim-rewards",
+                    rewardSeed.seed.toString(),
+                    rewardSeed.epochIndex.toString(),
+                )
+            )
+            assertThat(claimResponse.code).isEqualTo(0)
+
+            val hostBalanceAfterClaim = hostPair.node.getSelfBalance()
+            assertThat(hostBalanceAfterClaim)
+                .withFailMessage("Host $hostAddress did not receive rewards after epoch end")
+                .isGreaterThan(hostBalanceBeforeClaim)
         } finally {
             genesis.stopSubnetProxy(1)
         }
