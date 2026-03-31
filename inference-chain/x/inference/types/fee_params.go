@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"cosmossdk.io/collections"
 	"cosmossdk.io/collections/codec"
 )
 
 // FeeParamsPrefix is the collections prefix for the FeeParams item.
-var FeeParamsPrefix = []byte("p_fee_params")
+// Uses the next available numeric prefix after SubnetEscrowsByEpochPrefix (52).
+var FeeParamsPrefix = collections.NewPrefix(53)
 
 // FeeParams defines governance-controlled fee parameters for consensus-level fee enforcement.
 type FeeParams struct {
