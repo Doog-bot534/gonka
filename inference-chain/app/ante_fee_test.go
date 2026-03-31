@@ -320,10 +320,11 @@ func TestFeeParamsMarshalRoundtrip(t *testing.T) {
 		GasPerPoCCount:    789,
 	}
 
-	bz, err := fp.Marshal()
+	codec := inferencetypes.FeeParamsValueCodec
+	bz, err := codec.Encode(fp)
 	require.NoError(t, err)
 
-	fp2, err := inferencetypes.UnmarshalFeeParams(bz)
+	fp2, err := codec.Decode(bz)
 	require.NoError(t, err)
 	require.Equal(t, fp, fp2)
 }
