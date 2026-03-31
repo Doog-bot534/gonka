@@ -226,6 +226,14 @@ func TestSettleSubnetEscrow_ZeroCostSettlement(t *testing.T) {
 		keys[i] = key
 		slots[i] = cosmosAddressFromDcrdKey(key).String()
 	}
+	for _, addr := range slots {
+		err := k.SetParticipant(ctx, types.Participant{
+			Address: addr,
+			Index:   addr,
+			Status:  types.ParticipantStatus_ACTIVE,
+		})
+		require.NoError(t, err)
+	}
 
 	creator := sdk.AccAddress(make([]byte, 20))
 	creator[0] = 0xBB

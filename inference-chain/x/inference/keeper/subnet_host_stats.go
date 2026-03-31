@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/bits"
 
 	"cosmossdk.io/collections"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -36,6 +37,33 @@ func (k Keeper) AggregateSubnetHostStats(ctx context.Context, epochIndex uint64,
 	existing.RequiredValidations += slotStats.RequiredValidations
 	existing.CompletedValidations += slotStats.CompletedValidations
 	return k.SubnetHostEpochStatsMap.Set(ctx, key, existing)
+}
+
+// AggregateSubnetHostStatsIntoParticipantEpochStats merges subnet settlement stats into a participant's epoch stats.
+func AggregateSubnetHostStatsIntoParticipantEpochStats(participant *types.Participant, slotStats types.SubnetSettlementHostStats) error {
+	// Validate input participant.
+	if participant == nil {
+		return fmt.Errorf("participant is nil")
+	}
+
+	// Ensure the epoch stats struct exists so we can update counters safely.
+	ensureParticipantEpochStats(participant)
+
+	// Aggregate missed requests.
+	nextMissedRequests, carry := bits.Add64(participant.CurrentEpochStats.MissedRequests, uint64(slotStats.Missed), 0)
+	if carry != 0 {
+		return fmt.Errorf("participant missed requests overflow for %s", participant.Address)
+	}
+	participant.CurrentEpochStats.MissedRequests = nextMissedRequests
+
+	// Aggregate invalidated inferences.
+	nextInvalidated, carry := bits.Add64(participant.CurrentEpochStats.InvalidatedInferences, uint64(slotStats.Invalid), 0)
+	if carry != 0 {
+		return fmt.Errorf("participant invalidated inferences overflow for %s", participant.Address)
+	}
+	participant.CurrentEpochStats.InvalidatedInferences = nextInvalidated
+
+	return nil
 }
 
 func (k Keeper) IncrementSubnetHostEscrowCount(ctx context.Context, epochIndex uint64, participant sdk.AccAddress) error {

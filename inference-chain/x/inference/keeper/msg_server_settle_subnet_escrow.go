@@ -138,6 +138,8 @@ func (k msgServer) SettleSubnetEscrow(goCtx context.Context, msg *types.MsgSettl
 		if err != nil {
 			return nil, fmt.Errorf("invalid participant address %s: %w", addr, err)
 		}
+
+		// Update `SubnetHostEpochStatsMap`
 		if err := k.AggregateSubnetHostStats(goCtx, escrow.EpochIndex, participantAddr, *hs); err != nil {
 			return nil, fmt.Errorf("failed to aggregate host stats: %w", err)
 		}
@@ -147,6 +149,20 @@ func (k msgServer) SettleSubnetEscrow(goCtx context.Context, msg *types.MsgSettl
 				return nil, fmt.Errorf("failed to increment escrow count: %w", err)
 			}
 		}
+
+		// Update the participant's `CurrentEpochStats`
+		participant, found := k.GetParticipant(ctx, addr)
+		// If the subnet is settled on a different epoch, it's possible a subnet's host is no longer a participant on this epoch.
+		// In this case, we skip updating their stats.
+		if found {
+			if err := AggregateSubnetHostStatsIntoParticipantEpochStats(&participant, *hs); err != nil {
+				return nil, fmt.Errorf("failed to aggregate host stats into participant epoch stats: %w", err)
+			}
+			if err := k.SetParticipant(ctx, participant); err != nil {
+				return nil, fmt.Errorf("failed to update participant %s: %w", addr, err)
+			}
+		}
+
 	}
 
 	escrow.Settled = true
