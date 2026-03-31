@@ -27,9 +27,11 @@ type FeeParams struct {
 }
 
 // DefaultFeeParams returns the default fee parameters.
+// At MinGasPriceNgonka=10 and ~80k gas per tx, fee ≈ 800,000 ngonka ≈ $0.00046 per tx
+// (at GNK=$0.57). Governance-adjustable.
 func DefaultFeeParams() FeeParams {
 	return FeeParams{
-		MinGasPriceNgonka: 10,
+		MinGasPriceNgonka: 10, // per gas unit; ~$0.00046 per typical tx
 		BaseValidationGas: 500_000,
 		GasPerPoCCount:    100,
 	}
