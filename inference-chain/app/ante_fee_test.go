@@ -270,6 +270,24 @@ func TestGonkaFeeChecker_BypassFlag(t *testing.T) {
 	require.Empty(t, feeCoins)
 }
 
+func TestGonkaFeeChecker_BypassPreservesPriority(t *testing.T) {
+	checker := GonkaFeeChecker(nil)
+
+	tx := testFeeTx{
+		msgs: []sdk.Msg{&banktypes.MsgSend{}},
+		fee:  sdk.Coins{},
+		gas:  100_000,
+	}
+	// Simulate what the bypass decorator does: set flag and priority.
+	ctx := newTestContext().
+		WithValue(networkDutyFeeBypassKey{}, true).
+		WithPriority(500_000)
+
+	_, priority, err := checker(ctx, tx)
+	require.NoError(t, err)
+	require.Equal(t, int64(500_000), priority)
+}
+
 func TestGonkaFeeChecker_Priority(t *testing.T) {
 	checker := GonkaFeeChecker(nil)
 

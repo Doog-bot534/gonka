@@ -150,9 +150,10 @@ func isExemptMessageType(msg sdk.Msg) bool {
 // during both CheckTx and DeliverTx.
 func GonkaFeeChecker(inferenceKeeper *inferencemodulekeeper.Keeper) ante.TxFeeChecker {
 	return func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
-		// If bypass flag is set, allow zero fees.
+		// If bypass flag is set, allow zero fees but preserve priority
+		// set by the bypass decorator.
 		if IsNetworkDutyBypassed(ctx) {
-			return sdk.Coins{}, 0, nil
+			return sdk.Coins{}, ctx.Priority(), nil
 		}
 
 		feeTx, ok := tx.(sdk.FeeTx)
@@ -209,6 +210,10 @@ func getTxPriority(feeCoins sdk.Coins, gas uint64) int64 {
 	var priority int64
 	for _, coin := range feeCoins {
 		gasPrice := coin.Amount.QuoRaw(divisor)
+		// Clamp to max int64 if the result overflows.
+		if gasPrice.GT(math.NewInt(maxInt64)) {
+			return maxInt64
+		}
 		amt := gasPrice.Int64()
 		if amt > priority {
 			priority = amt

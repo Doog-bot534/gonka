@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"fmt"
 )
 
 // FeeParamsKey is the KV store key for FeeParams (stored separately from main Params proto).
@@ -30,6 +31,14 @@ func DefaultFeeParams() FeeParams {
 		BaseValidationGas: 500_000,
 		GasPerPoCCount:    100,
 	}
+}
+
+// Validate checks that the fee parameters are well-formed.
+func (fp FeeParams) Validate() error {
+	if fp.MinGasPriceNgonka > 1_000_000 {
+		return fmt.Errorf("min_gas_price_ngonka %d exceeds safety limit of 1,000,000", fp.MinGasPriceNgonka)
+	}
+	return nil
 }
 
 // Marshal serializes FeeParams to JSON bytes.

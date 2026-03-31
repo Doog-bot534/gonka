@@ -3,18 +3,19 @@ package keeper
 import (
 	"context"
 
+	errorsmod "cosmossdk.io/errors"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/runtime"
 	"github.com/productscience/inference/x/inference/types"
 )
 
 // GetFeeParams returns the fee parameters from the KV store.
-// Returns defaults if not yet set.
+// Returns zero values if not yet set (no fee enforcement until upgrade migration
+// or governance sets them).
 func (k Keeper) GetFeeParams(ctx context.Context) types.FeeParams {
 	store := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
 	bz := store.Get(types.FeeParamsKey)
 	if bz == nil {
-		// Not yet set: return zero values (no fee enforcement).
-		// Production defaults are applied by the v0.2.12 upgrade migration.
 		return types.FeeParams{}
 	}
 	fp, err := types.UnmarshalFeeParams(bz)
@@ -33,5 +34,25 @@ func (k Keeper) SetFeeParams(ctx context.Context, fp types.FeeParams) error {
 		return err
 	}
 	store.Set(types.FeeParamsKey, bz)
+	return nil
+}
+
+// UpdateFeeParams is a governance-gated operation that updates fee parameters.
+// The caller must have governance authority (checked via msg.Authority).
+func (k msgServer) UpdateFeeParams(goCtx context.Context, authority string, fp types.FeeParams) error {
+	if err := k.CheckPermission(goCtx, &types.MsgUpdateParams{Authority: authority}, GovernancePermission); err != nil {
+		return err
+	}
+	if err := fp.Validate(); err != nil {
+		return errorsmod.Wrap(err, "invalid fee params")
+	}
+	ctx := sdk.UnwrapSDKContext(goCtx)
+	if err := k.SetFeeParams(ctx, fp); err != nil {
+		return err
+	}
+	k.LogInfo("fee params updated via governance", types.System,
+		"min_gas_price_ngonka", fp.MinGasPriceNgonka,
+		"base_validation_gas", fp.BaseValidationGas,
+		"gas_per_poc_count", fp.GasPerPoCCount)
 	return nil
 }
