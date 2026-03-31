@@ -102,14 +102,14 @@ func (k msgServer) PoCV2StoreCommit(goCtx context.Context, msg *types.MsgPoCV2St
 	feeParams := k.Keeper.GetFeeParams(ctx)
 	if isFirstCommit {
 		ctx.GasMeter().ConsumeGas(storetypes.Gas(feeParams.BaseValidationGas), "poc_validation_base")
-		countGas, overflow := checkedMul(uint64(msg.Count), feeParams.GasPerPoCCount)
+		countGas, overflow := checkedMul(uint64(msg.Count), feeParams.GasPerPocCount)
 		if overflow {
 			return nil, sdkerrors.Wrap(types.ErrIllegalState, "count * gas_per_poc_count overflow")
 		}
 		ctx.GasMeter().ConsumeGas(storetypes.Gas(countGas), "poc_commit_count")
 	} else {
 		delta := uint64(msg.Count - existing.Count)
-		deltaGas, overflow := checkedMul(delta, feeParams.GasPerPoCCount)
+		deltaGas, overflow := checkedMul(delta, feeParams.GasPerPocCount)
 		if overflow {
 			return nil, sdkerrors.Wrap(types.ErrIllegalState, "delta * gas_per_poc_count overflow")
 		}

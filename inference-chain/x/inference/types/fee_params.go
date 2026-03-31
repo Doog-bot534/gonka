@@ -9,7 +9,7 @@ func DefaultFeeParams() *FeeParams {
 	return &FeeParams{
 		MinGasPriceNgonka: 10, // per gas unit; ~$0.00046 per typical tx
 		BaseValidationGas: 500_000,
-		GasPerPoCCount:    100,
+		GasPerPocCount:    100,
 	}
 }
 

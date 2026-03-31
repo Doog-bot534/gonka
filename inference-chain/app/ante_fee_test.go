@@ -310,14 +310,14 @@ func TestDefaultFeeParams(t *testing.T) {
 	fp := inferencetypes.DefaultFeeParams()
 	require.Equal(t, uint64(10), fp.MinGasPriceNgonka)
 	require.Equal(t, uint64(500_000), fp.BaseValidationGas)
-	require.Equal(t, uint64(100), fp.GasPerPoCCount)
+	require.Equal(t, uint64(100), fp.GasPerPocCount)
 }
 
 func TestFeeParamsMarshalRoundtrip(t *testing.T) {
 	fp := &inferencetypes.FeeParams{
 		MinGasPriceNgonka: 42,
 		BaseValidationGas: 123_456,
-		GasPerPoCCount:    789,
+		GasPerPocCount:    789,
 	}
 
 	bz, err := fp.Marshal()

@@ -16,7 +16,7 @@ func TestFeeParams_DefaultsFromParams(t *testing.T) {
 	require.NotNil(t, fp)
 	require.Equal(t, types.DefaultFeeParams().MinGasPriceNgonka, fp.MinGasPriceNgonka)
 	require.Equal(t, types.DefaultFeeParams().BaseValidationGas, fp.BaseValidationGas)
-	require.Equal(t, types.DefaultFeeParams().GasPerPoCCount, fp.GasPerPoCCount)
+	require.Equal(t, types.DefaultFeeParams().GasPerPocCount, fp.GasPerPocCount)
 }
 
 func TestFeeParams_SetAndGet(t *testing.T) {
@@ -25,14 +25,14 @@ func TestFeeParams_SetAndGet(t *testing.T) {
 	custom := &types.FeeParams{
 		MinGasPriceNgonka: 42,
 		BaseValidationGas: 1_000_000,
-		GasPerPoCCount:    200,
+		GasPerPocCount:    200,
 	}
 	require.NoError(t, k.SetFeeParams(ctx, custom))
 
 	fp := k.GetFeeParams(ctx)
 	require.Equal(t, custom.MinGasPriceNgonka, fp.MinGasPriceNgonka)
 	require.Equal(t, custom.BaseValidationGas, fp.BaseValidationGas)
-	require.Equal(t, custom.GasPerPoCCount, fp.GasPerPoCCount)
+	require.Equal(t, custom.GasPerPocCount, fp.GasPerPocCount)
 }
 
 func TestFeeParams_ZeroDisablesFees(t *testing.T) {
@@ -41,7 +41,7 @@ func TestFeeParams_ZeroDisablesFees(t *testing.T) {
 	zero := &types.FeeParams{
 		MinGasPriceNgonka: 0,
 		BaseValidationGas: 0,
-		GasPerPoCCount:    0,
+		GasPerPocCount:    0,
 	}
 	require.NoError(t, k.SetFeeParams(ctx, zero))
 

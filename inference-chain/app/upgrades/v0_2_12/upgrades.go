@@ -44,6 +44,6 @@ func setFeeParams(ctx context.Context, k keeper.Keeper) error {
 	k.LogInfo("initialized fee params", types.Upgrades,
 		"min_gas_price_ngonka", fp.MinGasPriceNgonka,
 		"base_validation_gas", fp.BaseValidationGas,
-		"gas_per_poc_count", fp.GasPerPoCCount)
+		"gas_per_poc_count", fp.GasPerPocCount)
 	return nil
 }
