@@ -477,8 +477,6 @@ github.com/cockroachdb/redact v1.1.6/go.mod h1:BVNblN9mBWFyMyqK1k3AAiSxhvhfK2oOZ
 github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 h1:zuQyyAKVxetITBuuhv3BI9cMrmStnpT18zmgmTxunpo=
 github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06/go.mod h1:7nc4anLGjupUW/PeY5qiNYsdNXj7zopG+eqsS7To5IQ=
 github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd/go.mod h1:sE/e/2PUdi/liOCUjSTXgM1o87ZssimdTWN964YiIeI=
-github.com/cometbft/cometbft v0.38.21 h1:qcIJSH9LiwU5s6ZgKR5eRbsLNucbubfraDs5bzgjtOI=
-github.com/cometbft/cometbft v0.38.21/go.mod h1:UCu8dlHqvkAsmAFmWDRWNZJPlu6ya2fTWZlDrWsivwo=
 github.com/cometbft/cometbft-db v0.14.1 h1:SxoamPghqICBAIcGpleHbmoPqy+crij/++eZz3DlerQ=
 github.com/cometbft/cometbft-db v0.14.1/go.mod h1:KHP1YghilyGV/xjD5DP3+2hyigWx0WTp9X+0Gnx0RxQ=
 github.com/consensys/gnark-crypto v0.18.0 h1:vIye/FqI50VeAr0B3dx+YjeIvmc3LWz4yEfbWBpTUf0=
@@ -510,8 +508,6 @@ github.com/cosmos/gogogateway v1.2.0/go.mod h1:iQpLkGWxYcnCdz5iAdLcRBSw3h7NXeOkZ
 github.com/cosmos/gogoproto v1.4.2/go.mod h1:cLxOsn1ljAHSV527CHOtaIP91kK6cCrZETRBrkzItWU=
 github.com/cosmos/gogoproto v1.7.0 h1:79USr0oyXAbxg3rspGh/m4SWNyoz/GLaAh0QlCe2fro=
 github.com/cosmos/gogoproto v1.7.0/go.mod h1:yWChEv5IUEYURQasfyBW5ffkMHR/90hiHgbNgrtp4j0=
-github.com/cosmos/iavl v1.2.4 h1:IHUrG8dkyueKEY72y92jajrizbkZKPZbMmG14QzsEkw=
-github.com/cosmos/iavl v1.2.4/go.mod h1:GiM43q0pB+uG53mLxLDzimxM9l/5N9UuSY3/D0huuVw=
 github.com/cosmos/ibc-go/modules/capability v1.0.1 h1:ibwhrpJ3SftEEZRxCRkH0fQZ9svjthrX2+oXdZvzgGI=
 github.com/cosmos/ibc-go/modules/capability v1.0.1/go.mod h1:rquyOV262nGJplkumH+/LeYs04P3eV8oB7ZM4Ygqk4E=
 github.com/cosmos/ibc-go/v8 v8.7.0 h1:HqhVOkO8bDpClXE81DFQgFjroQcTvtpm0tCS7SQVKVY=
@@ -790,8 +786,8 @@ github.com/golangci/unconvert v0.0.0-20240309020433-c5143eacb3ed h1:IURFTjxeTfNF
 github.com/golangci/unconvert v0.0.0-20240309020433-c5143eacb3ed/go.mod h1:XLXN8bNw4CGRPaqgl3bv/lhz7bsGPh4/xSaMTbo2vkQ=
 github.com/gonka-ai/cosmos-sdk v0.53.3-ps18-dbmetrics-5 h1:fycqm1ZGqYLvZ6Hhk7Jk0cFC22GQKULsq2CVIDHFNts=
 github.com/gonka-ai/cosmos-sdk v0.53.3-ps18-dbmetrics-5/go.mod h1:bOP/aDXvoIj/24t0qRdFah4tJPlse6ktRsRztoGJqxQ=
-github.com/gonka-ai/cosmos-sdk/store v1.1.2-ps1 h1:8kmYjdJ9ht+o+0GnJywdf2JounFAWOZZ5xZSrJ6ntFk=
-github.com/gonka-ai/cosmos-sdk/store v1.1.2-ps1/go.mod h1:7a15p+QsM5UXf7VMhO3ylmqj85k9UBN/h1kwMcLiffA=
+github.com/gonka-ai/cosmos-sdk/store v1.1.2-ps18-dbmetrics-5 h1:gXNbnZaXHNf1WcVn72MYTc3YK4P6oOGsw1uhFtaWC2w=
+github.com/gonka-ai/cosmos-sdk/store v1.1.2-ps18-dbmetrics-5/go.mod h1:B+7uvpLD8afsDYZSMmtssDpXZpnsiZXc0FiyvWAEt1o=
 github.com/google/btree v0.0.0-20180813153112-4030bb1f1f0c/go.mod h1:lNA+9X1NB3Zf8V7Ke586lFgjr2dZNuvo3lPJSGZ5JPQ=
 github.com/google/btree v1.0.0/go.mod h1:lNA+9X1NB3Zf8V7Ke586lFgjr2dZNuvo3lPJSGZ5JPQ=
 github.com/google/btree v1.1.3 h1:CVpQJjYgC4VbzxeGVHfvZrv1ctoYCAI8vbl07Fcxlyg=
@@ -1070,6 +1066,10 @@ github.com/leonklingele/grouper v1.1.2 h1:o1ARBDLOmmasUaNDesWqWCIFH3u7hoFlM84Yrj
 github.com/leonklingele/grouper v1.1.2/go.mod h1:6D0M/HVkhs2yRKRFZUoGjeDy7EZTfFBE9gl4kjmIGkA=
 github.com/lib/pq v1.10.9 h1:YXG7RB+JIjhP29X+OtkiDnYaXQwpS4JEWq7dtCCRUEw=
 github.com/lib/pq v1.10.9/go.mod h1:AlVN5x4E4T544tWzH6hKfbfQvm3HdbOxrmggDNAPY9o=
+github.com/libermans/cometbft v0.38.17-ps18-pruning-metrics h1:kjoE0c/8Bb1i1hLxvF3DgsRK5MVqFcZ2W+Vj4vjWaHc=
+github.com/libermans/cometbft v0.38.17-ps18-pruning-metrics/go.mod h1:5l0SkgeLRXi6bBfQuevXjKqML1jjfJJlvI1Ulp02/o4=
+github.com/libermans/iavl v1.2.2-ps18-pruning-metrics h1:mKilOiSvYf1Zxnsa4jbtxwBX0iHXeV2TkTt4MVde9Bo=
+github.com/libermans/iavl v1.2.2-ps18-pruning-metrics/go.mod h1:GiM43q0pB+uG53mLxLDzimxM9l/5N9UuSY3/D0huuVw=
 github.com/lightstep/lightstep-tracer-common/golang/gogo v0.0.0-20190605223551-bc2310a04743/go.mod h1:qklhhLq1aX+mtWk9cPHPzaBjWImj5ULL6C7HFJtXQMM=
 github.com/lightstep/lightstep-tracer-go v0.18.1/go.mod h1:jlF1pusYV4pidLvZ+XD0UBX0ZE6WURAspgAczcDHrL4=
 github.com/linxGnu/grocksdb v1.8.14 h1:HTgyYalNwBSG/1qCQUIott44wU5b2Y9Kr3z7SK5OfGQ=
