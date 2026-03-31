@@ -3,9 +3,9 @@ module github.com/productscience/inference
 go 1.24.2
 
 replace (
-	cosmossdk.io/store => github.com/gonka-ai/cosmos-sdk/store v1.1.2-ps18-dbmetrics-5
+	cosmossdk.io/store => github.com/gonka-ai/cosmos-sdk/store v1.1.2-ps18-dbmetrics-6
 	github.com/cometbft/cometbft => github.com/libermans/cometbft v0.38.17-ps18-pruning-metrics
-	github.com/cosmos/cosmos-sdk => github.com/gonka-ai/cosmos-sdk v0.53.3-ps18-dbmetrics-5
+	github.com/cosmos/cosmos-sdk => github.com/gonka-ai/cosmos-sdk v0.53.3-ps18-dbmetrics-6
 	github.com/cosmos/iavl => github.com/libermans/iavl v1.2.2-ps18-pruning-metrics
 
 	// fix upstream GHSA-h395-qcrw-5vmq vulnerability.
