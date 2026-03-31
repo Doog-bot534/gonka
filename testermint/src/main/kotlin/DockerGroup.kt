@@ -198,7 +198,7 @@ data class DockerGroup(
                 ?: error("Could not find genesis node container")
             val joinColdAddress = node.getColdAddress()
             val fundingAmount = "100000000ngonka" // 0.1 GNK — enough for fees
-            Logger.info("Funding join node $joinColdAddress with $fundingAmount from genesis")
+            Logger.info("Funding join node {} with {} from genesis", joinColdAddress, fundingAmount)
             genesisNode.sendTransactionDirectly(listOf(
                 "bank", "send",
                 genesisNode.getColdAccountName(), joinColdAddress,
