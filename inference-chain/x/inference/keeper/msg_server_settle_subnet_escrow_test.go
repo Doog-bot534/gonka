@@ -28,6 +28,15 @@ func TestSettleSubnetEscrow_FeesSplitBySlotCount(t *testing.T) {
 	addrH2 := cosmosAddressFromDcrdKey(keyH2).String()
 	addrH3 := cosmosAddressFromDcrdKey(keyH3).String()
 
+	for _, addr := range []string{addrH1, addrH2, addrH3} {
+		err = k.SetParticipant(ctx, types.Participant{
+			Address: addr,
+			Index:   addr,
+			Status:  types.ParticipantStatus_ACTIVE,
+		})
+		require.NoError(t, err)
+	}
+
 	initialAmount := uint64(1_000)
 	fees := uint64(403)
 	expectedUserRefund := initialAmount - fees
@@ -53,16 +62,7 @@ func TestSettleSubnetEscrow_FeesSplitBySlotCount(t *testing.T) {
 	}
 	msg := buildSettlementTestData(t, escrow, []*dcrdsecp.PrivateKey{keyH1, keyH1, keyH2, keyH3}, hostStats, fees)
 
-	payouts := make(map[string]uint64)
-	mocks.BankKeeper.EXPECT().
-		SendCoinsFromModuleToAccount(gomock.Any(), types.ModuleName, gomock.Any(), gomock.Any(), gomock.Eq("subnet_escrow_payment")).
-		DoAndReturn(func(_ context.Context, _ string, recipient sdk.AccAddress, coins sdk.Coins, _ string) error {
-			require.Len(t, coins, 1)
-			payouts[recipient.String()] = coins[0].Amount.Uint64()
-			return nil
-		}).
-		Times(3)
-
+	mocks.BankKeeper.EXPECT().LogSubAccountTransaction(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	mocks.BankKeeper.EXPECT().
 		SendCoinsFromModuleToAccount(gomock.Any(), types.ModuleName, creator, gomock.Any(), gomock.Eq("subnet_escrow_refund")).
 		DoAndReturn(func(_ context.Context, _ string, _ sdk.AccAddress, coins sdk.Coins, _ string) error {
@@ -80,9 +80,23 @@ func TestSettleSubnetEscrow_FeesSplitBySlotCount(t *testing.T) {
 	//
 	// Remainder fees are distributed 1 coin per slot, starting from the first slot.
 	// H1 gets 2 remainder coins for its two slots, H2 gets 1 coin, and H3 gets 0 coins.
-	require.Equal(t, uint64(202), payouts[addrH1])
-	require.Equal(t, uint64(101), payouts[addrH2])
-	require.Equal(t, uint64(100), payouts[addrH3])
+	participantH1, found := k.GetParticipant(ctx, addrH1)
+	require.True(t, found)
+	require.Equal(t, int64(202), participantH1.CoinBalance)
+	require.NotNil(t, participantH1.CurrentEpochStats)
+	require.Equal(t, uint64(202), participantH1.CurrentEpochStats.EarnedCoins)
+
+	participantH2, found := k.GetParticipant(ctx, addrH2)
+	require.True(t, found)
+	require.Equal(t, int64(101), participantH2.CoinBalance)
+	require.NotNil(t, participantH2.CurrentEpochStats)
+	require.Equal(t, uint64(101), participantH2.CurrentEpochStats.EarnedCoins)
+
+	participantH3, found := k.GetParticipant(ctx, addrH3)
+	require.True(t, found)
+	require.Equal(t, int64(100), participantH3.CoinBalance)
+	require.NotNil(t, participantH3.CurrentEpochStats)
+	require.Equal(t, uint64(100), participantH3.CurrentEpochStats.EarnedCoins)
 }
 
 func TestSettleSubnetEscrow_HappyPath(t *testing.T) {
@@ -96,6 +110,12 @@ func TestSettleSubnetEscrow_HappyPath(t *testing.T) {
 		require.NoError(t, err)
 		keys[i] = key
 		slots[i] = cosmosAddressFromDcrdKey(key).String()
+		err = k.SetParticipant(ctx, types.Participant{
+			Address: slots[i],
+			Index:   slots[i],
+			Status:  types.ParticipantStatus_ACTIVE,
+		})
+		require.NoError(t, err)
 	}
 
 	creator := sdk.AccAddress(make([]byte, 20))
@@ -116,12 +136,6 @@ func TestSettleSubnetEscrow_HappyPath(t *testing.T) {
 	fees := uint64(200_000_000)
 	msg := buildSettlementTestData(t, escrow, keys, hostStats, fees)
 
-	// Expect payments to validators (deduplicated by address)
-	mocks.BankKeeper.EXPECT().
-		SendCoinsFromModuleToAccount(gomock.Any(), types.ModuleName, gomock.Any(), gomock.Any(), gomock.Eq("subnet_escrow_payment")).
-		Return(nil).
-		Times(keeper.SubnetGroupSize) // 16 unique validators
-
 	// Expect refund to creator
 	// Refund is reduced by fees; exact amount is verified in mock callback.
 	expectedRefund := escrow.Amount - uint64(keeper.SubnetGroupSize)*100_000_000 - fees
@@ -132,6 +146,7 @@ func TestSettleSubnetEscrow_HappyPath(t *testing.T) {
 			require.Equal(t, expectedRefund, coins[0].Amount.Uint64())
 			return nil
 		})
+	mocks.BankKeeper.EXPECT().LogSubAccountTransaction(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 	resp, err := ms.SettleSubnetEscrow(ctx, msg)
 	require.NoError(t, err)
@@ -141,6 +156,15 @@ func TestSettleSubnetEscrow_HappyPath(t *testing.T) {
 	settled, found := k.GetSubnetEscrow(ctx, 1)
 	require.True(t, found)
 	require.True(t, settled.Settled)
+
+	expectedPayout := int64(costPerSlot + (fees / uint64(keeper.SubnetGroupSize)))
+	for _, addr := range slots {
+		participant, found := k.GetParticipant(ctx, addr)
+		require.True(t, found)
+		require.Equal(t, expectedPayout, participant.CoinBalance)
+		require.NotNil(t, participant.CurrentEpochStats)
+		require.Equal(t, uint64(expectedPayout), participant.CurrentEpochStats.EarnedCoins)
+	}
 }
 
 func TestSettleSubnetEscrow_AlreadySettled(t *testing.T) {

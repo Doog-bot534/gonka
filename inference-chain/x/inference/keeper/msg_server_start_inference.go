@@ -2,6 +2,9 @@ package keeper
 
 import (
 	"context"
+	"fmt"
+	"math"
+	"math/bits"
 	"time"
 
 	"encoding/base64"
@@ -343,12 +346,52 @@ func (k msgServer) processInferencePayments(
 		if executor == nil {
 			return nil, sdkerrors.Wrap(types.ErrParticipantNotFound, inference.ExecutedBy)
 		}
-		ensureParticipantEpochStats(executor)
-		executor.CoinBalance += payments.ExecutorPayment
-		executor.CurrentEpochStats.EarnedCoins += uint64(payments.ExecutorPayment)
-		k.SafeLogSubAccountTransaction(ctx, executor.Address, types.ModuleName, types.OwedSubAccount, executor.CoinBalance, "inference_started:"+inference.InferenceId)
+		if err := k.processParticipantPayment(ctx, executor, payments.ExecutorPayment, "inference_started:"+inference.InferenceId); err != nil {
+			return nil, err
+		}
 	}
 	return inference, nil
+}
+
+// processParticipantPayment updates a participant's ledger balances for a positive payout without bank transfers.
+//
+// * Update CoinBalance
+// * Update EpochStats
+// * Log the owed-subaccount transaction
+func (k msgServer) processParticipantPayment(
+	ctx sdk.Context,
+	participant *types.Participant,
+	payout int64,
+	memo string,
+) error {
+	// Validate inputs and short-circuit for zero payouts.
+	if participant == nil {
+		return fmt.Errorf("participant is nil")
+	}
+	if payout == 0 {
+		return nil
+	}
+	if payout < 0 {
+		return fmt.Errorf("payout must be positive for %s: %d", participant.Address, payout)
+	}
+
+	// Update CoinBalance with overflow checks.
+	if participant.CoinBalance > math.MaxInt64-payout {
+		return fmt.Errorf("participant balance overflow for %s", participant.Address)
+	}
+	participant.CoinBalance += payout
+
+	// Update EpochStats with overflow checks.
+	ensureParticipantEpochStats(participant)
+	nextEarnedCoins, carry := bits.Add64(participant.CurrentEpochStats.EarnedCoins, uint64(payout), 0)
+	if carry != 0 {
+		return fmt.Errorf("participant earned coins overflow for %s", participant.Address)
+	}
+	participant.CurrentEpochStats.EarnedCoins = nextEarnedCoins
+
+	// Log the owed-subaccount transaction
+	k.SafeLogSubAccountTransaction(ctx, participant.Address, types.ModuleName, types.OwedSubAccount, participant.CoinBalance, memo)
+	return nil
 }
 
 func shouldPersistParticipant(inference *types.Inference, payments *calculations.Payments, executor *types.Participant) bool {

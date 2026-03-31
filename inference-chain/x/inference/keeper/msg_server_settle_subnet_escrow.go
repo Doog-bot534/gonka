@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/bits"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -87,23 +88,28 @@ func (k msgServer) SettleSubnetEscrow(goCtx context.Context, msg *types.MsgSettl
 			continue
 		}
 		paidValidators[addr] = true
+
+		// Track total payout for remainder/refund calculation.
 		nextTotalPayout, carry := bits.Add64(totalPayout, payout, 0)
 		if carry != 0 {
 			return nil, fmt.Errorf("total validator payout overflow")
 		}
 		totalPayout = nextTotalPayout
 
-		recipientAddr, err := sdk.AccAddressFromBech32(addr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid validator address %s: %w", addr, err)
-		}
-		coins, err := types.GetCoins(int64(payout))
-		if err != nil {
-			return nil, fmt.Errorf("invalid payout amount: %w", err)
-		}
-		err = k.BankKeeper.SendCoinsFromModuleToAccount(goCtx, types.ModuleName, recipientAddr, coins, "subnet_escrow_payment")
-		if err != nil {
-			return nil, fmt.Errorf("failed to pay validator %s: %w", addr, err)
+		// Apply payout to participant balances (ledger-style, no bank transfer).
+		participant, found := k.GetParticipant(ctx, addr)
+		// If the subnet is settled on a different epoch, it's possible a subnet's host is no longer a participant on this epoch.
+		// In this case, we skip payment to this host
+		if found {
+			if payout > math.MaxInt64 {
+				return nil, fmt.Errorf("validator payout out of range for %s", addr)
+			}
+			if err := k.processParticipantPayment(ctx, &participant, int64(payout), "subnet_escrow_payment"); err != nil {
+				return nil, err
+			}
+			if err := k.SetParticipant(ctx, participant); err != nil {
+				return nil, fmt.Errorf("failed to update participant %s: %w", addr, err)
+			}
 		}
 	}
 
