@@ -146,7 +146,7 @@ func TestNetworkDutyBypass_GasCapEnforced(t *testing.T) {
 	// Gas exceeds cap: should reject
 	tx := testFeeTx{
 		msgs: []sdk.Msg{&inferencetypes.MsgValidation{}},
-		gas:  2_000_000, // exceeds 1M cap
+		gas:  20_000_000, // exceeds 10M cap
 	}
 	ctx := newTestContext()
 
