@@ -3,10 +3,12 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+
+	"cosmossdk.io/collections/codec"
 )
 
-// FeeParamsKey is the KV store key for FeeParams (stored separately from main Params proto).
-var FeeParamsKey = []byte("p_fee_params")
+// FeeParamsPrefix is the collections prefix for the FeeParams item.
+var FeeParamsPrefix = []byte("p_fee_params")
 
 // FeeParams defines governance-controlled fee parameters for consensus-level fee enforcement.
 type FeeParams struct {
@@ -41,14 +43,42 @@ func (fp FeeParams) Validate() error {
 	return nil
 }
 
-// Marshal serializes FeeParams to JSON bytes.
-func (fp FeeParams) Marshal() ([]byte, error) {
-	return json.Marshal(fp)
+// --- collections.ValueCodec implementation for FeeParams ---
+
+// FeeParamsValueCodec is a ValueCodec that serializes FeeParams as JSON for
+// use with cosmossdk.io/collections.Item.
+var FeeParamsValueCodec feeParamsValueCodec
+
+type feeParamsValueCodec struct{}
+
+func (feeParamsValueCodec) Encode(value FeeParams) ([]byte, error) {
+	return json.Marshal(value)
 }
 
-// UnmarshalFeeParams deserializes FeeParams from JSON bytes.
-func UnmarshalFeeParams(bz []byte) (FeeParams, error) {
+func (feeParamsValueCodec) Decode(bz []byte) (FeeParams, error) {
 	var fp FeeParams
 	err := json.Unmarshal(bz, &fp)
 	return fp, err
 }
+
+func (feeParamsValueCodec) EncodeJSON(value FeeParams) ([]byte, error) {
+	return json.Marshal(value)
+}
+
+func (feeParamsValueCodec) DecodeJSON(bz []byte) (FeeParams, error) {
+	var fp FeeParams
+	err := json.Unmarshal(bz, &fp)
+	return fp, err
+}
+
+func (feeParamsValueCodec) Stringify(value FeeParams) string {
+	bz, _ := json.Marshal(value)
+	return string(bz)
+}
+
+func (feeParamsValueCodec) ValueType() string {
+	return "inference/FeeParams"
+}
+
+// Verify interface compliance at compile time.
+var _ codec.ValueCodec[FeeParams] = feeParamsValueCodec{}

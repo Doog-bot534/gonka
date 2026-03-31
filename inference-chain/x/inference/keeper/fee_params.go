@@ -5,36 +5,24 @@ import (
 
 	errorsmod "cosmossdk.io/errors"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/runtime"
 	"github.com/productscience/inference/x/inference/types"
 )
 
-// GetFeeParams returns the fee parameters from the KV store.
+// GetFeeParams returns the fee parameters from the collections store.
 // Returns zero values if not yet set (no fee enforcement until upgrade migration
 // or governance sets them).
 func (k Keeper) GetFeeParams(ctx context.Context) types.FeeParams {
-	store := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
-	bz := store.Get(types.FeeParamsKey)
-	if bz == nil {
-		return types.FeeParams{}
-	}
-	fp, err := types.UnmarshalFeeParams(bz)
+	fp, err := k.FeeParamsItem.Get(ctx)
 	if err != nil {
-		k.LogError("Unable to unmarshal FeeParams, using defaults", types.System, "error", err)
-		return types.DefaultFeeParams()
+		// Not found or decode error: return zero values (no enforcement).
+		return types.FeeParams{}
 	}
 	return fp
 }
 
-// SetFeeParams stores the fee parameters in the KV store.
+// SetFeeParams stores the fee parameters in the collections store.
 func (k Keeper) SetFeeParams(ctx context.Context, fp types.FeeParams) error {
-	store := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
-	bz, err := fp.Marshal()
-	if err != nil {
-		return err
-	}
-	store.Set(types.FeeParamsKey, bz)
-	return nil
+	return k.FeeParamsItem.Set(ctx, fp)
 }
 
 // UpdateFeeParams is a governance-gated operation that updates fee parameters.
