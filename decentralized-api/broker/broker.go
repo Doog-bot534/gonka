@@ -1080,7 +1080,15 @@ func (b *Broker) reconcile(epochState chainphase.EpochState) {
 		// TODO: we should make reindexing as some indexes might be skipped
 		totalNumNodes := b.curMaxNodesNum.Load() + 1
 		// Create and dispatch the command
-		cmd := b.getCommandForState(id, &node.State, node.Node.Models, currentPoCParams, pocParamsErr, int(totalNumNodes), epochState.ActiveConfirmationPoCEvent)
+		cmd := b.getCommandForState(
+			id,
+			&node.State,
+			node.Node.Models,
+			currentPoCParams,
+			pocParamsErr,
+			int(totalNumNodes),
+			epochState.ActiveConfirmationPoCEvent,
+		)
 		if cmd != nil {
 			logging.Info("Dispatching reconciliation command", types.Nodes,
 				"node_id", id, "target_status", node.State.IntendedStatus, "target_poc_status", node.State.PocIntendedStatus, "blockHeight", blockHeight)
@@ -1170,7 +1178,11 @@ func (b *Broker) enrichWithPocParams(params *pocParams) {
 	}
 }
 
-func (b *Broker) resolvePoCModelForNode(nodeState *NodeState, nodeModels map[string]ModelArgs, params *pocParams) (apiconfig.PoCModelConfigCache, bool) {
+func (b *Broker) resolvePoCModelForNode(
+	nodeState *NodeState,
+	nodeModels map[string]ModelArgs,
+	params *pocParams,
+) (apiconfig.PoCModelConfigCache, bool) {
 	if nodeState == nil || params == nil || len(params.models) == 0 {
 		return apiconfig.PoCModelConfigCache{}, false
 	}
@@ -1220,7 +1232,15 @@ func ResolveNodeModelID(epochMLNodes map[string]types.MLNodeInfo, nodeModels map
 	return modelIDs[0], true
 }
 
-func (b *Broker) getCommandForState(nodeId string, nodeState *NodeState, nodeModels map[string]ModelArgs, pocGenParams *pocParams, pocGenErr error, totalNodes int, confirmationEvent *types.ConfirmationPoCEvent) NodeWorkerCommand {
+func (b *Broker) getCommandForState(
+	nodeId string,
+	nodeState *NodeState,
+	nodeModels map[string]ModelArgs,
+	pocGenParams *pocParams,
+	pocGenErr error,
+	totalNodes int,
+	confirmationEvent *types.ConfirmationPoCEvent,
+) NodeWorkerCommand {
 	switch nodeState.IntendedStatus {
 	case types.HardwareNodeStatus_INFERENCE:
 		return InferenceUpNodeCommand{}
