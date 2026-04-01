@@ -96,7 +96,7 @@ func validateMessageContents(requestMap map[string]interface{}) error {
 			continue
 		}
 		if content == nil {
-			return fmt.Errorf("messages[%d].content must not be null", i)
+			continue
 		}
 
 		switch typedContent := content.(type) {

@@ -266,17 +266,48 @@ func TestMultipartContent_RoundTrip(t *testing.T) {
 	require.Equal(t, "high", imgURL["detail"])
 }
 
-func TestReadRequest_RejectsMissingMessageContent(t *testing.T) {
-	body := []byte(`{"model":"test","messages":[{"role":"user"}]}`)
+func TestReadRequest_AcceptsMissingMessageContent(t *testing.T) {
+	body := []byte(`{"model":"test","messages":[{"role":"assistant"}]}`)
 	req := createTestRequest(body)
 
-	_, err := readRequest(req, nil, "transfer-agent")
-	require.Error(t, err)
+	chatRequest, err := readRequest(req, nil, "transfer-agent")
+	require.NoError(t, err, "missing content is valid for assistant/tool-calling messages")
+	require.Equal(t, "test", chatRequest.OpenAiRequest.Model)
 
-	var httpErr *echo.HTTPError
-	require.True(t, errors.As(err, &httpErr))
-	require.Equal(t, http.StatusBadRequest, httpErr.Code)
-	require.Contains(t, httpErr.Message, "message content is required")
+	text, ignored := FlattenMessagesText(chatRequest.OpenAiRequest.Messages)
+	require.Equal(t, "\n", text)
+	require.Equal(t, 0, ignored)
+}
+
+func TestReadRequest_AcceptsToolCallingPayload(t *testing.T) {
+	body := []byte(`{
+		"model":"test",
+		"messages":[
+			{"role":"user","content":"What is the weather in NYC?"},
+			{"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"get_weather","arguments":"{\"location\":\"NYC\"}"}}]},
+			{"role":"tool","content":"72°F and sunny","tool_call_id":"call_1"}
+		]
+	}`)
+	req := createTestRequest(body)
+
+	chatRequest, err := readRequest(req, nil, "transfer-agent")
+	require.NoError(t, err)
+	require.Equal(t, "test", chatRequest.OpenAiRequest.Model)
+	require.Len(t, chatRequest.OpenAiRequest.Messages, 3)
+
+	require.NotNil(t, chatRequest.OpenAiRequest.Messages[0].Content.Text)
+	require.Nil(t, chatRequest.OpenAiRequest.Messages[1].Content.Text)
+	require.Nil(t, chatRequest.OpenAiRequest.Messages[1].Content.Parts)
+	require.NotNil(t, chatRequest.OpenAiRequest.Messages[2].Content.Text)
+
+	roundTripped, err := json.Marshal(chatRequest.OpenAiRequest)
+	require.NoError(t, err)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(roundTripped, &result))
+	messages := result["messages"].([]interface{})
+	assistantMsg := messages[1].(map[string]interface{})
+	require.Nil(t, assistantMsg["content"], "assistant content should marshal as null")
 }
 
 func TestReadRequest_RejectsUnsupportedContentType(t *testing.T) {

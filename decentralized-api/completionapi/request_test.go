@@ -102,6 +102,15 @@ const (
         ]
     }`
 
+	jsonBodyToolCalling = `{
+        "model": "Qwen/Qwen2.5-7B-Instruct",
+        "messages": [
+          { "role": "user", "content": "What is the weather?" },
+          { "role": "assistant", "tool_calls": [{"id":"call_1","type":"function","function":{"name":"get_weather","arguments":"{}"}}] },
+          { "role": "tool", "content": "72F sunny", "tool_call_id": "call_1" }
+        ]
+    }`
+
 	jsonBodyMultipartTextPartMissingText = `{
         "model": "Qwen/Qwen2.5-7B-Instruct",
         "messages": [
@@ -308,9 +317,24 @@ func TestModifyRequestBody_PreservesMultipartContent(t *testing.T) {
 	require.True(t, isArray)
 }
 
-func TestModifyRequestBody_RejectsNullMessageContent(t *testing.T) {
-	_, err := ModifyRequestBody([]byte(jsonBodyNullContent), 7)
-	require.Error(t, err, "content:null should be rejected as invalid request input")
+func TestModifyRequestBody_AcceptsNullMessageContent(t *testing.T) {
+	r, err := ModifyRequestBody([]byte(jsonBodyNullContent), 7)
+	require.NoError(t, err, "content:null is valid for tool-calling assistant messages")
+	require.NotNil(t, r)
+}
+
+func TestModifyRequestBody_AcceptsToolCallingPayload(t *testing.T) {
+	r, err := ModifyRequestBody([]byte(jsonBodyToolCalling), 7)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+
+	var requestMap map[string]interface{}
+	require.NoError(t, json.Unmarshal(r.NewBody, &requestMap))
+	messages := requestMap["messages"].([]interface{})
+	require.Len(t, messages, 3)
+	assistantMsg := messages[1].(map[string]interface{})
+	require.Nil(t, assistantMsg["content"])
+	require.NotNil(t, assistantMsg["tool_calls"])
 }
 
 func TestModifyRequestBody_RejectsTextPartWithoutTextField(t *testing.T) {

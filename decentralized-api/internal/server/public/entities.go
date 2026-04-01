@@ -50,17 +50,14 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 	if strings.TrimSpace(raw.Role) == "" {
 		return fmt.Errorf("message role must be a non-empty string")
 	}
+	m.Role = raw.Role
 	if raw.Content == nil {
-		return fmt.Errorf("message content is required")
+		return nil
 	}
 
-	var content MessageContent
-	if err := json.Unmarshal(*raw.Content, &content); err != nil {
+	if err := json.Unmarshal(*raw.Content, &m.Content); err != nil {
 		return err
 	}
-
-	m.Role = raw.Role
-	m.Content = content
 	return nil
 }
 
@@ -103,7 +100,9 @@ func (p ContentPart) MarshalJSON() ([]byte, error) {
 
 func (c *MessageContent) UnmarshalJSON(data []byte) error {
 	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-		return fmt.Errorf("message content must not be null")
+		c.Text = nil
+		c.Parts = nil
+		return nil
 	}
 
 	var text string
@@ -130,7 +129,7 @@ func (c MessageContent) MarshalJSON() ([]byte, error) {
 	if c.Parts != nil {
 		return json.Marshal(c.Parts)
 	}
-	return nil, fmt.Errorf("message content must have either text or parts set")
+	return []byte("null"), nil
 }
 
 func (c MessageContent) FlattenedText() (string, int) {
