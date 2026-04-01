@@ -121,9 +121,6 @@ func StartTxManager(
 	blstypes.RegisterInterfaces(client.Context().InterfaceRegistry)
 	streamvestingtypes.RegisterInterfaces(client.Context().InterfaceRegistry)
 
-	if minGasPriceNgonka <= 0 {
-		minGasPriceNgonka = apiconfig.DefaultMinGasPriceNgonka
-	}
 	m := &manager{
 		ctx:               ctx,
 		client:            client,
@@ -951,7 +948,11 @@ func (m *manager) getSignedBytes(id string, unsignedTx client.TxBuilder, factory
 	// PoC, inference) are fee-exempt via the bypass decorator, so this fee
 	// will not be charged for exempt messages.
 	unsignedTx.SetGasLimit(BatchGasLimit)
-	unsignedTx.SetFeeAmount(sdk.NewCoins(sdk.NewCoin("ngonka", math.NewInt(BatchGasLimit*m.minGasPriceNgonka))))
+	if m.minGasPriceNgonka > 0 {
+		unsignedTx.SetFeeAmount(sdk.NewCoins(sdk.NewCoin("ngonka", math.NewInt(BatchGasLimit*m.minGasPriceNgonka))))
+	} else {
+		unsignedTx.SetFeeAmount(sdk.Coins{})
+	}
 	unsignedTx.SetUnordered(true)
 	unsignedTx.SetTimeoutTimestamp(timestamp)
 	name := m.apiAccount.SignerAccount.Name

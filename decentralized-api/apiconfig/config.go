@@ -81,14 +81,15 @@ type ChainNodeConfig struct {
 	MinGasPriceNgonka int64 `koanf:"min_gas_price_ngonka" json:"min_gas_price_ngonka"`
 }
 
-const DefaultMinGasPriceNgonka int64 = 10
+// DefaultMinGasPriceNgonka is the gas price used when not configured.
+// Zero means no fees are added to transactions (matching pre-fee-enforcement behavior).
+// Production deployments should set min_gas_price_ngonka in config after the
+// v0.2.12 upgrade enables on-chain fee enforcement.
+const DefaultMinGasPriceNgonka int64 = 0
 
-// GetMinGasPriceNgonka returns the configured gas price, defaulting to 10 if unset.
+// GetMinGasPriceNgonka returns the configured gas price.
 func (c ChainNodeConfig) GetMinGasPriceNgonka() int64 {
-	if c.MinGasPriceNgonka > 0 {
-		return c.MinGasPriceNgonka
-	}
-	return DefaultMinGasPriceNgonka
+	return c.MinGasPriceNgonka
 }
 
 type MLNodeKeyConfig struct {
