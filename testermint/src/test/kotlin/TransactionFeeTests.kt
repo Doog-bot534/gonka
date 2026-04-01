@@ -10,11 +10,15 @@ import org.junit.jupiter.api.TestMethodOrder
 /**
  * Integration tests for consensus-level transaction fee enforcement.
  *
+ * Uses a custom genesis spec that enables FeeParams, requiring a cluster
+ * reboot. All other tests run without fee enforcement (FeeParams not set
+ * at genesis), matching pre-upgrade behavior.
+ *
  * Verifies that:
- * - Fee-exempt (network duty) messages succeed without fees
  * - Fee-required messages are rejected with zero/insufficient fees
  * - Fee-required messages succeed with sufficient fees
  * - Fees are deducted from the sender's balance
+ * - Default transaction path (with --gas-prices) works
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class TransactionFeeTests : TestermintTest() {
@@ -28,7 +32,21 @@ class TransactionFeeTests : TestermintTest() {
         @BeforeAll
         @JvmStatic
         fun initOnce() {
-            val result = initCluster()
+            // Enable fee enforcement via genesis spec merge.
+            // This triggers a cluster reboot with FeeParams set.
+            val feeSpec = spec<AppState> {
+                this[AppState::inference] = spec<InferenceState> {
+                    this[InferenceState::params] = spec<InferenceParams> {
+                        this[InferenceParams::feeParams] = spec<FeeParamsData> {
+                            this[FeeParamsData::minGasPriceNgonka] = 10L
+                            this[FeeParamsData::baseValidationGas] = 500_000L
+                            this[FeeParamsData::gasPerPocCount] = 100L
+                        }
+                    }
+                }
+            }
+
+            val result = initCluster(reboot = true, mergeSpec = feeSpec)
             cluster = result.first
             genesis = result.second
             genesisAddress = genesis.node.getColdAddress()
@@ -85,7 +103,6 @@ class TransactionFeeTests : TestermintTest() {
     fun `staking delegate with zero fees is rejected`() {
         logHighlight("Testing that staking delegate with zero fees is rejected")
 
-        // Get validator address
         val validatorAddr = genesis.node.getValidators().validators.first().operatorAddress
 
         val result = genesis.submitTransactionWithFees(
@@ -104,16 +121,11 @@ class TransactionFeeTests : TestermintTest() {
 
     @Test
     @Order(4)
-    fun `fee-exempt network duty messages bypass fees`() {
-        logHighlight("Testing that network duty messages (via default gas args) succeed without explicit fees")
+    fun `default transaction path succeeds with gas prices`() {
+        logHighlight("Testing that default transaction path (with --gas-prices) succeeds")
 
-        // The default submitTransaction path uses gas-adjustment (auto fee estimation).
-        // Network duty messages like bank sends from genesis use the standard path.
-        // Here we verify that the existing inference/validation flow still works,
-        // which exercises the fee bypass for system messages.
-
-        // A simple bank send via the default path (which uses gas simulation)
-        // should succeed because the chain auto-calculates fees.
+        // The default submitTransaction path includes --gas-prices 10ngonka,
+        // so fee calculation happens automatically via gas simulation.
         val result = genesis.submitTransaction(
             listOf(
                 "bank", "send",
@@ -123,6 +135,6 @@ class TransactionFeeTests : TestermintTest() {
         )
 
         assertThat(result.code).isEqualTo(0)
-        logHighlight("Default-path transaction succeeded (fees auto-calculated)")
+        logHighlight("Default-path transaction succeeded (fees auto-calculated from gas prices)")
     }
 }

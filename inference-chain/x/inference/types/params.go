@@ -159,7 +159,6 @@ func DefaultParams() Params {
 			AllowedTransferAddresses: nil, // nil = no restriction, all TAs allowed
 		},
 		SubnetEscrowParams: DefaultSubnetEscrowParams(),
-		FeeParams:          DefaultFeeParams(),
 	}
 }
 

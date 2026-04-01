@@ -8,15 +8,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFeeParams_DefaultsFromParams(t *testing.T) {
+func TestFeeParams_NilAtGenesis(t *testing.T) {
 	k, ctx := testkeeper.InferenceKeeper(t)
 
-	// DefaultParams() includes FeeParams with production defaults.
+	// FeeParams are not set at genesis (enabled via upgrade handler).
+	// GetFeeParams returns zero values, meaning no fee enforcement.
 	fp := k.GetFeeParams(ctx)
 	require.NotNil(t, fp)
-	require.Equal(t, types.DefaultFeeParams().MinGasPriceNgonka, fp.MinGasPriceNgonka)
-	require.Equal(t, types.DefaultFeeParams().BaseValidationGas, fp.BaseValidationGas)
-	require.Equal(t, types.DefaultFeeParams().GasPerPocCount, fp.GasPerPocCount)
+	require.Equal(t, uint64(0), fp.MinGasPriceNgonka)
+	require.Equal(t, uint64(0), fp.BaseValidationGas)
+	require.Equal(t, uint64(0), fp.GasPerPocCount)
 }
 
 func TestFeeParams_SetAndGet(t *testing.T) {
@@ -38,6 +39,12 @@ func TestFeeParams_SetAndGet(t *testing.T) {
 func TestFeeParams_ZeroDisablesFees(t *testing.T) {
 	k, ctx := testkeeper.InferenceKeeper(t)
 
+	// First enable fees
+	require.NoError(t, k.SetFeeParams(ctx, types.DefaultFeeParams()))
+	fp := k.GetFeeParams(ctx)
+	require.Equal(t, uint64(10), fp.MinGasPriceNgonka)
+
+	// Then disable by setting to zero
 	zero := &types.FeeParams{
 		MinGasPriceNgonka: 0,
 		BaseValidationGas: 0,
@@ -45,6 +52,6 @@ func TestFeeParams_ZeroDisablesFees(t *testing.T) {
 	}
 	require.NoError(t, k.SetFeeParams(ctx, zero))
 
-	fp := k.GetFeeParams(ctx)
+	fp = k.GetFeeParams(ctx)
 	require.Equal(t, uint64(0), fp.MinGasPriceNgonka)
 }
