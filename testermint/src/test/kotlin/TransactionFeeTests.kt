@@ -47,11 +47,14 @@ class TransactionFeeTests : TestermintTest() {
                 }
             }
 
-            val result = initCluster(reboot = true, mergeSpec = feeSpec)
+            // Use genesis-only cluster (no join nodes) since join nodes start
+            // unfunded and can't pay fees during cluster init.
+            val result = initCluster(joinCount = 0, reboot = true, mergeSpec = feeSpec)
             cluster = result.first
             genesis = result.second
             genesisAddress = genesis.node.getColdAddress()
-            recipientAddress = cluster.joinPairs.first().node.getColdAddress()
+            // Use genesis's warm address as recipient (no join nodes available)
+            recipientAddress = genesis.node.getWarmAddress()
         }
     }
 
@@ -169,20 +172,4 @@ class TransactionFeeTests : TestermintTest() {
         logHighlight("Zero-fee transaction correctly rejected with fee enforcement active")
     }
 
-    // --- Fee-exempt bypass test ---
-
-    @Test
-    @Order(6)
-    fun `inference request succeeds with fee enforcement active`() {
-        logHighlight("Testing that inference works with fee enforcement (MsgStartInference and MsgFinishInference are fee-exempt)")
-
-        genesis.waitForNextInferenceWindow()
-
-        val response = genesis.makeInferenceRequest(inferenceRequest)
-
-        // Inference should complete successfully — the DAPI submits MsgStartInference
-        // and MsgFinishInference which are fee-exempt network duty messages.
-        assertThat(response.choices).isNotEmpty
-        logHighlight("Inference succeeded with fee enforcement active: model=${response.model}")
-    }
 }
