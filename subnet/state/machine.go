@@ -1129,6 +1129,11 @@ func (sm *StateMachine) TotalSlots() uint32 {
 	return sm.totalSlots
 }
 
+// QuorumThreshold returns the minimum slot-weighted signature count for 2/3+1 quorum.
+func (sm *StateMachine) QuorumThreshold() uint32 {
+	return 2*sm.totalSlots/3 + 1
+}
+
 func (sm *StateMachine) SlotAddress(slotID uint32) string {
 	return sm.slotToAddress[slotID]
 }

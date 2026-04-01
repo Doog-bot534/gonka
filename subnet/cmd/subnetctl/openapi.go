@@ -199,6 +199,78 @@ const openapiSpec = `{
           "200": { "description": "Debug state summary" }
         }
       }
+    },
+    "/v1/debug/signatures": {
+      "get": {
+        "summary": "Signature accumulation status",
+        "description": "Returns per-nonce signature weight and the highest nonce that reached 2/3+1 quorum. Useful for monitoring finalization progress.",
+        "responses": {
+          "200": {
+            "description": "Signature status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "current_nonce": { "type": "integer" },
+                    "total_slots": { "type": "integer" },
+                    "quorum_threshold": { "type": "integer", "description": "2*total_slots/3 + 1" },
+                    "highest_quorum_nonce": { "type": "integer", "description": "Highest nonce with >= quorum_threshold signatures" },
+                    "has_quorum": { "type": "boolean", "description": "Whether any nonce has reached quorum" },
+                    "nonces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "nonce": { "type": "integer" },
+                          "sig_weight": { "type": "integer", "description": "Slot-weighted signature count" },
+                          "total_slots": { "type": "integer" },
+                          "has_quorum": { "type": "boolean" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/debug/signatures/collect": {
+      "post": {
+        "summary": "Collect signatures at nonce",
+        "description": "Actively polls all hosts to collect signatures for the given nonce. Tries fetching existing signatures first (cheap GET), then falls back to sending catch-up diffs. Use this to check if a state is approved by 2/3+ before finalization.",
+        "parameters": [
+          {
+            "name": "nonce",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer" },
+            "description": "The nonce to collect signatures for"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Signature collection result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "nonce": { "type": "integer" },
+                    "sig_weight": { "type": "integer", "description": "Slot-weighted signature count" },
+                    "quorum_threshold": { "type": "integer" },
+                    "total_slots": { "type": "integer" },
+                    "has_quorum": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Missing or invalid nonce, or nonce ahead of current state" }
+        }
+      }
     }
   }
 }`

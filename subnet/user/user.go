@@ -22,6 +22,13 @@ type HostClient interface {
 	Send(ctx context.Context, req host.HostRequest) (*host.HostResponse, error)
 }
 
+// SignatureFetcher is optionally implemented by HostClient implementations that
+// can retrieve stored signatures without sending diffs. Used by Finalize Phase B
+// to avoid redundant diff processing when the host already signed via gossip.
+type SignatureFetcher interface {
+	GetSignatures(ctx context.Context, nonce uint64) (map[uint32][]byte, error)
+}
+
 type InProcessClient struct {
 	Host *host.Host
 }
@@ -386,14 +393,153 @@ func (s *Session) sendDiffRound(ctx context.Context, extraTxs []*types.SubnetTx)
 	catchUp := s.diffsForHost(hostIdx)
 	s.mu.Unlock()
 
+	logging.Debug("sendDiffRound sending", "subsystem", "finalize",
+		"nonce", diff.Nonce, "host", hostIdx, "catchup_count", len(catchUp))
+
 	resp, err := s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUp, Nonce: diff.Nonce})
 	if err != nil {
+		logging.Warn("sendDiffRound host dead", "subsystem", "finalize",
+			"nonce", diff.Nonce, "host", hostIdx, "error", err)
 		return nil // dead host, not fatal
+	}
+
+	logging.Debug("sendDiffRound response", "subsystem", "finalize",
+		"nonce", diff.Nonce, "host", hostIdx,
+		"resp_nonce", resp.Nonce, "has_sig", resp.StateSig != nil)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.processResponse(hostIdx, resp, diff.Nonce); err != nil {
+		return err
+	}
+	s.logSignatureProgress(resp.Nonce)
+	return nil
+}
+
+// sigWeight computes the slot-weighted signature count for a set of slot signatures,
+// deduplicating by validator address. Caller must hold s.mu.
+func (s *Session) sigWeight(sigs map[uint32][]byte) uint32 {
+	counted := make(map[string]bool, len(s.addrToSlots))
+	var weight uint32
+	for slotID := range sigs {
+		addr := s.sm.SlotAddress(slotID)
+		if counted[addr] {
+			continue
+		}
+		counted[addr] = true
+		weight += s.sm.AddressSlotCount(addr)
+	}
+	return weight
+}
+
+// hasQuorum returns true if signatures at the given nonce meet the threshold.
+// Thread-safe.
+func (s *Session) hasQuorum(nonce uint64, threshold uint32) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sigs, ok := s.signatures[nonce]
+	if !ok {
+		return false
+	}
+	return s.sigWeight(sigs) >= threshold
+}
+
+// fetchSignature tries to retrieve an already-stored signature from the host
+// via the SignatureFetcher interface (GET /signatures?nonce=N). This avoids
+// sending diffs when the host already signed the state via gossip.
+// Returns true if a signature was successfully fetched and stored.
+func (s *Session) fetchSignature(ctx context.Context, hostIdx int, nonce uint64) bool {
+	fetcher, ok := s.clients[hostIdx].(SignatureFetcher)
+	if !ok {
+		return false
+	}
+
+	sigs, err := fetcher.GetSignatures(ctx, nonce)
+	if err != nil || len(sigs) == 0 {
+		return false
+	}
+
+	// Check if any returned slot belongs to this host.
+	expectedAddr := s.group[hostIdx].ValidatorAddress
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for slotID, sig := range sigs {
+		addr := s.sm.SlotAddress(slotID)
+		if addr != expectedAddr {
+			continue
+		}
+		if _, ok := s.signatures[nonce]; !ok {
+			s.signatures[nonce] = make(map[uint32][]byte)
+		}
+		for _, slot := range s.addrToSlots[expectedAddr] {
+			s.signatures[nonce][slot] = sig
+		}
+		logging.Debug("fetched existing signature", "subsystem", "finalize",
+			"nonce", nonce, "host", hostIdx, "address", expectedAddr)
+		s.logSignatureProgress(nonce)
+		return true
+	}
+	return false
+}
+
+// CollectSignatures actively polls all hosts to collect signatures for the
+// given nonce. For each host: tries the cheap GET /signatures first, then
+// falls back to sending catch-up diffs. Returns the signature status at that
+// nonce after collection. Thread-safe.
+func (s *Session) CollectSignatures(ctx context.Context, nonce uint64) (weight, threshold, total uint32) {
+	total = s.sm.TotalSlots()
+	threshold = s.sm.QuorumThreshold()
+	n := len(s.group)
+
+	logging.Info("collecting signatures", "subsystem", "finalize",
+		"nonce", nonce, "hosts", n, "threshold", threshold)
+
+	// Dedup by validator address (multi-slot validators share a client).
+	seen := make(map[string]bool)
+	for hostIdx := 0; hostIdx < n; hostIdx++ {
+		addr := s.group[hostIdx].ValidatorAddress
+		if seen[addr] {
+			continue
+		}
+		seen[addr] = true
+
+		if s.hasQuorum(nonce, threshold) {
+			break
+		}
+
+		// Already have sig for this host?
+		s.mu.Lock()
+		hasSig := false
+		if sigs, ok := s.signatures[nonce]; ok {
+			for _, slot := range s.addrToSlots[addr] {
+				if _, ok := sigs[slot]; ok {
+					hasSig = true
+					break
+				}
+			}
+		}
+		s.mu.Unlock()
+		if hasSig {
+			continue
+		}
+
+		if s.fetchSignature(ctx, hostIdx, nonce) {
+			continue
+		}
+
+		if err := s.sendCatchUp(ctx, hostIdx); err != nil {
+			logging.Warn("collect signatures: catch-up failed", "subsystem", "finalize",
+				"nonce", nonce, "host", hostIdx, "error", err)
+		}
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.processResponse(hostIdx, resp, diff.Nonce)
+	if sigs, ok := s.signatures[nonce]; ok {
+		weight = s.sigWeight(sigs)
+	}
+	return weight, threshold, total
 }
 
 // sendCatchUp sends existing diffs to a host without composing new ones.
@@ -404,14 +550,27 @@ func (s *Session) sendCatchUp(ctx context.Context, hostIdx int) error {
 	catchUp := s.diffsForHost(hostIdx)
 	s.mu.Unlock()
 
+	logging.Debug("sendCatchUp sending", "subsystem", "finalize",
+		"nonce", nonce, "host", hostIdx, "catchup_count", len(catchUp))
+
 	resp, err := s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUp, Nonce: nonce})
 	if err != nil {
+		logging.Warn("sendCatchUp host dead", "subsystem", "finalize",
+			"nonce", nonce, "host", hostIdx, "error", err)
 		return nil // dead host
 	}
 
+	logging.Debug("sendCatchUp response", "subsystem", "finalize",
+		"nonce", nonce, "host", hostIdx,
+		"resp_nonce", resp.Nonce, "has_sig", resp.StateSig != nil)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.processResponse(hostIdx, resp, nonce)
+	if err := s.processResponse(hostIdx, resp, nonce); err != nil {
+		return err
+	}
+	s.logSignatureProgress(resp.Nonce)
+	return nil
 }
 
 // Finalize completes the round in three phases.
@@ -429,13 +588,31 @@ func (s *Session) sendCatchUp(ctx context.Context, hostIdx int) error {
 // diffs created. Sends catch-up diffs so every host reaches the final
 // nonce and signs the same state.
 func (s *Session) Finalize(ctx context.Context) error {
+	// Guard: reject if already finalizing or settled.
+	phase := s.sm.Phase()
+	if phase == types.PhaseSettlement {
+		logging.Info("finalize: already settled, skipping", "subsystem", "finalize",
+			"nonce", s.nonce)
+		return nil
+	}
+	if phase == types.PhaseFinalizing {
+		return fmt.Errorf("finalize already in progress (phase=finalizing, nonce=%d)", s.nonce)
+	}
+
 	n := len(s.group)
+	threshold := s.sm.QuorumThreshold()
+
+	logging.Info("finalize started", "subsystem", "finalize",
+		"group_size", n, "current_nonce", s.nonce,
+		"total_slots", s.sm.TotalSlots(), "threshold", threshold)
 
 	finalizeTx := &types.SubnetTx{Tx: &types.SubnetTx_FinalizeRound{
 		FinalizeRound: &types.MsgFinalizeRound{},
 	}}
 
 	// Phase A: N diffs collecting remaining txs. First carries MsgFinalizeRound.
+	logging.Info("finalize phase A: collecting reveals", "subsystem", "finalize",
+		"rounds", n)
 	for i := 0; i < n; i++ {
 		var extra []*types.SubnetTx
 		if i == 0 {
@@ -447,36 +624,52 @@ func (s *Session) Finalize(ctx context.Context) error {
 	}
 
 	// Phase A+1: drain the last host's reveal.
+	logging.Info("finalize phase A+1: draining last reveal", "subsystem", "finalize")
 	if err := s.sendDiffRound(ctx, nil); err != nil {
 		return err
 	}
 
-	// Phase B: propagate complete state, collect signatures.
+	// Phase B: collect signatures. For each host, first try fetching an
+	// existing signature (cheap GET -- works if the host already signed via
+	// gossip). Fall back to sendCatchUp (sends diffs, host applies and signs).
+	// Early-exit once quorum is reached.
+	finalNonce := s.nonce
+	logging.Info("finalize phase B: signature collection", "subsystem", "finalize",
+		"hosts", n, "final_nonce", finalNonce)
 	for hostIdx := 0; hostIdx < n; hostIdx++ {
+		if s.hasQuorum(finalNonce, threshold) {
+			logging.Info("finalize phase B: quorum reached, skipping remaining hosts",
+				"subsystem", "finalize", "host", hostIdx, "of", n)
+			break
+		}
+		// Try cheap signature fetch first.
+		if s.fetchSignature(ctx, hostIdx, finalNonce) {
+			continue
+		}
+		// Fall back to full catch-up.
 		if err := s.sendCatchUp(ctx, hostIdx); err != nil {
 			return err
 		}
 	}
 
-	// Check signature quorum: need 2/3+1 slot-weighted signatures.
-	var sigWeight uint32
-	finalNonce := s.nonce
+	// Check signature quorum.
+	var weight uint32
 	if sigs, ok := s.signatures[finalNonce]; ok {
-		counted := make(map[string]bool)
-		for slotID := range sigs {
-			addr := s.sm.SlotAddress(slotID)
-			if counted[addr] {
-				continue
-			}
-			counted[addr] = true
-			sigWeight += s.sm.AddressSlotCount(addr)
-		}
-	}
-	threshold := 2*s.sm.TotalSlots()/3 + 1
-	if sigWeight < threshold {
-		return fmt.Errorf("insufficient signatures: %d/%d weight", sigWeight, threshold)
+		weight = s.sigWeight(sigs)
 	}
 
+	logging.Info("finalize quorum check", "subsystem", "finalize",
+		"final_nonce", finalNonce, "sig_weight", weight,
+		"threshold", threshold, "total_slots", s.sm.TotalSlots())
+
+	if weight < threshold {
+		logging.Error("finalize failed: insufficient signatures", "subsystem", "finalize",
+			"final_nonce", finalNonce, "sig_weight", weight, "threshold", threshold)
+		return fmt.Errorf("insufficient signatures: %d/%d weight", weight, threshold)
+	}
+
+	logging.Info("finalize complete", "subsystem", "finalize",
+		"final_nonce", finalNonce, "sig_weight", weight)
 	return nil
 }
 
@@ -562,6 +755,93 @@ func (s *Session) PendingTxs() []*types.SubnetTx {
 }
 
 func (s *Session) StateMachine() *state.StateMachine { return s.sm }
+
+// SignatureStatusEntry describes signature accumulation for a single nonce.
+// SigWeight uses the monotonic property: if a validator signed nonce M >= N,
+// it implicitly accepted all state <= M, so it counts toward nonce N's weight.
+type SignatureStatusEntry struct {
+	Nonce     uint64 `json:"nonce"`
+	SigWeight uint32 `json:"sig_weight"`
+	Total     uint32 `json:"total_slots"`
+	HasQuorum bool   `json:"has_quorum"`
+}
+
+// SignatureStatus returns per-nonce effective signature weight and the highest
+// nonce that has reached 2/3+1 quorum. Thread-safe.
+func (s *Session) SignatureStatus() (entries []SignatureStatusEntry, highestQuorum uint64, hasAny bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.signatureStatusLocked()
+}
+
+// signatureStatusLocked computes signature status using the monotonic property:
+// a validator that signed nonce M implicitly accepted all nonces <= M.
+// For each nonce N, effective weight = sum of slots for all validators whose
+// highest signed nonce >= N.
+// Caller must hold s.mu.
+func (s *Session) signatureStatusLocked() (entries []SignatureStatusEntry, highestQuorum uint64, hasAny bool) {
+	total := s.sm.TotalSlots()
+	threshold := s.sm.QuorumThreshold()
+
+	// Find the highest nonce each validator signed.
+	addrMaxNonce := make(map[string]uint64)
+	for nonce, slotSigs := range s.signatures {
+		for slotID := range slotSigs {
+			addr := s.sm.SlotAddress(slotID)
+			if nonce > addrMaxNonce[addr] {
+				addrMaxNonce[addr] = nonce
+			}
+		}
+	}
+
+	// Collect and sort nonces.
+	nonces := make([]uint64, 0, len(s.signatures))
+	for n := range s.signatures {
+		nonces = append(nonces, n)
+	}
+	sort.Slice(nonces, func(i, j int) bool { return nonces[i] < nonces[j] })
+
+	// Per-maxNonce weight: how much weight "enters" at each nonce.
+	nonceWeight := make(map[uint64]uint32, len(addrMaxNonce))
+	for addr, maxN := range addrMaxNonce {
+		nonceWeight[maxN] += s.sm.AddressSlotCount(addr)
+	}
+
+	// Walk from highest to lowest, accumulating weight.
+	entries = make([]SignatureStatusEntry, len(nonces))
+	var cumWeight uint32
+	for i := len(nonces) - 1; i >= 0; i-- {
+		n := nonces[i]
+		cumWeight += nonceWeight[n]
+		entries[i] = SignatureStatusEntry{
+			Nonce:     n,
+			SigWeight: cumWeight,
+			Total:     total,
+			HasQuorum: cumWeight >= threshold,
+		}
+		if cumWeight >= threshold && (!hasAny || n > highestQuorum) {
+			highestQuorum = n
+			hasAny = true
+		}
+	}
+
+	return entries, highestQuorum, hasAny
+}
+
+// logSignatureProgress logs signature weight at the given nonce.
+// Caller must hold s.mu.
+func (s *Session) logSignatureProgress(nonce uint64) {
+	slotSigs, ok := s.signatures[nonce]
+	if !ok {
+		return
+	}
+	weight := s.sigWeight(slotSigs)
+	threshold := s.sm.QuorumThreshold()
+
+	logging.Debug("signature progress", "subsystem", "finalize",
+		"nonce", nonce, "weight", weight,
+		"threshold", threshold, "total", s.sm.TotalSlots())
+}
 
 // AddPendingTimeoutTx adds a MsgTimeoutInference to the pending tx queue.
 func (s *Session) AddPendingTimeoutTx(inferenceID uint64, reason types.TimeoutReason, votes []*types.TimeoutVote) {

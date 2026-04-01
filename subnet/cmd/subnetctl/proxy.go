@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -145,8 +146,9 @@ func (p *Proxy) runInference(ctx context.Context, params user.InferenceParams, w
 	}
 
 	nonce := prepared.Nonce()
+	hostIdx := prepared.HostIdx()
 	logging.Info("inference request", "subsystem", "proxy",
-		"nonce", nonce, "model", params.Model, "max_tokens", params.MaxTokens)
+		"nonce", nonce, "host", hostIdx, "model", params.Model, "max_tokens", params.MaxTokens)
 	if w != nil {
 		p.registry.register(nonce, w)
 		defer p.registry.unregister(nonce)
@@ -158,11 +160,11 @@ func (p *Proxy) runInference(ctx context.Context, params user.InferenceParams, w
 	// Attempt 1.
 	finished, confirmedAt, err := p.sendAndProcess(ctx, prepared, nonce)
 	if err != nil {
-		return err
+		return fmt.Errorf("nonce %d host %d: %w", nonce, hostIdx, err)
 	}
 	if finished {
 		logging.Info("inference complete", "subsystem", "proxy",
-			"nonce", nonce, "attempt", 1)
+			"nonce", nonce, "host", hostIdx, "attempt", 1)
 		return nil
 	}
 
@@ -172,13 +174,13 @@ func (p *Proxy) runInference(ctx context.Context, params user.InferenceParams, w
 		deadline := time.Unix(confirmedAt, 0).Add(
 			time.Duration(cfg.ExecutionTimeout)*time.Second + timeoutBuffer)
 		if !sleepUntil(ctx, deadline) {
-			return ctx.Err()
+			return fmt.Errorf("nonce %d host %d: %w", nonce, hostIdx, ctx.Err())
 		}
 		reason = types.TimeoutReason_TIMEOUT_REASON_EXECUTION
 	} else {
 		deadline := now.Add(time.Duration(cfg.RefusalTimeout)*time.Second + timeoutBuffer)
 		if !sleepUntil(ctx, deadline) {
-			return ctx.Err()
+			return fmt.Errorf("nonce %d host %d: %w", nonce, hostIdx, ctx.Err())
 		}
 		reason = types.TimeoutReason_TIMEOUT_REASON_REFUSED
 	}
@@ -189,11 +191,11 @@ func (p *Proxy) runInference(ctx context.Context, params user.InferenceParams, w
 	}
 	finished, confirmedAt, err = p.sendAndProcess(ctx, prepared, nonce)
 	if err != nil {
-		return err
+		return fmt.Errorf("nonce %d host %d: %w", nonce, hostIdx, err)
 	}
 	if finished {
 		logging.Info("inference complete", "subsystem", "proxy",
-			"nonce", nonce, "attempt", 2)
+			"nonce", nonce, "host", hostIdx, "attempt", 2)
 		return nil
 	}
 
@@ -202,7 +204,7 @@ func (p *Proxy) runInference(ctx context.Context, params user.InferenceParams, w
 		reason = types.TimeoutReason_TIMEOUT_REASON_EXECUTION
 	}
 
-	return p.handleTimeout(ctx, prepared, nonce, reason, params)
+	return p.handleTimeout(ctx, prepared, reason, params)
 }
 
 // sendAndProcess sends the prepared inference and processes the response.
@@ -260,9 +262,11 @@ func sleep(ctx context.Context, d time.Duration) bool {
 // handleTimeout collects timeout votes from verifier hosts and submits
 // MsgTimeoutInference. Single attempt -- the timeoutBuffer ensures verifiers
 // have already passed their own deadline before the proxy fires.
-func (p *Proxy) handleTimeout(ctx context.Context, prepared *user.PreparedInference, nonce uint64, reason types.TimeoutReason, params user.InferenceParams) error {
+func (p *Proxy) handleTimeout(ctx context.Context, prepared *user.PreparedInference, reason types.TimeoutReason, params user.InferenceParams) error {
+	nonce := prepared.Nonce()
+	hostIdx := prepared.HostIdx()
 	logging.Info("timeout handling", "subsystem", "proxy",
-		"nonce", nonce, "reason", reason.String())
+		"nonce", nonce, "host", hostIdx, "reason", reason.String())
 	payload := &host.InferencePayload{
 		Prompt:      params.Prompt,
 		Model:       params.Model,
@@ -288,7 +292,7 @@ func (p *Proxy) handleTimeout(ctx context.Context, prepared *user.PreparedInfere
 	}
 
 	logging.Warn("insufficient timeout votes, skipping timeout tx", "subsystem", "proxy",
-		"nonce", nonce)
+		"nonce", nonce, "host", hostIdx)
 	return fmt.Errorf("inference %d timed out but insufficient votes to prove it", nonce)
 }
 
@@ -374,14 +378,8 @@ func assembleSSEChunks(raw string) []byte {
 	return []byte(`{"error":{"message":"no response data"}}`)
 }
 
-func (p *Proxy) handleFinalize(w http.ResponseWriter, r *http.Request) {
-	if err := p.session.Finalize(r.Context()); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusInternalServerError)
-		return
-	}
-
+func (p *Proxy) writeSettlement(w http.ResponseWriter) {
 	finalNonce := p.session.Nonce()
-	logging.Info("session finalized", "subsystem", "proxy", "nonce", finalNonce)
 	st := p.sm.SnapshotState()
 	payload, err := state.BuildSettlement(p.escrowID, st, p.session.Signatures()[finalNonce], finalNonce)
 	if err != nil {
@@ -399,28 +397,29 @@ func (p *Proxy) handleFinalize(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
+func (p *Proxy) handleFinalize(w http.ResponseWriter, r *http.Request) {
+	logging.Info("finalize request received", "subsystem", "proxy",
+		"phase", p.sm.Phase())
+	start := time.Now()
+
+	if err := p.session.Finalize(r.Context()); err != nil {
+		logging.Error("finalize failed", "subsystem", "proxy",
+			"error", err, "elapsed", time.Since(start).String())
+		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	logging.Info("session finalized", "subsystem", "proxy",
+		"nonce", p.session.Nonce(), "elapsed", time.Since(start).String())
+	p.writeSettlement(w)
+}
+
 func (p *Proxy) handleGetFinalize(w http.ResponseWriter, r *http.Request) {
 	if p.sm.Phase() != types.PhaseSettlement {
 		http.Error(w, `{"error":{"message":"session not yet finalized"}}`, http.StatusConflict)
 		return
 	}
-
-	finalNonce := p.session.Nonce()
-	st := p.sm.SnapshotState()
-	payload, err := state.BuildSettlement(p.escrowID, st, p.session.Signatures()[finalNonce], finalNonce)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusInternalServerError)
-		return
-	}
-
-	data, err := marshalSettlement(payload)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	p.writeSettlement(w)
 }
 
 type statusResponse struct {
@@ -483,6 +482,55 @@ func (p *Proxy) handleDebugState(w http.ResponseWriter, r *http.Request) {
 		"total_inferences":  len(st.Inferences),
 		"status_counts":     counts,
 	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (p *Proxy) handleDebugSignatures(w http.ResponseWriter, r *http.Request) {
+	entries, highestQuorum, hasQuorum := p.session.SignatureStatus()
+
+	resp := map[string]any{
+		"current_nonce":        p.session.Nonce(),
+		"total_slots":          p.sm.TotalSlots(),
+		"quorum_threshold":     p.sm.QuorumThreshold(),
+		"highest_quorum_nonce": highestQuorum,
+		"has_quorum":           hasQuorum,
+		"nonces":               entries,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (p *Proxy) handleCollectSignatures(w http.ResponseWriter, r *http.Request) {
+	nonceStr := r.URL.Query().Get("nonce")
+	if nonceStr == "" {
+		http.Error(w, `{"error":{"message":"missing 'nonce' query parameter"}}`, http.StatusBadRequest)
+		return
+	}
+	nonce, err := strconv.ParseUint(nonceStr, 10, 64)
+	if err != nil {
+		http.Error(w, `{"error":{"message":"invalid 'nonce' parameter"}}`, http.StatusBadRequest)
+		return
+	}
+
+	currentNonce := p.session.Nonce()
+	if nonce > currentNonce {
+		http.Error(w, fmt.Sprintf(`{"error":{"message":"nonce %d is ahead of current nonce %d"}}`, nonce, currentNonce),
+			http.StatusBadRequest)
+		return
+	}
+
+	weight, threshold, total := p.session.CollectSignatures(r.Context(), nonce)
+
+	resp := map[string]any{
+		"nonce":           nonce,
+		"sig_weight":      weight,
+		"quorum_threshold": threshold,
+		"total_slots":     total,
+		"has_quorum":      weight >= threshold,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }

@@ -134,6 +134,8 @@ func main() {
 	mux.HandleFunc("GET /v1/state", proxy.handleState)
 	mux.HandleFunc("GET /v1/debug/pending", proxy.handleDebugPending)
 	mux.HandleFunc("GET /v1/debug/state", proxy.handleDebugState)
+	mux.HandleFunc("GET /v1/debug/signatures", proxy.handleDebugSignatures)
+	mux.HandleFunc("POST /v1/debug/signatures/collect", proxy.handleCollectSignatures)
 
 	addr := ":" + p
 	log.Printf("subnetctl listening on %s (escrow=%s model=%s)", addr, eid, mdl)
