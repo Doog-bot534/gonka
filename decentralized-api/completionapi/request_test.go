@@ -274,6 +274,9 @@ func TestMaxTokens(t *testing.T) {
 }
 
 func TestModifyRequestBody_PreservesMultipartContent(t *testing.T) {
+	// TODO(vision-costs): This test currently verifies multipart preservation only.
+	// Future fix should add assertions that non-text parts (e.g. image_url) are
+	// reflected in prompt token accounting to avoid underfunded transactions.
 	r, err := ModifyRequestBody([]byte(jsonBodyMultipartContent), 7)
 	require.NoError(t, err)
 

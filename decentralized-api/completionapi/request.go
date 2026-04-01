@@ -111,6 +111,11 @@ func validateMessageContents(requestMap map[string]interface{}) error {
 					return fmt.Errorf("messages[%d].content[%d].type must be a string", i, j)
 				}
 
+				// TODO(vision-costs): We currently validate and pass through non-text parts
+				// (e.g. image_url) but downstream prompt token accounting still often uses
+				// flattened text-only content. This can underfund/gas-underprice vision
+				// requests. Future fix: include non-text token costs in promptTokenCount
+				// before transaction construction.
 				if partType != "text" {
 					continue
 				}
