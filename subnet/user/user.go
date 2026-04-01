@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -75,6 +76,11 @@ type Session struct {
 	pendingTxKeys map[string]struct{}          // dedup set keyed by tx_type:id
 	signatures    map[uint64]map[uint32][]byte // nonce -> slotID -> sig
 	store         storage.Storage              // optional persistent storage
+
+	// Retry settings for signature collection (handles transient host failures during finalize).
+	collectMaxRetries int
+	collectBaseDelay  time.Duration
+	collectHostTimeout time.Duration
 }
 
 // SessionOption configures optional Session behavior.
@@ -84,6 +90,15 @@ type SessionOption func(*Session)
 // When set, diffs and signatures are persisted on each state transition.
 func WithStorage(s storage.Storage) SessionOption {
 	return func(sess *Session) { sess.store = s }
+}
+
+// WithCollectRetry overrides signature collection retry parameters.
+func WithCollectRetry(maxRetries int, baseDelay, hostTimeout time.Duration) SessionOption {
+	return func(sess *Session) {
+		sess.collectMaxRetries = maxRetries
+		sess.collectBaseDelay = baseDelay
+		sess.collectHostTimeout = hostTimeout
+	}
 }
 
 // NewSession creates a user session. clients must match group length.
@@ -108,16 +123,19 @@ func NewSession(
 		addrToSlots[s.ValidatorAddress] = append(addrToSlots[s.ValidatorAddress], s.SlotID)
 	}
 	sess := &Session{
-		sm:            sm,
-		signer:        signer,
-		verifier:      verifier,
-		escrowID:      escrowID,
-		group:         group,
-		addrToSlots:   addrToSlots,
-		clients:       clients,
-		hostSyncNonce: make(map[int]uint64),
-		pendingTxKeys: make(map[string]struct{}),
-		signatures:    make(map[uint64]map[uint32][]byte),
+		sm:                 sm,
+		signer:             signer,
+		verifier:           verifier,
+		escrowID:           escrowID,
+		group:              group,
+		addrToSlots:        addrToSlots,
+		clients:            clients,
+		hostSyncNonce:      make(map[int]uint64),
+		pendingTxKeys:      make(map[string]struct{}),
+		signatures:         make(map[uint64]map[uint32][]byte),
+		collectMaxRetries:  3,
+		collectBaseDelay:   2 * time.Second,
+		collectHostTimeout: 30 * time.Second,
 	}
 	for _, opt := range opts {
 		opt(sess)
@@ -485,8 +503,9 @@ func (s *Session) fetchSignature(ctx context.Context, hostIdx int, nonce uint64)
 
 // CollectSignatures actively polls all hosts to collect signatures for the
 // given nonce. For each host: tries the cheap GET /signatures first, then
-// falls back to sending catch-up diffs. Returns the signature status at that
-// nonce after collection. Thread-safe.
+// falls back to sending catch-up diffs. Retries failed hosts with backoff.
+// Uses per-host timeouts independent of the parent context.
+// Returns the signature status at that nonce after collection. Thread-safe.
 func (s *Session) CollectSignatures(ctx context.Context, nonce uint64) (weight, threshold, total uint32) {
 	total = s.sm.TotalSlots()
 	threshold = s.sm.QuorumThreshold()
@@ -495,42 +514,71 @@ func (s *Session) CollectSignatures(ctx context.Context, nonce uint64) (weight, 
 	logging.Info("collecting signatures", "subsystem", "finalize",
 		"nonce", nonce, "hosts", n, "threshold", threshold)
 
-	// Dedup by validator address (multi-slot validators share a client).
+	// Build deduped host list (multi-slot validators share a client).
+	type hostEntry struct {
+		idx  int
+		addr string
+	}
 	seen := make(map[string]bool)
-	for hostIdx := 0; hostIdx < n; hostIdx++ {
-		addr := s.group[hostIdx].ValidatorAddress
+	var hosts []hostEntry
+	for i := 0; i < n; i++ {
+		addr := s.group[i].ValidatorAddress
 		if seen[addr] {
 			continue
 		}
 		seen[addr] = true
+		hosts = append(hosts, hostEntry{i, addr})
+	}
 
+retries:
+	for attempt := 0; attempt <= s.collectMaxRetries; attempt++ {
 		if s.hasQuorum(nonce, threshold) {
 			break
 		}
-
-		// Already have sig for this host?
-		s.mu.Lock()
-		hasSig := false
-		if sigs, ok := s.signatures[nonce]; ok {
-			for _, slot := range s.addrToSlots[addr] {
-				if _, ok := sigs[slot]; ok {
-					hasSig = true
-					break
-				}
+		if attempt > 0 {
+			delay := s.collectBaseDelay * time.Duration(1<<(attempt-1))
+			if delay > 30*time.Second {
+				delay = 30 * time.Second
+			}
+			logging.Info("collecting signatures: retry", "subsystem", "finalize",
+				"nonce", nonce, "attempt", attempt, "delay", delay.String())
+			select {
+			case <-ctx.Done():
+				break retries
+			case <-time.After(delay):
 			}
 		}
-		s.mu.Unlock()
-		if hasSig {
-			continue
-		}
 
-		if s.fetchSignature(ctx, hostIdx, nonce) {
-			continue
-		}
+		for _, h := range hosts {
+			if s.hasQuorum(nonce, threshold) {
+				break
+			}
 
-		if err := s.sendCatchUp(ctx, hostIdx); err != nil {
-			logging.Warn("collect signatures: catch-up failed", "subsystem", "finalize",
-				"nonce", nonce, "host", hostIdx, "error", err)
+			s.mu.Lock()
+			hasSig := false
+			if sigs, ok := s.signatures[nonce]; ok {
+				for _, slot := range s.addrToSlots[h.addr] {
+					if _, ok := sigs[slot]; ok {
+						hasSig = true
+						break
+					}
+				}
+			}
+			s.mu.Unlock()
+			if hasSig {
+				continue
+			}
+
+			hostCtx, cancel := context.WithTimeout(context.Background(), s.collectHostTimeout)
+			if s.fetchSignature(hostCtx, h.idx, nonce) {
+				cancel()
+				continue
+			}
+			if err := s.sendCatchUp(hostCtx, h.idx); err != nil {
+				logging.Warn("collect signatures: send catch-up error", "subsystem", "finalize",
+					"nonce", nonce, "host", h.idx, "attempt", attempt, "error", err)
+			}
+			cancel()
 		}
 	}
 
@@ -588,11 +636,22 @@ func (s *Session) sendCatchUp(ctx context.Context, hostIdx int) error {
 // diffs created. Sends catch-up diffs so every host reaches the final
 // nonce and signs the same state.
 func (s *Session) Finalize(ctx context.Context) error {
-	// Guard: reject if already finalizing or settled.
+	// Guard: if already settled, try to collect missing signatures instead
+	// of running the full finalize protocol again.
 	phase := s.sm.Phase()
 	if phase == types.PhaseSettlement {
-		logging.Info("finalize: already settled, skipping", "subsystem", "finalize",
-			"nonce", s.nonce)
+		threshold := s.sm.QuorumThreshold()
+		if s.hasQuorum(s.nonce, threshold) {
+			logging.Info("finalize: already settled with quorum", "subsystem", "finalize",
+				"nonce", s.nonce)
+			return nil
+		}
+		logging.Info("finalize: settled but missing quorum, collecting signatures",
+			"subsystem", "finalize", "nonce", s.nonce)
+		weight, _, _ := s.CollectSignatures(ctx, s.nonce)
+		if weight < threshold {
+			return fmt.Errorf("insufficient signatures: %d/%d weight", weight, threshold)
+		}
 		return nil
 	}
 	if phase == types.PhaseFinalizing {
@@ -629,34 +688,9 @@ func (s *Session) Finalize(ctx context.Context) error {
 		return err
 	}
 
-	// Phase B: collect signatures. For each host, first try fetching an
-	// existing signature (cheap GET -- works if the host already signed via
-	// gossip). Fall back to sendCatchUp (sends diffs, host applies and signs).
-	// Early-exit once quorum is reached.
+	// Phase B: collect signatures with retries.
 	finalNonce := s.nonce
-	logging.Info("finalize phase B: signature collection", "subsystem", "finalize",
-		"hosts", n, "final_nonce", finalNonce)
-	for hostIdx := 0; hostIdx < n; hostIdx++ {
-		if s.hasQuorum(finalNonce, threshold) {
-			logging.Info("finalize phase B: quorum reached, skipping remaining hosts",
-				"subsystem", "finalize", "host", hostIdx, "of", n)
-			break
-		}
-		// Try cheap signature fetch first.
-		if s.fetchSignature(ctx, hostIdx, finalNonce) {
-			continue
-		}
-		// Fall back to full catch-up.
-		if err := s.sendCatchUp(ctx, hostIdx); err != nil {
-			return err
-		}
-	}
-
-	// Check signature quorum.
-	var weight uint32
-	if sigs, ok := s.signatures[finalNonce]; ok {
-		weight = s.sigWeight(sigs)
-	}
+	weight, _, _ := s.CollectSignatures(ctx, finalNonce)
 
 	logging.Info("finalize quorum check", "subsystem", "finalize",
 		"final_nonce", finalNonce, "sig_weight", weight,

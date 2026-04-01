@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -524,7 +525,8 @@ func setupDeadHostSession(t *testing.T, numHosts, aliveCount int, balance uint64
 	}
 
 	userSM := state.NewStateMachine("escrow-1", config, group, balance, userKey.Address(), verifier)
-	session, err := NewSession(userSM, userKey, "escrow-1", group, clients, verifier)
+	session, err := NewSession(userSM, userKey, "escrow-1", group, clients, verifier,
+		WithCollectRetry(0, 0, 5*time.Second))
 	require.NoError(t, err)
 	return session
 }
@@ -594,9 +596,11 @@ func TestFinalize_DoubleCall_InsufficientQuorum(t *testing.T) {
 	// Phase is Settlement (deadline passed during finalize rounds).
 	require.Equal(t, types.PhaseSettlement, session.StateMachine().SnapshotState().Phase)
 
-	// Second finalize: returns nil (idempotent phase guard) but state unchanged.
+	// Second finalize: retries signature collection, still fails (hosts still dead),
+	// but does not create new diffs or advance nonce.
 	err = session.Finalize(ctx)
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "insufficient signatures")
 
 	require.Equal(t, nonce1, session.Nonce(), "nonce must not advance on second call")
 	require.Equal(t, diffs1, len(session.Diffs()), "no new diffs on second call")
