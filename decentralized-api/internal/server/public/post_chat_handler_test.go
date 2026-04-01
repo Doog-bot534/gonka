@@ -244,6 +244,28 @@ func TestReadRequest_AcceptsMultipartContent(t *testing.T) {
 	require.Equal(t, 1, ignoredParts)
 }
 
+func TestMultipartContent_RoundTrip(t *testing.T) {
+	body := []byte(`{"model":"test","messages":[{"role":"user","content":[{"type":"text","text":"describe this"},{"type":"image_url","image_url":{"url":"https://example.com/cat.png","detail":"high"}}]}]}`)
+	req := createTestRequest(body)
+
+	chatRequest, err := readRequest(req, nil, "transfer-agent")
+	require.NoError(t, err)
+
+	roundTripped, err := json.Marshal(chatRequest.OpenAiRequest)
+	require.NoError(t, err)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(roundTripped, &result))
+	messages := result["messages"].([]interface{})
+	content := messages[0].(map[string]interface{})["content"].([]interface{})
+
+	imgPart := content[1].(map[string]interface{})
+	require.Equal(t, "image_url", imgPart["type"])
+	imgURL := imgPart["image_url"].(map[string]interface{})
+	require.Equal(t, "https://example.com/cat.png", imgURL["url"])
+	require.Equal(t, "high", imgURL["detail"])
+}
+
 func TestReadRequest_RejectsUnsupportedContentType(t *testing.T) {
 	body := []byte(`{"model":"test","messages":[{"role":"user","content":123}]}`)
 	req := createTestRequest(body)

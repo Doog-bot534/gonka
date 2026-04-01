@@ -45,8 +45,35 @@ type MessageContent struct {
 }
 
 type ContentPart struct {
-	Type string `json:"type"`
-	Text string `json:"text,omitempty"`
+	raw  json.RawMessage
+	Type string
+	Text string
+}
+
+func (p *ContentPart) UnmarshalJSON(data []byte) error {
+	p.raw = append(p.raw[:0], data...)
+	var fields struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	p.Type = fields.Type
+	p.Text = fields.Text
+	return nil
+}
+
+func (p ContentPart) MarshalJSON() ([]byte, error) {
+	if p.raw != nil {
+		// Preserve original part payload so unknown OpenAI content-part fields
+		// (e.g. image_url metadata and future part types) survive round-trips.
+		return p.raw, nil
+	}
+	return json.Marshal(struct {
+		Type string `json:"type"`
+		Text string `json:"text,omitempty"`
+	}{Type: p.Type, Text: p.Text})
 }
 
 func (c *MessageContent) UnmarshalJSON(data []byte) error {
