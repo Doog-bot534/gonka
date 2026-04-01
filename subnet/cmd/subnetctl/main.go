@@ -29,6 +29,8 @@ type SettlementJSON struct {
 
 type HostStatsJSON struct {
 	SlotID               uint32 `json:"slot_id"`
+	InferenceCount       uint32 `json:"inference_count"`
+	Validated            uint32 `json:"validated"`
 	Missed               uint32 `json:"missed"`
 	Invalid              uint32 `json:"invalid"`
 	Cost                 uint64 `json:"cost"`
@@ -153,6 +155,8 @@ func marshalSettlement(p *state.SettlementPayload) ([]byte, error) {
 			SlotID: slot, Missed: hs.Missed, Invalid: hs.Invalid,
 			Cost: hs.Cost, RequiredValidations: hs.RequiredValidations,
 			CompletedValidations: hs.CompletedValidations,
+			InferenceCount:       hs.InferenceCount,
+			Validated:            hs.Validated,
 		})
 	}
 

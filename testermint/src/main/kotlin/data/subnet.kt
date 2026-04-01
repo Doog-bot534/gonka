@@ -66,13 +66,17 @@ data class SubnetSettlementData(
 data class SubnetHostStatsEntry(
     @SerializedName("slot_id")
     val slotId: Int,
+    @SerializedName("inference_count")
+    val inferenceCount: Int,
+    @SerializedName("validated")
+    val validated: Int,
     val missed: Int,
     val invalid: Int,
     val cost: Long,
     @SerializedName("required_validations")
     val requiredValidations: Int,
     @SerializedName("completed_validations")
-    val completedValidations: Int
+    val completedValidations: Int,
 )
 
 data class SubnetSlotSignatureEntry(

@@ -46,8 +46,15 @@ type InferenceRecord struct {
 
 // HostStats tracks per-host performance metrics within a session.
 type HostStats struct {
-	Missed               uint32
-	Invalid              uint32
+	// Total number of inferences run by this host.
+	InferenceCount uint32
+	// Total number of inferences run by this host that have *passed* validation.
+	Validated uint32
+	// Total number of inferences that this host failed to execute.
+	Missed uint32
+	// Total number of inferences run by this host that have *not passed* validation.
+	Invalid uint32
+	// Total cost of inferences run by this host.
 	Cost                 uint64
 	RequiredValidations  uint32
 	CompletedValidations uint32

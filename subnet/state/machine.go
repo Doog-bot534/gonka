@@ -670,6 +670,7 @@ func (sm *StateMachine) applyFinishInference(msg *types.MsgFinishInference) erro
 
 	// Update host stats.
 	sm.state.HostStats[rec.ExecutorSlot].Cost += actualCost
+	sm.state.HostStats[rec.ExecutorSlot].InferenceCount++
 
 	return nil
 }
@@ -714,11 +715,32 @@ func (sm *StateMachine) applyValidation(msg *types.MsgValidation) error {
 	// Mutation: set bitmap, count vote weight.
 	rec.ValidatedBy.Set(msg.ValidatorSlot)
 
+	// Update host stats
+	if msg.Valid {
+		// It's possible for multiple hosts to validate the same inference, so we can't increment the `Validated` counter unconditionally here.
+		// We check whether this is the _first_ validation for this inference, and only increment if so.
+		if rec.VotesValid == 0 && rec.VotesInvalid == 0 {
+			sm.state.HostStats[rec.ExecutorSlot].Validated++
+		}
+	} else {
+		// It's possible for multiple hosts to validate the same inference.
+		// If there were validations before this one that incremented `Validated`, then we need to decrement it since the inference is now challenged.
+		//
+		// Check whether there were any "successful validations" before this one.
+		if rec.VotesValid > 0 {
+			// Check that this is the first "failed validation".
+			if rec.VotesInvalid == 0 {
+				sm.state.HostStats[rec.ExecutorSlot].Validated--
+			}
+		}
+	}
+
 	// Count vote weight for Finished state (tallies accumulate before any challenge).
 	if rec.Status == types.StatusFinished {
 		validatorAddr := sm.slotToAddress[msg.ValidatorSlot]
 		weight := sm.addressToSlotCount[validatorAddr]
 		if msg.Valid {
+
 			rec.VotesValid += weight
 		} else {
 			rec.VotesInvalid += weight
@@ -803,6 +825,7 @@ func (sm *StateMachine) applyValidationVote(msg *types.MsgValidationVote) error 
 		sm.state.Balance += rec.ActualCost
 	} else if rec.VotesValid > threshold {
 		rec.Status = types.StatusValidated
+		sm.state.HostStats[rec.ExecutorSlot].Validated++
 	}
 
 	return nil

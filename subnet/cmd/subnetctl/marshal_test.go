@@ -20,8 +20,8 @@ import (
 func TestMarshalSettlement_RoundTrip(t *testing.T) {
 	// Build a realistic settlement payload.
 	hostStats := map[uint32]*types.HostStats{
-		0: {Missed: 0, Invalid: 0, Cost: 150, RequiredValidations: 2, CompletedValidations: 2},
-		1: {Missed: 1, Invalid: 0, Cost: 100, RequiredValidations: 2, CompletedValidations: 1},
+		0: {Missed: 0, Invalid: 0, Cost: 150, RequiredValidations: 2, CompletedValidations: 2, InferenceCount: 3, Validated: 2},
+		1: {Missed: 1, Invalid: 0, Cost: 100, RequiredValidations: 2, CompletedValidations: 1, InferenceCount: 4, Validated: 1},
 	}
 	inferences := map[uint64]*types.InferenceRecord{
 		1: {
@@ -64,6 +64,7 @@ func TestMarshalSettlement_RoundTrip(t *testing.T) {
 		parsedHostStats[hs.SlotID] = &types.HostStats{
 			Missed: hs.Missed, Invalid: hs.Invalid, Cost: hs.Cost,
 			RequiredValidations: hs.RequiredValidations, CompletedValidations: hs.CompletedValidations,
+			InferenceCount: hs.InferenceCount, Validated: hs.Validated,
 		}
 	}
 	hsHash, err := state.ComputeHostStatsHash(parsedHostStats)
@@ -80,8 +81,8 @@ func TestMarshalSettlement_RoundTrip(t *testing.T) {
 // In Go, we simulate this by: unmarshal -> marshal (plain) -> unmarshal again.
 func TestMarshalSettlement_KotlinReserialize(t *testing.T) {
 	hostStats := map[uint32]*types.HostStats{
-		0: {Cost: 150, CompletedValidations: 2, RequiredValidations: 2},
-		1: {Cost: 100, CompletedValidations: 1, RequiredValidations: 2, Missed: 1},
+		0: {Cost: 150, CompletedValidations: 2, RequiredValidations: 2, InferenceCount: 3, Validated: 2},
+		1: {Cost: 100, CompletedValidations: 1, RequiredValidations: 2, Missed: 1, InferenceCount: 4, Validated: 1},
 	}
 	inferences := map[uint64]*types.InferenceRecord{
 		1: {
@@ -125,6 +126,7 @@ func TestMarshalSettlement_KotlinReserialize(t *testing.T) {
 		parsedHostStats[hs.SlotID] = &types.HostStats{
 			Missed: hs.Missed, Invalid: hs.Invalid, Cost: hs.Cost,
 			RequiredValidations: hs.RequiredValidations, CompletedValidations: hs.CompletedValidations,
+			InferenceCount: hs.InferenceCount, Validated: hs.Validated,
 		}
 	}
 	hsHash, err := state.ComputeHostStatsHash(parsedHostStats)

@@ -328,6 +328,106 @@ func TestApplyDiff_Validation_Invalid_ChallengeVoting(t *testing.T) {
 	require.Equal(t, uint64(0), state.HostStats[1].Cost)
 }
 
+// This test checks that the [HostStats.Validated] counter is incremented correctly when [types.MsgValidation] are processed.
+func TestApplyDiff_Validation_ValidatedCounterTransitions(t *testing.T) {
+
+	// The test starts out with the executor having 10 validated inferences.
+	const initialValidatedCounter = 10
+
+	testCases := []struct {
+		name            string
+		sequence        []bool
+		validatorSlots  []uint32
+		expectedCounter uint32
+	}{
+		{
+			name:           "one_valid_increments_once",
+			sequence:       []bool{true},
+			validatorSlots: []uint32{0},
+			// If we apply one "valid" message, the counter should increment by 1.
+			expectedCounter: initialValidatedCounter + 1,
+		},
+		{
+			name:           "two_valid_increments_once",
+			sequence:       []bool{true, true},
+			validatorSlots: []uint32{0, 2},
+			// If we apply *many* "valid" messages, the counter should increment by 1.
+			expectedCounter: initialValidatedCounter + 1,
+		},
+		{
+			name:           "one_invalid_no_change",
+			sequence:       []bool{false},
+			validatorSlots: []uint32{0},
+			// If we apply one "invalid" message, the counter should not change.
+			expectedCounter: initialValidatedCounter,
+		},
+		{
+			name:           "two_invalid_no_change_different_validators",
+			sequence:       []bool{false, false},
+			validatorSlots: []uint32{0, 2},
+			// If we apply *many* "invalid" messages, the counter should not change.
+			expectedCounter: initialValidatedCounter,
+		},
+		{
+			name:           "two_invalid_no_change_same_validator_duplicate",
+			sequence:       []bool{false, false},
+			validatorSlots: []uint32{0, 0},
+			// If we apply *many* "invalid" messages, the counter should not change.
+			expectedCounter: initialValidatedCounter,
+		},
+		{
+			name:           "valid_then_invalid_net_unchanged",
+			sequence:       []bool{true, false},
+			validatorSlots: []uint32{0, 2},
+			// If the inference passes validation and then fails, the counter should be reset to the initial value.
+			expectedCounter: initialValidatedCounter,
+		},
+		{
+			name:           "invalid_then_valid_net_unchanged",
+			sequence:       []bool{false, true},
+			validatorSlots: []uint32{0, 2},
+			// If the inference fails validation and then passes, the counter should not change.
+			expectedCounter: initialValidatedCounter,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			hosts := []*signing.Secp256k1Signer{
+				testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t),
+				testutil.MustGenerateKey(t), testutil.MustGenerateKey(t),
+			}
+			sm, user := newTestSM(t, hosts, 10000)
+
+			const inferenceID uint64 = 1
+			applyStartConfirmFinish(t, sm, user, hosts, inferenceID)
+
+			executorSlot := uint32(inferenceID % uint64(len(hosts)))
+			sm.mu.Lock()
+			sm.state.HostStats[executorSlot].Validated = initialValidatedCounter
+			sm.mu.Unlock()
+
+			for i, valid := range tc.sequence {
+				valMsg := &types.MsgValidation{
+					InferenceId:   inferenceID,
+					ValidatorSlot: tc.validatorSlots[i],
+					Valid:         valid,
+					EscrowId:      "escrow-1",
+				}
+				valMsg.ProposerSig = testutil.SignProposerTx(t, hosts[tc.validatorSlots[i]], valMsg)
+
+				nonce := sm.SnapshotState().LatestNonce + 1
+				diff := testutil.SignDiff(t, user, "escrow-1", nonce, []*types.SubnetTx{txValidation(valMsg)})
+				_, err := sm.ApplyDiff(diff)
+				require.NoError(t, err)
+			}
+
+			state := sm.SnapshotState()
+			require.Equal(t, tc.expectedCounter, state.HostStats[executorSlot].Validated)
+		})
+	}
+}
+
 func TestApplyDiff_Timeout_Refused(t *testing.T) {
 	hosts := []*signing.Secp256k1Signer{
 		testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t),
