@@ -94,6 +94,13 @@ const (
           }
         ]
     }`
+
+	jsonBodyNullContent = `{
+        "model": "Qwen/Qwen2.5-7B-Instruct",
+        "messages": [
+          { "role": "user", "content": null }
+        ]
+    }`
 )
 
 func TestModifyRequestBody_NullLogprobsPreserved(t *testing.T) {
@@ -287,4 +294,9 @@ func TestModifyRequestBody_PreservesMultipartContent(t *testing.T) {
 	message := messages[0].(map[string]interface{})
 	_, isArray := message["content"].([]interface{})
 	require.True(t, isArray)
+}
+
+func TestModifyRequestBody_RejectsNullMessageContent(t *testing.T) {
+	_, err := ModifyRequestBody([]byte(jsonBodyNullContent), 7)
+	require.Error(t, err, "content:null should be rejected as invalid request input")
 }

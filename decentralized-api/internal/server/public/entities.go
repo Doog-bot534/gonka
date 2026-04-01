@@ -1,6 +1,7 @@
 package public
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -49,6 +50,10 @@ type ContentPart struct {
 }
 
 func (c *MessageContent) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return fmt.Errorf("message content must not be null")
+	}
+
 	var text string
 	if err := json.Unmarshal(data, &text); err == nil {
 		c.Text = &text
