@@ -125,14 +125,16 @@ func validateMessageContents(requestMap map[string]interface{}) error {
 
 				rawText, exists := part["text"]
 				if !exists {
-					continue
+					return fmt.Errorf("messages[%d].content[%d].text is required for type %q", i, j, partType)
 				}
 
 				text, ok := rawText.(string)
 				if !ok {
 					return fmt.Errorf("messages[%d].content[%d].text must be a string", i, j)
 				}
-				_ = text
+				if text == "" {
+					return fmt.Errorf("messages[%d].content[%d].text must be a non-empty string", i, j)
+				}
 			}
 		default:
 			return fmt.Errorf("messages[%d].content must be a string or an array of typed content parts", i)

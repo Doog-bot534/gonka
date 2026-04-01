@@ -101,6 +101,18 @@ const (
           { "role": "user", "content": null }
         ]
     }`
+
+	jsonBodyMultipartTextPartMissingText = `{
+        "model": "Qwen/Qwen2.5-7B-Instruct",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              { "type": "text" }
+            ]
+          }
+        ]
+    }`
 )
 
 func TestModifyRequestBody_NullLogprobsPreserved(t *testing.T) {
@@ -299,4 +311,9 @@ func TestModifyRequestBody_PreservesMultipartContent(t *testing.T) {
 func TestModifyRequestBody_RejectsNullMessageContent(t *testing.T) {
 	_, err := ModifyRequestBody([]byte(jsonBodyNullContent), 7)
 	require.Error(t, err, "content:null should be rejected as invalid request input")
+}
+
+func TestModifyRequestBody_RejectsTextPartWithoutTextField(t *testing.T) {
+	_, err := ModifyRequestBody([]byte(jsonBodyMultipartTextPartMissingText), 7)
+	require.Error(t, err, "text content part without text field should be rejected")
 }
