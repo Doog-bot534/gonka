@@ -4,7 +4,7 @@ Outstanding issues in the current `design-1.md` implementation.
 
 Some items are older behaviors that became more visible once PoC became model-aware. Others are missing pieces that `design-1.md` still expects to be finished.
 
-## 1. Allocation voting constraint mixes raw and adjusted weight
+## 1. [fixed] Allocation voting constraint mixes raw and adjusted weight
 
 Files:
 - `inference-chain/x/inference/module/model_assignment.go`
@@ -22,7 +22,7 @@ Needed fix:
 - Run the voting constraint in one consistent unit.
 - Either keep the whole calculation in raw per-model space, or convert both sides into the same aggregated consensus-weight space.
 
-## 2. `setModelsForParticipants()` can overwrite PoC-proven model buckets
+## 2. [deferred, not critical when 1 MLNode = 1 model] `setModelsForParticipants()` can overwrite PoC-proven model buckets
 
 Files:
 - `inference-chain/x/inference/module/model_assignment.go`
@@ -39,7 +39,7 @@ Needed fix:
 - Keep Calculator-produced model buckets as the source of truth for proven nodes.
 - Only use hardware metadata as a fallback when no reliable model assignment exists in PoC-derived state.
 
-## 3. Broker still has first-model fallback
+## 3. [fixed] Broker still has first-model fallback
 
 Files:
 - `decentralized-api/broker/broker.go`
@@ -56,7 +56,7 @@ Needed fix:
 - Remove first-model fallback from PoC scheduling.
 - If model assignment is ambiguous, skip scheduling and surface the ambiguity explicitly.
 
-## 4. Upgrade cleanup and remaining single-model leftovers are still missing
+## 4. [fixed, upgrade handler deferred] Upgrade cleanup and remaining single-model leftovers
 
 What is still missing:
 - Upgrade handler to prune legacy PoC-v2 records.
@@ -71,7 +71,7 @@ Why this matters:
 Needed fix:
 - Finish the Phase 5 cleanup path from `design-1.md`.
 
-## 5. `ConfirmationWeight` uses live coefficients instead of epoch-pinned coefficients
+## 5. [deferred, pre-existing, not specific to multi-model] `ConfirmationWeight` uses live coefficients instead of epoch-pinned coefficients
 
 Files:
 - `inference-chain/x/inference/module/module.go`
