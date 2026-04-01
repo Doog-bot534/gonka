@@ -71,7 +71,7 @@ Why this matters:
 Needed fix:
 - Finish the Phase 5 cleanup path from `design-1.md`.
 
-## 5. [deferred, pre-existing, not specific to multi-model] `ConfirmationWeight` uses live coefficients instead of epoch-pinned coefficients
+## 5. [deferred, pre-existing, not specific to multi-model] ConfirmationWeight uses live coefficients instead of epoch-pinned coefficients
 
 Files:
 - `inference-chain/x/inference/module/module.go`
@@ -93,3 +93,17 @@ Why this is wrong:
 Needed fix:
 - Use epoch-pinned coefficients for all confirmation-weight baseline, update, ratio, slashing, and settlement paths.
 - Once an epoch is formed, do not recompute those values from live params.
+
+## 6. [pre-existing] Commit worker can silently keep a bad on-chain root after restart
+
+Files: `decentralized-api/poc/commit_worker.go`
+
+What happens:
+- On cold start the commit worker hydrates `lastCommitted` from chain using only `count`, not `root_hash`.
+- If local artifacts rebuild to the same leaf count but a different root, the worker treats that as already committed and skips the corrective submit.
+
+Why this matters:
+- A stale commit stays on-chain with the wrong root hash.
+- Validation against that root will fail, causing the participant to lose PoC weight for the epoch.
+
+Not specific to multi-model. Pre-existing behavior.

@@ -104,6 +104,42 @@ class MultiModelPoCTests : TestermintTest() {
             assertThat(p.weight).isEqualTo(expectedWeight)
         }
 
+        logSection("Verifying per-model PoC v2 store commits")
+        val pocStartHeight = activeResp.activeParticipants.pocStartBlockHeight
+        val allCommits = genesis.node.getAllPoCV2StoreCommitsForStage(pocStartHeight)
+        logSection("All commits for stage $pocStartHeight: ${allCommits.commits.map { "${it.participantAddress}/${it.modelId}:count=${it.count}" }}")
+
+        // Each participant should have commits for both models
+        val commitsByParticipant = allCommits.commits.groupBy { it.participantAddress }
+        for ((addr, commits) in commitsByParticipant) {
+            val models = commits.map { it.modelId }.toSet()
+            logSection("Participant $addr commit models: $models")
+            assertThat(models).containsExactlyInAnyOrder(defaultModel, secondModel)
+            commits.forEach { assertThat(it.count).isGreaterThan(0) }
+        }
+
+        logSection("Verifying per-model weight distributions")
+        for (p in participants) {
+            for (model in p.models) {
+                val dist = genesis.node.getMLNodeWeightDistribution(pocStartHeight, p.index, model)
+                logSection("Participant ${p.index} model=$model dist=${dist.weights.map { "${it.nodeId}:w=${it.weight}" }}")
+                assertThat(dist.found).isTrue()
+                assertThat(dist.weights).isNotEmpty()
+            }
+        }
+
+        logSection("Verifying slot allocation across models")
+        for (p in participants) {
+            for ((i, _) in p.models.withIndex()) {
+                val nodes = p.mlNodes[i].mlNodes
+                for (node in nodes) {
+                    assertThat(node.timeslotAllocation).hasSize(2)
+                    // PRE_POC_SLOT=true means the node participates
+                    assertThat(node.timeslotAllocation[0]).isTrue()
+                }
+            }
+        }
+
         logSection("Setting up inference responses per model")
         allPairs.forEach { pair ->
             pair.mock?.setInferenceResponse(
