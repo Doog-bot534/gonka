@@ -266,6 +266,19 @@ func TestMultipartContent_RoundTrip(t *testing.T) {
 	require.Equal(t, "high", imgURL["detail"])
 }
 
+func TestReadRequest_RejectsMissingMessageContent(t *testing.T) {
+	body := []byte(`{"model":"test","messages":[{"role":"user"}]}`)
+	req := createTestRequest(body)
+
+	_, err := readRequest(req, nil, "transfer-agent")
+	require.Error(t, err)
+
+	var httpErr *echo.HTTPError
+	require.True(t, errors.As(err, &httpErr))
+	require.Equal(t, http.StatusBadRequest, httpErr.Code)
+	require.Contains(t, httpErr.Message, "message content is required")
+}
+
 func TestReadRequest_RejectsUnsupportedContentType(t *testing.T) {
 	body := []byte(`{"model":"test","messages":[{"role":"user","content":123}]}`)
 	req := createTestRequest(body)

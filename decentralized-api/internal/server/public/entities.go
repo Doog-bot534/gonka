@@ -39,6 +39,31 @@ type Message struct {
 	Content MessageContent `json:"content"`
 }
 
+func (m *Message) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Role    string           `json:"role"`
+		Content *json.RawMessage `json:"content"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if strings.TrimSpace(raw.Role) == "" {
+		return fmt.Errorf("message role must be a non-empty string")
+	}
+	if raw.Content == nil {
+		return fmt.Errorf("message content is required")
+	}
+
+	var content MessageContent
+	if err := json.Unmarshal(*raw.Content, &content); err != nil {
+		return err
+	}
+
+	m.Role = raw.Role
+	m.Content = content
+	return nil
+}
+
 type MessageContent struct {
 	Text  *string
 	Parts []ContentPart
@@ -105,7 +130,7 @@ func (c MessageContent) MarshalJSON() ([]byte, error) {
 	if c.Parts != nil {
 		return json.Marshal(c.Parts)
 	}
-	return json.Marshal("")
+	return nil, fmt.Errorf("message content must have either text or parts set")
 }
 
 func (c MessageContent) FlattenedText() (string, int) {
