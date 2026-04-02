@@ -51,6 +51,7 @@ func adjustParameters(ctx context.Context, k keeper.Keeper) error {
 	if err != nil {
 		return err
 	}
+	params.XXX_DiscardUnknown()
 	err = k.SetParams(ctx, params)
 	if err != nil {
 		return err
@@ -60,6 +61,7 @@ func adjustParameters(ctx context.Context, k keeper.Keeper) error {
 	if !found {
 		return errors.New("genesis only params not found")
 	}
+	genesisParams.XXX_DiscardUnknown()
 	err = k.SetGenesisOnlyParams(ctx, &genesisParams)
 	if err != nil {
 		return err
@@ -80,6 +82,15 @@ func removeTopMiner(ctx context.Context, k keeper.Keeper) error {
 		if err != nil {
 			return err
 		}
+	}
+	tokenomicsData, found := k.GetTokenomicsData(ctx)
+	if !found {
+		return errors.New("tokenomics data not found")
+	}
+	tokenomicsData.XXX_DiscardUnknown()
+	err = k.SetTokenomicsData(ctx, tokenomicsData)
+	if err != nil {
+		return err
 	}
 	return nil
 }
