@@ -127,9 +127,8 @@ func TestVestingIntegration_ParameterBased(t *testing.T) {
 
 	// Set parameters for vesting periods
 	params := types.DefaultParams()
-	params.TokenomicsParams.WorkVestingPeriod = 5      // 5 epochs for work coins
-	params.TokenomicsParams.RewardVestingPeriod = 10   // 10 epochs for reward coins
-	params.TokenomicsParams.TopMinerVestingPeriod = 15 // 15 epochs for top miner rewards
+	params.TokenomicsParams.WorkVestingPeriod = 5    // 5 epochs for work coins
+	params.TokenomicsParams.RewardVestingPeriod = 10 // 10 epochs for reward coins
 	k.SetParams(ctx, params)
 
 	participantAddrStr := sample.AccAddress()
@@ -294,7 +293,6 @@ func TestVestingIntegration_TopMinerRewards(t *testing.T) {
 
 	// Configure top miner vesting period
 	params := types.DefaultParams()
-	params.TokenomicsParams.TopMinerVestingPeriod = 15 // 15 epochs for top miner rewards
 	k.SetParams(ctx, params)
 
 	participantAddrStr := sample.AccAddress()
@@ -319,7 +317,6 @@ func TestVestingIntegration_ParameterValidation(t *testing.T) {
 	params := types.DefaultParams()
 	params.TokenomicsParams.WorkVestingPeriod = 0
 	params.TokenomicsParams.RewardVestingPeriod = 180
-	params.TokenomicsParams.TopMinerVestingPeriod = 365
 
 	// Should not error on valid parameters
 	err := k.SetParams(ctx, params)
@@ -330,7 +327,6 @@ func TestVestingIntegration_ParameterValidation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), retrievedParams.TokenomicsParams.WorkVestingPeriod)
 	require.Equal(t, uint64(180), retrievedParams.TokenomicsParams.RewardVestingPeriod)
-	require.Equal(t, uint64(365), retrievedParams.TokenomicsParams.TopMinerVestingPeriod)
 }
 
 func TestVestingIntegration_ErrorHandling(t *testing.T) {
