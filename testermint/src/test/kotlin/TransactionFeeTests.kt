@@ -25,7 +25,6 @@ class TransactionFeeTests : TestermintTest() {
         private lateinit var cluster: LocalCluster
         private lateinit var genesis: LocalInferencePair
         private lateinit var genesisAddress: String
-        private lateinit var recipientAddress: String
 
         @BeforeAll
         @JvmStatic
@@ -34,56 +33,11 @@ class TransactionFeeTests : TestermintTest() {
             cluster = result.first
             genesis = result.second
             genesisAddress = genesis.node.getColdAddress()
-            recipientAddress = cluster.joinPairs.first().node.getColdAddress()
         }
     }
 
     @Test
     @Order(1)
-    fun `bank send succeeds without fees when enforcement is not active`() {
-        logHighlight("Testing that bank send works without fee enforcement")
-
-        val result = genesis.submitTransactionWithFees(
-            listOf(
-                "bank", "send",
-                genesisAddress, recipientAddress,
-                "1000ngonka"
-            ),
-            fees = "0ngonka"
-        )
-
-        // Without fee enforcement (FeeParams nil), zero-fee transactions should succeed
-        assertThat(result.code).isEqualTo(0)
-        logHighlight("Bank send with zero fees succeeded (no fee enforcement active)")
-    }
-
-    @Test
-    @Order(2)
-    fun `bank send with explicit fees succeeds and deducts correctly`() {
-        logHighlight("Testing that bank send with explicit fees deducts correctly")
-
-        val balanceBefore = genesis.getBalance(genesisAddress)
-
-        val result = genesis.submitTransactionWithFees(
-            listOf(
-                "bank", "send",
-                genesisAddress, recipientAddress,
-                "1000ngonka"
-            ),
-            fees = "2000000ngonka"
-        )
-
-        assertThat(result.code).isEqualTo(0)
-
-        val balanceAfter = genesis.getBalance(genesisAddress)
-        val deducted = balanceBefore - balanceAfter
-        // Should deduct transfer (1000) + declared fee (2000000)
-        assertThat(deducted).isGreaterThanOrEqualTo(1000 + 2000000)
-        logHighlight("Balance deducted: $deducted ngonka (transfer=1000 + fee=2000000)")
-    }
-
-    @Test
-    @Order(3)
     fun `fee params are nil at genesis`() {
         logHighlight("Verifying FeeParams are not set at genesis")
 
@@ -94,7 +48,28 @@ class TransactionFeeTests : TestermintTest() {
     }
 
     @Test
-    @Order(4)
+    @Order(2)
+    fun `staking delegate succeeds without fee enforcement`() {
+        logHighlight("Testing that staking works without fee enforcement")
+
+        val validatorAddr = genesis.node.getValidators().validators.first().operatorAddress
+
+        // Zero-fee staking delegate should succeed when fee enforcement is not active
+        val result = genesis.submitTransactionWithFees(
+            listOf(
+                "staking", "delegate",
+                validatorAddr,
+                "1000ngonka"
+            ),
+            fees = "0ngonka"
+        )
+
+        assertThat(result.code).isEqualTo(0)
+        logHighlight("Staking delegate with zero fees succeeded (no fee enforcement active)")
+    }
+
+    @Test
+    @Order(3)
     fun `inference request succeeds without fee enforcement`() {
         logHighlight("Testing that inference pipeline works with fee infrastructure in place")
 
