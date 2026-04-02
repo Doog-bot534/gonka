@@ -54,9 +54,14 @@ func buildSettlementTestData(
 	entries := make([]*types.SubnetHostStatsProto, len(hostStats))
 	for i, hs := range hostStats {
 		entries[i] = &types.SubnetHostStatsProto{
-			SlotId: hs.SlotId, Missed: hs.Missed, Invalid: hs.Invalid,
-			Cost: hs.Cost, RequiredValidations: hs.RequiredValidations,
+			SlotId:               hs.SlotId,
+			Missed:               hs.Missed,
+			Invalid:              hs.Invalid,
+			Cost:                 hs.Cost,
+			RequiredValidations:  hs.RequiredValidations,
 			CompletedValidations: hs.CompletedValidations,
+			InferenceCount:       hs.InferenceCount,
+			Validated:            hs.Validated,
 		}
 	}
 	slices.SortFunc(entries, func(a, b *types.SubnetHostStatsProto) int {
@@ -130,6 +135,8 @@ func makeHostStats(n int, costPerSlot uint64) []*types.SubnetSettlementHostStats
 			Cost:                 costPerSlot,
 			RequiredValidations:  10,
 			CompletedValidations: 9,
+			InferenceCount:       11,
+			Validated:            12,
 		}
 	}
 	return stats

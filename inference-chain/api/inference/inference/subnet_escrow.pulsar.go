@@ -876,6 +876,8 @@ var (
 	fd_SubnetHostEpochStats_required_validations  protoreflect.FieldDescriptor
 	fd_SubnetHostEpochStats_completed_validations protoreflect.FieldDescriptor
 	fd_SubnetHostEpochStats_escrow_count          protoreflect.FieldDescriptor
+	fd_SubnetHostEpochStats_inference_count       protoreflect.FieldDescriptor
+	fd_SubnetHostEpochStats_validated             protoreflect.FieldDescriptor
 )
 
 func init() {
@@ -889,6 +891,8 @@ func init() {
 	fd_SubnetHostEpochStats_required_validations = md_SubnetHostEpochStats.Fields().ByName("required_validations")
 	fd_SubnetHostEpochStats_completed_validations = md_SubnetHostEpochStats.Fields().ByName("completed_validations")
 	fd_SubnetHostEpochStats_escrow_count = md_SubnetHostEpochStats.Fields().ByName("escrow_count")
+	fd_SubnetHostEpochStats_inference_count = md_SubnetHostEpochStats.Fields().ByName("inference_count")
+	fd_SubnetHostEpochStats_validated = md_SubnetHostEpochStats.Fields().ByName("validated")
 }
 
 var _ protoreflect.Message = (*fastReflection_SubnetHostEpochStats)(nil)
@@ -1004,6 +1008,18 @@ func (x *fastReflection_SubnetHostEpochStats) Range(f func(protoreflect.FieldDes
 			return
 		}
 	}
+	if x.InferenceCount != uint32(0) {
+		value := protoreflect.ValueOfUint32(x.InferenceCount)
+		if !f(fd_SubnetHostEpochStats_inference_count, value) {
+			return
+		}
+	}
+	if x.Validated != uint32(0) {
+		value := protoreflect.ValueOfUint32(x.Validated)
+		if !f(fd_SubnetHostEpochStats_validated, value) {
+			return
+		}
+	}
 }
 
 // Has reports whether a field is populated.
@@ -1035,6 +1051,10 @@ func (x *fastReflection_SubnetHostEpochStats) Has(fd protoreflect.FieldDescripto
 		return x.CompletedValidations != uint32(0)
 	case "inference.inference.SubnetHostEpochStats.escrow_count":
 		return x.EscrowCount != uint32(0)
+	case "inference.inference.SubnetHostEpochStats.inference_count":
+		return x.InferenceCount != uint32(0)
+	case "inference.inference.SubnetHostEpochStats.validated":
+		return x.Validated != uint32(0)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.SubnetHostEpochStats"))
@@ -1067,6 +1087,10 @@ func (x *fastReflection_SubnetHostEpochStats) Clear(fd protoreflect.FieldDescrip
 		x.CompletedValidations = uint32(0)
 	case "inference.inference.SubnetHostEpochStats.escrow_count":
 		x.EscrowCount = uint32(0)
+	case "inference.inference.SubnetHostEpochStats.inference_count":
+		x.InferenceCount = uint32(0)
+	case "inference.inference.SubnetHostEpochStats.validated":
+		x.Validated = uint32(0)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.SubnetHostEpochStats"))
@@ -1107,6 +1131,12 @@ func (x *fastReflection_SubnetHostEpochStats) Get(descriptor protoreflect.FieldD
 	case "inference.inference.SubnetHostEpochStats.escrow_count":
 		value := x.EscrowCount
 		return protoreflect.ValueOfUint32(value)
+	case "inference.inference.SubnetHostEpochStats.inference_count":
+		value := x.InferenceCount
+		return protoreflect.ValueOfUint32(value)
+	case "inference.inference.SubnetHostEpochStats.validated":
+		value := x.Validated
+		return protoreflect.ValueOfUint32(value)
 	default:
 		if descriptor.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.SubnetHostEpochStats"))
@@ -1143,6 +1173,10 @@ func (x *fastReflection_SubnetHostEpochStats) Set(fd protoreflect.FieldDescripto
 		x.CompletedValidations = uint32(value.Uint())
 	case "inference.inference.SubnetHostEpochStats.escrow_count":
 		x.EscrowCount = uint32(value.Uint())
+	case "inference.inference.SubnetHostEpochStats.inference_count":
+		x.InferenceCount = uint32(value.Uint())
+	case "inference.inference.SubnetHostEpochStats.validated":
+		x.Validated = uint32(value.Uint())
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.SubnetHostEpochStats"))
@@ -1179,6 +1213,10 @@ func (x *fastReflection_SubnetHostEpochStats) Mutable(fd protoreflect.FieldDescr
 		panic(fmt.Errorf("field completed_validations of message inference.inference.SubnetHostEpochStats is not mutable"))
 	case "inference.inference.SubnetHostEpochStats.escrow_count":
 		panic(fmt.Errorf("field escrow_count of message inference.inference.SubnetHostEpochStats is not mutable"))
+	case "inference.inference.SubnetHostEpochStats.inference_count":
+		panic(fmt.Errorf("field inference_count of message inference.inference.SubnetHostEpochStats is not mutable"))
+	case "inference.inference.SubnetHostEpochStats.validated":
+		panic(fmt.Errorf("field validated of message inference.inference.SubnetHostEpochStats is not mutable"))
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.SubnetHostEpochStats"))
@@ -1207,6 +1245,10 @@ func (x *fastReflection_SubnetHostEpochStats) NewField(fd protoreflect.FieldDesc
 	case "inference.inference.SubnetHostEpochStats.completed_validations":
 		return protoreflect.ValueOfUint32(uint32(0))
 	case "inference.inference.SubnetHostEpochStats.escrow_count":
+		return protoreflect.ValueOfUint32(uint32(0))
+	case "inference.inference.SubnetHostEpochStats.inference_count":
+		return protoreflect.ValueOfUint32(uint32(0))
+	case "inference.inference.SubnetHostEpochStats.validated":
 		return protoreflect.ValueOfUint32(uint32(0))
 	default:
 		if fd.IsExtension() {
@@ -1302,6 +1344,12 @@ func (x *fastReflection_SubnetHostEpochStats) ProtoMethods() *protoiface.Methods
 		if x.EscrowCount != 0 {
 			n += 1 + runtime.Sov(uint64(x.EscrowCount))
 		}
+		if x.InferenceCount != 0 {
+			n += 1 + runtime.Sov(uint64(x.InferenceCount))
+		}
+		if x.Validated != 0 {
+			n += 1 + runtime.Sov(uint64(x.Validated))
+		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
 		}
@@ -1330,6 +1378,16 @@ func (x *fastReflection_SubnetHostEpochStats) ProtoMethods() *protoiface.Methods
 		if x.unknownFields != nil {
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
+		}
+		if x.Validated != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.Validated))
+			i--
+			dAtA[i] = 0x50
+		}
+		if x.InferenceCount != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.InferenceCount))
+			i--
+			dAtA[i] = 0x48
 		}
 		if x.EscrowCount != 0 {
 			i = runtime.EncodeVarint(dAtA, i, uint64(x.EscrowCount))
@@ -1587,6 +1645,44 @@ func (x *fastReflection_SubnetHostEpochStats) ProtoMethods() *protoiface.Methods
 						break
 					}
 				}
+			case 9:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field InferenceCount", wireType)
+				}
+				x.InferenceCount = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.InferenceCount |= uint32(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+			case 10:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Validated", wireType)
+				}
+				x.Validated = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.Validated |= uint32(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
 			default:
 				iNdEx = preIndex
 				skippy, err := runtime.Skip(dAtA[iNdEx:])
@@ -1630,6 +1726,8 @@ var (
 	fd_SubnetSettlementHostStats_cost                  protoreflect.FieldDescriptor
 	fd_SubnetSettlementHostStats_required_validations  protoreflect.FieldDescriptor
 	fd_SubnetSettlementHostStats_completed_validations protoreflect.FieldDescriptor
+	fd_SubnetSettlementHostStats_inference_count       protoreflect.FieldDescriptor
+	fd_SubnetSettlementHostStats_validated             protoreflect.FieldDescriptor
 )
 
 func init() {
@@ -1641,6 +1739,8 @@ func init() {
 	fd_SubnetSettlementHostStats_cost = md_SubnetSettlementHostStats.Fields().ByName("cost")
 	fd_SubnetSettlementHostStats_required_validations = md_SubnetSettlementHostStats.Fields().ByName("required_validations")
 	fd_SubnetSettlementHostStats_completed_validations = md_SubnetSettlementHostStats.Fields().ByName("completed_validations")
+	fd_SubnetSettlementHostStats_inference_count = md_SubnetSettlementHostStats.Fields().ByName("inference_count")
+	fd_SubnetSettlementHostStats_validated = md_SubnetSettlementHostStats.Fields().ByName("validated")
 }
 
 var _ protoreflect.Message = (*fastReflection_SubnetSettlementHostStats)(nil)
@@ -1744,6 +1844,18 @@ func (x *fastReflection_SubnetSettlementHostStats) Range(f func(protoreflect.Fie
 			return
 		}
 	}
+	if x.InferenceCount != uint32(0) {
+		value := protoreflect.ValueOfUint32(x.InferenceCount)
+		if !f(fd_SubnetSettlementHostStats_inference_count, value) {
+			return
+		}
+	}
+	if x.Validated != uint32(0) {
+		value := protoreflect.ValueOfUint32(x.Validated)
+		if !f(fd_SubnetSettlementHostStats_validated, value) {
+			return
+		}
+	}
 }
 
 // Has reports whether a field is populated.
@@ -1771,6 +1883,10 @@ func (x *fastReflection_SubnetSettlementHostStats) Has(fd protoreflect.FieldDesc
 		return x.RequiredValidations != uint32(0)
 	case "inference.inference.SubnetSettlementHostStats.completed_validations":
 		return x.CompletedValidations != uint32(0)
+	case "inference.inference.SubnetSettlementHostStats.inference_count":
+		return x.InferenceCount != uint32(0)
+	case "inference.inference.SubnetSettlementHostStats.validated":
+		return x.Validated != uint32(0)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.SubnetSettlementHostStats"))
@@ -1799,6 +1915,10 @@ func (x *fastReflection_SubnetSettlementHostStats) Clear(fd protoreflect.FieldDe
 		x.RequiredValidations = uint32(0)
 	case "inference.inference.SubnetSettlementHostStats.completed_validations":
 		x.CompletedValidations = uint32(0)
+	case "inference.inference.SubnetSettlementHostStats.inference_count":
+		x.InferenceCount = uint32(0)
+	case "inference.inference.SubnetSettlementHostStats.validated":
+		x.Validated = uint32(0)
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.SubnetSettlementHostStats"))
@@ -1833,6 +1953,12 @@ func (x *fastReflection_SubnetSettlementHostStats) Get(descriptor protoreflect.F
 	case "inference.inference.SubnetSettlementHostStats.completed_validations":
 		value := x.CompletedValidations
 		return protoreflect.ValueOfUint32(value)
+	case "inference.inference.SubnetSettlementHostStats.inference_count":
+		value := x.InferenceCount
+		return protoreflect.ValueOfUint32(value)
+	case "inference.inference.SubnetSettlementHostStats.validated":
+		value := x.Validated
+		return protoreflect.ValueOfUint32(value)
 	default:
 		if descriptor.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.SubnetSettlementHostStats"))
@@ -1865,6 +1991,10 @@ func (x *fastReflection_SubnetSettlementHostStats) Set(fd protoreflect.FieldDesc
 		x.RequiredValidations = uint32(value.Uint())
 	case "inference.inference.SubnetSettlementHostStats.completed_validations":
 		x.CompletedValidations = uint32(value.Uint())
+	case "inference.inference.SubnetSettlementHostStats.inference_count":
+		x.InferenceCount = uint32(value.Uint())
+	case "inference.inference.SubnetSettlementHostStats.validated":
+		x.Validated = uint32(value.Uint())
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.SubnetSettlementHostStats"))
@@ -1897,6 +2027,10 @@ func (x *fastReflection_SubnetSettlementHostStats) Mutable(fd protoreflect.Field
 		panic(fmt.Errorf("field required_validations of message inference.inference.SubnetSettlementHostStats is not mutable"))
 	case "inference.inference.SubnetSettlementHostStats.completed_validations":
 		panic(fmt.Errorf("field completed_validations of message inference.inference.SubnetSettlementHostStats is not mutable"))
+	case "inference.inference.SubnetSettlementHostStats.inference_count":
+		panic(fmt.Errorf("field inference_count of message inference.inference.SubnetSettlementHostStats is not mutable"))
+	case "inference.inference.SubnetSettlementHostStats.validated":
+		panic(fmt.Errorf("field validated of message inference.inference.SubnetSettlementHostStats is not mutable"))
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.SubnetSettlementHostStats"))
@@ -1921,6 +2055,10 @@ func (x *fastReflection_SubnetSettlementHostStats) NewField(fd protoreflect.Fiel
 	case "inference.inference.SubnetSettlementHostStats.required_validations":
 		return protoreflect.ValueOfUint32(uint32(0))
 	case "inference.inference.SubnetSettlementHostStats.completed_validations":
+		return protoreflect.ValueOfUint32(uint32(0))
+	case "inference.inference.SubnetSettlementHostStats.inference_count":
+		return protoreflect.ValueOfUint32(uint32(0))
+	case "inference.inference.SubnetSettlementHostStats.validated":
 		return protoreflect.ValueOfUint32(uint32(0))
 	default:
 		if fd.IsExtension() {
@@ -2009,6 +2147,12 @@ func (x *fastReflection_SubnetSettlementHostStats) ProtoMethods() *protoiface.Me
 		if x.CompletedValidations != 0 {
 			n += 1 + runtime.Sov(uint64(x.CompletedValidations))
 		}
+		if x.InferenceCount != 0 {
+			n += 1 + runtime.Sov(uint64(x.InferenceCount))
+		}
+		if x.Validated != 0 {
+			n += 1 + runtime.Sov(uint64(x.Validated))
+		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
 		}
@@ -2037,6 +2181,16 @@ func (x *fastReflection_SubnetSettlementHostStats) ProtoMethods() *protoiface.Me
 		if x.unknownFields != nil {
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
+		}
+		if x.Validated != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.Validated))
+			i--
+			dAtA[i] = 0x40
+		}
+		if x.InferenceCount != 0 {
+			i = runtime.EncodeVarint(dAtA, i, uint64(x.InferenceCount))
+			i--
+			dAtA[i] = 0x38
 		}
 		if x.CompletedValidations != 0 {
 			i = runtime.EncodeVarint(dAtA, i, uint64(x.CompletedValidations))
@@ -2227,6 +2381,44 @@ func (x *fastReflection_SubnetSettlementHostStats) ProtoMethods() *protoiface.Me
 					b := dAtA[iNdEx]
 					iNdEx++
 					x.CompletedValidations |= uint32(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+			case 7:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field InferenceCount", wireType)
+				}
+				x.InferenceCount = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.InferenceCount |= uint32(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+			case 8:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Validated", wireType)
+				}
+				x.Validated = 0
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					x.Validated |= uint32(b&0x7F) << shift
 					if b < 0x80 {
 						break
 					}
@@ -2853,6 +3045,8 @@ type SubnetHostEpochStats struct {
 	RequiredValidations  uint32 `protobuf:"varint,6,opt,name=required_validations,json=requiredValidations,proto3" json:"required_validations,omitempty"`
 	CompletedValidations uint32 `protobuf:"varint,7,opt,name=completed_validations,json=completedValidations,proto3" json:"completed_validations,omitempty"`
 	EscrowCount          uint32 `protobuf:"varint,8,opt,name=escrow_count,json=escrowCount,proto3" json:"escrow_count,omitempty"`
+	InferenceCount       uint32 `protobuf:"varint,9,opt,name=inference_count,json=inferenceCount,proto3" json:"inference_count,omitempty"`
+	Validated            uint32 `protobuf:"varint,10,opt,name=validated,proto3" json:"validated,omitempty"`
 }
 
 func (x *SubnetHostEpochStats) Reset() {
@@ -2931,6 +3125,20 @@ func (x *SubnetHostEpochStats) GetEscrowCount() uint32 {
 	return 0
 }
 
+func (x *SubnetHostEpochStats) GetInferenceCount() uint32 {
+	if x != nil {
+		return x.InferenceCount
+	}
+	return 0
+}
+
+func (x *SubnetHostEpochStats) GetValidated() uint32 {
+	if x != nil {
+		return x.Validated
+	}
+	return 0
+}
+
 type SubnetSettlementHostStats struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -2942,6 +3150,8 @@ type SubnetSettlementHostStats struct {
 	Cost                 uint64 `protobuf:"varint,4,opt,name=cost,proto3" json:"cost,omitempty"`
 	RequiredValidations  uint32 `protobuf:"varint,5,opt,name=required_validations,json=requiredValidations,proto3" json:"required_validations,omitempty"`
 	CompletedValidations uint32 `protobuf:"varint,6,opt,name=completed_validations,json=completedValidations,proto3" json:"completed_validations,omitempty"`
+	InferenceCount       uint32 `protobuf:"varint,7,opt,name=inference_count,json=inferenceCount,proto3" json:"inference_count,omitempty"`
+	Validated            uint32 `protobuf:"varint,8,opt,name=validated,proto3" json:"validated,omitempty"`
 }
 
 func (x *SubnetSettlementHostStats) Reset() {
@@ -3002,6 +3212,20 @@ func (x *SubnetSettlementHostStats) GetRequiredValidations() uint32 {
 func (x *SubnetSettlementHostStats) GetCompletedValidations() uint32 {
 	if x != nil {
 		return x.CompletedValidations
+	}
+	return 0
+}
+
+func (x *SubnetSettlementHostStats) GetInferenceCount() uint32 {
+	if x != nil {
+		return x.InferenceCount
+	}
+	return 0
+}
+
+func (x *SubnetSettlementHostStats) GetValidated() uint32 {
+	if x != nil {
+		return x.Validated
 	}
 	return 0
 }
@@ -3069,7 +3293,7 @@ var file_inference_inference_subnet_escrow_proto_rawDesc = []byte{
 	0x61, 0x73, 0x68, 0x12, 0x18, 0x0a, 0x07, 0x73, 0x65, 0x74, 0x74, 0x6c, 0x65, 0x64, 0x18, 0x07,
 	0x20, 0x01, 0x28, 0x08, 0x52, 0x07, 0x73, 0x65, 0x74, 0x74, 0x6c, 0x65, 0x64, 0x12, 0x1f, 0x0a,
 	0x0b, 0x74, 0x6f, 0x6b, 0x65, 0x6e, 0x5f, 0x70, 0x72, 0x69, 0x63, 0x65, 0x18, 0x08, 0x20, 0x01,
-	0x28, 0x04, 0x52, 0x0a, 0x74, 0x6f, 0x6b, 0x65, 0x6e, 0x50, 0x72, 0x69, 0x63, 0x65, 0x22, 0xaa,
+	0x28, 0x04, 0x52, 0x0a, 0x74, 0x6f, 0x6b, 0x65, 0x6e, 0x50, 0x72, 0x69, 0x63, 0x65, 0x22, 0xf1,
 	0x02, 0x0a, 0x14, 0x53, 0x75, 0x62, 0x6e, 0x65, 0x74, 0x48, 0x6f, 0x73, 0x74, 0x45, 0x70, 0x6f,
 	0x63, 0x68, 0x53, 0x74, 0x61, 0x74, 0x73, 0x12, 0x20, 0x0a, 0x0b, 0x70, 0x61, 0x72, 0x74, 0x69,
 	0x63, 0x69, 0x70, 0x61, 0x6e, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0b, 0x70, 0x61,
@@ -3088,39 +3312,48 @@ var file_inference_inference_subnet_escrow_proto_rawDesc = []byte{
 	0x28, 0x0d, 0x52, 0x14, 0x63, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x64, 0x56, 0x61, 0x6c,
 	0x69, 0x64, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x21, 0x0a, 0x0c, 0x65, 0x73, 0x63, 0x72,
 	0x6f, 0x77, 0x5f, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x08, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x0b,
-	0x65, 0x73, 0x63, 0x72, 0x6f, 0x77, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x22, 0xe2, 0x01, 0x0a, 0x19,
-	0x53, 0x75, 0x62, 0x6e, 0x65, 0x74, 0x53, 0x65, 0x74, 0x74, 0x6c, 0x65, 0x6d, 0x65, 0x6e, 0x74,
-	0x48, 0x6f, 0x73, 0x74, 0x53, 0x74, 0x61, 0x74, 0x73, 0x12, 0x17, 0x0a, 0x07, 0x73, 0x6c, 0x6f,
-	0x74, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x06, 0x73, 0x6c, 0x6f, 0x74,
-	0x49, 0x64, 0x12, 0x16, 0x0a, 0x06, 0x6d, 0x69, 0x73, 0x73, 0x65, 0x64, 0x18, 0x02, 0x20, 0x01,
-	0x28, 0x0d, 0x52, 0x06, 0x6d, 0x69, 0x73, 0x73, 0x65, 0x64, 0x12, 0x18, 0x0a, 0x07, 0x69, 0x6e,
-	0x76, 0x61, 0x6c, 0x69, 0x64, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x07, 0x69, 0x6e, 0x76,
-	0x61, 0x6c, 0x69, 0x64, 0x12, 0x12, 0x0a, 0x04, 0x63, 0x6f, 0x73, 0x74, 0x18, 0x04, 0x20, 0x01,
-	0x28, 0x04, 0x52, 0x04, 0x63, 0x6f, 0x73, 0x74, 0x12, 0x31, 0x0a, 0x14, 0x72, 0x65, 0x71, 0x75,
-	0x69, 0x72, 0x65, 0x64, 0x5f, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73,
-	0x18, 0x05, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x13, 0x72, 0x65, 0x71, 0x75, 0x69, 0x72, 0x65, 0x64,
-	0x56, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x33, 0x0a, 0x15, 0x63,
-	0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x64, 0x5f, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74,
-	0x69, 0x6f, 0x6e, 0x73, 0x18, 0x06, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x14, 0x63, 0x6f, 0x6d, 0x70,
-	0x6c, 0x65, 0x74, 0x65, 0x64, 0x56, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73,
-	0x22, 0x4c, 0x0a, 0x13, 0x53, 0x75, 0x62, 0x6e, 0x65, 0x74, 0x53, 0x6c, 0x6f, 0x74, 0x53, 0x69,
-	0x67, 0x6e, 0x61, 0x74, 0x75, 0x72, 0x65, 0x12, 0x17, 0x0a, 0x07, 0x73, 0x6c, 0x6f, 0x74, 0x5f,
-	0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x06, 0x73, 0x6c, 0x6f, 0x74, 0x49, 0x64,
-	0x12, 0x1c, 0x0a, 0x09, 0x73, 0x69, 0x67, 0x6e, 0x61, 0x74, 0x75, 0x72, 0x65, 0x18, 0x02, 0x20,
-	0x01, 0x28, 0x0c, 0x52, 0x09, 0x73, 0x69, 0x67, 0x6e, 0x61, 0x74, 0x75, 0x72, 0x65, 0x42, 0xbf,
-	0x01, 0x0a, 0x17, 0x63, 0x6f, 0x6d, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65,
-	0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x42, 0x11, 0x53, 0x75, 0x62, 0x6e,
-	0x65, 0x74, 0x45, 0x73, 0x63, 0x72, 0x6f, 0x77, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a,
-	0x24, 0x63, 0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x73, 0x64, 0x6b, 0x2e, 0x69, 0x6f, 0x2f, 0x61, 0x70,
-	0x69, 0x2f, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2f, 0x69, 0x6e, 0x66, 0x65,
-	0x72, 0x65, 0x6e, 0x63, 0x65, 0xa2, 0x02, 0x03, 0x49, 0x49, 0x58, 0xaa, 0x02, 0x13, 0x49, 0x6e,
-	0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63,
-	0x65, 0xca, 0x02, 0x13, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c, 0x49, 0x6e,
-	0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0xe2, 0x02, 0x1f, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65,
-	0x6e, 0x63, 0x65, 0x5c, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c, 0x47, 0x50,
-	0x42, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x14, 0x49, 0x6e, 0x66, 0x65,
-	0x72, 0x65, 0x6e, 0x63, 0x65, 0x3a, 0x3a, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65,
-	0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x65, 0x73, 0x63, 0x72, 0x6f, 0x77, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x12, 0x27, 0x0a, 0x0f, 0x69,
+	0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5f, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x09,
+	0x20, 0x01, 0x28, 0x0d, 0x52, 0x0e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x43,
+	0x6f, 0x75, 0x6e, 0x74, 0x12, 0x1c, 0x0a, 0x09, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x65,
+	0x64, 0x18, 0x0a, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x09, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74,
+	0x65, 0x64, 0x22, 0xa9, 0x02, 0x0a, 0x19, 0x53, 0x75, 0x62, 0x6e, 0x65, 0x74, 0x53, 0x65, 0x74,
+	0x74, 0x6c, 0x65, 0x6d, 0x65, 0x6e, 0x74, 0x48, 0x6f, 0x73, 0x74, 0x53, 0x74, 0x61, 0x74, 0x73,
+	0x12, 0x17, 0x0a, 0x07, 0x73, 0x6c, 0x6f, 0x74, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x0d, 0x52, 0x06, 0x73, 0x6c, 0x6f, 0x74, 0x49, 0x64, 0x12, 0x16, 0x0a, 0x06, 0x6d, 0x69, 0x73,
+	0x73, 0x65, 0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x06, 0x6d, 0x69, 0x73, 0x73, 0x65,
+	0x64, 0x12, 0x18, 0x0a, 0x07, 0x69, 0x6e, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x18, 0x03, 0x20, 0x01,
+	0x28, 0x0d, 0x52, 0x07, 0x69, 0x6e, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x12, 0x12, 0x0a, 0x04, 0x63,
+	0x6f, 0x73, 0x74, 0x18, 0x04, 0x20, 0x01, 0x28, 0x04, 0x52, 0x04, 0x63, 0x6f, 0x73, 0x74, 0x12,
+	0x31, 0x0a, 0x14, 0x72, 0x65, 0x71, 0x75, 0x69, 0x72, 0x65, 0x64, 0x5f, 0x76, 0x61, 0x6c, 0x69,
+	0x64, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x18, 0x05, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x13, 0x72,
+	0x65, 0x71, 0x75, 0x69, 0x72, 0x65, 0x64, 0x56, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x69, 0x6f,
+	0x6e, 0x73, 0x12, 0x33, 0x0a, 0x15, 0x63, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x64, 0x5f,
+	0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x18, 0x06, 0x20, 0x01, 0x28,
+	0x0d, 0x52, 0x14, 0x63, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x64, 0x56, 0x61, 0x6c, 0x69,
+	0x64, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x27, 0x0a, 0x0f, 0x69, 0x6e, 0x66, 0x65, 0x72,
+	0x65, 0x6e, 0x63, 0x65, 0x5f, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x07, 0x20, 0x01, 0x28, 0x0d,
+	0x52, 0x0e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x43, 0x6f, 0x75, 0x6e, 0x74,
+	0x12, 0x1c, 0x0a, 0x09, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x65, 0x64, 0x18, 0x08, 0x20,
+	0x01, 0x28, 0x0d, 0x52, 0x09, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x65, 0x64, 0x22, 0x4c,
+	0x0a, 0x13, 0x53, 0x75, 0x62, 0x6e, 0x65, 0x74, 0x53, 0x6c, 0x6f, 0x74, 0x53, 0x69, 0x67, 0x6e,
+	0x61, 0x74, 0x75, 0x72, 0x65, 0x12, 0x17, 0x0a, 0x07, 0x73, 0x6c, 0x6f, 0x74, 0x5f, 0x69, 0x64,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x06, 0x73, 0x6c, 0x6f, 0x74, 0x49, 0x64, 0x12, 0x1c,
+	0x0a, 0x09, 0x73, 0x69, 0x67, 0x6e, 0x61, 0x74, 0x75, 0x72, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28,
+	0x0c, 0x52, 0x09, 0x73, 0x69, 0x67, 0x6e, 0x61, 0x74, 0x75, 0x72, 0x65, 0x42, 0xbf, 0x01, 0x0a,
+	0x17, 0x63, 0x6f, 0x6d, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69,
+	0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x42, 0x11, 0x53, 0x75, 0x62, 0x6e, 0x65, 0x74,
+	0x45, 0x73, 0x63, 0x72, 0x6f, 0x77, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x50, 0x01, 0x5a, 0x24, 0x63,
+	0x6f, 0x73, 0x6d, 0x6f, 0x73, 0x73, 0x64, 0x6b, 0x2e, 0x69, 0x6f, 0x2f, 0x61, 0x70, 0x69, 0x2f,
+	0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2f, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65,
+	0x6e, 0x63, 0x65, 0xa2, 0x02, 0x03, 0x49, 0x49, 0x58, 0xaa, 0x02, 0x13, 0x49, 0x6e, 0x66, 0x65,
+	0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0xca,
+	0x02, 0x13, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c, 0x49, 0x6e, 0x66, 0x65,
+	0x72, 0x65, 0x6e, 0x63, 0x65, 0xe2, 0x02, 0x1f, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63,
+	0x65, 0x5c, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x5c, 0x47, 0x50, 0x42, 0x4d,
+	0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0xea, 0x02, 0x14, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65,
+	0x6e, 0x63, 0x65, 0x3a, 0x3a, 0x49, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x62, 0x06,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (

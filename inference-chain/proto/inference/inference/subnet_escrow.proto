@@ -24,6 +24,8 @@ message SubnetHostEpochStats {
   uint32 required_validations = 6;
   uint32 completed_validations = 7;
   uint32 escrow_count = 8;
+  uint32 inference_count = 9;
+  uint32 validated = 10;
 }
 
 message SubnetSettlementHostStats {
@@ -33,6 +35,8 @@ message SubnetSettlementHostStats {
   uint64 cost = 4;
   uint32 required_validations = 5;
   uint32 completed_validations = 6;
+  uint32 inference_count = 7;
+  uint32 validated = 8;
 }
 
 message SubnetSlotSignature {

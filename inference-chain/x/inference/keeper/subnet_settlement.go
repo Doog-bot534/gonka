@@ -157,6 +157,8 @@ func ComputeSubnetHostStatsHash(hostStats []*types.SubnetSettlementHostStats) ([
 			Cost:                 hs.Cost,
 			RequiredValidations:  hs.RequiredValidations,
 			CompletedValidations: hs.CompletedValidations,
+			InferenceCount:       hs.InferenceCount,
+			Validated:            hs.Validated,
 		}
 	}
 	slices.SortFunc(entries, func(a, b *types.SubnetHostStatsProto) int {
