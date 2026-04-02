@@ -25,9 +25,9 @@ func keccak256Hash(data []byte) [32]byte {
 // Enforces strict validation: strips 0x if present, requires exactly 40 hex characters,
 // decodes with hex.DecodeString, and returns an error on any length/hex failure.
 func ethereumAddressToBytes(address string) ([]byte, error) {
-	// Remove 0x prefix if present
+	// Remove 0x or 0X prefix if present
 	addr := address
-	if len(addr) >= 2 && addr[:2] == "0x" {
+	if len(addr) >= 2 && (addr[:2] == "0x" || addr[:2] == "0X") {
 		addr = addr[2:]
 	}
 

@@ -89,7 +89,11 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         // Custom extras
-        ExecuteMsg::Withdraw { amount, destination_address } => withdraw(deps, env, info, amount, destination_address),
+        ExecuteMsg::Withdraw {
+            amount,
+            destination_address,
+            destination_bridge_address,
+        } => withdraw(deps, env, info, amount, destination_address, destination_bridge_address),
         ExecuteMsg::UpdateMetadata { name, symbol, decimals } => update_metadata(deps, env, info, name, symbol, decimals),
         // Delegate all standard cw20 ops
         ExecuteMsg::Transfer { recipient, amount } => cw20_base_contract::execute(deps, env, info, cw20_base_msg::ExecuteMsg::Transfer { recipient, amount }).map_err(|e| ContractError::Std(StdError::generic_err(e.to_string()))),
@@ -122,6 +126,27 @@ fn map_expiration(exp: Option<crate::msg::Expiration>) -> Option<CwExpiration> {
         crate::msg::Expiration::AtTime(t) => CwExpiration::AtTime(t),
         crate::msg::Expiration::Never {} => CwExpiration::Never {},
     })
+}
+
+/// Validates a 42-character `0x`-prefixed hex string (matches chain `isValidEthereumAddress`).
+fn validate_ethereum_address(field: &str, raw: &str) -> Result<String, ContractError> {
+    let t = raw.trim();
+    if t.is_empty() {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "{field} cannot be empty"
+        ))));
+    }
+    if t.len() != 42 || !(t.starts_with("0x") || t.starts_with("0X")) {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "{field} must be a 42-character hex address starting with 0x"
+        ))));
+    }
+    if !t[2..].chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(ContractError::Std(StdError::generic_err(format!(
+            "{field} contains invalid characters"
+        ))));
+    }
+    Ok(t.to_string())
 }
 
 /// Allows both creator (inference module) and admin (governance module) to update token metadata.
@@ -168,6 +193,7 @@ fn withdraw(
     info: MessageInfo,
     amount: Uint128,
     destination_address: String,
+    destination_bridge_address: String,
 ) -> Result<Response, ContractError> {
     if amount.is_zero() {
         return Err(ContractError::InsufficientFunds {
@@ -176,19 +202,9 @@ fn withdraw(
         });
     }
 
-    let dest_trimmed = destination_address.trim();
-    // Validate destination address is not empty
-    if dest_trimmed.is_empty() {
-        return Err(ContractError::Std(StdError::generic_err("destination_address cannot be empty")));
-    }
-    // Validate destination address is a 42-character hex address starting with 0x
-    if dest_trimmed.len() != 42 || !(dest_trimmed.starts_with("0x") || dest_trimmed.starts_with("0X")) {
-        return Err(ContractError::Std(StdError::generic_err("destination_address must be a 42-character hex address starting with 0x")));
-    }
-    // Validate destination address contains only hex characters
-    if !dest_trimmed[2..].chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err(ContractError::Std(StdError::generic_err("destination_address contains invalid characters")));
-    }
+    let destination_address = validate_ethereum_address("destination_address", &destination_address)?;
+    let destination_bridge_address =
+        validate_ethereum_address("destination_bridge_address", &destination_bridge_address)?;
 
     // Delegate to cw20-base burn
     let mut resp = cw20_base_contract::execute(
@@ -203,14 +219,16 @@ fn withdraw(
         env.contract.address.to_string(), // creator (this contract - will be the transaction signer)
         info.sender.to_string(),          // user_address (the caller)
         amount.to_string(),               // amount
-        destination_address.clone(),      // destination_address
+        destination_address.clone(),
+        destination_bridge_address.clone(),
     )?;
 
     resp = resp
         .add_message(bridge_msg)
         .add_attribute("method", "withdraw")
         .add_attribute("burn_amount", amount)
-        .add_attribute("destination_address", destination_address);
+        .add_attribute("destination_address", destination_address)
+        .add_attribute("destination_bridge_address", destination_bridge_address);
 
     Ok(resp)
 }
@@ -226,6 +244,8 @@ pub struct MsgRequestBridgeWithdrawal {
     pub amount: String,
     #[prost(string, tag = "4")]
     pub destination_address: String,
+    #[prost(string, tag = "5")]
+    pub destination_bridge_address: String,
 }
 
 // Helper function to create the bridge withdrawal message
@@ -234,6 +254,7 @@ fn create_bridge_withdrawal_msg(
     user_address: String,
     amount: String,
     destination_address: String,
+    destination_bridge_address: String,
 ) -> Result<CosmosMsg, ContractError> {
     // Create the protobuf message
     let msg = MsgRequestBridgeWithdrawal {
@@ -241,6 +262,7 @@ fn create_bridge_withdrawal_msg(
         user_address,
         amount,
         destination_address,
+        destination_bridge_address,
     };
 
     // Encode the message as protobuf

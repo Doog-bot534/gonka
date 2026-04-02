@@ -32,6 +32,7 @@ func (k Keeper) GetAllEpochBLSData(ctx sdk.Context) []types.EpochBLSData {
 func (k Keeper) SetAllEpochBLSData(ctx sdk.Context, list []types.EpochBLSData) {
 	for _, val := range list {
 		if err := k.SetEpochBLSData(ctx, val); err != nil {
+			//nolint:forbidigo
 			panic(fmt.Sprintf("failed to set epoch bls data for epoch %d from genesis: %v", val.EpochId, err))
 		}
 	}
@@ -62,6 +63,7 @@ func (k Keeper) SetAllThresholdSigningRequests(ctx sdk.Context, list []types.Thr
 		key := types.ThresholdSigningRequestKey(val.RequestId)
 		valBytes := k.cdc.MustMarshal(&val)
 		if err := kvStore.Set(key, valBytes); err != nil {
+			//nolint:forbidigo
 			panic(fmt.Sprintf("failed to set signing request %x from genesis: %v", val.RequestId, err))
 		}
 
@@ -70,6 +72,7 @@ func (k Keeper) SetAllThresholdSigningRequests(ctx sdk.Context, list []types.Thr
 			val.Status == types.ThresholdSigningStatus_THRESHOLD_SIGNING_STATUS_COLLECTING_SIGNATURES {
 			expirationKey := types.ExpirationIndexKey(val.DeadlineBlockHeight, val.RequestId)
 			if err := kvStore.Set(expirationKey, []byte{}); err != nil {
+				//nolint:forbidigo
 				panic(fmt.Sprintf("failed to set expiration index for signing request %x: %v", val.RequestId, err))
 			}
 		}
@@ -101,6 +104,7 @@ func (k Keeper) SetAllGroupKeyValidationStates(ctx sdk.Context, list []types.Gro
 		validationStateKey := types.GroupValidationKey(val.NewEpochId)
 		bz := k.cdc.MustMarshal(&val)
 		if err := store.Set(validationStateKey, bz); err != nil {
+			//nolint:forbidigo
 			panic(fmt.Sprintf("failed to set group key validation for epoch %d: %v", val.NewEpochId, err))
 		}
 	}

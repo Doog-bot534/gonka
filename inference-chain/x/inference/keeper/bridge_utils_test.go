@@ -18,7 +18,12 @@ func TestEthereumAddressToBytes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expectedBytes, bz)
 
-	// 2. Valid address without prefix
+	// 2. Valid address with uppercase 0X prefix
+	bz, err = ethereumAddressToBytes("0X" + validAddr[2:])
+	require.NoError(t, err)
+	require.Equal(t, expectedBytes, bz)
+
+	// 3. Valid address without prefix
 	bz, err = ethereumAddressToBytes(validAddr[2:])
 	require.NoError(t, err)
 	require.Equal(t, expectedBytes, bz)
