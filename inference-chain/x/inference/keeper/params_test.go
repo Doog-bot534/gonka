@@ -163,7 +163,7 @@ func TestTokenomicsParamsParamSetPairs(t *testing.T) {
 
 	// Test that ParamSetPairs returns the correct number of pairs
 	pairs := params.ParamSetPairs()
-	require.Len(t, pairs, 2, "TokenomicsParams should have 3 parameter pairs for vesting")
+	require.Len(t, pairs, 2, "TokenomicsParams should have 2 parameter pairs for vesting")
 
 	// Verify the parameter keys are correctly set
 	expectedKeys := [][]byte{

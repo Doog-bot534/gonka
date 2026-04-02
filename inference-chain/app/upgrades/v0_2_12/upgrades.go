@@ -2,6 +2,7 @@ package v0_2_12
 
 import (
 	"context"
+	"errors"
 
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
@@ -30,6 +31,10 @@ func CreateUpgradeHandler(
 			return nil, err
 		}
 
+		err = adjustParameters(ctx, k)
+		if err != nil {
+			return nil, err
+		}
 		toVM, err := mm.RunMigrations(ctx, configurator, fromVM)
 		if err != nil {
 			return toVM, err
@@ -38,6 +43,28 @@ func CreateUpgradeHandler(
 		k.LogInfo("successfully upgraded", types.Upgrades, "version", UpgradeName)
 		return toVM, nil
 	}
+}
+
+func adjustParameters(ctx context.Context, k keeper.Keeper) error {
+	// For start, a simple roundtrip for params to clear out now-removed values
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		return err
+	}
+	err = k.SetParams(ctx, params)
+	if err != nil {
+		return err
+	}
+
+	genesisParams, found := k.GetGenesisOnlyParams(ctx)
+	if !found {
+		return errors.New("genesis only params not found")
+	}
+	err = k.SetGenesisOnlyParams(ctx, &genesisParams)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func removeTopMiner(ctx context.Context, k keeper.Keeper) error {

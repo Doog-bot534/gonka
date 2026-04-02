@@ -288,28 +288,6 @@ func TestVestingIntegration_MixedVestingScenario(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestVestingIntegration_TopMinerRewards(t *testing.T) {
-	k, _, ctx, mocks := setupKeeperWithMocksForStreamVesting(t)
-
-	// Configure top miner vesting period
-	params := types.DefaultParams()
-	k.SetParams(ctx, params)
-
-	participantAddrStr := sample.AccAddress()
-	rewardAmount := int64(5000)
-	topMinerVestingPeriod := uint64(15)
-
-	expectedCoins := sdk.NewCoins(sdk.NewInt64Coin(types.BaseCoin, int64(rewardAmount)))
-
-	mocks.StreamVestingKeeper.EXPECT().
-		AddVestedRewards(ctx, participantAddrStr, "inference", expectedCoins, &topMinerVestingPeriod, gomock.Any()).
-		Return(nil)
-
-	// Execute top miner reward payment
-	err := k.PayParticipantFromModule(ctx, participantAddrStr, rewardAmount, types.TopRewardPoolAccName, "top-miner-reward", &topMinerVestingPeriod)
-	require.NoError(t, err)
-}
-
 func TestVestingIntegration_ParameterValidation(t *testing.T) {
 	k, _, ctx, _ := setupKeeperWithMocksForStreamVesting(t)
 
