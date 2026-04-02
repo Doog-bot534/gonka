@@ -287,9 +287,11 @@ func TestSettleSubnetEscrow_UpdatesCurrentEpochStats(t *testing.T) {
 	slots := []string{addrA}
 	keys := []*dcrdsecp.PrivateKey{keyA}
 	fixtureHostStats := types.SubnetSettlementHostStats{
-		SlotId:  0,
-		Missed:  1,
-		Invalid: 2,
+		SlotId:         0,
+		Missed:         1,
+		Invalid:        2,
+		InferenceCount: 3,
+		Validated:      4,
 	}
 	hostStats := []*types.SubnetSettlementHostStats{&fixtureHostStats}
 
@@ -324,8 +326,8 @@ func TestSettleSubnetEscrow_UpdatesCurrentEpochStats(t *testing.T) {
 	require.NotNil(t, participantA.CurrentEpochStats)
 	require.Equal(t, uint64(fixtureHostStats.Missed), participantA.CurrentEpochStats.MissedRequests)
 	require.Equal(t, uint64(fixtureHostStats.Invalid), participantA.CurrentEpochStats.InvalidatedInferences)
-	require.Equal(t, uint64(0), participantA.CurrentEpochStats.InferenceCount)
-	require.Equal(t, uint64(0), participantA.CurrentEpochStats.ValidatedInferences)
+	require.Equal(t, uint64(fixtureHostStats.InferenceCount), participantA.CurrentEpochStats.InferenceCount)
+	require.Equal(t, uint64(fixtureHostStats.Validated), participantA.CurrentEpochStats.ValidatedInferences)
 }
 
 // TestSettleSubnetEscrow_UpdatesSubnetHostEpochStats verifies SubnetHostEpochStatsMap aggregation on settlement.
@@ -355,6 +357,8 @@ func TestSettleSubnetEscrow_UpdatesSubnetHostEpochStats(t *testing.T) {
 		Cost:                 7,
 		RequiredValidations:  5,
 		CompletedValidations: 4,
+		InferenceCount:       10,
+		Validated:            11,
 	}
 	hostStats := []*types.SubnetSettlementHostStats{&fixtureHostStats}
 
@@ -396,6 +400,8 @@ func TestSettleSubnetEscrow_UpdatesSubnetHostEpochStats(t *testing.T) {
 	require.Equal(t, fixtureHostStats.Cost, statsA.Cost)
 	require.Equal(t, fixtureHostStats.RequiredValidations, statsA.RequiredValidations)
 	require.Equal(t, fixtureHostStats.CompletedValidations, statsA.CompletedValidations)
+	require.Equal(t, fixtureHostStats.InferenceCount, statsA.InferenceCount)
+	require.Equal(t, fixtureHostStats.Validated, statsA.Validated)
 	require.Equal(t, uint32(1), statsA.EscrowCount)
 }
 

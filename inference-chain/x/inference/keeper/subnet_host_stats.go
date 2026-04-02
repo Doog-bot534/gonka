@@ -36,6 +36,8 @@ func (k Keeper) AggregateSubnetHostStats(ctx context.Context, epochIndex uint64,
 	existing.Cost += slotStats.Cost
 	existing.RequiredValidations += slotStats.RequiredValidations
 	existing.CompletedValidations += slotStats.CompletedValidations
+	existing.InferenceCount += slotStats.InferenceCount
+	existing.Validated += slotStats.Validated
 	return k.SubnetHostEpochStatsMap.Set(ctx, key, existing)
 }
 
@@ -62,6 +64,20 @@ func AggregateSubnetHostStatsIntoParticipantEpochStats(participant *types.Partic
 		return fmt.Errorf("participant invalidated inferences overflow for %s", participant.Address)
 	}
 	participant.CurrentEpochStats.InvalidatedInferences = nextInvalidated
+
+	// Aggregate inference count.
+	nextInferenceCount, carry := bits.Add64(participant.CurrentEpochStats.InferenceCount, uint64(slotStats.InferenceCount), 0)
+	if carry != 0 {
+		return fmt.Errorf("participant inference count overflow for %s", participant.Address)
+	}
+	participant.CurrentEpochStats.InferenceCount = nextInferenceCount
+
+	// Aggregate validated inferences.
+	nextValidated, carry := bits.Add64(participant.CurrentEpochStats.ValidatedInferences, uint64(slotStats.Validated), 0)
+	if carry != 0 {
+		return fmt.Errorf("participant validated inferences overflow for %s", participant.Address)
+	}
+	participant.CurrentEpochStats.ValidatedInferences = nextValidated
 
 	return nil
 }
