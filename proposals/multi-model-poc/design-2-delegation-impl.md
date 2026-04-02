@@ -18,18 +18,64 @@ These are three distinct numbers. A participant with low pocWeight in a group ca
 
 ## Epoch Snapshot Semantics
 
-votingPower for epoch N depends on consensusWeight, which depends on N's PoC results. This creates two phases within each epoch:
+We don't know who is DIRECT in a model group until we evaluate PoC results for that group. A host can switch models mid-epoch. DIRECT membership comes from actual PoC participation, not from prior declarations.
 
-1. Regular PoC validation at start of epoch N reads `ActiveParticipants(N-1).voting_powers` and uses it when counting PoC validations (acceptance threshold). New PoC results don't exist yet.
+This means mode resolution and votingPower computation cannot happen before PoC. They happen per model group when evaluating PoC results.
 
-2. After PoC validation completes, `PoCWeightCalculator` produces raw pocWeight, then `WeightCalculator` runs (phase 1 + adjustments + phase 2):
-   - resolves delegations from mutable state
-   - computes new consensusWeight (`.weight`) and per-group votingPower (`.voting_powers`)
-   - writes result to `ActiveParticipants(N)`
+### Delegation snapshot
 
-3. All confirmation PoC during epoch N reads `ActiveParticipants(N).voting_powers`.
+At block `start_poc - deploy_window`, the chain freezes raw delegation state by copying current `PoCDelegation`, `PoCRefusal`, and `PoCDirectIntent` entries for active participants into a snapshot store. No epoch key -- just store the latest snapshot, overwrite next epoch.
 
-Delegation transactions submitted during epoch N affect only epoch N+1. Mutable delegation state is read once during step 2 and the result is immutable for the rest of the epoch.
+Mutable state remains writable after the snapshot. Changes after `start_poc - deploy_window` affect the next snapshot, not the current one.
+
+The snapshot stores raw entries, not resolved modes. Mode resolution requires knowing DIRECT membership which is only known at PoC evaluation time.
+
+### Pre-eligibility (advisory)
+
+At `start_poc - deploy_window`, the chain evaluates which new model groups are likely to qualify, using snapshot delegation + intent state + `ActiveParticipants(N-1)` consensus weights.
+
+Additionally check if 2/3 acceptance is reachable: if `sum(votingPower of projected participants) / totalNetworkWeight <= 2/3`, the group cannot pass PoC validation even with perfect results. Emit an event so hosts can avoid wasting deployment effort.
+
+### Deploy window
+
+Between `start_poc - deploy_window` and `start_poc`, INTENT hosts deploy hardware for groups they expect to qualify. `deploy_window` is a governance parameter in `PoCParams`.
+
+The deploy window does not protect from confirmation PoC. It is separate from the maintenance window. During the deploy window a host can request a maintenance window, redeploy at own risk (losing confirmation PoC if challenged), or use a separate MLNode.
+
+### PoC evaluation per model
+
+When evaluating PoC results for model group_i, the chain resolves delegation and computes votingPower for the first time:
+
+1. DIRECT members = participants who submitted PoC results for this model
+2. For each participant with `ActiveParticipants(N-1).weight > 0`:
+   - If submitted PoC for this model -> DIRECT
+   - Else check snapshot: refusal -> REFUSE, delegation -> DELEGATE, intent -> INTENT (didn't deploy, treated as NONE), else -> NONE
+3. Compute votingPower for each DIRECT member m:
+   `votingPower(m) = ActiveParticipants(N-1).weight[m] + sum(ActiveParticipants(N-1).weight[d]) for all d delegating to m (from snapshot)`
+   Same formula for all DIRECT members regardless of whether they were in this group before.
+4. Use votingPower for acceptance threshold: `sum(votingPower of approvers) / totalNetworkWeight > 2/3`
+
+INTENT hosts that didn't participate in PoC for an eligible group resolve as NONE (penalty applies via delegation weight adjustment). If the group is not eligible, INTENT is consumed without penalty.
+
+!! Note: That's a bit controversal, but currently we use NEW delegation for the voting in next POC N+1. The same will be used in all next Confirmation PoC in epoch N+1 (from .voting_power). We might want to use the same .voting_power for voting for POC N+1 but then it'll require special logic to handle new direct nodes for existing host and new eligible groups. 
+
+### Post-PoC weight computation
+
+After all PoC evaluations, `WeightCalculator` runs using delegation snapshot + PoC results:
+- checks `IsGroupEligible` per group using actual PoC participants
+- computes new consensusWeight (`.weight`) with caps and adjustments
+- resolves participation modes (same modes as PoC evaluation -- DIRECT from PoC results, rest from snapshot)
+- applies delegation weight adjustment (REFUSE/NONE/DELEGATE penalties)
+- computes new per-group votingPower (`.voting_powers`) from final post-adjustment consensus weights
+- writes result to `ActiveParticipants(N)`
+
+### Confirmation PoC
+
+All confirmation PoC during epoch N reads `ActiveParticipants(N).voting_powers`.
+
+### Cleanup
+
+After `SetActiveParticipants(N)`, delete consumed `PoCRefusal` and `PoCDirectIntent` entries. Snapshot store is overwritten by the next epoch's snapshot.
 
 ## Participation Modes
 
@@ -37,14 +83,21 @@ For a given model group and epoch, each participant with positive consensus weig
 
 | Mode | Meaning |
 |------|---------|
-| `DIRECT` | Member of the group. Validates directly. |
+| `DIRECT` | Member of the group (has MLNode deployed). Validates directly. |
+| `INTENT` | Not yet a member. Declared intent to deploy MLNode for this model. |
 | `DELEGATE` | Not a member. Delegates consensus weight to one group member. |
 | `REFUSE` | Not a member. Explicitly refuses delegation for this epoch. |
-| `NONE` | Not a member. No valid delegation, no refusal. |
+| `NONE` | Not a member. No valid delegation, no refusal, no intent. |
 
-Resolution priority: DIRECT > REFUSE > DELEGATE > NONE.
+Resolution priority: DIRECT > INTENT > REFUSE > DELEGATE > NONE.
 
-Direct membership always wins regardless of submitted delegation or refusal. Serving the model is the participation action -- no separate transaction needed.
+DIRECT means the host already has hardware deployed. INTENT means the host commits to deploy before PoC starts. At PoC time, INTENT hosts that deployed become DIRECT. INTENT hosts that didn't deploy are treated as NONE (penalty).
+
+INTENT only matters when a group is on the border of pre-eligibility. If the group is already pre-eligible from existing DIRECT members + delegations alone, INTENT adds nothing -- the host can just deploy and become DIRECT. INTENT exists specifically so hosts can signal commitment before deploying hardware, allowing the chain to count them toward pre-eligibility thresholds and hosts to avoid wasting deployment effort on groups that won't qualify.
+
+A group that fails pre-eligibility can still become eligible if enough DIRECT participants independently participate in PoC for it. Pre-eligibility is an advisory gate -- it protects hosts from wasting resources on MLNode deployment for groups unlikely to qualify. It is not a hard block. `IsGroupEligible` (post-PoC) applies the same conditions (`W_threshold`, `V_min`, 2/3 reachability) but using actual PoC participants instead of projections from intents and delegations.
+
+No separate transaction needed for DIRECT -- serving the model is the participation action.
 
 ## State: Mutable Delegation Preferences
 
@@ -77,14 +130,28 @@ Key: `(model_id, participant)`. At most one entry per key.
 
 Consumed on use. During `onEndOfPoCValidationStage` for epoch N, resolution reads active refusals and deletes them. To refuse again in N+1, the participant must resubmit.
 
-No `target_epoch` field. Refusal always means "refuse for the next unresolved epoch." Avoids stale records and does not require participants to know future epoch numbers.
+No `target_epoch` field. Refusal means "refuse for the next unresolved epoch."
+
+### `PoCDirectIntent`
+
+```proto
+message PoCDirectIntent {
+  string model_id    = 1;
+  string participant = 2;  // participant address
+}
+```
+
+Key: `(model_id, participant)`. At most one entry per key.
+
+Consumed on use, same as `PoCRefusal`. Declares "I commit to deploy an MLNode for this model before PoC starts." If the group becomes pre-eligible, the host must participate or face NONE penalty. If the group does not become pre-eligible, the intent is harmless and consumed without consequence.
 
 ### Last-write-wins
 
-Submitting `MsgSetPoCDelegation` clears any active `PoCRefusal` for the same `(model_id, sender)`.
-Submitting `MsgRefusePoCDelegation` clears any standing `PoCDelegation` for the same `(model_id, sender)`.
+Submitting `MsgSetPoCDelegation` clears any active `PoCRefusal` or `PoCDirectIntent` for the same `(model_id, sender)`.
+Submitting `MsgRefusePoCDelegation` clears any standing `PoCDelegation` or `PoCDirectIntent` for the same `(model_id, sender)`.
+Submitting `MsgDeclarePoCIntent` clears any standing `PoCDelegation` or `PoCRefusal` for the same `(model_id, sender)`.
 
-At any time, a participant has at most one of {delegation, refusal} per model.
+At any time, a participant has at most one of {delegation, refusal, intent} per model.
 
 ## State: Resolved Voting Power
 
@@ -112,23 +179,19 @@ message ActiveParticipant {
 }
 ```
 
-`ActiveParticipant` already carries per-model data (`models`, `ml_nodes`). `voting_powers` is the same pattern.
-
-Only models where the participant is a DIRECT member get an entry. Delegators do not have their own voting_powers entry -- their consensusWeight is included in the delegate's votingPower. `ActiveParticipants` is immutable per epoch -- written once at epoch creation, never modified. The right place for data that must not change mid-epoch.
+Only models where the participant is a DIRECT member get an entry. Delegators do not have their own `voting_powers` entry -- their consensusWeight is included in the delegate's votingPower.
 
 ### Validation Acceptance
 
-Host p's PoC result in group_i is accepted if:
+See "PoC evaluation per model" in Epoch Snapshot Semantics for the full resolution flow. Summary:
 
 `sum(votingPower(group_i, v) for v that approved p) / sum(consensusWeight(q) for all q) > 2/3`
 
 In a slot-based validation model, the same votingPower values are used for slot sampling probability. Acceptance condition becomes: `slots_approved / total_slots > 2/3`, where slot assignment is weighted by votingPower.
 
-A voter is a DIRECT member of the group who submitted a validation result. Only DIRECT members execute validation -- they run the PoC and submit approve/reject. Their votingPower includes their own consensusWeight plus any weight delegated to them.
+Only DIRECT members vote. Their votingPower = own consensusWeight + delegated consensusWeight. DELEGATE, REFUSE, INTENT, and NONE participants do not vote -- a delegator's weight flows into the delegate's votingPower; a refuser's or non-participant's weight is absent from the numerator (effectively voting against acceptance).
 
-DELEGATE, REFUSE, and NONE participants do not vote independently. A delegator's consensusWeight flows into the delegate's votingPower. A refuser's or non-participant's consensusWeight is absent from the numerator entirely -- effectively voting against acceptance.
-
-The denominator is `sum(consensusWeight(p))` across all active participants. Root `EpochGroupData` (where `model_id` is empty) already tracks this as `total_weight` -- incremented by `AddMember` for each participant's `ActiveParticipant.Weight`.
+The denominator is `sum(consensusWeight(p))` across all active participants. Root `EpochGroupData.total_weight` tracks this.
 
 ## Transactions
 
@@ -147,7 +210,7 @@ Handler:
 - `delegate_to` (when non-empty) must be a valid bech32 address (membership in the target group is checked at resolution time, not at tx time -- the target may join or leave before the next epoch)
 - self-delegation rejected
 - creates or overwrites `PoCDelegation(model_id, sender)`
-- clears `PoCRefusal(model_id, sender)` if present
+- clears `PoCRefusal(model_id, sender)` and `PoCDirectIntent(model_id, sender)` if present
 
 ### `MsgRefusePoCDelegation`
 
@@ -161,7 +224,22 @@ message MsgRefusePoCDelegation {
 Handler:
 - `model_id` must be a governance-approved model
 - records `PoCRefusal(model_id, sender)`
-- clears `PoCDelegation(model_id, sender)` if present
+- clears `PoCDelegation(model_id, sender)` and `PoCDirectIntent(model_id, sender)` if present
+
+### `MsgDeclarePoCIntent`
+
+```proto
+message MsgDeclarePoCIntent {
+  string sender   = 1;
+  string model_id = 2;
+}
+```
+
+Handler:
+- `model_id` must be a governance-approved model
+- records `PoCDirectIntent(model_id, sender)`
+- clears `PoCDelegation(model_id, sender)` and `PoCRefusal(model_id, sender)` if present
+- if sender ends up submitting PoC for this model, they resolve as DIRECT (intent is superseded)
 
 ## WeightCalculator
 
@@ -176,11 +254,12 @@ type WeightCalculator struct {
     // Per-group data (populated from PoCWeightCalculator output + model assignment)
     Groups             map[string]*GroupData  // model_id -> group data
     
-    // Network-wide data
+    // Network-wide data (from delegation snapshot + ActiveParticipants(N-1))
     ConsensusWeights   map[string]int64       // participant -> ActiveParticipant.Weight from N-1
     TotalNetworkWeight int64                  // sum(ConsensusWeights)
     Delegations        map[string]map[string]string  // model_id -> (delegator -> delegate_to)
     Refusals           map[string]map[string]bool    // model_id -> (participant -> true)
+    Intents            map[string]map[string]bool    // model_id -> (participant -> true)
     Params             WeightParams
 }
 
@@ -200,7 +279,7 @@ type WeightParams struct {
 
 `ConsensusWeights` is `ActiveParticipant.Weight` from epoch N-1 for each participant. This is the aggregated consensus weight (`sum(koeff_i * pocWeight)` across eligible groups) that gets delegated.
 
-`Members` is determined by hardware assignment (`setModelsForParticipants`). A participant is a member if it has an MLNode deployed for this model.
+`Members` is determined by actual PoC participation. A participant is a member if it submitted PoC results for this model.
 
 ### Group eligibility
 
@@ -220,7 +299,7 @@ func (wc *WeightCalculator) MeetsMinHosts(modelID string) bool
 func (wc *WeightCalculator) IsGroupPreEligible(modelID string) bool
 ```
 
-Pre-eligibility is evaluated at epoch start (during `initializeUpcomingEpochModelGroups`) using epoch N-1 data. Only pre-eligible groups get subgroups created and run PoC. Full eligibility is checked after PoC completes:
+Pre-eligibility is evaluated at `start_poc - deploy_window` using delegation snapshot + `ActiveParticipants(N-1)` data. Advisory only. Full eligibility is checked after PoC completes:
 
 ```go
 // Checked after PoC completes. At least V_min members must have pocWeight > 0.
@@ -250,6 +329,7 @@ Mode resolution inside `ResolveGroupParticipation`:
 ```go
 for each participant with ConsensusWeights[p] > 0:
     if p in group.Members  -> DIRECT
+    else if Intents[p]     -> INTENT (didn't deploy; treated as NONE for penalty)
     else if Refusals[p]    -> REFUSE
     else if Delegations[p] targets a valid member -> DELEGATE
     else                   -> NONE
@@ -277,9 +357,7 @@ From README Appendix A. Limits how much consensus weight a group can contribute 
 func (wc *WeightCalculator) ComputeGroupCap(modelID string) int64
 ```
 
-The cap limits how much `consensusKoeff * pocWeight` from this group flows into `ActiveParticipant.Weight`. It does not affect pocWeight or votingPower.
-
-Delegation affects votingPower but not the cap. The cap is based on pocWeight and proven weight in other groups.
+The cap limits how much `consensusKoeff * pocWeight` from this group flows into `ActiveParticipant.Weight`. The cap is based on pocWeight and proven weight in other groups, not on votingPower or delegation.
 
 ### Total consensus weight
 
@@ -293,7 +371,7 @@ Delegation affects votingPower but not the cap. The cap is based on pocWeight an
 func (wc *WeightCalculator) ComputeConsensusWeights() map[string]int64
 ```
 
-This replaces the current inline loop in `onEndOfPoCValidationStage` that calls `AggregateConsensusWeight`. The cap logic integrates naturally here -- apply per-group caps before summing.
+Replaces the current inline loop in `onEndOfPoCValidationStage` that calls `AggregateConsensusWeight`. Per-group caps applied before summing.
 
 ## Integration Into Epoch Creation
 
@@ -312,8 +390,8 @@ Current pipeline in `onEndOfPoCValidationStage` (module.go:539):
 With delegation, `WeightCalculator` absorbs steps 3-5 and adds eligibility + delegation:
 
 ```
-0. IsGroupPreEligible          -> at epoch start, before PoC. Determines which
-                                  groups get subgroups and run PoC. Uses N-1 data.
+0. Delegation snapshot + IsGroupPreEligible (advisory)
+                                  -> at start_poc - deploy_window. Uses N-1 data.
 1. PoCWeightCalculator         -> ActiveParticipants with per-model MlNodes/pocWeight
                                   (renamed from ComputeNewWeights)
 2. setModelsForParticipants    -> assigns models to participants
@@ -332,7 +410,7 @@ With delegation, `WeightCalculator` absorbs steps 3-5 and adds eligibility + del
 8. SetActiveParticipants       -> persists ActiveParticipants(N) with both
                                   .weight (consensus) and .voting_powers (per-group)
 9. addEpochMembers
-   Caller also: clears consumed refusals
+10. Cleanup: clear consumed PoCRefusal and PoCDirectIntent entries
 ```
 
 Participation modes are resolved in phase 1 (step 3d) because delegation weight adjustment (step 4) needs them. Voting power is computed in phase 2 (step 7) because it must reflect final consensus weights after all adjustments.
@@ -359,7 +437,7 @@ Inside `x/inference`:
 |---------|------|
 | Proto: delegation types, messages | `proto/inference/inference/poc_delegation.proto` |
 | Proto: ModelVotingPower on ActiveParticipant | `proto/inference/inference/activeparticipants.proto` |
-| Keeper: read/write PoCDelegation, PoCRefusal | `keeper/poc_delegation.go` |
+| Keeper: read/write PoCDelegation, PoCRefusal, PoCDirectIntent | `keeper/poc_delegation.go` |
 | Keeper: msg server for delegation txs | `keeper/msg_server_poc_delegation.go` |
 | Module: WeightCalculator | `module/weight_calculator.go` |
 | Module: delegation weight adjustment | `module/delegation_weight_adjustment.go` |
@@ -369,16 +447,17 @@ Inside `x/inference`:
 ## Queries
 
 ```proto
-// Returns the current PoCDelegation or PoCRefusal for a participant and model.
-// This is the mutable state that will be used in the next epoch resolution.
+// Returns the current delegation state for a participant and model.
+// This is the mutable state that will be used in the next delegation snapshot.
 message QueryPoCDelegationRequest {
   string participant = 1;
   string model_id    = 2;  // empty to return all models
 }
 
 message QueryPoCDelegationResponse {
-  repeated PoCDelegation delegations = 1;
-  repeated PoCRefusal    refusals    = 2;
+  repeated PoCDelegation   delegations = 1;
+  repeated PoCRefusal      refusals    = 2;
+  repeated PoCDirectIntent intents     = 3;
 }
 ```
 
@@ -388,3 +467,4 @@ message QueryPoCDelegationResponse {
 - ComputeGroupCap needs each member's N-1 contribution from this specific group. Does `WeightCalculator` have access to previous epoch's per-group pocWeight, or do we need to store it?
 - Should delegation weight adjustment fractions (`r_refusal`, `r_penalty`, `r_delegation`) be per-group (different for each model) or global governance parameters?
 - Grace window (`T_grace`): during grace, participants must choose but no penalty for any choice. Where is grace tracked -- per model group creation epoch? Does the WeightCalculator need to know the group's age?
+- Snapshot vs immediate delegation: should delegation changes take effect only at the next snapshot (`start_poc - deploy_window`), or should they be usable immediately? Snapshot is more consistent (all PoC evaluations within an epoch use the same delegation state) but adds complexity (snapshot store, freeze point). Immediate use is simpler but means delegation state can change between PoC evaluation of different model groups within the same epoch. Needs analysis of whether mid-epoch delegation changes create attack vectors.
