@@ -11,7 +11,6 @@ import (
 	"decentralized-api/internal/startup"
 	"decentralized-api/internal/validation"
 	"decentralized-api/logging"
-	"decentralized-api/poc"
 	"decentralized-api/statsstorage"
 	"decentralized-api/training"
 	"decentralized-api/upgrade"
@@ -31,6 +30,7 @@ const (
 	// BLS Typed Event Types (from EmitTypedEvent)
 	blsKeyGenerationInitiatedEvent    = "inference.bls.EventKeyGenerationInitiated"
 	blsVerifyingPhaseStartedEvent     = "inference.bls.EventVerifyingPhaseStarted"
+	blsDisputePhaseStartedEvent       = "inference.bls.EventDisputePhaseStarted"
 	blsGroupPublicKeyGeneratedEvent   = "inference.bls.EventGroupPublicKeyGenerated"
 	blsThresholdSigningRequestedEvent = "inference.bls.EventThresholdSigningRequested"
 
@@ -70,7 +70,7 @@ func WithStatsStorage(storage statsstorage.StatsStorage) EventListenerOption {
 
 func NewEventListener(
 	configManager *apiconfig.ConfigManager,
-	pocOrchestrator poc.Orchestrator,
+	offChainValidator pocValidator,
 	nodeBroker *broker.Broker,
 	validator *validation.InferenceValidator,
 	transactionRecorder cosmosclient.InferenceCosmosClient,
@@ -84,7 +84,7 @@ func NewEventListener(
 	dispatcher := NewOnNewBlockDispatcherFromCosmosClient(
 		nodeBroker,
 		configManager,
-		pocOrchestrator,
+		offChainValidator,
 		&transactionRecorder,
 		phaseTracker,
 		DefaultReconciliationConfig,
@@ -383,6 +383,14 @@ func (el *EventListener) handleBLSEvents(event *chainevents.JSONRPCResponse, wor
 		}
 	}
 
+	if epochIdValues := event.Result.Events[blsDisputePhaseStartedEvent+".epoch_id"]; len(epochIdValues) > 0 {
+		logging.Info("Dispute phase started event received", types.EventProcessing, "worker", workerName)
+		err := el.blsManager.ProcessDisputePhaseStarted(event)
+		if err != nil {
+			logging.Error("Failed to process dispute phase started event", types.EventProcessing, "error", err, "worker", workerName)
+		}
+	}
+
 	if epochIdValues := event.Result.Events[blsGroupPublicKeyGeneratedEvent+".epoch_id"]; len(epochIdValues) > 0 {
 		logging.Info("Group public key generated event received", types.EventProcessing, "worker", workerName)
 		err := el.blsManager.ProcessGroupPublicKeyGenerated(event)
@@ -555,7 +563,7 @@ func parseEventUnixMillis(events map[string][]string, key string, idx int) (stat
 	if err != nil {
 		return 0, err
 	}
-	if parsed < statsstorage.UnixMillisTimestampThreshold {
+	if parsed != 0 && parsed < statsstorage.UnixMillisTimestampThreshold {
 		return 0, fmt.Errorf("timestamp is in seconds %s", v)
 	}
 	return statsstorage.UnixMillis(parsed), nil
