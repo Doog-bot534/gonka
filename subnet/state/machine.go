@@ -550,6 +550,11 @@ func (sm *StateMachine) applyStartInference(msg *types.MsgStartInference) error 
 		return types.ErrDuplicateInferenceID
 	}
 
+	// Enforce hard session-wide inference cap before mutating state.
+	if len(sm.state.Inferences) >= int(sm.state.Config.MaxInferencesPerSubnet) {
+		return fmt.Errorf("%w: max %d", types.ErrInferenceLimitReached, sm.state.Config.MaxInferencesPerSubnet)
+	}
+
 	// Executor slot: group[inference_id % len(group)].SlotID
 	executorSlot := sm.state.Group[msg.InferenceId%uint64(len(sm.state.Group))].SlotID
 

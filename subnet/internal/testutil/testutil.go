@@ -57,13 +57,14 @@ func MakeGroup(signers []*signing.Secp256k1Signer) []types.SlotAssignment {
 // and ValidationRate = 5000 (50%).
 func DefaultConfig(numHosts int) types.SessionConfig {
 	return types.SessionConfig{
-		RefusalTimeout:   60,
-		ExecutionTimeout: 1200,
-		TokenPrice:       1,
-		VoteThreshold:    uint32(numHosts) / 2,
-		ValidationRate:   5000,
-		CreateSubnetFee:  0,
-		FeePerNonce:      0,
+		RefusalTimeout:         60,
+		ExecutionTimeout:       1200,
+		TokenPrice:             1,
+		MaxInferencesPerSubnet: 2000,
+		VoteThreshold:          uint32(numHosts) / 2,
+		ValidationRate:         5000,
+		CreateSubnetFee:        0,
+		FeePerNonce:            0,
 	}
 }
 

@@ -532,6 +532,44 @@ func TestSettleSubnetEscrow_UpdatesSubnetHostEpochStats(t *testing.T) {
 	require.Equal(t, uint32(1), statsA.EscrowCount)
 }
 
+func TestSettleSubnetEscrow_RejectsInferenceCountOverCap(t *testing.T) {
+	k, ms, ctx, _ := setupSubnetEscrowTest(t)
+	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
+
+	keyA, err := dcrdsecp.GeneratePrivateKey()
+	require.NoError(t, err)
+	addrA := cosmosAddressFromDcrdKey(keyA).String()
+	err = k.SetParticipant(ctx, types.Participant{
+		Address: addrA,
+		Index:   addrA,
+		Status:  types.ParticipantStatus_ACTIVE,
+	})
+	require.NoError(t, err)
+
+	creator := sdk.AccAddress(make([]byte, 20))
+	creator[0] = 0x44
+	escrow := types.SubnetEscrow{
+		Id:         1,
+		Creator:    creator.String(),
+		Amount:     10_000_000,
+		Slots:      []string{addrA},
+		EpochIndex: 7,
+		Settled:    false,
+	}
+	_, err = k.StoreSubnetEscrow(ctx, &escrow, 1)
+	require.NoError(t, err)
+
+	hostStats := []*types.SubnetSettlementHostStats{{
+		SlotId:         0,
+		InferenceCount: uint32(keeper.MaxSettlementInferenceCount + 1),
+	}}
+	msg := buildSettlementTestData(t, escrow, []*dcrdsecp.PrivateKey{keyA}, hostStats, 0)
+
+	_, err = ms.SettleSubnetEscrow(ctx, msg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exceeds max")
+}
+
 func TestSettleSubnetEscrow_AllowlistBlocks(t *testing.T) {
 	k, ms, ctx, _ := setupSubnetEscrowTest(t)
 	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")

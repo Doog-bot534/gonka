@@ -102,6 +102,42 @@ func TestApplyDiff_StartInference(t *testing.T) {
 	require.Equal(t, uint32(1), rec.ExecutorSlot)
 }
 
+// TestApplyDiff_StartInference_MaxPerSubnetCap verifies the 2000-inference hard cap.
+func TestApplyDiff_StartInference_MaxPerSubnetCap(t *testing.T) {
+	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
+	sm, user := newTestSM(t, hosts, 10000)
+	maxInferences := sm.SnapshotState().Config.MaxInferencesPerSubnet
+
+	for nonce := uint64(1); nonce <= uint64(maxInferences); nonce++ {
+		diff := testutil.SignDiff(t, user, "escrow-1", nonce, []*types.SubnetTx{txStart(&types.MsgStartInference{
+			InferenceId: nonce,
+			PromptHash:  []byte("prompt"),
+			Model:       "llama",
+			InputLength: 0,
+			MaxTokens:   0,
+			StartedAt:   1000,
+		})})
+		_, err := sm.ApplyDiff(diff)
+		require.NoError(t, err)
+	}
+
+	// The 2001st accepted inference is rejected.
+	overCapNonce := uint64(maxInferences) + 1
+	diff := testutil.SignDiff(t, user, "escrow-1", overCapNonce, []*types.SubnetTx{txStart(&types.MsgStartInference{
+		InferenceId: overCapNonce,
+		PromptHash:  []byte("prompt"),
+		Model:       "llama",
+		InputLength: 0,
+		MaxTokens:   0,
+		StartedAt:   1000,
+	})})
+	_, err := sm.ApplyDiff(diff)
+	require.ErrorIs(t, err, types.ErrInferenceLimitReached)
+
+	state := sm.SnapshotState()
+	require.Len(t, state.Inferences, int(maxInferences))
+}
+
 func TestApplyDiff_ConfirmStart(t *testing.T) {
 	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
 	sm, user := newTestSM(t, hosts, 10000)

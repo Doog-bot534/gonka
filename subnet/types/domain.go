@@ -65,10 +65,12 @@ type SessionConfig struct {
 	RefusalTimeout   int64  // seconds before reason=refused timeout
 	ExecutionTimeout int64  // seconds before reason=execution timeout
 	TokenPrice       uint64 // price per input / output token (flat per session)
-	CreateSubnetFee  uint64 // one-time fee charged when creating a subnet session
-	FeePerNonce      uint64 // fee charged per applied nonce (diff)
-	VoteThreshold    uint32 // minimum accept votes for timeout (total_slots / 2)
-	ValidationRate   uint32 // basis points (10000 = 100%, 1000 = 10%)
+	// MaxInferencesPerSubnet is the hard cap on total accepted inferences in one subnet session.
+	MaxInferencesPerSubnet uint32
+	CreateSubnetFee        uint64 // one-time fee charged when creating a subnet session
+	FeePerNonce            uint64 // fee charged per applied nonce (diff)
+	VoteThreshold          uint32 // minimum accept votes for timeout (total_slots / 2)
+	ValidationRate         uint32 // basis points (10000 = 100%, 1000 = 10%)
 }
 
 // EscrowState is the full state of a subnet session.

@@ -40,4 +40,5 @@ var (
 	ErrSessionSettlement     = errors.New("session is in settlement: seeds are final")
 	ErrInvalidGroup          = errors.New("invalid group")
 	ErrEscrowIDMismatch      = errors.New("escrow_id does not match session")
+	ErrInferenceLimitReached = errors.New("inference limit reached for subnet session")
 )

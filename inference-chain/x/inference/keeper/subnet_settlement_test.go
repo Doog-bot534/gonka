@@ -219,6 +219,42 @@ func TestVerifySubnetSettlement_FeesExceedAmount(t *testing.T) {
 	require.Contains(t, err.Error(), "exceeds escrow amount")
 }
 
+func TestVerifySubnetSettlement_InferenceCountAtCapAllowed(t *testing.T) {
+	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
+
+	keys, slots := generateSubnetKeys(t, keeper.SubnetGroupSize)
+	escrow := types.SubnetEscrow{
+		Id: 1, Creator: "gonka1creator", Amount: 7_000_000_000, Slots: slots,
+	}
+	hostStats := makeHostStats(keeper.SubnetGroupSize, 0)
+	for i := range hostStats {
+		hostStats[i].InferenceCount = 125 // 16 * 125 = 2000
+	}
+	msg := buildSettlementTestData(t, escrow, keys, hostStats, 0)
+
+	err := keeper.VerifySubnetSettlement(escrow, msg, nil)
+	require.NoError(t, err)
+}
+
+func TestVerifySubnetSettlement_InferenceCountOverCapRejected(t *testing.T) {
+	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
+
+	keys, slots := generateSubnetKeys(t, keeper.SubnetGroupSize)
+	escrow := types.SubnetEscrow{
+		Id: 1, Creator: "gonka1creator", Amount: 7_000_000_000, Slots: slots,
+	}
+	hostStats := makeHostStats(keeper.SubnetGroupSize, 0)
+	for i := range hostStats {
+		hostStats[i].InferenceCount = 125 // baseline total 2000
+	}
+	hostStats[0].InferenceCount = 126 // total 2001
+	msg := buildSettlementTestData(t, escrow, keys, hostStats, 0)
+
+	err := keeper.VerifySubnetSettlement(escrow, msg, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exceeds max")
+}
+
 func TestVerifySubnetSettlement_InvalidSignature(t *testing.T) {
 	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
 

@@ -20,6 +20,8 @@ import (
 const (
 	SubnetGroupSize   = 16
 	SubnetQuorumSlots = 2*SubnetGroupSize/3 + 1
+	// MaxSettlementInferenceCount is the hard cap on total inferences in one settlement.
+	MaxSettlementInferenceCount = uint64(2000)
 	// SubnetSettlementPhase is the phase byte appended to the state root preimage.
 	// The chain hardcodes 0x02 (Settlement) so only fully-finalized subnet states
 	// can pass verification. States at phase Active (0x00) or Finalizing (0x01)
@@ -111,14 +113,15 @@ func VerifySubnetSettlement(escrow types.SubnetEscrow, msg *types.MsgSettleSubne
 		return fmt.Errorf("insufficient quorum: %d slot votes, need %d", slotVotes, requiredQuorum)
 	}
 
+	// Verify host stats integrity
+	err = verifyHostStatsIntegrity(msg.HostStats)
+	if err != nil {
+		return err
+	}
+
 	// Verify total cost + fees does not exceed escrow amount
-	seenStatSlots := make(map[uint32]bool, len(msg.HostStats))
 	var totalCost uint64
 	for _, hs := range msg.HostStats {
-		if seenStatSlots[hs.SlotId] {
-			return fmt.Errorf("duplicate host_stats slot_id %d", hs.SlotId)
-		}
-		seenStatSlots[hs.SlotId] = true
 		nextTotalCost, carry := bits.Add64(totalCost, hs.Cost, 0)
 		if carry != 0 {
 			return fmt.Errorf("total cost overflow")
@@ -131,6 +134,33 @@ func VerifySubnetSettlement(escrow types.SubnetEscrow, msg *types.MsgSettleSubne
 	}
 	if totalDebit > escrow.Amount {
 		return fmt.Errorf("total debit %d (cost %d + fees %d) exceeds escrow amount %d", totalDebit, totalCost, msg.Fees, escrow.Amount)
+	}
+
+	return nil
+}
+
+// verifyHostStatsIntegrity validates host stats entries and returns total cost.
+func verifyHostStatsIntegrity(hostStats []*types.SubnetSettlementHostStats) error {
+	seenStatSlots := make(map[uint32]bool, len(hostStats))
+	var totalInferenceCount uint64
+
+	for _, hs := range hostStats {
+
+		// Check for duplicate Slot IDs
+		if seenStatSlots[hs.SlotId] {
+			return fmt.Errorf("duplicate host_stats slot_id %d", hs.SlotId)
+		}
+		seenStatSlots[hs.SlotId] = true
+
+		// Check if the total inference count exceeds the max allowed.
+		nextInferenceCount, carry := bits.Add64(totalInferenceCount, uint64(hs.InferenceCount), 0)
+		if carry != 0 {
+			return fmt.Errorf("total inference count overflow")
+		}
+		totalInferenceCount = nextInferenceCount
+		if totalInferenceCount > MaxSettlementInferenceCount {
+			return fmt.Errorf("total inference count %d exceeds max %d", totalInferenceCount, MaxSettlementInferenceCount)
+		}
 	}
 
 	return nil
