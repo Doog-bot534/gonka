@@ -492,6 +492,9 @@ fun createSpec(epochLength: Long = 15L, epochShift: Int = 0): Spec<AppState> = s
                 this[DynamicPricingParams::gracePeriodEndEpoch] = 0L   // Disable grace period
                 this[DynamicPricingParams::gracePeriodPerTokenPrice] = 0L
             }
+            this[InferenceParams::delegationParams] = spec<DelegationParams> {
+                this[DelegationParams::deployWindow] = 1L
+            }
             // Enable PoC v2 using the phase-1 models list in poc_params
             this[InferenceParams::pocParams] = spec<PocParams> {
                 this[PocParams::models] = listOf(

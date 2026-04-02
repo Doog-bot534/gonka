@@ -34,7 +34,7 @@ func (noopLogger) LogError(string, types.SubSystem, ...interface{}) {}
 func (noopLogger) LogWarn(string, types.SubSystem, ...interface{})  {}
 func (noopLogger) LogDebug(string, types.SubSystem, ...interface{}) {}
 
-func TestWeightCalculator_CalculateParticipantWeight_ProducesRawWeights(t *testing.T) {
+func TestPoCWeightCalculator_CalculateParticipantWeight_ProducesRawWeights(t *testing.T) {
 	modelAKey := types.PoCParticipantModelKey{
 		ParticipantAddress: testutil.Executor,
 		ModelID:            "model-a",
@@ -44,7 +44,7 @@ func TestWeightCalculator_CalculateParticipantWeight_ProducesRawWeights(t *testi
 		ModelID:            "model-b",
 	}
 
-	wc := &WeightCalculator{
+	wc := &PoCWeightCalculator{
 		StoreCommits: map[types.PoCParticipantModelKey]types.PoCV2StoreCommit{
 			modelAKey: {
 				ParticipantAddress:       testutil.Executor,

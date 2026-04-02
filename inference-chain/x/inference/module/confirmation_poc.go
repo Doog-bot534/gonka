@@ -588,7 +588,7 @@ func (am AppModule) updateConfirmationWeightsV2(
 			"numValidators", len(weightsForCalculator))
 	}
 
-	calculator := NewWeightCalculator(
+	calculator := NewPoCWeightCalculator(
 		weightsForCalculator,
 		storeCommits,
 		weightDistributions,

@@ -78,6 +78,25 @@ data class InferenceParams(
     val transferAgentAccessParams: TransferAgentAccessParams? = null,
     @SerializedName("subnet_escrow_params")
     val subnetEscrowParams: SubnetEscrowParams? = null,
+    @SerializedName("delegation_params")
+    val delegationParams: DelegationParams? = null,
+)
+
+data class DelegationParams(
+    @SerializedName("deploy_window")
+    val deployWindow: Long = 1,
+    @SerializedName("r_refusal")
+    val rRefusal: Decimal = Decimal(0, 0),
+    @SerializedName("r_penalty")
+    val rPenalty: Decimal = Decimal(0, 0),
+    @SerializedName("r_delegation")
+    val rDelegation: Decimal = Decimal(0, 0),
+    @SerializedName("w_threshold")
+    val wThreshold: Decimal = Decimal(0, 0),
+    @SerializedName("v_min")
+    val vMin: Long = 0,
+    @SerializedName("cap_factor")
+    val capFactor: Decimal = Decimal(0, 0),
 )
 
 data class TokenomicsParams(

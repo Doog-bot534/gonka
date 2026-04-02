@@ -41,9 +41,9 @@ func CalculateTimeNormalizationFactor(
 	return factor
 }
 
-// WeightCalculator encapsulates all the data needed to calculate new weights for participants.
+// PoCWeightCalculator encapsulates all the data needed to calculate new weights for participants.
 // Uses off-chain store commits and weight distributions instead of on-chain batches.
-type WeightCalculator struct {
+type PoCWeightCalculator struct {
 	CurrentValidatorWeights map[string]int64
 	StoreCommits            map[types.PoCParticipantModelKey]types.PoCV2StoreCommit
 	NodeWeightDistributions map[types.PoCParticipantModelKey]types.MLNodeWeightDistribution
@@ -62,8 +62,8 @@ type WeightCalculator struct {
 	validatorTotalWeight    int64
 }
 
-// NewWeightCalculator creates a new WeightCalculator instance.
-func NewWeightCalculator(
+// NewPoCWeightCalculator creates a new PoCWeightCalculator instance.
+func NewPoCWeightCalculator(
 	currentValidatorWeights map[string]int64,
 	storeCommits map[types.PoCParticipantModelKey]types.PoCV2StoreCommit,
 	nodeWeightDistributions map[types.PoCParticipantModelKey]types.MLNodeWeightDistribution,
@@ -78,8 +78,8 @@ func NewWeightCalculator(
 	guardianAddresses map[string]bool,
 	appHash string,
 	validationSlots int,
-) *WeightCalculator {
-	wc := &WeightCalculator{
+) *PoCWeightCalculator {
+	wc := &PoCWeightCalculator{
 		CurrentValidatorWeights: currentValidatorWeights,
 		StoreCommits:            storeCommits,
 		NodeWeightDistributions: nodeWeightDistributions,
@@ -104,7 +104,7 @@ func NewWeightCalculator(
 }
 
 // Calculate computes the new weights for active participants.
-func (wc *WeightCalculator) Calculate() []*types.ActiveParticipant {
+func (wc *PoCWeightCalculator) Calculate() []*types.ActiveParticipant {
 	sortedKeys := wc.getSortedParticipantModelKeys()
 	activeParticipantsMap := make(map[string]*types.ActiveParticipant)
 
@@ -141,7 +141,7 @@ func (wc *WeightCalculator) Calculate() []*types.ActiveParticipant {
 	return activeParticipants
 }
 
-func (wc *WeightCalculator) getSortedParticipantModelKeys() []types.PoCParticipantModelKey {
+func (wc *PoCWeightCalculator) getSortedParticipantModelKeys() []types.PoCParticipantModelKey {
 	var sortedKeys []types.PoCParticipantModelKey
 	for key := range wc.StoreCommits {
 		sortedKeys = append(sortedKeys, key)
@@ -155,7 +155,7 @@ func (wc *WeightCalculator) getSortedParticipantModelKeys() []types.PoCParticipa
 	return sortedKeys
 }
 
-func (wc *WeightCalculator) validatedParticipant(key types.PoCParticipantModelKey) *types.ActiveParticipant {
+func (wc *PoCWeightCalculator) validatedParticipant(key types.PoCParticipantModelKey) *types.ActiveParticipant {
 	participant, ok := wc.Participants[key.ParticipantAddress]
 	if !ok {
 		wc.Logger.LogError("Calculate: Participant not found", types.PoC, "address", key.ParticipantAddress, "modelId", key.ModelID)
@@ -218,7 +218,7 @@ func (wc *WeightCalculator) validatedParticipant(key types.PoCParticipantModelKe
 	return activeParticipant
 }
 
-func (wc *WeightCalculator) getParticipantValidations(key types.PoCParticipantModelKey) []types.PoCValidationV2 {
+func (wc *PoCWeightCalculator) getParticipantValidations(key types.PoCParticipantModelKey) []types.PoCValidationV2 {
 	vals := wc.Validations[key]
 
 	validators := make([]string, len(vals))
@@ -248,7 +248,7 @@ func (wc *WeightCalculator) getParticipantValidations(key types.PoCParticipantMo
 // pocValidated checks if the participant passed validation by majority vote.
 // When ValidationSlots > 0, uses sampled validator subset for O(N * N_SLOTS) complexity.
 // When ValidationSlots == 0, falls back to O(N²) all-validator validation.
-func (wc *WeightCalculator) pocValidated(vals []types.PoCValidationV2, key types.PoCParticipantModelKey) bool {
+func (wc *PoCWeightCalculator) pocValidated(vals []types.PoCValidationV2, key types.PoCParticipantModelKey) bool {
 	if len(wc.CurrentValidatorWeights) == 0 {
 		if wc.EpochStartBlockHeight > 0 {
 			wc.Logger.LogError("Calculate: No current validator weights found. Accepting the participant.", types.PoC, "participant", key.ParticipantAddress, "modelId", key.ModelID)
@@ -291,7 +291,7 @@ func (wc *WeightCalculator) pocValidated(vals []types.PoCValidationV2, key types
 
 // getAssignedValidators returns the sampled validator addresses for a (participant, model) pair.
 // Returns nil when sampling is disabled (ValidationSlots == 0), triggering O(N^2) fallback.
-func (wc *WeightCalculator) getAssignedValidators(key types.PoCParticipantModelKey) []string {
+func (wc *PoCWeightCalculator) getAssignedValidators(key types.PoCParticipantModelKey) []string {
 	if wc.ValidationSlots == 0 {
 		return nil
 	}
@@ -321,7 +321,7 @@ type ValidationOutcome struct {
 // When assignedValidators is nil, uses O(N²) fallback with weight-based counting.
 // When assignedValidators is set, counts slots (each slot = 1) since weight is
 // already encoded in how many slots each validator receives.
-func (wc *WeightCalculator) calculateAssignedOutcome(vals []types.PoCValidationV2, assignedValidators []string) ValidationOutcome {
+func (wc *PoCWeightCalculator) calculateAssignedOutcome(vals []types.PoCValidationV2, assignedValidators []string) ValidationOutcome {
 	if assignedValidators == nil {
 		outcome := calculateValidationOutcome(wc.CurrentValidatorWeights, vals)
 		totalWeight := calculateTotalWeight(wc.CurrentValidatorWeights)
@@ -364,7 +364,7 @@ func (wc *WeightCalculator) calculateAssignedOutcome(vals []types.PoCValidationV
 
 // guardianProtection handles tie-breaking when no clear majority exists.
 // All voting guardians must agree unanimously for the decision to pass.
-func (wc *WeightCalculator) guardianProtection(vals []types.PoCValidationV2, key types.PoCParticipantModelKey, outcome ValidationOutcome) bool {
+func (wc *PoCWeightCalculator) guardianProtection(vals []types.PoCValidationV2, key types.PoCParticipantModelKey, outcome ValidationOutcome) bool {
 	if !wc.GuardianEnabled || len(wc.GuardianAddresses) == 0 {
 		wc.Logger.LogWarn("Calculate: No majority and no guardians. Rejecting.", types.PoC,
 			"participant", key.ParticipantAddress,
@@ -424,7 +424,7 @@ type nodeWeight struct {
 // Per-node weights come from MLNodeWeightDistribution.
 // PocWeight is raw proven compute (timeNormalizationFactor only, no model coefficient).
 // Model coefficients are applied at the aggregation step in AggregateConsensusWeight.
-func (wc *WeightCalculator) calculateParticipantWeight(key types.PoCParticipantModelKey) ([]nodeWeight, int64) {
+func (wc *PoCWeightCalculator) calculateParticipantWeight(key types.PoCParticipantModelKey) ([]nodeWeight, int64) {
 	commit, hasCommit := wc.StoreCommits[key]
 	if !hasCommit || commit.Count == 0 {
 		return nil, 0
@@ -1049,7 +1049,7 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 			"numValidators", len(weightsForCalculator))
 	}
 
-	calculator := NewWeightCalculator(
+	calculator := NewPoCWeightCalculator(
 		weightsForCalculator,
 		allowedCommits,
 		allowedDistributions,

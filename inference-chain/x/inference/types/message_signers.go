@@ -75,5 +75,10 @@ func (msg *MsgRequestBridgeWithdrawal) GetSignersStrings() []string { return []s
 func (msg *MsgCreateSubnetEscrow) GetSignersStrings() []string { return []string{msg.Creator} }
 func (msg *MsgSettleSubnetEscrow) GetSignersStrings() []string { return []string{msg.Settler} }
 
+// PoC delegation messages
+func (msg *MsgSetPoCDelegation) GetSignersStrings() []string  { return []string{msg.Sender} }
+func (msg *MsgRefusePoCDelegation) GetSignersStrings() []string { return []string{msg.Sender} }
+func (msg *MsgDeclarePoCIntent) GetSignersStrings() []string   { return []string{msg.Sender} }
+
 // And one validator signed message?
 func (msg *MsgBridgeExchange) GetSignersStrings() []string { return []string{msg.Validator} }

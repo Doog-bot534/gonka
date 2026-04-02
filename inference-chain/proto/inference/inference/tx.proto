@@ -14,6 +14,7 @@ import "inference/inference/network_node.proto";
 import "inference/inference/bridge.proto";
 import "inference/inference/poc_v2.proto";
 import "inference/inference/subnet_escrow.proto";
+import "inference/inference/poc_delegation.proto";
 
 option go_package = "github.com/productscience/inference/x/inference/types";
 
@@ -72,6 +73,9 @@ service Msg {
   rpc RegisterIbcTokenMetadata         (MsgRegisterIbcTokenMetadata) returns (MsgRegisterIbcTokenMetadataResponse);
   rpc CreateSubnetEscrow               (MsgCreateSubnetEscrow) returns (MsgCreateSubnetEscrowResponse);
   rpc SettleSubnetEscrow               (MsgSettleSubnetEscrow) returns (MsgSettleSubnetEscrowResponse);
+  rpc SetPoCDelegation                 (MsgSetPoCDelegation) returns (MsgSetPoCDelegationResponse);
+  rpc RefusePoCDelegation              (MsgRefusePoCDelegation) returns (MsgRefusePoCDelegationResponse);
+  rpc DeclarePoCIntent                 (MsgDeclarePoCIntent) returns (MsgDeclarePoCIntentResponse);
 }
 // MsgUpdateParams is the Msg/UpdateParams request type.
 message MsgUpdateParams {

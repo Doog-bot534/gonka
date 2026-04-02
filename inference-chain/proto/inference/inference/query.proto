@@ -37,6 +37,7 @@ import "inference/inference/poc_v2.proto";
 import "inference/inference/random_seed.proto";
 import "inference/inference/poc_validation_snapshot.proto";
 import "inference/inference/subnet_escrow.proto";
+import "inference/inference/poc_delegation.proto";
 
 option go_package = "github.com/productscience/inference/x/inference/types";
 
@@ -498,6 +499,10 @@ service Query {
 
   rpc SubnetHostEpochStats (QueryGetSubnetHostEpochStatsRequest) returns (QueryGetSubnetHostEpochStatsResponse) {
     option (google.api.http).get = "/productscience/inference/inference/subnet_host_epoch_stats/{epoch_index}/{participant}";
+  }
+
+  rpc PoCDelegation (QueryPoCDelegationRequest) returns (QueryPoCDelegationResponse) {
+    option (google.api.http).get = "/productscience/inference/inference/poc_delegation/{participant}";
   }
 }
 // QueryParamsRequest is request type for the Query/Params RPC method.

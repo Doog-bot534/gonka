@@ -158,7 +158,8 @@ func DefaultParams() Params {
 			// Note: proto encoding does not preserve empty-vs-nil for repeated fields; keep nil to match round-trips.
 			AllowedTransferAddresses: nil, // nil = no restriction, all TAs allowed
 		},
-		SubnetEscrowParams: DefaultSubnetEscrowParams(),
+		SubnetEscrowParams:  DefaultSubnetEscrowParams(),
+		DelegationParams:    DefaultDelegationParams(),
 	}
 }
 
@@ -342,6 +343,33 @@ func (p *SubnetEscrowParams) Validate() error {
 	return nil
 }
 
+func DefaultDelegationParams() *DelegationParams {
+	return &DelegationParams{
+		DeployWindow: 1,
+		RRefusal:     DecimalFromFloat(0),
+		RPenalty:     DecimalFromFloat(0),
+		RDelegation:  DecimalFromFloat(0),
+		WThreshold:   DecimalFromFloat(0),
+		VMin:         0,
+		CapFactor:    DecimalFromFloat(0),
+	}
+}
+
+// validateDecimalFraction checks that a Decimal is in [0, 1]. Nil is allowed (treated as 0).
+func validateDecimalFraction(d *Decimal, name string) error {
+	if d == nil || (d.Value == 0 && d.Exponent == 0) {
+		return nil
+	}
+	dec, err := d.ToLegacyDec()
+	if err != nil {
+		return fmt.Errorf("%s: invalid decimal: %w", name, err)
+	}
+	if dec.IsNegative() || dec.GT(sdkmath.LegacyOneDec()) {
+		return fmt.Errorf("%s must be between 0 and 1, got %s", name, dec.String())
+	}
+	return nil
+}
+
 func (p *Params) ParamSetPairs() paramtypes.ParamSetPairs {
 	return paramtypes.ParamSetPairs{}
 }
@@ -513,6 +541,27 @@ func (p Params) Validate() error {
 
 	if p.SubnetEscrowParams != nil {
 		if err := p.SubnetEscrowParams.Validate(); err != nil {
+			return err
+		}
+	}
+
+	if p.DelegationParams != nil {
+		if p.DelegationParams.DeployWindow < 0 {
+			return fmt.Errorf("delegation deploy_window cannot be negative")
+		}
+		if p.DelegationParams.VMin < 0 {
+			return fmt.Errorf("delegation v_min cannot be negative")
+		}
+		if err := validateDecimalFraction(p.DelegationParams.RRefusal, "delegation r_refusal"); err != nil {
+			return err
+		}
+		if err := validateDecimalFraction(p.DelegationParams.RPenalty, "delegation r_penalty"); err != nil {
+			return err
+		}
+		if err := validateDecimalFraction(p.DelegationParams.RDelegation, "delegation r_delegation"); err != nil {
+			return err
+		}
+		if err := validateDecimalFraction(p.DelegationParams.WThreshold, "delegation w_threshold"); err != nil {
 			return err
 		}
 	}

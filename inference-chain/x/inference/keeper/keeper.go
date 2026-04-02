@@ -98,6 +98,10 @@ type (
 		SubnetEscrowEpochCount  collections.Map[uint64, uint64]
 		SubnetHostEpochStatsMap collections.Map[collections.Pair[uint64, sdk.AccAddress], types.SubnetHostEpochStats]
 		SubnetEscrowsByEpoch    collections.Map[collections.Pair[uint64, uint64], collections.NoValue]
+		// PoC delegation collections
+		PoCDelegations   collections.Map[collections.Pair[string, string], types.PoCDelegation]
+		PoCRefusals      collections.KeySet[collections.Pair[string, string]]
+		PoCDirectIntents collections.KeySet[collections.Pair[string, string]]
 	}
 )
 
@@ -503,6 +507,26 @@ func NewKeeper(
 			"subnet_escrows_by_epoch",
 			collections.PairKeyCodec(collections.Uint64Key, collections.Uint64Key),
 			collections.NoValue{},
+		),
+		// PoC delegation collections
+		PoCDelegations: collections.NewMap(
+			sb,
+			types.PoCDelegationPrefix,
+			"poc_delegation",
+			collections.PairKeyCodec(collections.StringKey, collections.StringKey),
+			codec.CollValue[types.PoCDelegation](cdc),
+		),
+		PoCRefusals: collections.NewKeySet(
+			sb,
+			types.PoCRefusalPrefix,
+			"poc_refusal",
+			collections.PairKeyCodec(collections.StringKey, collections.StringKey),
+		),
+		PoCDirectIntents: collections.NewKeySet(
+			sb,
+			types.PoCDirectIntentPrefix,
+			"poc_direct_intent",
+			collections.PairKeyCodec(collections.StringKey, collections.StringKey),
 		),
 	}
 	// Build the collections schema

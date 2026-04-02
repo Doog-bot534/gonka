@@ -599,12 +599,26 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 	modelAssigner := NewModelAssigner(am.keeper, am.keeper)
 	modelAssigner.setModelsForParticipants(ctx, activeParticipants, *upcomingEpoch)
 
-	// Aggregate per-model raw weights into consensus weight using model coefficients.
-	// This is the ONE place where per-model weights combine.
+	// --- DelegationWeightCalculator phase 1: eligibility, caps, consensus weight, modes ---
 	coefficients := ModelCoefficients(params.PocParams)
+	dwc := am.buildDelegationWeightCalculator(ctx, activeParticipants, coefficients, params)
+	eligibleGroups := dwc.EligibleGroups()
+
+	// Compute consensus weights with caps applied and write to participants
+	consensusWeights := dwc.ComputeConsensusWeights(eligibleGroups)
 	for _, p := range activeParticipants {
-		p.Weight = AggregateConsensusWeight(ExtractModelWeights(p), coefficients)
+		p.Weight = consensusWeights[p.Index]
 	}
+
+	// Resolve participation modes for each eligible group
+	allModes := make(map[string]map[string]ParticipationMode, len(eligibleGroups))
+	for _, modelID := range eligibleGroups {
+		allModes[modelID] = dwc.ResolveGroupParticipation(modelID)
+	}
+
+	// Apply delegation weight adjustment (no-op when all r_* = 0 or all participants are DIRECT)
+	adjParams := am.delegationAdjustmentParams(params)
+	ApplyDelegationWeightAdjustment(activeParticipants, dwc, eligibleGroups, allModes, adjParams)
 
 	// Adjust weights based on collateral after the grace period. This modifies the weights in-place.
 	if err := am.keeper.AdjustWeightsByCollateral(ctx, activeParticipants); err != nil {
@@ -615,6 +629,9 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 
 	// Apply universal power capping to epoch powers
 	activeParticipants = am.applyEpochPowerCapping(ctx, activeParticipants)
+
+	// --- DelegationWeightCalculator phase 2: voting power from final weights ---
+	am.computeAndSetVotingPowers(activeParticipants, dwc, eligibleGroups, allModes)
 
 	modelAssigner.AllocateMLNodesForPoC(ctx, *upcomingEpoch, activeParticipants)
 	am.LogInfo("Finished PoC allocation for all participants", types.EpochGroup, "step", "poc_allocation_complete")
@@ -662,6 +679,14 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 
 	// Call BLS module to initiate key generation for the new epoch
 	am.InitiateBLSKeyGeneration(ctx, upcomingEpoch.Index, activeParticipants)
+
+	// Cleanup: delete consumed PoCRefusal and PoCDirectIntent entries
+	if err := am.keeper.DeleteAllPoCRefusals(ctx); err != nil {
+		am.LogWarn("onEndOfPoCValidationStage: failed to clear PoC refusals", types.PoC, "error", err)
+	}
+	if err := am.keeper.DeleteAllPoCDirectIntents(ctx); err != nil {
+		am.LogWarn("onEndOfPoCValidationStage: failed to clear PoC direct intents", types.PoC, "error", err)
+	}
 }
 
 // onSetNewValidatorsStage handles validator switching and epoch group activation.

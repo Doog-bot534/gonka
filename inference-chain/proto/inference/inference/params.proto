@@ -25,6 +25,7 @@ message Params {
   ParticipantAccessParams participant_access_params = 12;
   TransferAgentAccessParams transfer_agent_access_params = 13;
   SubnetEscrowParams subnet_escrow_params = 14;
+  DelegationParams delegation_params = 15;
 }
 
 message GenesisOnlyParams {
@@ -335,6 +336,18 @@ message TransferAgentAccessParams {
   // allowed_transfer_addresses are bech32 account addresses allowed to act as Transfer Agents.
   // If empty, all TAs are allowed.
   repeated string allowed_transfer_addresses = 1;
+}
+
+// DelegationParams defines parameters for PoC delegation in the multi-model system.
+message DelegationParams {
+  option (gogoproto.equal) = true;
+  int64   deploy_window  = 1;  // blocks before start_poc for delegation snapshot
+  Decimal r_refusal      = 2;  // REFUSE penalty fraction
+  Decimal r_penalty      = 3;  // NONE penalty fraction
+  Decimal r_delegation   = 4;  // DELEGATE transfer fraction
+  Decimal w_threshold    = 5;  // min fraction of total weight from members for eligibility
+  int64   v_min          = 6;  // min hosts with non-zero consensus weight
+  Decimal cap_factor     = 7;  // max group weight as multiple of members' weight in other groups
 }
 
 // SubnetEscrowParams defines governance-controlled parameters for subnet escrow creation and settlement.
