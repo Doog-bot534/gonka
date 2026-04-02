@@ -152,6 +152,18 @@ func verifyHostStatsIntegrity(hostStats []*types.SubnetSettlementHostStats) erro
 		}
 		seenStatSlots[hs.SlotId] = true
 
+		// NOTE: It's important that we check that the sum of `Validated/Invalid/Missed` for all hosts
+		// does not exceed [MaxSettlementInferenceCount]
+		// in order to limit the amount of damage a hijacked subnet could cause by reporting fake stats.
+		//
+		// See: https://github.com/gonka-ai/gonka/issues/914#issuecomment-4090483233
+
+		// Per-host consistency: validated + invalid + missed must not exceed inference_count
+		sumCounts := uint64(hs.Validated) + uint64(hs.Invalid) + uint64(hs.Missed)
+		if sumCounts > uint64(hs.InferenceCount) {
+			return fmt.Errorf("host_stats slot_id %d: validated+invalid+missed (%d) exceeds inference_count %d", hs.SlotId, sumCounts, hs.InferenceCount)
+		}
+
 		// Check if the total inference count exceeds the max allowed.
 		nextInferenceCount, carry := bits.Add64(totalInferenceCount, uint64(hs.InferenceCount), 0)
 		if carry != 0 {
