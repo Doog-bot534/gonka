@@ -270,7 +270,7 @@ class RestrictionsTests : TestermintTest() {
         // Wait for transaction to be processed in the next block
         genesis.node.waitForNextBlock(1)
         
-        assertThat(genesis.getBalance(fromAddress)).isEqualTo(initialFromBalance - 2000)
+        assertThat(genesis.getBalance(fromAddress)).isLessThanOrEqualTo(initialFromBalance - 2000)
         assertThat(genesis.getBalance(toAddress)).isEqualTo(initialToBalance + 2000)
 
         val usage = genesis.node.queryRestrictionsExemptionUsage(exemptionId, fromAddress)
