@@ -486,7 +486,9 @@ fun initCluster(
     val rebootFlagOn = Files.deleteIfExists(Path.of("reboot.txt"))
     val cluster = try {
         val c = setupLocalCluster(joinCount, finalConfig, reboot || rebootFlagOn)
-        Thread.sleep(50000)
+        c.allPairs.forEach { pair ->
+            pair.waitForApiReadiness()
+        }
         logSection("Found cluster, initializing")
         initialize(c.allPairs, resetMlNodes = resetMlNodes)
         c

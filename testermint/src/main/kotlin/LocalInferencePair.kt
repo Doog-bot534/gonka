@@ -461,6 +461,30 @@ data class LocalInferencePair(
         }
     }
 
+    fun waitForApiReadiness(
+        timeout: Duration = Duration.ofSeconds(120),
+        sleepTimeMillis: Long = 2_000L,
+    ) {
+        val deadline = Instant.now().plus(timeout)
+        var lastFailure: Exception? = null
+
+        while (Instant.now().isBefore(deadline)) {
+            try {
+                api.getLatestEpoch()
+                api.getParticipants()
+                api.getNodes()
+                Logger.info("API endpoints are ready for {}", name)
+                return
+            } catch (e: Exception) {
+                lastFailure = e
+                Logger.info("API endpoints not ready yet for {}: {}", name, e.message)
+                Thread.sleep(sleepTimeMillis)
+            }
+        }
+
+        throw IllegalStateException("API endpoints did not become ready within $timeout for $name", lastFailure)
+    }
+
     // FIXME: query this info from chain when epochs/0 endpoint is implemented?
     fun waitForFirstValidators() {
         if (this.mostRecentEpochData == null) {
