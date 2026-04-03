@@ -34,9 +34,11 @@ Example:
     gonka-account-key \
     gonka1rk52j24xj9ej87jas4zqpvjuhrgpnd7h3feqmm \
     --from gonka-account-key \
+    --gas-prices 10ngonka \
     --node http://node2.gonka.ai:8000/chain-rpc/
 
-Note: Chain ID will be auto-detected from the chain if not specified with --chain-id`,
+Note: Chain ID will be auto-detected from the chain if not specified with --chain-id.
+      Use --gas-prices 10ngonka (or higher) to set transaction fees.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
