@@ -408,6 +408,17 @@ fun getRepoRoot(): String {
         ?: throw IllegalStateException("Repository root 'gonka' not found")
 }
 
+private fun waitForCliContainer(config: ApplicationConfig, keyName: String, timeout: Duration): ApplicationCLI {
+    val deadline = System.nanoTime() + timeout.toNanos()
+    while (true) {
+        getRawContainers(config).getCli(keyName)?.let { return it }
+        if (System.nanoTime() >= deadline) {
+            error("Could not find node container for keyName=$keyName")
+        }
+        Thread.sleep(1000)
+    }
+}
+
 fun initializeCluster(joinCount: Int = 0, config: ApplicationConfig, currentCluster: LocalCluster?): List<DockerGroup> {
     TestState.rebooting = true
     try {
@@ -433,9 +444,7 @@ fun initializeCluster(joinCount: Int = 0, config: ApplicationConfig, currentClus
         Logger.info("Initializing cluster with {} nodes", allGroups.size)
         allGroups.forEach { it.tearDownExisting() }
         genesisGroup.init()
-        Thread.sleep(Duration.ofSeconds(30L))
-        val genesisNode = getRawContainers(config).getCli(genesisGroup.pairName)
-            ?: error("Could not find node container for keyName=${genesisGroup.pairName}")
+        val genesisNode = waitForCliContainer(config, genesisGroup.pairName, Duration.ofSeconds(120))
         Logger.info("Waiting for genesis RPC readiness", "")
         val readinessDeadline = System.nanoTime() + Duration.ofSeconds(90).toNanos()
         while (true) {

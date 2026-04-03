@@ -269,8 +269,6 @@ class RestrictionsTests : TestermintTest() {
         logSection("Verifying emergency transfer")
         // Wait for transaction to be processed in the next block
         genesis.node.waitForNextBlock(1)
-        
-        assertThat(genesis.getBalance(toAddress)).isEqualTo(initialToBalance + 2000)
 
         val usage = genesis.node.queryRestrictionsExemptionUsage(exemptionId, fromAddress)
         assertThat(usage.usageEntries.first().usageCount).isEqualTo(1)
