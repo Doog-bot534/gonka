@@ -45,6 +45,13 @@ func TestUint64ProbabilityScale32(t *testing.T) {
 	// 0 -> 0
 	require.Equal(t, uint64(0), uint64ProbabilityScale32(0, 1))
 
+	// Percent-style numerators: same as floor(n * 2^32 / 100) for n <= 100.
+	require.Equal(t, uint64ProbabilityScale32(50, 100), (uint64(1<<32)*50)/100)   // 50% of 2^32
+	require.Equal(t, uint64ProbabilityScale32(98, 100), (uint64(1<<32)*98)/100)   // 98% of 2^32
+	require.Equal(t, uint64ProbabilityScale32(100, 100), (uint64(1<<32)*100)/100) // 100% of 2^32
+	// Clamped to 2^32
+	require.Equal(t, uint64ProbabilityScale32(105, 100), uint64ProbabilityScale32(100, 100)) // 100%
+
 	// Oversized ratio: clamp to 2^32 (same as old ShouldValidate cap)
 	clamped := uint64ProbabilityScale32(20000, 10000)
 	require.Equal(t, uint64(1)<<32, clamped)
