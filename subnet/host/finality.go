@@ -53,9 +53,5 @@ func bitmapSlotWeight(bm types.Bitmap128, group []types.SlotAssignment) uint32 {
 // twoThirdsWeight returns ceil(2/3 * totalSlots).
 func twoThirdsWeight(group []types.SlotAssignment) uint32 {
 	total := uint32(len(group))
-	if total == 0 {
-		return 0
-	}
 	return (total*2 + 2) / 3
 }
-
