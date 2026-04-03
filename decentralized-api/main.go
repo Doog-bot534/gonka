@@ -18,18 +18,11 @@ import (
 	"decentralized-api/poc"
 	"decentralized-api/poc/artifacts"
 	"decentralized-api/statsstorage"
-	"net"
-
-	"github.com/productscience/inference/api/inference/inference"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/reflection"
 
 	internalsubnet "decentralized-api/internal/subnet"
-	subnetstorage "subnet/storage"
 	"decentralized-api/internal/validation"
 	"decentralized-api/logging"
 	"decentralized-api/participant"
-	"decentralized-api/training"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -37,6 +30,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	subnetstorage "subnet/storage"
 	"time"
 
 	"github.com/productscience/inference/x/inference/types"
@@ -141,9 +135,6 @@ func main() {
 	)
 	logging.Info("PoC off-chain validator initialized", types.PoC)
 
-	tendermintClient := cosmosclient.TendermintClient{
-		ChainNodeUrl: config.GetChainNodeConfig().Url,
-	}
 	// Create a cancellable context for the entire system
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // Ensure resources are cleaned up
@@ -161,9 +152,6 @@ func main() {
 		defer statsStore.Close()
 	}
 
-	training.NewAssigner(recorder, &tendermintClient, ctx)
-	trainingExecutor := training.NewExecutor(ctx, nodeBroker, recorder)
-
 	validator := validation.NewInferenceValidator(nodeBroker, config, recorder, chainPhaseTracker)
 	blsManager := bls.NewBlsManager(*recorder)
 	listener := event_listener.NewEventListener(
@@ -172,13 +160,11 @@ func main() {
 		nodeBroker,
 		validator,
 		*recorder,
-		trainingExecutor,
 		chainPhaseTracker,
 		cancel,
 		blsManager,
 		event_listener.WithStatsStorage(statsStore),
 	)
-	// TODO: propagate trainingExecutor
 	go listener.Start(ctx)
 
 	mlnodeBackgroundManager := modelmanager.NewMLNodeBackgroundManager(
@@ -226,7 +212,6 @@ func main() {
 		nodeBroker,
 		config,
 		recorder,
-		trainingExecutor,
 		blockQueue,
 		chainPhaseTracker,
 		payloadStore,
@@ -263,27 +248,6 @@ func main() {
 	logging.Info("start admin server on addr", types.Server, "addr", addr)
 	adminServer := adminserver.NewServer(recorder, nodeBroker, config, validator, blockQueue, payloadStore)
 	adminServer.Start(addr)
-
-	mlGrpcServerPort := config.GetApiConfig().MlGrpcServerPort
-	if mlGrpcServerPort == 0 {
-		mlGrpcServerPort = 9300
-		logging.Info("ml grpc server port not set, using default port 9300", types.Server)
-	}
-	addr = fmt.Sprintf(":%v", mlGrpcServerPort)
-	logging.Info("start training server on addr", types.Server, "addr", addr)
-	grpcServer := grpc.NewServer()
-	trainingServer := training.NewServer(recorder, trainingExecutor)
-	inference.RegisterNetworkNodeServiceServer(grpcServer, trainingServer)
-	reflection.Register(grpcServer)
-	lis, err := net.Listen("tcp", addr)
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
-	go func() {
-		if err := grpcServer.Serve(lis); err != nil {
-			log.Fatalf("failed to serve: %v", err)
-		}
-	}()
 
 	logging.Info("Servers started", types.Server, "addr", addr)
 

@@ -30,6 +30,11 @@ func CreateUpgradeHandler(
 			return nil, err
 		}
 
+		err = clearTrainingState(ctx, k)
+		if err != nil {
+			return nil, err
+		}
+
 		toVM, err := mm.RunMigrations(ctx, configurator, fromVM)
 		if err != nil {
 			return toVM, err
@@ -55,4 +60,8 @@ func removeTopMiner(ctx context.Context, k keeper.Keeper) error {
 		}
 	}
 	return nil
+}
+
+func clearTrainingState(ctx context.Context, k keeper.Keeper) error {
+	return k.ClearTrainingState(ctx)
 }
