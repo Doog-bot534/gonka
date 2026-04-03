@@ -50,10 +50,10 @@ func uint32CeilScaledSum32(sumScaled uint64) uint32 {
 	return uint32((sumScaled + scale - 1) >> 32)
 }
 
-// penalizePerInferenceScaled32 returns the per-inference contribution at scale 2^32 for
-// unrevealed-seed penalty: floor((rateBasisPoints/10000) * validatorSlotCount / (totalSlots-executorSlots) * 2^32),
-// clamped like uint64ProbabilityScale32. Same as the legacy float
-// (rateBasisPoints/10000) * validatorSlotCount / denom in fixed point.
+// penalizePerInferenceScaled32 returns the per-inference contribution for unrevealed-seed penalty:
+// floor((rateBasisPoints/10000) * validatorSlotCount / (totalSlots-executorSlots) * 2^32), clamped like
+// uint64ProbabilityScale32. The result is a probability in [0, 1] represented as a uint64 in [0, 2^32]
+// (32-bit fixed-point scale; see uint64ProbabilityScale32).
 func penalizePerInferenceScaled32(rateBasisPoints, validatorSlotCount, totalSlotsMinusExecutor uint64) uint64 {
 	return uint64ProbabilityScale32(rateBasisPoints*validatorSlotCount, 10000*totalSlotsMinusExecutor)
 }
