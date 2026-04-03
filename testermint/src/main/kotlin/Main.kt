@@ -295,7 +295,6 @@ fun makeInterruptedStreamingInferenceRequest(
 
 fun initialize(pairs: List<LocalInferencePair>, resetMlNodes: Boolean = true): LocalInferencePair {
     pairs.forEach {
-        it.waitForApiReadiness()
         it.waitForFirstBlock()
         it.waitForFirstValidators()
 
@@ -780,3 +779,4 @@ val defaultInferenceResponse = """
 """.trimIndent()
 
 val defaultInferenceResponseObject = cosmosJson.fromJson(defaultInferenceResponse, OpenAIResponse::class.java)
+
