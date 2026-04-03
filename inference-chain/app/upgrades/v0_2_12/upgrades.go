@@ -2,6 +2,7 @@ package v0_2_12
 
 import (
 	"context"
+	"errors"
 
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
@@ -35,6 +36,10 @@ func CreateUpgradeHandler(
 			return nil, err
 		}
 
+		err = adjustParameters(ctx, k)
+		if err != nil {
+			return nil, err
+		}
 		toVM, err := mm.RunMigrations(ctx, configurator, fromVM)
 		if err != nil {
 			return toVM, err
@@ -45,19 +50,43 @@ func CreateUpgradeHandler(
 	}
 }
 
+func adjustParameters(ctx context.Context, k keeper.Keeper) error {
+	// For start, a simple roundtrip for params to clear out now-removed values
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		return err
+	}
+	params.XXX_DiscardUnknown()
+	err = k.SetParams(ctx, params)
+	if err != nil {
+		return err
+	}
+
+	genesisParams, found := k.GetGenesisOnlyParams(ctx)
+	if !found {
+		return errors.New("genesis only params not found")
+	}
+	genesisParams.XXX_DiscardUnknown()
+	err = k.SetGenesisOnlyParams(ctx, &genesisParams)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func removeTopMiner(ctx context.Context, k keeper.Keeper) error {
 	err := k.TopMiners.Clear(ctx, nil)
 	if err != nil {
 		return err
 	}
-	topRewardAccount := k.AccountKeeper.GetModuleAccount(ctx, types.TopRewardPoolAccName)
-	if topRewardAccount != nil {
-		rewardAddress := topRewardAccount.GetAddress()
-		balances := k.BankView.GetAllBalances(ctx, rewardAddress)
-		err := k.BankKeeper.BurnCoins(ctx, types.TopRewardPoolAccName, balances, "Removing top miner reward pool")
-		if err != nil {
-			return err
-		}
+	tokenomicsData, found := k.GetTokenomicsData(ctx)
+	if !found {
+		return errors.New("tokenomics data not found")
+	}
+	tokenomicsData.XXX_DiscardUnknown()
+	err = k.SetTokenomicsData(ctx, tokenomicsData)
+	if err != nil {
+		return err
 	}
 	return nil
 }
