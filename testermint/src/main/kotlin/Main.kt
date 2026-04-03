@@ -582,6 +582,30 @@ val inferenceRequestObject = InferenceRequestPayload(
 
 val inferenceRequest = cosmosJson.toJson(inferenceRequestObject)
 
+// Raw JSON fixture for OpenAI-style multipart content (text + image_url parts).
+// Kept as a string to preserve the heterogeneous `content` array shape.
+val inferenceRequestMultipart = """
+{
+  "model": "$defaultModel",
+  "temperature": 0.8,
+  "messages": [
+    {
+      "role": "system",
+      "content": "Answer briefly and include the image context when present."
+    },
+    {
+      "role": "user",
+      "content": [
+        { "type": "text", "text": "What is in this image?" },
+        { "type": "image_url", "image_url": { "url": "https://example.com/cat.png" } },
+        { "type": "text", "text": "Respond in one sentence." }
+      ]
+    }
+  ],
+  "seed": -25
+}
+""".trimIndent()
+
 val inferenceRequestStreamObject = inferenceRequestObject.copy(stream = true)
 val inferenceRequestStream = cosmosJson.toJson(inferenceRequestStreamObject)
 
