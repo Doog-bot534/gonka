@@ -68,6 +68,11 @@ func (m *MockCosmosMessageClient) GetAccountPubKey() cryptotypes.PubKey {
 	return args.Get(0).(cryptotypes.PubKey)
 }
 
+func (m *MockCosmosMessageClient) GetSignerPubKey() cryptotypes.PubKey {
+	args := m.Called()
+	return args.Get(0).(cryptotypes.PubKey)
+}
+
 func (m *MockCosmosMessageClient) GetSignerAddress() string {
 	args := m.Called()
 	return args.String(0)
@@ -117,20 +122,6 @@ func (m *MockCosmosMessageClient) BankBalances(ctx context.Context, address stri
 	args := m.Called(ctx, address)
 	return args.Get(0).([]sdk.Coin), args.Error(1)
 }
-
-// PoC v1 mock methods
-
-func (m *MockCosmosMessageClient) SubmitPocBatch(transaction *inference.MsgSubmitPocBatch) error {
-	args := m.Called(transaction)
-	return args.Error(0)
-}
-
-func (m *MockCosmosMessageClient) SubmitPoCValidation(transaction *inference.MsgSubmitPocValidation) error {
-	args := m.Called(transaction)
-	return args.Error(0)
-}
-
-// PoC v2 mock methods
 
 func (m *MockCosmosMessageClient) SubmitPocValidationsV2(transaction *inference.MsgSubmitPocValidationsV2) error {
 	args := m.Called(transaction)
@@ -223,6 +214,11 @@ func (m *MockCosmosMessageClient) SendTransactionSyncNoRetry(transaction proto.M
 }
 
 func (m *MockCosmosMessageClient) SubmitDealerPart(transaction *blstypes.MsgSubmitDealerPart) error {
+	args := m.Called(transaction)
+	return args.Error(0)
+}
+
+func (m *MockCosmosMessageClient) RespondDealerComplaints(transaction *blstypes.MsgRespondDealerComplaints) error {
 	args := m.Called(transaction)
 	return args.Error(0)
 }
