@@ -1,6 +1,7 @@
 import com.productscience.*
 import com.productscience.assertions.assertThat
 import com.productscience.data.getParticipant
+import com.github.kittinunf.fuel.core.FuelError
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -74,8 +75,19 @@ class NodeDisableInferenceTests : TestermintTest() {
         val rewardSeed = join1.api.getConfig().currentSeed
         logSection("Waiting for an inference assigned to disabled join-1 in the current epoch")
         val join1Address = join1.node.getColdAddress()
-        val earnedInference = generateSequence { getInferenceResult(genesis) }
-            .take(20)
+        val earnedInference = (1..20)
+            .asSequence()
+            .mapNotNull { attempt ->
+                runCatching { getInferenceResult(genesis) }
+                    .onFailure { error ->
+                        if (error !is FuelError || !error.message.orEmpty().contains("500 Internal Server Error")) {
+                            throw error
+                        }
+                        Logger.info("Inference attempt $attempt returned a temporary 500 while waiting for join-1 assignment; retrying on the next block")
+                        genesis.waitForBlock(1) { true }
+                    }
+                    .getOrNull()
+            }
             .firstOrNull { result ->
                 result.inference.assignedTo == join1Address || result.inference.executedBy == join1Address
             }
