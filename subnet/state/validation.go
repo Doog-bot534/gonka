@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"math/bits"
 
 	"subnet/types"
 )
@@ -34,13 +35,17 @@ func deterministicHash(seed int64, inferenceID uint64) uint64 {
 // uint64ProbabilityScale32 returns floor(numerator * 2^32 / denominator), clamped to [0, 2^32].
 // It represents a rational in [0, 1] at 32-bit fixed-point scale without floating-point.
 // denominator must be non-zero; callers guard that.
+// The product numerator * 2^32 is formed in 128 bits (bits.Mul64); a naive numerator << 32
+// would drop bits when numerator > 2^32-1.
 func uint64ProbabilityScale32(numerator, denominator uint64) uint64 {
-	p := (numerator << 32) / denominator
 	const maxP = uint64(1) << 32
-	if p > maxP {
+	if numerator >= denominator {
 		return maxP
 	}
-	return p
+	hi, lo := bits.Mul64(numerator, 1<<32)
+	// numerator < denominator implies hi < denominator, so bits.Div64 does not overflow.
+	q, _ := bits.Div64(hi, lo, denominator)
+	return q
 }
 
 // uint32CeilScaledSum32 returns ceil(sumScaled / 2^32), where sumScaled is a sum of

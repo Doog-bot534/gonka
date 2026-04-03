@@ -48,6 +48,12 @@ func TestUint64ProbabilityScale32(t *testing.T) {
 	// Oversized ratio: clamp to 2^32 (same as old ShouldValidate cap)
 	clamped := uint64ProbabilityScale32(20000, 10000)
 	require.Equal(t, uint64(1)<<32, clamped)
+
+	// Numerator > 2^32-1: naive (numerator << 32) would wrap; 128-bit path must match the ratio.
+	largeNum := uint64(1) << 40
+	largeDen := uint64(1) << 41
+	got := uint64ProbabilityScale32(largeNum, largeDen)
+	require.Equal(t, uint64(1)<<31, got, "expect floor(2^40*2^32/2^41)=2^31")
 }
 
 func TestUint32CeilScaledSum32(t *testing.T) {
