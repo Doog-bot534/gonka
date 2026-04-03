@@ -166,11 +166,7 @@ data class DockerGroup(
         process.errorStream.bufferedReader().lines().forEach { Logger.info(it, "") }
         process.waitFor()
         if (!isGenesis) {
-            Thread.sleep(Duration.ofSeconds(10))
-
-            val containers = getRawContainers(config)
-            val node =
-                containers.getCli(this.pairName) ?: error("Could not find node container for keyName=${this.pairName}")
+            val node = waitForCli(config, this.pairName, Duration.ofSeconds(120))
             val validatorDeadline = System.nanoTime() + Duration.ofSeconds(90).toNanos()
             var validatorKey: String? = null
             while (validatorKey == null) {
@@ -408,6 +404,21 @@ fun getRepoRoot(): String {
         ?: throw IllegalStateException("Repository root 'gonka' not found")
 }
 
+private fun waitForCli(config: ApplicationConfig, pairName: String, timeout: Duration): ApplicationCLI {
+    val deadline = System.nanoTime() + timeout.toNanos()
+    var lastError: Exception? = null
+    while (System.nanoTime() < deadline) {
+        try {
+            getRawContainers(config).getCli(pairName)?.let { return it }
+        } catch (e: Exception) {
+            lastError = e
+            Logger.debug("CLI for {} not ready yet: {}", pairName, e.message)
+        }
+        Thread.sleep(1000)
+    }
+    throw IllegalStateException("Could not find node container for keyName=$pairName", lastError)
+}
+
 fun initializeCluster(joinCount: Int = 0, config: ApplicationConfig, currentCluster: LocalCluster?): List<DockerGroup> {
     TestState.rebooting = true
     try {
@@ -433,9 +444,7 @@ fun initializeCluster(joinCount: Int = 0, config: ApplicationConfig, currentClus
         Logger.info("Initializing cluster with {} nodes", allGroups.size)
         allGroups.forEach { it.tearDownExisting() }
         genesisGroup.init()
-        Thread.sleep(Duration.ofSeconds(30L))
-        val genesisNode = getRawContainers(config).getCli(genesisGroup.pairName)
-            ?: error("Could not find node container for keyName=${genesisGroup.pairName}")
+        val genesisNode = waitForCli(config, genesisGroup.pairName, Duration.ofSeconds(120))
         Logger.info("Waiting for genesis RPC readiness", "")
         val readinessDeadline = System.nanoTime() + Duration.ofSeconds(90).toNanos()
         while (true) {
