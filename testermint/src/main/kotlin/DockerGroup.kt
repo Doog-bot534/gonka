@@ -498,6 +498,7 @@ fun initCluster(
         if (shouldRetryBootstrap(e, retryAttempt)) {
             Logger.warn(e, "Transient bootstrap failure on attempt {}, retrying with reboot", retryAttempt + 1)
             logSection("Transient bootstrap failure, retrying")
+            Thread.sleep(Duration.ofSeconds((retryAttempt + 1L) * 10))
             return initCluster(
                 joinCount = joinCount,
                 config = finalConfig,
@@ -527,7 +528,7 @@ fun initCluster(
     return cluster to cluster.genesis
 }
 
-private fun shouldRetryBootstrap(error: Throwable, retryAttempt: Int, maxRetries: Int = 2): Boolean {
+private fun shouldRetryBootstrap(error: Throwable, retryAttempt: Int, maxRetries: Int = 4): Boolean {
     if (retryAttempt >= maxRetries) return false
     return generateSequence(error) { it.cause }
         .any { cause ->
