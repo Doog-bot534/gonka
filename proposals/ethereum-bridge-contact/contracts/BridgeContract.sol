@@ -366,7 +366,10 @@ contract BridgeContract is ERC20, Ownable, ReentrancyGuard {
             revert InvalidSignature();
         }
 
-        // 4. Execution: Transfer tokens or ETH to recipient address
+        // 4. Record Processing: Mark requestId as processed (defense-in-depth CEI pattern)
+        processedRequests[cmd.epochId][cmd.requestId] = true;
+
+        // 5. Execution: Transfer tokens or ETH to recipient address
         if (cmd.tokenContract == address(this)) {
             // ETH withdrawal: tokenContract == address(this) indicates ETH
             require(address(this).balance >= cmd.amount, "Insufficient ETH balance");
@@ -378,9 +381,6 @@ contract BridgeContract is ERC20, Ownable, ReentrancyGuard {
             // ERC-20 withdrawal: standard token transfer
             IERC20(cmd.tokenContract).safeTransfer(cmd.recipient, cmd.amount);
         }
-
-        // 5. Record Processing: Mark requestId as processed (only after successful transfer)
-        processedRequests[cmd.epochId][cmd.requestId] = true;
 
         emit WithdrawalProcessed(
             cmd.epochId,
@@ -429,11 +429,11 @@ contract BridgeContract is ERC20, Ownable, ReentrancyGuard {
             revert InvalidSignature();
         }
 
-        // 4. Execution: Mint WGNK tokens to recipient
-        _mint(cmd.recipient, cmd.amount);
-
-        // 5. Record Processing: Mark requestId as processed (only after successful mint)
+        // 4. Record Processing: Mark requestId as processed (defense-in-depth CEI pattern)
         processedRequests[cmd.epochId][cmd.requestId] = true;
+
+        // 5. Execution: Mint WGNK tokens to recipient
+        _mint(cmd.recipient, cmd.amount);
 
         emit WGNKMinted(cmd.epochId, cmd.requestId, cmd.recipient, cmd.amount);
     }
