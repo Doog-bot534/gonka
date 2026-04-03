@@ -154,6 +154,11 @@ func main() {
 
 	validator := validation.NewInferenceValidator(nodeBroker, config, recorder, chainPhaseTracker)
 	blsManager := bls.NewBlsManager(*recorder)
+	if db := config.SqlDb().GetDb(); db != nil {
+		if err := blsManager.SetDealerOpeningsDB(db); err != nil {
+			logging.Warn("Failed to initialize dealer openings persistence", types.BLS, "error", err)
+		}
+	}
 	listener := event_listener.NewEventListener(
 		config,
 		offChainValidator,
