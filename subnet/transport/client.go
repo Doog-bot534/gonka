@@ -42,6 +42,7 @@ type ClientConfig struct {
 	VerifyTimeout    time.Duration          // verify-timeout, default 3m
 	QueryTimeout     time.Duration          // diffs, mempool GETs, default 30s
 	StreamCallback   func(nonce uint64, line string) // if set, receives raw SSE data lines during inference
+	ReceiptCallback  func(nonce uint64)              // if set, called when subnet_receipt SSE event arrives
 }
 
 func DefaultClientConfig() ClientConfig {
@@ -192,6 +193,9 @@ func (c *HTTPClient) parseSSEResponse(r io.Reader, nonce uint64) (*host.HostResp
 				result.Nonce = receipt.Nonce
 				result.Receipt = receipt.Receipt
 				result.ConfirmedAt = receipt.ConfirmedAt
+			}
+			if c.config.ReceiptCallback != nil {
+				c.config.ReceiptCallback(nonce)
 			}
 			continue
 		}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"subnet/host"
 	"subnet/state"
 	"subnet/types"
 	"subnet/user"
@@ -20,12 +18,16 @@ import (
 
 // streamRegistry routes SSE lines to per-request writers by nonce.
 type streamRegistry struct {
-	mu      sync.RWMutex
-	writers map[uint64]io.Writer
+	mu              sync.RWMutex
+	writers         map[uint64]io.Writer
+	receiptHandlers map[uint64]func()
 }
 
 func newStreamRegistry() *streamRegistry {
-	return &streamRegistry{writers: make(map[uint64]io.Writer)}
+	return &streamRegistry{
+		writers:         make(map[uint64]io.Writer),
+		receiptHandlers: make(map[uint64]func()),
+	}
 }
 
 func (r *streamRegistry) register(nonce uint64, w io.Writer) {
@@ -34,10 +36,26 @@ func (r *streamRegistry) register(nonce uint64, w io.Writer) {
 	r.mu.Unlock()
 }
 
+func (r *streamRegistry) registerReceiptHandler(nonce uint64, fn func()) {
+	r.mu.Lock()
+	r.receiptHandlers[nonce] = fn
+	r.mu.Unlock()
+}
+
 func (r *streamRegistry) unregister(nonce uint64) {
 	r.mu.Lock()
 	delete(r.writers, nonce)
+	delete(r.receiptHandlers, nonce)
 	r.mu.Unlock()
+}
+
+func (r *streamRegistry) recordReceipt(nonce uint64) {
+	r.mu.RLock()
+	fn := r.receiptHandlers[nonce]
+	r.mu.RUnlock()
+	if fn != nil {
+		fn()
+	}
 }
 
 func (r *streamRegistry) callback(nonce uint64, line string) {
@@ -68,12 +86,70 @@ type Proxy struct {
 	escrowID string
 	model    string
 	registry *streamRegistry
+	engine   *SpeculativeEngine
+	perf     *PerfTracker
 }
 
 type chatRequest struct {
 	Model     string `json:"model"`
 	Stream    bool   `json:"stream"`
 	MaxTokens uint64 `json:"max_tokens"`
+}
+
+// normalizeContent converts multi-part content arrays to simple strings.
+// [{"type":"text","text":"A"},{"type":"text","text":"B"}] → "A\nB"
+func normalizeContent(body []byte) []byte {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return body
+	}
+	msgsRaw, ok := raw["messages"]
+	if !ok {
+		return body
+	}
+
+	var msgs []map[string]json.RawMessage
+	if err := json.Unmarshal(msgsRaw, &msgs); err != nil {
+		return body
+	}
+
+	changed := false
+	for i, msg := range msgs {
+		contentRaw, ok := msg["content"]
+		if !ok {
+			continue
+		}
+		var parts []map[string]string
+		if err := json.Unmarshal(contentRaw, &parts); err != nil {
+			continue
+		}
+		var texts []string
+		for _, p := range parts {
+			if p["type"] == "text" && p["text"] != "" {
+				texts = append(texts, p["text"])
+			}
+		}
+		if len(texts) > 0 {
+			combined, _ := json.Marshal(strings.Join(texts, "\n"))
+			msgs[i]["content"] = combined
+			changed = true
+		}
+	}
+
+	if !changed {
+		return body
+	}
+
+	newMsgs, err := json.Marshal(msgs)
+	if err != nil {
+		return body
+	}
+	raw["messages"] = newMsgs
+	out, err := json.Marshal(raw)
+	if err != nil {
+		return body
+	}
+	return out
 }
 
 func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
@@ -87,6 +163,8 @@ func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	body = normalizeContent(body)
 
 	var req chatRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -118,105 +196,6 @@ func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// timeoutBuffer is added to session config deadlines so verifiers have
-// passed their own deadline before the proxy fires the timeout.
-// Var (not const) so tests can set it to 0 for fast execution.
-var timeoutBuffer = 5 * time.Second
-
-// runInference sends the inference to the host with at most two attempts.
-// On first failure, waits for the appropriate deadline then retries once.
-// If both attempts fail, collects timeout votes and submits MsgTimeoutInference.
-func (p *Proxy) runInference(ctx context.Context, params user.InferenceParams, w io.Writer) error {
-	prepared, err := p.session.PrepareInference(params)
-	if err != nil {
-		return fmt.Errorf("prepare: %w", err)
-	}
-
-	nonce := prepared.Nonce()
-	if w != nil {
-		p.registry.register(nonce, w)
-		defer p.registry.unregister(nonce)
-	}
-
-	cfg := p.sm.SnapshotState().Config
-	now := time.Now()
-
-	// Attempt 1.
-	finished, confirmedAt, err := p.sendAndProcess(ctx, prepared, nonce)
-	if err != nil {
-		return err
-	}
-	if finished {
-		return nil
-	}
-
-	// Wait for the appropriate deadline.
-	var reason types.TimeoutReason
-	if confirmedAt > 0 {
-		deadline := time.Unix(confirmedAt, 0).Add(
-			time.Duration(cfg.ExecutionTimeout)*time.Second + timeoutBuffer)
-		if !sleepUntil(ctx, deadline) {
-			return ctx.Err()
-		}
-		reason = types.TimeoutReason_TIMEOUT_REASON_EXECUTION
-	} else {
-		deadline := now.Add(time.Duration(cfg.RefusalTimeout)*time.Second + timeoutBuffer)
-		if !sleepUntil(ctx, deadline) {
-			return ctx.Err()
-		}
-		reason = types.TimeoutReason_TIMEOUT_REASON_REFUSED
-	}
-
-	// Attempt 2 (final).
-	if w != nil {
-		writeStreamReset(w)
-	}
-	finished, confirmedAt, err = p.sendAndProcess(ctx, prepared, nonce)
-	if err != nil {
-		return err
-	}
-	if finished {
-		return nil
-	}
-
-	// Update reason if attempt 2 revealed a receipt.
-	if confirmedAt > 0 {
-		reason = types.TimeoutReason_TIMEOUT_REASON_EXECUTION
-	}
-
-	return p.handleTimeout(ctx, prepared, nonce, reason, params)
-}
-
-// sendAndProcess sends the prepared inference and processes the response.
-// Returns finished=true when MsgFinishInference is in the host's mempool.
-// confirmedAt is the executor's receipt timestamp (0 if no receipt received).
-func (p *Proxy) sendAndProcess(ctx context.Context, prepared *user.PreparedInference, nonce uint64) (finished bool, confirmedAt int64, err error) {
-	resp, sendErr := p.session.SendOnly(ctx, prepared)
-	if sendErr != nil && resp == nil {
-		return false, 0, nil
-	}
-
-	if err := p.session.ProcessResponse(prepared.HostIdx(), resp, nonce); err != nil {
-		return false, 0, fmt.Errorf("process response: %w", err)
-	}
-
-	if sendErr == nil && hasMsgFinish(resp.Mempool, nonce) {
-		return true, resp.ConfirmedAt, nil
-	}
-
-	return false, resp.ConfirmedAt, nil
-}
-
-// sleepUntil blocks until deadline or context cancellation.
-// Returns true if the deadline was reached, false if cancelled.
-func sleepUntil(ctx context.Context, deadline time.Time) bool {
-	d := time.Until(deadline)
-	if d <= 0 {
-		return true
-	}
-	return sleep(ctx, d)
-}
-
 // hasMsgFinish returns true if mempool contains MsgFinishInference for the given nonce.
 func hasMsgFinish(txs []*types.SubnetTx, nonce uint64) bool {
 	for _, tx := range txs {
@@ -225,50 +204,6 @@ func hasMsgFinish(txs []*types.SubnetTx, nonce uint64) bool {
 		}
 	}
 	return false
-}
-
-// sleep returns false if context was cancelled during the wait.
-func sleep(ctx context.Context, d time.Duration) bool {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-t.C:
-		return true
-	case <-ctx.Done():
-		return false
-	}
-}
-
-// handleTimeout collects timeout votes from verifier hosts and submits
-// MsgTimeoutInference. Single attempt -- the timeoutBuffer ensures verifiers
-// have already passed their own deadline before the proxy fires.
-func (p *Proxy) handleTimeout(ctx context.Context, prepared *user.PreparedInference, nonce uint64, reason types.TimeoutReason, params user.InferenceParams) error {
-	payload := &host.InferencePayload{
-		Prompt:      params.Prompt,
-		Model:       params.Model,
-		InputLength: params.InputLength,
-		MaxTokens:   params.MaxTokens,
-		StartedAt:   params.StartedAt,
-	}
-
-	verifiers := p.session.TimeoutVerifiers()
-	storedDiffs := p.session.Diffs()
-
-	votes, err := p.session.CollectTimeoutVotes(ctx, nonce, reason, payload, verifiers, storedDiffs)
-	if err != nil {
-		return fmt.Errorf("collect timeout votes: %w", err)
-	}
-
-	if p.session.HasSufficientTimeoutVotes(votes) {
-		p.session.AddPendingTimeoutTx(nonce, reason, votes)
-		if err := p.session.SendPendingDiff(ctx); err != nil {
-			return fmt.Errorf("send timeout diff: %w", err)
-		}
-		return fmt.Errorf("inference %d timed out: %s", nonce, reason)
-	}
-
-	log.Printf("inference %d: insufficient timeout votes, skipping timeout tx", nonce)
-	return fmt.Errorf("inference %d timed out but insufficient votes to prove it", nonce)
 }
 
 // deferredWriter delays WriteHeader(200) until the first Write call.
@@ -299,16 +234,14 @@ func (d *deferredWriter) Flush() {
 func (p *Proxy) handleStreaming(w http.ResponseWriter, r *http.Request, params user.InferenceParams) {
 	dw := &deferredWriter{w: w}
 
-	err := p.runInference(r.Context(), params, dw)
+	err := p.engine.RunInference(r.Context(), params, dw)
 	if err != nil {
 		if !dw.started {
-			// No streaming data sent yet -- return proper HTTP error.
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadGateway)
 			fmt.Fprintf(w, `{"error":{"message":%q}}`, err.Error())
 			return
 		}
-		// Already streaming -- send error as SSE data.
 		log.Printf("inference error (mid-stream): %v", err)
 		fmt.Fprintf(dw, "data: {\"error\":{\"message\":%q}}\n\n", err.Error())
 		dw.Flush()
@@ -322,7 +255,7 @@ func (p *Proxy) handleStreaming(w http.ResponseWriter, r *http.Request, params u
 func (p *Proxy) handleNonStreaming(w http.ResponseWriter, r *http.Request, params user.InferenceParams) {
 	var buf bytes.Buffer
 
-	err := p.runInference(r.Context(), params, &buf)
+	err := p.engine.RunInference(r.Context(), params, &buf)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusBadGateway)
 		return
@@ -389,6 +322,13 @@ type statusResponse struct {
 	Balance  uint64 `json:"balance"`
 }
 
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	enc.Encode(v)
+}
+
 func (p *Proxy) handleDebugPending(w http.ResponseWriter, r *http.Request) {
 	pending := p.session.PendingTxs()
 	warmKeys := p.sm.WarmKeys()
@@ -415,13 +355,25 @@ func (p *Proxy) handleDebugPending(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	resp := map[string]any{
+	writeJSON(w, map[string]any{
 		"nonce":     p.session.Nonce(),
 		"pending":   txs,
 		"warm_keys": warmKeys,
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	})
+}
+
+func (p *Proxy) handleDebugPerf(w http.ResponseWriter, r *http.Request) {
+	stats := p.perf.AllStats()
+	requests := p.perf.RecentRequests()
+	writeJSON(w, map[string]any{
+		"hosts":                  stats,
+		"requests":               requests,
+		"receipt_timeout_ms":     ReceiptTimeout.Milliseconds(),
+		"advantage_threshold":    ParallelAdvantageThreshold,
+		"unresponsive_threshold": UnresponsiveThreshold,
+		"host_window_size":       perfWindowSize,
+		"request_log_size":       requestLogSize,
+	})
 }
 
 func (p *Proxy) handleDebugState(w http.ResponseWriter, r *http.Request) {
@@ -446,14 +398,12 @@ func (p *Proxy) handleDebugState(w http.ResponseWriter, r *http.Request) {
 		counts[name]++
 	}
 
-	resp := map[string]any{
-		"nonce":             st.LatestNonce,
-		"balance":           st.Balance,
-		"total_inferences":  len(st.Inferences),
-		"status_counts":     counts,
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	writeJSON(w, map[string]any{
+		"nonce":            st.LatestNonce,
+		"balance":          st.Balance,
+		"total_inferences": len(st.Inferences),
+		"status_counts":    counts,
+	})
 }
 
 func (p *Proxy) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -476,13 +426,10 @@ func (p *Proxy) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	st := p.sm.SnapshotState()
-	resp := statusResponse{
+	writeJSON(w, statusResponse{
 		EscrowID: p.escrowID,
 		Nonce:    p.session.Nonce(),
 		Phase:    phaseStr,
 		Balance:  st.Balance,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	})
 }

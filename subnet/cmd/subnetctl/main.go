@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"subnet/bridge"
 	"subnet/state"
@@ -101,13 +102,25 @@ func main() {
 
 	registry := newStreamRegistry()
 
+	perfStore, err := NewPerfStore(sp)
+	if err != nil {
+		log.Fatalf("open perf store: %v", err)
+	}
+	defer perfStore.Close()
+	perf := NewPerfTracker(perfStore)
+
+	receiptCB := func(nonce uint64) {
+		registry.recordReceipt(nonce)
+	}
+
 	br := bridge.NewRESTBridge(crest)
 	cfg := user.HTTPSessionConfig{
-		PrivateKeyHex:  keyHex,
-		EscrowID:       eid,
-		Bridge:         br,
-		StoragePath:    sp,
-		StreamCallback: registry.callback,
+		PrivateKeyHex:   keyHex,
+		EscrowID:        eid,
+		Bridge:          br,
+		StoragePath:     sp,
+		StreamCallback:  registry.callback,
+		ReceiptCallback: receiptCB,
 	}
 
 	session, sm, err := user.NewHTTPSession(cfg)
@@ -116,12 +129,17 @@ func main() {
 	}
 	defer session.Close()
 
+	groupSize := len(session.Clients())
+	engine := NewSpeculativeEngine(session, sm, perf, registry, groupSize)
+
 	proxy := &Proxy{
 		session:  session,
 		sm:       sm,
 		escrowID: eid,
 		model:    mdl,
 		registry: registry,
+		engine:   engine,
+		perf:     perf,
 	}
 
 	mux := http.NewServeMux()
@@ -130,12 +148,62 @@ func main() {
 	mux.HandleFunc("/v1/status", proxy.handleStatus)
 	mux.HandleFunc("/v1/debug/pending", proxy.handleDebugPending)
 	mux.HandleFunc("/v1/debug/state", proxy.handleDebugState)
+	mux.HandleFunc("/v1/debug/perf", proxy.handleDebugPerf)
+
+	var handler http.Handler = mux
+	apiKeys := parseAPIKeys(os.Getenv("SUBNET_API_KEYS"))
+	if len(apiKeys) > 0 {
+		log.Printf("API key auth enabled (%d key(s))", len(apiKeys))
+		handler = bearerAuthMiddleware(apiKeys, mux)
+	}
 
 	addr := ":" + p
 	log.Printf("subnetctl listening on %s (escrow=%s model=%s)", addr, eid, mdl)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatalf("server: %v", err)
 	}
+}
+
+func parseAPIKeys(raw string) map[string]struct{} {
+	keys := make(map[string]struct{})
+	for _, k := range strings.Split(raw, ",") {
+		k = strings.TrimSpace(k)
+		if k != "" {
+			keys[k] = struct{}{}
+		}
+	}
+	return keys
+}
+
+var authExemptPaths = map[string]bool{
+	"/v1/status": true,
+}
+
+func bearerAuthMiddleware(validKeys map[string]struct{}, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if authExemptPaths[r.URL.Path] {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		auth := r.Header.Get("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":{"message":"Missing or invalid Authorization header. Expected: Bearer <api-key>","type":"invalid_request_error","code":"invalid_api_key"}}`)
+			return
+		}
+
+		key := strings.TrimPrefix(auth, "Bearer ")
+		if _, ok := validKeys[key]; !ok {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":{"message":"Invalid API key provided.","type":"invalid_request_error","code":"invalid_api_key"}}`)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 func marshalSettlement(p *state.SettlementPayload) ([]byte, error) {
