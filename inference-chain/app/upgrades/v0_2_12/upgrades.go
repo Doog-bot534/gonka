@@ -74,15 +74,6 @@ func removeTopMiner(ctx context.Context, k keeper.Keeper) error {
 	if err != nil {
 		return err
 	}
-	topRewardAccount := k.AccountKeeper.GetModuleAccount(ctx, types.TopRewardPoolAccName)
-	if topRewardAccount != nil {
-		rewardAddress := topRewardAccount.GetAddress()
-		balances := k.BankView.GetAllBalances(ctx, rewardAddress)
-		err := k.BankKeeper.BurnCoins(ctx, types.TopRewardPoolAccName, balances, "Removing top miner reward pool")
-		if err != nil {
-			return err
-		}
-	}
 	tokenomicsData, found := k.GetTokenomicsData(ctx)
 	if !found {
 		return errors.New("tokenomics data not found")
