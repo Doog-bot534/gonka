@@ -478,7 +478,6 @@ fun initCluster(
     reboot: Boolean = false,
     resetMlNodes: Boolean = true,
     mergeSpec: Spec<AppState>? = null,
-    retryAttempt: Int = 0,
 ): Pair<LocalCluster, LocalInferencePair> {
     logSection("Cluster Discovery")
     val finalConfig = mergeSpec?.let {
@@ -495,46 +494,19 @@ fun initCluster(
         c
     } catch (e: Exception) {
         Logger.error(e, "Failed to initialize cluster")
-        if (shouldRetryBootstrap(e, retryAttempt)) {
-            Logger.warn(e, "Transient bootstrap failure on attempt {}, retrying with reboot", retryAttempt + 1)
-            logSection("Transient bootstrap failure, retrying")
-            return initCluster(
-                joinCount = joinCount,
-                config = finalConfig,
-                reboot = true,
-                resetMlNodes = resetMlNodes,
-                retryAttempt = retryAttempt + 1,
-            )
-        }
         if (reboot) {
-            Logger.error(e, "Failed to initialize cluster after reboot attempts")
+            Logger.error(e, "Failed to initialize cluster, rebooting")
             throw e
         }
         Logger.error(e, "Error initializing cluser, retrying")
         logSection("Exception during cluster initialization, retrying")
-        return initCluster(
-            joinCount = joinCount,
-            config = finalConfig,
-            reboot = true,
-            resetMlNodes = resetMlNodes,
-            retryAttempt = retryAttempt + 1,
-        )
+        return initCluster(joinCount, finalConfig, reboot = true)
     }
     logSection("Cluster Initialized")
     cluster.allPairs.forEach {
         Logger.info("${it.name} has account ${it.node.getColdAddress()}", "")
     }
     return cluster to cluster.genesis
-}
-
-private fun shouldRetryBootstrap(error: Throwable, retryAttempt: Int, maxRetries: Int = 2): Boolean {
-    if (retryAttempt >= maxRetries) return false
-    return generateSequence(error) { it.cause }
-        .any { cause ->
-            cause is java.net.SocketException ||
-                cause is com.github.kittinunf.fuel.core.FuelError ||
-                cause is NotReadyException
-        }
 }
 
 fun setupLocalCluster(joinCount: Int, config: ApplicationConfig, reboot: Boolean = false): LocalCluster {
