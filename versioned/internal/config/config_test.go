@@ -99,6 +99,26 @@ func TestLoad_ForceVersions(t *testing.T) {
 	}
 }
 
+func TestLoadOverrides_UnderscoresToDots(t *testing.T) {
+	t.Setenv("VERSIOND_ORACLE_URL", "http://oracle:8080/versions")
+	t.Setenv("VERSIOND_OVERRIDE_v0_2_11", "/path/to/v0.2.11")
+	t.Setenv("VERSIOND_OVERRIDE_v0_2_12", "/path/to/v0.2.12")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if p, ok := cfg.Overrides["v0.2.11"]; !ok || p != "/path/to/v0.2.11" {
+		t.Errorf("Overrides[v0.2.11] = %q (ok=%v), want /path/to/v0.2.11", p, ok)
+	}
+	if p, ok := cfg.Overrides["v0.2.12"]; !ok || p != "/path/to/v0.2.12" {
+		t.Errorf("Overrides[v0.2.12] = %q (ok=%v), want /path/to/v0.2.12", p, ok)
+	}
+	if _, ok := cfg.Overrides["v0_2_11"]; ok {
+		t.Error("Overrides should not contain raw underscore key v0_2_11")
+	}
+}
+
 func TestLoad_ForceVersionsEmpty(t *testing.T) {
 	t.Setenv("VERSIOND_ORACLE_URL", "http://oracle:8080/versions")
 
@@ -126,5 +146,19 @@ func TestLoad_ForceVersionsTrimsSpaces(t *testing.T) {
 	}
 	if cfg.ForceVersions[0] != "v1" || cfg.ForceVersions[1] != "v2" {
 		t.Errorf("ForceVersions = %v, want [v1 v2]", cfg.ForceVersions)
+	}
+}
+
+func TestLoad_ForceVersionsDottedWithOverride(t *testing.T) {
+	t.Setenv("VERSIOND_ORACLE_URL", "http://oracle:8080/versions")
+	t.Setenv("VERSIOND_FORCE", "v0.2.11")
+	t.Setenv("VERSIOND_OVERRIDE_v0_2_11", "/path/to/subnet")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := cfg.Overrides["v0.2.11"]; !ok {
+		t.Fatal("forced version v0.2.11 should match override set via VERSIOND_OVERRIDE_v0_2_11")
 	}
 }

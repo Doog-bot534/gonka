@@ -41,7 +41,7 @@ func Load() (Config, error) {
 		if _, ok := cfg.Overrides[name]; !ok {
 			slog.Error("forced version has no override, will be skipped during reconcile",
 				"version", name,
-				"hint", fmt.Sprintf("set VERSIOND_OVERRIDE_%s=/path/to/binary", name))
+				"hint", fmt.Sprintf("set VERSIOND_OVERRIDE_%s=/path/to/binary", versionToEnvSuffix(name)))
 		}
 	}
 
@@ -56,7 +56,8 @@ func ListenAddr() string {
 const overridePrefix = "VERSIOND_OVERRIDE_"
 
 // loadOverrides scans env vars for VERSIOND_OVERRIDE_<name>=<path>.
-// The suffix after the prefix is the version name (must match oracle exactly).
+// Underscores in the env var suffix are converted back to dots so that
+// VERSIOND_OVERRIDE_v0_2_11 maps to version name "v0.2.11".
 func loadOverrides() map[string]string {
 	overrides := make(map[string]string)
 	for _, e := range os.Environ() {
@@ -67,13 +68,26 @@ func loadOverrides() map[string]string {
 		if idx < 0 {
 			continue
 		}
-		name := e[len(overridePrefix):idx]
+		suffix := e[len(overridePrefix):idx]
+		name := envSuffixToVersion(suffix)
 		path := e[idx+1:]
 		if name != "" && path != "" {
 			overrides[name] = path
 		}
 	}
 	return overrides
+}
+
+// envSuffixToVersion converts an env var suffix back to a version name
+// by replacing underscores with dots (e.g. "v0_2_11" -> "v0.2.11").
+func envSuffixToVersion(suffix string) string {
+	return strings.ReplaceAll(suffix, "_", ".")
+}
+
+// versionToEnvSuffix converts a version name to an env var suffix
+// by replacing dots with underscores (e.g. "v0.2.11" -> "v0_2_11").
+func versionToEnvSuffix(name string) string {
+	return strings.ReplaceAll(name, ".", "_")
 }
 
 // loadForceVersions parses VERSIOND_FORCE env var (comma-separated version names).
