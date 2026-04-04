@@ -13,6 +13,7 @@ message EpochGroupDataV1 {
   uint64 effective_block_height = 4;
   uint64 last_block_height = 5;
   repeated SeedSignature member_seed_signatures = 6;
+  reserved 7;
   repeated ValidationWeight validation_weights = 8;
   uint64 unit_of_compute_price = 9;
   uint64 number_of_requests = 10;
