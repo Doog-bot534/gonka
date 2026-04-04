@@ -79,7 +79,17 @@ class UpgradeTests : TestermintTest() {
         Thread.sleep(Duration.ofMinutes(5))
         logSection("Verifying upgrade")
         genesis.node.waitForNextBlock(1)
-        // Some other action?
+        genesis.waitForBlock(15) {
+            cluster.allPairs.all { pair ->
+                runCatching {
+                    pair.api.getParticipants()
+                    pair.api.getNodes()
+                    pair.node.getColdAddress()
+                    true
+                }.getOrDefault(false)
+            }
+        }
+
         cluster.allPairs.forEach {
             it.api.getParticipants()
             it.api.getNodes()
