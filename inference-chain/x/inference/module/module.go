@@ -749,18 +749,47 @@ func (am AppModule) captureGenerationStartTimestamp(ctx context.Context, blockTi
 		"generationStartTimestamp", blockTime)
 }
 
-// captureValidationSnapshot stores validator weights and app_hash at validation phase start
+// captureValidationSnapshot stores per-model voting powers and app_hash at validation phase start
 // for deterministic sampling synchronization between chain and DAPI.
+// Voting powers are delegation-resolved: DIRECT members get own weight + delegated weight.
 // Used by both regular PoC and confirmation PoC.
 func (am AppModule) captureValidationSnapshot(ctx context.Context, blockHeight, snapshotKey int64, logContext string) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime().Unix()
 
-	currentValidatorWeights, err := am.getCurrentValidatorWeights(ctx)
-	if err != nil {
-		am.LogError("captureValidationSnapshot: Failed to get validator weights", types.PoC,
-			"context", logContext, "error", err)
-		return
+	// Compute per-model voting powers from AP(N-1).weight + delegation + store commits.
+	// AP(N-1) consensus weights are the base. Delegation resolves who votes for whom.
+	// DIRECT membership comes from store commits (who submitted PoC for each model).
+	consensusWeights, totalNetworkWeight := am.getPreviousConsensusWeights(ctx)
+	delegations, _, _ := am.loadDelegationState(ctx)
+
+	var modelWeights []*types.ModelVotingPowers
+	totalWeight := totalNetworkWeight
+
+	// Only compute when AP(N-1) exists (skip genesis bootstrap -- pocValidated accepts
+	// when no voting powers exist)
+	if totalNetworkWeight > 0 {
+		allStoreCommits, err := am.keeper.GetAllPoCV2StoreCommitsForStage(ctx, snapshotKey)
+		if err != nil {
+			am.LogError("captureValidationSnapshot: Failed to get store commits", types.PoC,
+				"context", logContext, "error", err)
+			return
+		}
+		storeCommitKeys := make([]types.PoCParticipantModelKey, 0, len(allStoreCommits))
+		for key := range allStoreCommits {
+			storeCommitKeys = append(storeCommitKeys, key)
+		}
+
+		modelVotingPowers, _ := ComputeModelVotingPowers(
+			storeCommitKeys, consensusWeights, totalNetworkWeight, delegations,
+		)
+
+		for modelID, vps := range modelVotingPowers {
+			modelWeights = append(modelWeights, &types.ModelVotingPowers{
+				ModelId:      modelID,
+				VotingPowers: votingPowerMapToSlice(vps),
+			})
+		}
 	}
 
 	var generationStartTimestamp int64
@@ -773,7 +802,8 @@ func (am AppModule) captureValidationSnapshot(ctx context.Context, blockHeight, 
 		PocStageStartHeight:      snapshotKey,
 		SnapshotHeight:           blockHeight,
 		AppHash:                  hex.EncodeToString(sdkCtx.HeaderInfo().AppHash),
-		ValidatorWeights:         validatorWeightsMapToSlice(currentValidatorWeights),
+		ModelVotingPowers:        modelWeights,
+		TotalNetworkWeight:       totalWeight,
 		GenerationStartTimestamp: generationStartTimestamp,
 		ExchangeEndTimestamp:     blockTime,
 	}
@@ -788,17 +818,18 @@ func (am AppModule) captureValidationSnapshot(ctx context.Context, blockHeight, 
 		"context", logContext,
 		"snapshotKey", snapshotKey,
 		"snapshotHeight", blockHeight,
-		"numValidators", len(currentValidatorWeights),
+		"numModels", len(modelWeights),
+		"totalNetworkWeight", totalWeight,
 		"exchangeEndTimestamp", blockTime,
 	)
 }
 
-func validatorWeightsMapToSlice(weights map[string]int64) []*types.ValidatorWeight {
-	result := make([]*types.ValidatorWeight, 0, len(weights))
+func votingPowerMapToSlice(weights map[string]int64) []*types.VotingPowerEntry {
+	result := make([]*types.VotingPowerEntry, 0, len(weights))
 	for addr, w := range weights {
-		result = append(result, &types.ValidatorWeight{Address: addr, Weight: w})
+		result = append(result, &types.VotingPowerEntry{Address: addr, VotingPower: w})
 	}
-	slices.SortFunc(result, func(a, b *types.ValidatorWeight) int {
+	slices.SortFunc(result, func(a, b *types.VotingPowerEntry) int {
 		return cmp.Compare(a.Address, b.Address)
 	})
 	return result

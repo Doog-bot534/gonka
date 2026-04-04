@@ -215,9 +215,25 @@ func TestUpdateConfirmationWeightsV2_UsesPerModelWeightScaleFactor(t *testing.T)
 		Phase:                 types.ConfirmationPoCPhase_CONFIRMATION_POC_COMPLETED,
 	}
 
-	result := am.updateConfirmationWeightsV2(ctx, event, map[string]int64{
-		testutil.Validator: 100,
-	})
+	// Set up validation snapshot with per-model voting powers
+	require.NoError(t, k.SetPoCValidationSnapshot(ctx, types.PoCValidationSnapshot{
+		PocStageStartHeight: 180,
+		SnapshotHeight:      190,
+		AppHash:             "test-hash",
+		ModelVotingPowers: []*types.ModelVotingPowers{
+			{
+				ModelId:      "model-a",
+				VotingPowers: []*types.VotingPowerEntry{{Address: testutil.Validator, VotingPower: 100}},
+			},
+			{
+				ModelId:      "model-b",
+				VotingPowers: []*types.VotingPowerEntry{{Address: testutil.Validator, VotingPower: 100}},
+			},
+		},
+		TotalNetworkWeight: 100,
+	}))
+
+	result := am.updateConfirmationWeightsV2(ctx, event)
 
 	require.Len(t, result, 1)
 	require.Equal(t, testutil.Executor, result[0].Index)

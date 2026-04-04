@@ -177,6 +177,52 @@ func (am AppModule) loadDelegationState(ctx context.Context) (
 	return delegations, refusals, intents
 }
 
+// ComputeModelVotingPowers computes per-model voting powers for PoC validation acceptance.
+// DIRECT membership comes from store commit keys (participants who submitted PoC).
+// Delegation-resolved: each DIRECT member's votingPower includes delegated consensus weight.
+// Uses AP(N-1) consensus weights as the base.
+func ComputeModelVotingPowers(
+	storeCommitKeys []types.PoCParticipantModelKey,
+	consensusWeights map[string]int64,
+	totalNetworkWeight int64,
+	delegations map[string]map[string]string,
+) (map[string]map[string]int64, int64) {
+	// Build DIRECT membership per model from store commit keys
+	directMembers := make(map[string]map[string]bool)
+	for _, key := range storeCommitKeys {
+		if directMembers[key.ModelID] == nil {
+			directMembers[key.ModelID] = make(map[string]bool)
+		}
+		directMembers[key.ModelID][key.ParticipantAddress] = true
+	}
+
+	modelVotingPowers := make(map[string]map[string]int64, len(directMembers))
+
+	for modelID, members := range directMembers {
+		vp := make(map[string]int64, len(members))
+
+		for addr := range members {
+			vp[addr] = consensusWeights[addr]
+		}
+
+		// Add delegated weight
+		modelDelegations := delegations[modelID]
+		for delegator, target := range modelDelegations {
+			if !members[target] {
+				continue
+			}
+			if members[delegator] {
+				continue
+			}
+			vp[target] += consensusWeights[delegator]
+		}
+
+		modelVotingPowers[modelID] = vp
+	}
+
+	return modelVotingPowers, totalNetworkWeight
+}
+
 // delegationAdjustmentParams extracts DelegationAdjustmentParams from governance params.
 func (am AppModule) delegationAdjustmentParams(params types.Params) DelegationAdjustmentParams {
 	if params.DelegationParams == nil {

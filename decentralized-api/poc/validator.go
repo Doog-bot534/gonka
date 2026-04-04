@@ -205,12 +205,17 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 	logging.Info("OffChainValidator: found participants with commits", types.PoC,
 		"count", len(commitsResp.Commits))
 
-	// Query validation snapshot for sampling (if enabled)
+	// Query validation snapshot for per-model sampling (if enabled)
 	validationSlots := int(pocParams.ValidationSlots)
-	var snapshotWeights map[string]int64
 	var snapshotAppHash string
-	var sortedValidatorEntries []calculations.WeightEntry
-	var validatorTotalWeight int64
+	// Per-model voting powers from snapshot: model_id -> {address -> votingPower}
+	modelVotingPowers := make(map[string]map[string]int64)
+	// Per-model sorted entries for WRR sampling
+	type modelSamplingData struct {
+		entries    []calculations.WeightEntry
+		totalWeight int64
+	}
+	modelSampling := make(map[string]*modelSamplingData)
 	if validationSlots > 0 {
 		snapshotResp, err := queryClient.PoCValidationSnapshot(context.Background(),
 			&types.QueryPoCValidationSnapshotRequest{
@@ -220,14 +225,18 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 			logging.Warn("OffChainValidator: failed to query validation snapshot, falling back to O(N^2)", types.PoC,
 				"error", err)
 			validationSlots = 0 // Disable sampling on error
-		} else if snapshotResp.Found && snapshotResp.Snapshot != nil && snapshotResp.Snapshot.ValidatorWeights != nil {
-			snapshotWeights = validatorWeightsSliceToMap(snapshotResp.Snapshot.ValidatorWeights)
+		} else if snapshotResp.Found && snapshotResp.Snapshot != nil && len(snapshotResp.Snapshot.ModelVotingPowers) > 0 {
 			snapshotAppHash = snapshotResp.Snapshot.AppHash
-			sortedValidatorEntries, validatorTotalWeight = calculations.PrepareSortedEntries(snapshotWeights)
-			logging.Info("OffChainValidator: using validation snapshot for sampling", types.PoC,
+			for _, mvw := range snapshotResp.Snapshot.ModelVotingPowers {
+				weights := votingPowerSliceToMap(mvw.VotingPowers)
+				modelVotingPowers[mvw.ModelId] = weights
+				entries, total := calculations.PrepareSortedEntries(weights)
+				modelSampling[mvw.ModelId] = &modelSamplingData{entries: entries, totalWeight: total}
+			}
+			logging.Info("OffChainValidator: using per-model validation snapshot for sampling", types.PoC,
 				"appHash", snapshotAppHash,
 				"validationSlots", validationSlots,
-				"numValidators", len(snapshotWeights),
+				"numModels", len(modelVotingPowers),
 			)
 		} else {
 			logging.Warn("OffChainValidator: validation snapshot not found, falling back to O(N^2)", types.PoC)
@@ -239,20 +248,24 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 	workItems := make([]participantWork, 0, len(commitsResp.Commits))
 	skippedNotAssigned := 0
 	for _, commit := range commitsResp.Commits {
-		// If sampling is enabled, check if we're assigned to validate this participant
-		if validationSlots > 0 && sortedValidatorEntries != nil {
-			assignedValidators := calculations.GetSlotsFromSorted(
-				snapshotAppHash,
-				commit.ParticipantAddress,
-				commit.ModelId,
-				sortedValidatorEntries,
-				validatorTotalWeight,
-				validationSlots,
-			)
-			if !slices.Contains(assignedValidators, v.validatorAddress) {
-				skippedNotAssigned++
-				continue
+		// If sampling is enabled, check if we're assigned to validate this participant-model pair
+		if validationSlots > 0 {
+			sampling, hasSampling := modelSampling[commit.ModelId]
+			if hasSampling && sampling != nil {
+				assignedValidators := calculations.GetSlotsFromSorted(
+					snapshotAppHash,
+					commit.ParticipantAddress,
+					commit.ModelId,
+					sampling.entries,
+					sampling.totalWeight,
+					validationSlots,
+				)
+				if !slices.Contains(assignedValidators, v.validatorAddress) {
+					skippedNotAssigned++
+					continue
+				}
 			}
+			// No sampling data for this model -> validate (new model bootstrap)
 		}
 
 		// Get participant's inference URL
@@ -866,10 +879,10 @@ func (v *OffChainValidator) reportInvalidParticipant(pocHeight int64, participan
 	}
 }
 
-func validatorWeightsSliceToMap(weights []*types.ValidatorWeight) map[string]int64 {
-	result := make(map[string]int64, len(weights))
-	for _, w := range weights {
-		result[w.Address] = w.Weight
+func votingPowerSliceToMap(entries []*types.VotingPowerEntry) map[string]int64 {
+	result := make(map[string]int64, len(entries))
+	for _, e := range entries {
+		result[e.Address] = e.VotingPower
 	}
 	return result
 }

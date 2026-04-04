@@ -414,7 +414,7 @@ func (am AppModule) evaluateConfirmation(
 
 	var confirmationParticipants []*types.ActiveParticipant
 	if useV2 {
-		confirmationParticipants = am.updateConfirmationWeightsV2(ctx, event, currentValidatorWeights)
+		confirmationParticipants = am.updateConfirmationWeightsV2(ctx, event)
 		// Apply model coefficients (same aggregation as main PoC path)
 		for _, p := range confirmationParticipants {
 			p.Weight = AggregateConsensusWeight(ExtractModelWeights(p), coefficients)
@@ -479,7 +479,6 @@ func (am AppModule) evaluateConfirmation(
 func (am AppModule) updateConfirmationWeightsV2(
 	ctx context.Context,
 	event *types.ConfirmationPoCEvent,
-	currentValidatorWeights map[string]int64,
 ) []*types.ActiveParticipant {
 	// Get off-chain store commits using trigger_height as key
 	storeCommits, err := am.keeper.GetAllPoCV2StoreCommitsForStage(ctx, event.TriggerHeight)
@@ -581,15 +580,19 @@ func (am AppModule) updateConfirmationWeightsV2(
 		)
 	}
 
-	weightsForCalculator := currentValidatorWeights
-	if snapshotFound && validationSlots > 0 && len(snapshot.ValidatorWeights) > 0 {
-		weightsForCalculator = validatorWeightsSliceToMap(snapshot.ValidatorWeights)
-		am.LogInfo("updateConfirmationWeightsV2: Using snapshot weights for calculator", types.PoC,
-			"numValidators", len(weightsForCalculator))
+	// Load per-model voting powers from snapshot
+	modelVotingPowers := make(map[string]map[string]int64)
+	totalNetworkWeight := int64(0)
+	if snapshotFound {
+		for _, mvw := range snapshot.ModelVotingPowers {
+			modelVotingPowers[mvw.ModelId] = votingPowerSliceToMap(mvw.VotingPowers)
+		}
+		totalNetworkWeight = snapshot.TotalNetworkWeight
 	}
 
 	calculator := NewPoCWeightCalculator(
-		weightsForCalculator,
+		modelVotingPowers,
+		totalNetworkWeight,
 		storeCommits,
 		weightDistributions,
 		validationsV2,

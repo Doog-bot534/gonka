@@ -44,7 +44,8 @@ func CalculateTimeNormalizationFactor(
 // PoCWeightCalculator encapsulates all the data needed to calculate new weights for participants.
 // Uses off-chain store commits and weight distributions instead of on-chain batches.
 type PoCWeightCalculator struct {
-	CurrentValidatorWeights map[string]int64
+	ModelVotingPowers       map[string]map[string]int64 // model -> (participant -> votingPower)
+	TotalNetworkWeight      int64
 	StoreCommits            map[types.PoCParticipantModelKey]types.PoCV2StoreCommit
 	NodeWeightDistributions map[types.PoCParticipantModelKey]types.MLNodeWeightDistribution
 	Validations             map[types.PoCParticipantModelKey][]types.PoCValidationV2
@@ -58,13 +59,12 @@ type PoCWeightCalculator struct {
 	GuardianAddresses       map[string]bool
 	AppHash                 string
 	ValidationSlots         int
-	sortedValidatorEntries  []calculations.WeightEntry
-	validatorTotalWeight    int64
 }
 
 // NewPoCWeightCalculator creates a new PoCWeightCalculator instance.
 func NewPoCWeightCalculator(
-	currentValidatorWeights map[string]int64,
+	modelVotingPowers map[string]map[string]int64,
+	totalNetworkWeight int64,
 	storeCommits map[types.PoCParticipantModelKey]types.PoCV2StoreCommit,
 	nodeWeightDistributions map[types.PoCParticipantModelKey]types.MLNodeWeightDistribution,
 	validations map[types.PoCParticipantModelKey][]types.PoCValidationV2,
@@ -79,8 +79,9 @@ func NewPoCWeightCalculator(
 	appHash string,
 	validationSlots int,
 ) *PoCWeightCalculator {
-	wc := &PoCWeightCalculator{
-		CurrentValidatorWeights: currentValidatorWeights,
+	return &PoCWeightCalculator{
+		ModelVotingPowers:       modelVotingPowers,
+		TotalNetworkWeight:      totalNetworkWeight,
 		StoreCommits:            storeCommits,
 		NodeWeightDistributions: nodeWeightDistributions,
 		Validations:             validations,
@@ -95,12 +96,6 @@ func NewPoCWeightCalculator(
 		AppHash:                 appHash,
 		ValidationSlots:         validationSlots,
 	}
-
-	if validationSlots > 0 {
-		wc.sortedValidatorEntries, wc.validatorTotalWeight = calculations.PrepareSortedEntries(currentValidatorWeights)
-	}
-
-	return wc
 }
 
 // Calculate computes the new weights for active participants.
@@ -228,10 +223,17 @@ func (wc *PoCWeightCalculator) getParticipantValidations(key types.PoCParticipan
 	wc.Logger.LogInfo("Calculate: Found ALL submitted validations for participant", types.PoC,
 		"participant", key.ParticipantAddress, "modelId", key.ModelID, "len(vals)", len(vals), "validators", validators)
 
+	// Filter to validations from participants with voting power for this model.
+	// When no per-model voting data exists (bootstrap), accept all validations.
+	modelVP := wc.ModelVotingPowers[key.ModelID]
 	filteredVals := make([]types.PoCValidationV2, 0, len(vals))
-	for _, v := range vals {
-		if _, ok := wc.CurrentValidatorWeights[v.ValidatorParticipantAddress]; ok {
-			filteredVals = append(filteredVals, v)
+	if len(modelVP) == 0 {
+		filteredVals = vals
+	} else {
+		for _, v := range vals {
+			if _, ok := modelVP[v.ValidatorParticipantAddress]; ok {
+				filteredVals = append(filteredVals, v)
+			}
 		}
 	}
 
@@ -239,73 +241,70 @@ func (wc *PoCWeightCalculator) getParticipantValidations(key types.PoCParticipan
 	for i, v := range filteredVals {
 		filteredValidators[i] = v.ValidatorParticipantAddress
 	}
-	wc.Logger.LogInfo("Calculate: filtered validations to include only current validators", types.PoC,
+	wc.Logger.LogInfo("Calculate: filtered validations to model validators with voting power", types.PoC,
 		"participant", key.ParticipantAddress, "modelId", key.ModelID, "len(vals)", len(filteredVals), "validators", filteredValidators)
 
 	return filteredVals
 }
 
 // pocValidated checks if the participant passed validation by majority vote.
-// When ValidationSlots > 0, uses sampled validator subset for O(N * N_SLOTS) complexity.
-// When ValidationSlots == 0, falls back to O(N²) all-validator validation.
+// Uses per-model voting powers (delegation-resolved) for both slot sampling and threshold.
+// Only DIRECT members (participants who submitted PoC for this model) have voting power.
+// Delegated consensus weight flows into DIRECT members' voting power.
 func (wc *PoCWeightCalculator) pocValidated(vals []types.PoCValidationV2, key types.PoCParticipantModelKey) bool {
-	if len(wc.CurrentValidatorWeights) == 0 {
-		if wc.EpochStartBlockHeight > 0 {
-			wc.Logger.LogError("Calculate: No current validator weights found. Accepting the participant.", types.PoC, "participant", key.ParticipantAddress, "modelId", key.ModelID)
+	votingPowers := wc.ModelVotingPowers[key.ModelID]
+	if len(votingPowers) == 0 {
+		// No per-model voting data (no snapshot or model not in snapshot).
+		// Accept: matches pre-delegation behavior and handles bootstrap epochs.
+		wc.Logger.LogInfo("Calculate: No voting powers for model. Accepting.", types.PoC,
+			"participant", key.ParticipantAddress, "modelId", key.ModelID)
+		return true
+	}
+
+	if wc.ValidationSlots > 0 {
+		// Slot-based: sample from per-model votingPower
+		sortedEntries, totalVP := calculations.PrepareSortedEntries(votingPowers)
+		assigned := calculations.GetSlotsFromSorted(
+			wc.AppHash, key.ParticipantAddress, key.ModelID,
+			sortedEntries, totalVP, wc.ValidationSlots,
+		)
+		outcome := wc.calculateAssignedOutcome(vals, assigned)
+		twoThirds := outcome.TotalWeight * 2 / 3
+		if outcome.ValidWeight > twoThirds {
+			wc.Logger.LogInfo("Calculate: Valid majority (slot-sampled). Accepting.", types.PoC,
+				"participant", key.ParticipantAddress, "modelId", key.ModelID,
+				"validSlots", outcome.ValidWeight, "totalSlots", outcome.TotalWeight)
+			return true
 		}
-		return true
+		if outcome.InvalidWeight > twoThirds {
+			wc.Logger.LogWarn("Calculate: Invalid majority (slot-sampled). Rejecting.", types.PoC,
+				"participant", key.ParticipantAddress, "modelId", key.ModelID,
+				"invalidSlots", outcome.InvalidWeight, "totalSlots", outcome.TotalWeight)
+			return false
+		}
+		return wc.guardianProtection(vals, key, outcome)
 	}
 
-	assignedValidators := wc.getAssignedValidators(key)
-	outcome := wc.calculateAssignedOutcome(vals, assignedValidators)
-	// 66.7% threshold: need >2/3 of assigned slots to vote valid
-	// If not met, falls back to guardian decision
-	twoThirdsWeight := outcome.TotalWeight * 2 / 3
-
-	if outcome.ValidWeight > twoThirdsWeight {
-		wc.Logger.LogInfo("Calculate: Valid majority. Accepting.", types.PoC,
-			"participant", key.ParticipantAddress,
-			"modelId", key.ModelID,
-			"validWeight", outcome.ValidWeight,
-			"invalidWeight", outcome.InvalidWeight,
-			"totalWeight", outcome.TotalWeight,
-			"sampled", assignedValidators != nil,
-		)
+	// Non-slot: weight approvers by votingPower, threshold against totalNetworkWeight
+	outcome := calculateValidationOutcome(votingPowers, vals)
+	twoThirds := wc.TotalNetworkWeight * 2 / 3
+	if outcome.ValidWeight > twoThirds {
+		wc.Logger.LogInfo("Calculate: Valid majority (weighted). Accepting.", types.PoC,
+			"participant", key.ParticipantAddress, "modelId", key.ModelID,
+			"validWeight", outcome.ValidWeight, "totalNetworkWeight", wc.TotalNetworkWeight)
 		return true
 	}
-
-	if outcome.InvalidWeight > twoThirdsWeight {
-		wc.Logger.LogWarn("Calculate: Invalid majority. Rejecting.", types.PoC,
-			"participant", key.ParticipantAddress,
-			"modelId", key.ModelID,
-			"validWeight", outcome.ValidWeight,
-			"invalidWeight", outcome.InvalidWeight,
-			"totalWeight", outcome.TotalWeight,
-			"sampled", assignedValidators != nil,
-		)
+	if outcome.InvalidWeight > twoThirds {
+		wc.Logger.LogWarn("Calculate: Invalid majority (weighted). Rejecting.", types.PoC,
+			"participant", key.ParticipantAddress, "modelId", key.ModelID,
+			"invalidWeight", outcome.InvalidWeight, "totalNetworkWeight", wc.TotalNetworkWeight)
 		return false
 	}
-
-	return wc.guardianProtection(vals, key, outcome)
-}
-
-// getAssignedValidators returns the sampled validator addresses for a (participant, model) pair.
-// Returns nil when sampling is disabled (ValidationSlots == 0), triggering O(N^2) fallback.
-func (wc *PoCWeightCalculator) getAssignedValidators(key types.PoCParticipantModelKey) []string {
-	if wc.ValidationSlots == 0 {
-		return nil
-	}
-	if wc.sortedValidatorEntries == nil {
-		return nil
-	}
-	return calculations.GetSlotsFromSorted(
-		wc.AppHash,
-		key.ParticipantAddress,
-		key.ModelID,
-		wc.sortedValidatorEntries,
-		wc.validatorTotalWeight,
-		wc.ValidationSlots,
-	)
+	return wc.guardianProtection(vals, key, ValidationOutcome{
+		TotalWeight:   wc.TotalNetworkWeight,
+		ValidWeight:   outcome.ValidWeight,
+		InvalidWeight: outcome.InvalidWeight,
+	})
 }
 
 // ValidationOutcome holds aggregated vote counts.
@@ -318,29 +317,13 @@ type ValidationOutcome struct {
 }
 
 // calculateAssignedOutcome computes vote counts from assigned slots.
-// When assignedValidators is nil, uses O(N²) fallback with weight-based counting.
-// When assignedValidators is set, counts slots (each slot = 1) since weight is
-// already encoded in how many slots each validator receives.
+// Each slot = 1. Weight is already encoded in how many slots each validator receives.
 func (wc *PoCWeightCalculator) calculateAssignedOutcome(vals []types.PoCValidationV2, assignedValidators []string) ValidationOutcome {
-	if assignedValidators == nil {
-		outcome := calculateValidationOutcome(wc.CurrentValidatorWeights, vals)
-		totalWeight := calculateTotalWeight(wc.CurrentValidatorWeights)
-		return ValidationOutcome{
-			TotalWeight:   int64(totalWeight),
-			ValidWeight:   outcome.ValidWeight,
-			InvalidWeight: outcome.InvalidWeight,
-		}
-	}
-
-	// Build map of validator address -> vote (positive = valid, zero/negative = invalid)
 	voteMap := make(map[string]int64)
 	for _, v := range vals {
 		voteMap[v.ValidatorParticipantAddress] = v.ValidatedWeight
 	}
 
-	// Count slots. Each slot = 1 (weight is already in slot distribution).
-	// Same validator can appear multiple times if they have high weight.
-	// TotalWeight is fixed to all assigned slots (missing votes are abstentions).
 	totalSlots := int64(len(assignedValidators))
 	var validSlots, invalidSlots int64
 	for _, slotValidator := range assignedValidators {
@@ -841,20 +824,6 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 	am.LogInfo("ComputeNewWeights: Retrieved preserved participants", types.PoC,
 		"numPreservedParticipants", len(preservedParticipants))
 
-	currentValidatorWeights, err := am.getCurrentValidatorWeights(ctx)
-	am.LogInfo("ComputeNewWeights: Retrieved current validator weights", types.PoC,
-		"upcomingEpoch.Index", upcomingEpoch.Index,
-		"upcomingEpoch.PocStartBlockHeight", upcomingEpoch.PocStartBlockHeight,
-		"weights", currentValidatorWeights)
-
-	if err != nil {
-		am.LogError("ComputeNewWeights: Error getting current validator weights", types.PoC,
-			"upcomingEpoch.Index", upcomingEpoch.Index,
-			"upcomingEpoch.PocStartBlockHeight", upcomingEpoch.PocStartBlockHeight,
-			"error", err)
-		return nil
-	}
-
 	// Get off-chain store commits (replaces on-chain batches)
 	allStoreCommits, err := am.keeper.GetAllPoCV2StoreCommitsForStage(ctx, epochStartBlockHeight)
 	if err != nil {
@@ -1013,6 +982,8 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 	var appHash string
 	var validationSlots int
 	timeNormalizationFactor := mathsdk.LegacyOneDec()
+	modelVotingPowers := make(map[string]map[string]int64)
+	totalNetworkWeight := int64(0)
 
 	snapshot, snapshotFound, _ := am.keeper.GetPoCValidationSnapshot(ctx, epochStartBlockHeight)
 	if snapshotFound {
@@ -1028,11 +999,16 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 				params.EpochParams.PocExchangeDuration,
 			)
 		}
+		// Load per-model voting powers from snapshot
+		for _, mvw := range snapshot.ModelVotingPowers {
+			modelVotingPowers[mvw.ModelId] = votingPowerSliceToMap(mvw.VotingPowers)
+		}
+		totalNetworkWeight = snapshot.TotalNetworkWeight
 		am.LogInfo("ComputeNewWeights: Using validation snapshot", types.PoC,
 			"appHash", appHash,
 			"validationSlots", validationSlots,
-			"generationStartTimestamp", snapshot.GenerationStartTimestamp,
-			"exchangeEndTimestamp", snapshot.ExchangeEndTimestamp,
+			"numModels", len(modelVotingPowers),
+			"totalNetworkWeight", totalNetworkWeight,
 			"timeNormalizationFactor", timeNormalizationFactor.String(),
 			"pocNormalizationEnabled", params.PocParams.PocNormalizationEnabled,
 		)
@@ -1042,15 +1018,9 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 		)
 	}
 
-	weightsForCalculator := currentValidatorWeights
-	if snapshotFound && validationSlots > 0 && len(snapshot.ValidatorWeights) > 0 {
-		weightsForCalculator = validatorWeightsSliceToMap(snapshot.ValidatorWeights)
-		am.LogInfo("ComputeNewWeights: Using snapshot weights for calculator", types.PoC,
-			"numValidators", len(weightsForCalculator))
-	}
-
 	calculator := NewPoCWeightCalculator(
-		weightsForCalculator,
+		modelVotingPowers,
+		totalNetworkWeight,
 		allowedCommits,
 		allowedDistributions,
 		validations,
@@ -1197,10 +1167,10 @@ func (am AppModule) filterStoreCommitsFromInferenceNodes(
 	return filteredCommits, filteredDistributions
 }
 
-func validatorWeightsSliceToMap(weights []*types.ValidatorWeight) map[string]int64 {
-	result := make(map[string]int64, len(weights))
-	for _, w := range weights {
-		result[w.Address] = w.Weight
+func votingPowerSliceToMap(entries []*types.VotingPowerEntry) map[string]int64 {
+	result := make(map[string]int64, len(entries))
+	for _, e := range entries {
+		result[e.Address] = e.VotingPower
 	}
 	return result
 }
