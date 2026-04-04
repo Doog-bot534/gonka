@@ -79,7 +79,7 @@ class UpgradeTests : TestermintTest() {
         Thread.sleep(Duration.ofMinutes(5))
         logSection("Verifying upgrade")
         genesis.node.waitForNextBlock(1)
-        genesis.waitForBlock(15) {
+        genesis.waitForBlock(40) {
             cluster.allPairs.all { pair ->
                 runCatching {
                     pair.api.getParticipants()

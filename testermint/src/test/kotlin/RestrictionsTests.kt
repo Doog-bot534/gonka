@@ -270,7 +270,15 @@ class RestrictionsTests : TestermintTest() {
         // Wait for transaction to be processed in the next block
         genesis.node.waitForNextBlock(1)
 
+        genesis.waitForBlock(10) { pair ->
+            pair.node.queryRestrictionsExemptionUsage(exemptionId, fromAddress)
+                .usageEntries
+                .firstOrNull()
+                ?.usageCount == 1L
+        }
+
         val usage = genesis.node.queryRestrictionsExemptionUsage(exemptionId, fromAddress)
+        assertThat(usage.usageEntries).isNotEmpty
         assertThat(usage.usageEntries.first().usageCount).isEqualTo(1)
         
         logHighlight("✅ Emergency exemption workflow tested (creation, querying, execution)")
