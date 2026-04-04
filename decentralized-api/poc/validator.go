@@ -208,11 +208,8 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 	// Query validation snapshot for per-model sampling (if enabled)
 	validationSlots := int(pocParams.ValidationSlots)
 	var snapshotAppHash string
-	// Per-model voting powers from snapshot: model_id -> {address -> votingPower}
-	modelVotingPowers := make(map[string]map[string]int64)
-	// Per-model sorted entries for WRR sampling
 	type modelSamplingData struct {
-		entries    []calculations.WeightEntry
+		entries     []calculations.WeightEntry
 		totalWeight int64
 	}
 	modelSampling := make(map[string]*modelSamplingData)
@@ -224,23 +221,22 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 		if err != nil {
 			logging.Warn("OffChainValidator: failed to query validation snapshot, falling back to O(N^2)", types.PoC,
 				"error", err)
-			validationSlots = 0 // Disable sampling on error
+			validationSlots = 0
 		} else if snapshotResp.Found && snapshotResp.Snapshot != nil && len(snapshotResp.Snapshot.ModelVotingPowers) > 0 {
 			snapshotAppHash = snapshotResp.Snapshot.AppHash
 			for _, mvw := range snapshotResp.Snapshot.ModelVotingPowers {
-				weights := votingPowerSliceToMap(mvw.VotingPowers)
-				modelVotingPowers[mvw.ModelId] = weights
+				weights := types.VotingPowerSliceToMap(mvw.VotingPowers)
 				entries, total := calculations.PrepareSortedEntries(weights)
 				modelSampling[mvw.ModelId] = &modelSamplingData{entries: entries, totalWeight: total}
 			}
 			logging.Info("OffChainValidator: using per-model validation snapshot for sampling", types.PoC,
 				"appHash", snapshotAppHash,
 				"validationSlots", validationSlots,
-				"numModels", len(modelVotingPowers),
+				"numModels", len(modelSampling),
 			)
 		} else {
 			logging.Warn("OffChainValidator: validation snapshot not found, falling back to O(N^2)", types.PoC)
-			validationSlots = 0 // Disable sampling
+			validationSlots = 0
 		}
 	}
 
@@ -251,7 +247,7 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 		// If sampling is enabled, check if we're assigned to validate this participant-model pair
 		if validationSlots > 0 {
 			sampling, hasSampling := modelSampling[commit.ModelId]
-			if hasSampling && sampling != nil {
+			if hasSampling {
 				assignedValidators := calculations.GetSlotsFromSorted(
 					snapshotAppHash,
 					commit.ParticipantAddress,
@@ -879,10 +875,3 @@ func (v *OffChainValidator) reportInvalidParticipant(pocHeight int64, participan
 	}
 }
 
-func votingPowerSliceToMap(entries []*types.VotingPowerEntry) map[string]int64 {
-	result := make(map[string]int64, len(entries))
-	for _, e := range entries {
-		result[e.Address] = e.VotingPower
-	}
-	return result
-}

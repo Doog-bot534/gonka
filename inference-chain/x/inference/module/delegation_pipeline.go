@@ -184,10 +184,8 @@ func (am AppModule) loadDelegationState(ctx context.Context) (
 func ComputeModelVotingPowers(
 	storeCommitKeys []types.PoCParticipantModelKey,
 	consensusWeights map[string]int64,
-	totalNetworkWeight int64,
 	delegations map[string]map[string]string,
-) (map[string]map[string]int64, int64) {
-	// Build DIRECT membership per model from store commit keys
+) map[string]map[string]int64 {
 	directMembers := make(map[string]map[string]bool)
 	for _, key := range storeCommitKeys {
 		if directMembers[key.ModelID] == nil {
@@ -220,7 +218,7 @@ func ComputeModelVotingPowers(
 		modelVotingPowers[modelID] = vp
 	}
 
-	return modelVotingPowers, totalNetworkWeight
+	return modelVotingPowers
 }
 
 // delegationAdjustmentParams extracts DelegationAdjustmentParams from governance params.

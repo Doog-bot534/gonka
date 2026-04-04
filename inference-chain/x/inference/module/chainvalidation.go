@@ -59,6 +59,16 @@ type PoCWeightCalculator struct {
 	GuardianAddresses       map[string]bool
 	AppHash                 string
 	ValidationSlots         int
+
+	// sortedVotingPowers caches PrepareSortedEntries output per model.
+	// Avoids re-sorting the same voting power map for every participant on the same model.
+	sortedVotingPowers map[string]sortedModelVP
+}
+
+// sortedModelVP holds pre-computed sorted entries and total weight for a model.
+type sortedModelVP struct {
+	entries     []calculations.WeightEntry
+	totalWeight int64
 }
 
 // NewPoCWeightCalculator creates a new PoCWeightCalculator instance.
@@ -79,6 +89,16 @@ func NewPoCWeightCalculator(
 	appHash string,
 	validationSlots int,
 ) *PoCWeightCalculator {
+	// Pre-compute sorted voting power entries per model to avoid re-sorting
+	// for every participant in pocValidated.
+	sortedVP := make(map[string]sortedModelVP, len(modelVotingPowers))
+	if validationSlots > 0 {
+		for modelID, vp := range modelVotingPowers {
+			entries, total := calculations.PrepareSortedEntries(vp)
+			sortedVP[modelID] = sortedModelVP{entries: entries, totalWeight: total}
+		}
+	}
+
 	return &PoCWeightCalculator{
 		ModelVotingPowers:       modelVotingPowers,
 		TotalNetworkWeight:      totalNetworkWeight,
@@ -95,6 +115,7 @@ func NewPoCWeightCalculator(
 		GuardianAddresses:       guardianAddresses,
 		AppHash:                 appHash,
 		ValidationSlots:         validationSlots,
+		sortedVotingPowers:      sortedVP,
 	}
 }
 
@@ -262,88 +283,76 @@ func (wc *PoCWeightCalculator) pocValidated(vals []types.PoCValidationV2, key ty
 	}
 
 	if wc.ValidationSlots > 0 {
-		// Slot-based: sample from per-model votingPower
-		sortedEntries, totalVP := calculations.PrepareSortedEntries(votingPowers)
+		// Slot-based: sample validators, count per-slot (each slot = 1 weight).
+		// Preserves duplicates -- a validator with 2 slots gets their vote counted twice.
+		cached := wc.sortedVotingPowers[key.ModelID]
 		assigned := calculations.GetSlotsFromSorted(
 			wc.AppHash, key.ParticipantAddress, key.ModelID,
-			sortedEntries, totalVP, wc.ValidationSlots,
+			cached.entries, cached.totalWeight, wc.ValidationSlots,
 		)
-		outcome := wc.calculateAssignedOutcome(vals, assigned)
-		twoThirds := outcome.TotalWeight * 2 / 3
-		if outcome.ValidWeight > twoThirds {
+		voteMap := make(map[string]int64)
+		for _, v := range vals {
+			voteMap[v.ValidatorParticipantAddress] = v.ValidatedWeight
+		}
+		totalSlots := int64(len(assigned))
+		var validSlots, invalidSlots int64
+		for _, slotValidator := range assigned {
+			vote, hasVote := voteMap[slotValidator]
+			if !hasVote {
+				continue
+			}
+			if vote > 0 {
+				validSlots++
+			} else {
+				invalidSlots++
+			}
+		}
+		twoThirdsSlots := totalSlots * 2 / 3
+		if validSlots > twoThirdsSlots {
 			wc.Logger.LogInfo("Calculate: Valid majority (slot-sampled). Accepting.", types.PoC,
 				"participant", key.ParticipantAddress, "modelId", key.ModelID,
-				"validSlots", outcome.ValidWeight, "totalSlots", outcome.TotalWeight)
+				"validSlots", validSlots, "totalSlots", totalSlots)
 			return true
 		}
-		if outcome.InvalidWeight > twoThirds {
+		if invalidSlots > twoThirdsSlots {
 			wc.Logger.LogWarn("Calculate: Invalid majority (slot-sampled). Rejecting.", types.PoC,
 				"participant", key.ParticipantAddress, "modelId", key.ModelID,
-				"invalidSlots", outcome.InvalidWeight, "totalSlots", outcome.TotalWeight)
+				"invalidSlots", invalidSlots, "totalSlots", totalSlots)
 			return false
 		}
-		return wc.guardianProtection(vals, key, outcome)
+		return wc.guardianProtection(vals, key, ValidationOutcome{
+			TotalWeight:   totalSlots,
+			ValidWeight:   validSlots,
+			InvalidWeight: invalidSlots,
+		})
 	}
 
-	// Non-slot: weight approvers by votingPower, threshold against totalNetworkWeight
+	// Non-slot: weight approvals by votingPower, threshold against totalNetworkWeight.
 	outcome := calculateValidationOutcome(votingPowers, vals)
+	outcome.TotalWeight = wc.TotalNetworkWeight
 	twoThirds := wc.TotalNetworkWeight * 2 / 3
 	if outcome.ValidWeight > twoThirds {
-		wc.Logger.LogInfo("Calculate: Valid majority (weighted). Accepting.", types.PoC,
+		wc.Logger.LogInfo("Calculate: Valid majority. Accepting.", types.PoC,
 			"participant", key.ParticipantAddress, "modelId", key.ModelID,
 			"validWeight", outcome.ValidWeight, "totalNetworkWeight", wc.TotalNetworkWeight)
 		return true
 	}
 	if outcome.InvalidWeight > twoThirds {
-		wc.Logger.LogWarn("Calculate: Invalid majority (weighted). Rejecting.", types.PoC,
+		wc.Logger.LogWarn("Calculate: Invalid majority. Rejecting.", types.PoC,
 			"participant", key.ParticipantAddress, "modelId", key.ModelID,
 			"invalidWeight", outcome.InvalidWeight, "totalNetworkWeight", wc.TotalNetworkWeight)
 		return false
 	}
-	return wc.guardianProtection(vals, key, ValidationOutcome{
-		TotalWeight:   wc.TotalNetworkWeight,
-		ValidWeight:   outcome.ValidWeight,
-		InvalidWeight: outcome.InvalidWeight,
-	})
+	return wc.guardianProtection(vals, key, outcome)
 }
 
-// ValidationOutcome holds aggregated vote counts.
-// When using slot-based sampling, these are slot counts (each slot = 1).
-// When using O(N²) fallback, these are weight sums.
+// ValidationOutcome holds aggregated vote weight sums.
 type ValidationOutcome struct {
 	TotalWeight   int64
 	ValidWeight   int64
 	InvalidWeight int64
 }
 
-// calculateAssignedOutcome computes vote counts from assigned slots.
-// Each slot = 1. Weight is already encoded in how many slots each validator receives.
-func (wc *PoCWeightCalculator) calculateAssignedOutcome(vals []types.PoCValidationV2, assignedValidators []string) ValidationOutcome {
-	voteMap := make(map[string]int64)
-	for _, v := range vals {
-		voteMap[v.ValidatorParticipantAddress] = v.ValidatedWeight
-	}
-
-	totalSlots := int64(len(assignedValidators))
-	var validSlots, invalidSlots int64
-	for _, slotValidator := range assignedValidators {
-		vote, hasVote := voteMap[slotValidator]
-		if !hasVote {
-			continue
-		}
-		if vote > 0 {
-			validSlots++
-		} else {
-			invalidSlots++
-		}
-	}
-
-	return ValidationOutcome{
-		TotalWeight:   totalSlots,
-		ValidWeight:   validSlots,
-		InvalidWeight: invalidSlots,
-	}
-}
 
 // guardianProtection handles tie-breaking when no clear majority exists.
 // All voting guardians must agree unanimously for the decision to pass.
@@ -446,29 +455,20 @@ func (wc *PoCWeightCalculator) calculateParticipantWeight(key types.PoCParticipa
 	return nodeWeightsSlice, totalWeight
 }
 
-type validationOutcome struct {
-	ValidWeight   int64
-	InvalidWeight int64
-}
-
 // calculateValidationOutcome computes valid/invalid weights from validations.
-// Uses validated_weight semantics:
-// - validated_weight == -1 -> invalid vote
-// - validated_weight > 0 -> valid vote
-func calculateValidationOutcome(currentValidatorsSet map[string]int64, validations []types.PoCValidationV2) validationOutcome {
-	validWeight := int64(0)
-	invalidWeight := int64(0)
+// validated_weight > 0 is a valid vote, validated_weight <= 0 is invalid.
+func calculateValidationOutcome(currentValidatorsSet map[string]int64, validations []types.PoCValidationV2) ValidationOutcome {
+	var validWeight, invalidWeight int64
 	for _, v := range validations {
 		if weight, ok := currentValidatorsSet[v.ValidatorParticipantAddress]; ok {
 			if v.ValidatedWeight > 0 {
 				validWeight += weight
 			} else {
-				// validated_weight <= 0 is treated as invalid (fraud/failure detected)
 				invalidWeight += weight
 			}
 		}
 	}
-	return validationOutcome{
+	return ValidationOutcome{
 		ValidWeight:   validWeight,
 		InvalidWeight: invalidWeight,
 	}
@@ -1001,7 +1001,7 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 		}
 		// Load per-model voting powers from snapshot
 		for _, mvw := range snapshot.ModelVotingPowers {
-			modelVotingPowers[mvw.ModelId] = votingPowerSliceToMap(mvw.VotingPowers)
+			modelVotingPowers[mvw.ModelId] = types.VotingPowerSliceToMap(mvw.VotingPowers)
 		}
 		totalNetworkWeight = snapshot.TotalNetworkWeight
 		am.LogInfo("ComputeNewWeights: Using validation snapshot", types.PoC,
@@ -1167,10 +1167,3 @@ func (am AppModule) filterStoreCommitsFromInferenceNodes(
 	return filteredCommits, filteredDistributions
 }
 
-func votingPowerSliceToMap(entries []*types.VotingPowerEntry) map[string]int64 {
-	result := make(map[string]int64, len(entries))
-	for _, e := range entries {
-		result[e.Address] = e.VotingPower
-	}
-	return result
-}

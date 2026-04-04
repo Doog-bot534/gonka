@@ -780,16 +780,19 @@ func (am AppModule) captureValidationSnapshot(ctx context.Context, blockHeight, 
 			storeCommitKeys = append(storeCommitKeys, key)
 		}
 
-		modelVotingPowers, _ := ComputeModelVotingPowers(
-			storeCommitKeys, consensusWeights, totalNetworkWeight, delegations,
+		modelVotingPowers := ComputeModelVotingPowers(
+			storeCommitKeys, consensusWeights, delegations,
 		)
 
 		for modelID, vps := range modelVotingPowers {
 			modelWeights = append(modelWeights, &types.ModelVotingPowers{
 				ModelId:      modelID,
-				VotingPowers: votingPowerMapToSlice(vps),
+				VotingPowers: types.VotingPowerMapToSlice(vps),
 			})
 		}
+		slices.SortFunc(modelWeights, func(a, b *types.ModelVotingPowers) int {
+			return cmp.Compare(a.ModelId, b.ModelId)
+		})
 	}
 
 	var generationStartTimestamp int64
@@ -824,16 +827,6 @@ func (am AppModule) captureValidationSnapshot(ctx context.Context, blockHeight, 
 	)
 }
 
-func votingPowerMapToSlice(weights map[string]int64) []*types.VotingPowerEntry {
-	result := make([]*types.VotingPowerEntry, 0, len(weights))
-	for addr, w := range weights {
-		result = append(result, &types.VotingPowerEntry{Address: addr, VotingPower: w})
-	}
-	slices.SortFunc(result, func(a, b *types.VotingPowerEntry) int {
-		return cmp.Compare(a.Address, b.Address)
-	})
-	return result
-}
 
 func (am AppModule) addEpochMembers(ctx context.Context, upcomingEg *epochgroup.EpochGroup, activeParticipants []*types.ActiveParticipant) {
 	params, err := am.keeper.GetParams(ctx)

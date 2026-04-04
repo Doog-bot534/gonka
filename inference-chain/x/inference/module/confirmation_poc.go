@@ -585,7 +585,7 @@ func (am AppModule) updateConfirmationWeightsV2(
 	totalNetworkWeight := int64(0)
 	if snapshotFound {
 		for _, mvw := range snapshot.ModelVotingPowers {
-			modelVotingPowers[mvw.ModelId] = votingPowerSliceToMap(mvw.VotingPowers)
+			modelVotingPowers[mvw.ModelId] = types.VotingPowerSliceToMap(mvw.VotingPowers)
 		}
 		totalNetworkWeight = snapshot.TotalNetworkWeight
 	}

@@ -246,9 +246,8 @@ func (wc *WeightCalculatorV1) calculateParticipantWeight(batches []types.PoCBatc
 
 // calculateValidationOutcomeV1 computes valid/invalid weights from V1 PoCValidation.
 // Uses FraudDetected field for V1 validations.
-func calculateValidationOutcomeV1(currentValidatorsSet map[string]int64, validations []types.PoCValidation) validationOutcome {
-	validWeight := int64(0)
-	invalidWeight := int64(0)
+func calculateValidationOutcomeV1(currentValidatorsSet map[string]int64, validations []types.PoCValidation) ValidationOutcome {
+	var validWeight, invalidWeight int64
 	for _, v := range validations {
 		if weight, ok := currentValidatorsSet[v.ValidatorParticipantAddress]; ok {
 			if v.FraudDetected {
@@ -258,7 +257,7 @@ func calculateValidationOutcomeV1(currentValidatorsSet map[string]int64, validat
 			}
 		}
 	}
-	return validationOutcome{
+	return ValidationOutcome{
 		ValidWeight:   validWeight,
 		InvalidWeight: invalidWeight,
 	}
