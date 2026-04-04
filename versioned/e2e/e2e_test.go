@@ -100,8 +100,8 @@ func TestHashMismatch(t *testing.T) {
 		t.Fatalf("GET: %v", err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusBadGateway {
-		t.Errorf("status = %d, want 502", resp.StatusCode)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", resp.StatusCode)
 	}
 }
 

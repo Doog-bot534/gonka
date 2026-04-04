@@ -81,8 +81,8 @@ func TestProxy_VersionNotFound(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusBadGateway {
-		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
 	}
 }
 
@@ -98,8 +98,8 @@ func TestProxy_NoVersionPrefix(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusBadGateway {
-		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
 	}
 }
 

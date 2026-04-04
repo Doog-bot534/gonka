@@ -17,7 +17,7 @@ func Handler(routes *atomic.Value) http.Handler {
 		path := strings.TrimPrefix(r.URL.Path, "/")
 		parts := strings.SplitN(path, "/", 2)
 		if len(parts) == 0 || parts[0] == "" {
-			http.Error(w, "version prefix required", http.StatusBadGateway)
+			http.Error(w, "version prefix required", http.StatusBadRequest)
 			return
 		}
 
@@ -30,7 +30,7 @@ func Handler(routes *atomic.Value) http.Handler {
 		routeMap := routes.Load().(map[string]string)
 		target, ok := routeMap[version]
 		if !ok {
-			http.Error(w, fmt.Sprintf("version %q not found", version), http.StatusBadGateway)
+			http.Error(w, fmt.Sprintf("version %q not found", version), http.StatusNotFound)
 			return
 		}
 

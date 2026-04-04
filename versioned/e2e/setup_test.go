@@ -143,7 +143,7 @@ func waitForVersionGone(t *testing.T, version string, timeout time.Duration) {
 	url := fmt.Sprintf("%s/%s/", versiondURL, version)
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(url)
-		if err == nil && resp.StatusCode == http.StatusBadGateway {
+		if err == nil && resp.StatusCode == http.StatusNotFound {
 			resp.Body.Close()
 			return
 		}
