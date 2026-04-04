@@ -80,10 +80,16 @@ class NodeDisableInferenceTests : TestermintTest() {
             .mapNotNull { attempt ->
                 runCatching { getInferenceResult(genesis) }
                     .onFailure { error ->
-                        if (error !is FuelError || !error.message.orEmpty().contains("500 Internal Server Error")) {
+                        val isTemporary500 = error is FuelError &&
+                            error.message.orEmpty().contains("500 Internal Server Error")
+                        val isChainLag = error is IllegalStateException &&
+                            error.message.orEmpty().contains("Inference never logged in chain")
+                        if (!isTemporary500 && !isChainLag) {
                             throw error
                         }
-                        Logger.info("Inference attempt $attempt returned a temporary 500 while waiting for join-1 assignment; retrying on the next block")
+                        Logger.info(
+                            "Inference attempt $attempt hit a transient response while waiting for join-1 assignment; retrying on the next block: ${error.message}"
+                        )
                         genesis.waitForBlock(1) { true }
                     }
                     .getOrNull()
