@@ -178,7 +178,10 @@ func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	maxTokens := req.MaxTokens
 	if maxTokens == 0 {
-		maxTokens = 2048
+		maxTokens = DefaultRequestMaxTokens
+	}
+	if DefaultRequestMaxTokens > 0 && maxTokens > DefaultRequestMaxTokens {
+		maxTokens = DefaultRequestMaxTokens
 	}
 
 	params := user.InferenceParams{

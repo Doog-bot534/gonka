@@ -12,9 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"subnet/bridge"
 	"subnet/state"
-	"subnet/user"
 )
 
 type SettlementJSON struct {
@@ -48,6 +46,7 @@ func main() {
 	port := fs.String("port", "8080", "listen port")
 	privateKey := fs.String("private-key", "", "private key hex (alternative to SUBNET_PRIVATE_KEY env)")
 	storagePath := fs.String("storage-path", "", "SQLite path for crash recovery")
+	storageDir := fs.String("storage-dir", "", "base directory for multi-subnet SQLite files")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		log.Fatal(err)
@@ -96,69 +95,48 @@ func main() {
 		sp = filepath.Join(home, ".cache", "gonka", fmt.Sprintf("subnet-%s.db", eid))
 	}
 
-	if err := os.MkdirAll(filepath.Dir(sp), 0755); err != nil {
+	baseStorageDir := *storageDir
+	if baseStorageDir == "" {
+		baseStorageDir = os.Getenv("SUBNET_STORAGE_DIR")
+	}
+	if baseStorageDir == "" {
+		baseStorageDir = filepath.Dir(sp)
+	}
+	if err := os.MkdirAll(baseStorageDir, 0o755); err != nil {
 		log.Fatalf("create storage dir: %v", err)
 	}
 
-	registry := newStreamRegistry()
-
-	perfStore, err := NewPerfStore(sp)
+	runtimeCfgs, err := resolveRuntimeConfigs(eid, keyHex, mdl, sp)
 	if err != nil {
-		log.Fatalf("open perf store: %v", err)
+		log.Fatal(err)
 	}
-	defer perfStore.Close()
-	perf := NewPerfTracker(perfStore)
-
-	receiptCB := func(nonce uint64) {
-		registry.recordReceipt(nonce)
-	}
-
-	br := bridge.NewRESTBridge(crest)
-	cfg := user.HTTPSessionConfig{
-		PrivateKeyHex:   keyHex,
-		EscrowID:        eid,
-		Bridge:          br,
-		StoragePath:     sp,
-		StreamCallback:  registry.callback,
-		ReceiptCallback: receiptCB,
-	}
-
-	session, sm, err := user.NewHTTPSession(cfg)
+	runtimeCfgs, err = finalizeRuntimeConfigs(runtimeCfgs, mdl, baseStorageDir)
 	if err != nil {
-		log.Fatalf("create session: %v", err)
+		log.Fatal(err)
 	}
-	defer session.Close()
-
-	groupSize := len(session.Clients())
-	engine := NewSpeculativeEngine(session, sm, perf, registry, groupSize)
-
-	proxy := &Proxy{
-		session:  session,
-		sm:       sm,
-		escrowID: eid,
-		model:    mdl,
-		registry: registry,
-		engine:   engine,
-		perf:     perf,
+	runtimes, err := buildRuntimes(runtimeCfgs, crest, mdl)
+	if err != nil {
+		log.Fatalf("create runtimes: %v", err)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/chat/completions", proxy.handleChatCompletions)
-	mux.HandleFunc("/v1/finalize", proxy.handleFinalize)
-	mux.HandleFunc("/v1/status", proxy.handleStatus)
-	mux.HandleFunc("/v1/debug/pending", proxy.handleDebugPending)
-	mux.HandleFunc("/v1/debug/state", proxy.handleDebugState)
-	mux.HandleFunc("/v1/debug/perf", proxy.handleDebugPerf)
+	DefaultRequestMaxTokens = uint64(readInt64Env("GATEWAY_DEFAULT_MAX_TOKENS", int64(DefaultRequestMaxTokens)))
 
-	var handler http.Handler = mux
+	limiter := NewGatewayLimiter(
+		readInt64Env("GATEWAY_MAX_CONCURRENT_REQUESTS", 0),
+		readInt64Env("GATEWAY_MAX_INPUT_TOKENS_IN_FLIGHT", 0),
+	)
+	gateway := NewGateway(runtimes, limiter, mdl)
+	defer gateway.Close()
+
+	var handler http.Handler = gateway.Handler()
 	apiKeys := parseAPIKeys(os.Getenv("SUBNET_API_KEYS"))
 	if len(apiKeys) > 0 {
 		log.Printf("API key auth enabled (%d key(s))", len(apiKeys))
-		handler = bearerAuthMiddleware(apiKeys, mux)
+		handler = bearerAuthMiddleware(apiKeys, handler)
 	}
 
 	addr := ":" + p
-	log.Printf("subnetctl listening on %s (escrow=%s model=%s)", addr, eid, mdl)
+	log.Printf("subnetctl gateway listening on %s (subnets=%d default_max_tokens=%d)", addr, len(runtimes), DefaultRequestMaxTokens)
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatalf("server: %v", err)
 	}
@@ -175,13 +153,13 @@ func parseAPIKeys(raw string) map[string]struct{} {
 	return keys
 }
 
-var authExemptPaths = map[string]bool{
-	"/v1/status": true,
+func isAuthExemptPath(path string) bool {
+	return path == "/v1/status" || strings.HasSuffix(path, "/v1/status")
 }
 
 func bearerAuthMiddleware(validKeys map[string]struct{}, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if authExemptPaths[r.URL.Path] {
+		if isAuthExemptPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -204,6 +182,19 @@ func bearerAuthMiddleware(validKeys map[string]struct{}, next http.Handler) http
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func readInt64Env(name string, fallback int64) int64 {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback
+	}
+	var v int64
+	if _, err := fmt.Sscan(raw, &v); err != nil {
+		log.Printf("invalid %s=%q, using %d", name, raw, fallback)
+		return fallback
+	}
+	return v
 }
 
 func marshalSettlement(p *state.SettlementPayload) ([]byte, error) {
