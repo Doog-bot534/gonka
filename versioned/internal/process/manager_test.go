@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"versioned/internal/config"
 	"versioned/internal/oracle"
@@ -333,6 +334,41 @@ func TestReconcile_ForceWithoutOverrideSkipped(t *testing.T) {
 
 	if running {
 		t.Error("forced version without override should not be running")
+	}
+}
+
+func TestRunChild_RemovesFromProcessesOnStartFailure(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.Config{
+		BinDir:     filepath.Join(dir, "bin"),
+		DataDir:    filepath.Join(dir, "data"),
+		BinaryName: "nonexistent",
+		BasePort:   5000,
+	}
+	m := NewManager(cfg)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	v := oracle.Version{Name: "v1"}
+
+	m.mu.Lock()
+	m.startChild(ctx, v)
+	c := m.processes["v1"]
+	m.mu.Unlock()
+
+	select {
+	case <-c.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("runChild did not exit after start failure")
+	}
+
+	m.mu.Lock()
+	_, stillInMap := m.processes["v1"]
+	m.mu.Unlock()
+
+	if stillInMap {
+		t.Error("child should be removed from processes after start failure")
 	}
 }
 

@@ -125,19 +125,19 @@ func (m *Manager) Reconcile(ctx context.Context, desired []oracle.Version) error
 	// Phase A (lock): snapshot state, identify overrides.
 	m.mu.Lock()
 	type overrideAction struct {
-		version    oracle.Version
+		version     oracle.Version
 		overrideSrc string
-		binPath    string
+		binPath     string
 	}
 	var overrides []overrideAction
 
 	// Snapshot which versions are running and which are downloading.
 	type versionSnapshot struct {
-		version      oracle.Version
-		binPath      string
-		isRunning    bool
+		version       oracle.Version
+		binPath       string
+		isRunning     bool
 		isDownloading bool
-		child        *child
+		child         *child
 	}
 	var snapshots []versionSnapshot
 
@@ -436,6 +436,14 @@ func waitForChild(c *child, timeout time.Duration) {
 
 func (m *Manager) runChild(ctx context.Context, c *child) {
 	defer close(c.done)
+	defer func() {
+		m.mu.Lock()
+		if current, ok := m.processes[c.version.Name]; ok && current == c {
+			delete(m.processes, c.version.Name)
+			m.rebuildRoutes()
+		}
+		m.mu.Unlock()
+	}()
 
 	binPath := filepath.Join(m.cfg.BinDir, c.version.Name, m.cfg.BinaryName)
 	dataDir := filepath.Join(m.cfg.DataDir, c.version.Name)
@@ -475,7 +483,6 @@ func (m *Manager) runChild(ctx context.Context, c *child) {
 			slog.Error("child start failed", "version", c.version.Name, "error", err)
 			m.mu.Lock()
 			c.status = statusStopped
-			m.rebuildRoutes()
 			m.mu.Unlock()
 			return
 		}
