@@ -46,14 +46,12 @@ func Handler(routes *atomic.Value) http.Handler {
 				pr.Out.URL.Scheme = targetURL.Scheme
 				pr.Out.URL.Host = targetURL.Host
 				pr.Out.Host = targetURL.Host
+				pr.Out.URL.Path = rest
+				pr.Out.URL.RawPath = ""
 			},
 			FlushInterval: -1, // flush immediately for SSE
 		}
 
-		// Set the stripped path so the proxy's Rewrite sees it.
-		// Safe: ReverseProxy clones the request before forwarding.
-		r.URL.Path = rest
-		r.URL.RawPath = ""
 		p.ServeHTTP(w, r)
 	})
 }
