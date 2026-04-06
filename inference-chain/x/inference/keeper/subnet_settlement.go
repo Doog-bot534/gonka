@@ -139,10 +139,11 @@ func VerifySubnetSettlement(escrow types.SubnetEscrow, msg *types.MsgSettleSubne
 	return nil
 }
 
-// verifyHostStatsIntegrity validates host stats entries and returns total cost.
+// verifyHostStatsIntegrity validates host stats entries.
 func verifyHostStatsIntegrity(hostStats []*types.SubnetSettlementHostStats) error {
 	seenStatSlots := make(map[uint32]bool, len(hostStats))
 	var totalInferenceCount uint64
+	var totalMissedInferences uint64
 
 	for _, hs := range hostStats {
 
@@ -152,16 +153,16 @@ func verifyHostStatsIntegrity(hostStats []*types.SubnetSettlementHostStats) erro
 		}
 		seenStatSlots[hs.SlotId] = true
 
-		// NOTE: It's important that we check that the sum of `Validated/Invalid/Missed` for all hosts
+		// NOTE: It's important that we check that the sum of `Validated/Invalid` for all hosts
 		// does not exceed [MaxSettlementInferenceCount]
 		// in order to limit the amount of damage a hijacked subnet could cause by reporting fake stats.
 		//
 		// See: https://github.com/gonka-ai/gonka/issues/914#issuecomment-4090483233
 
-		// Per-host consistency: validated + invalid + missed must not exceed inference_count
-		sumCounts := uint64(hs.Validated) + uint64(hs.Invalid) + uint64(hs.Missed)
+		// Per-host consistency: validated + invalid must not exceed inference_count
+		sumCounts := uint64(hs.Validated) + uint64(hs.Invalid)
 		if sumCounts > uint64(hs.InferenceCount) {
-			return fmt.Errorf("host_stats slot_id %d: validated+invalid+missed (%d) exceeds inference_count %d", hs.SlotId, sumCounts, hs.InferenceCount)
+			return fmt.Errorf("host_stats slot_id %d: validated+invalid (%d) exceeds inference_count %d", hs.SlotId, sumCounts, hs.InferenceCount)
 		}
 
 		// Check if the total inference count exceeds the max allowed.
@@ -172,6 +173,17 @@ func verifyHostStatsIntegrity(hostStats []*types.SubnetSettlementHostStats) erro
 		totalInferenceCount = nextInferenceCount
 		if totalInferenceCount > MaxSettlementInferenceCount {
 			return fmt.Errorf("total inference count %d exceeds max %d", totalInferenceCount, MaxSettlementInferenceCount)
+		}
+
+		// NOTE: for the same reason as above, we also check that the total missed inference count acros
+		// all hosts does not exceed [MaxSettlementInferenceCount].
+		nextMissed, carryMissed := bits.Add64(totalMissedInferences, uint64(hs.Missed), 0)
+		if carryMissed != 0 {
+			return fmt.Errorf("total missed inference count overflow")
+		}
+		totalMissedInferences = nextMissed
+		if totalMissedInferences > MaxSettlementInferenceCount {
+			return fmt.Errorf("total missed inference count %d exceeds max %d", totalMissedInferences, MaxSettlementInferenceCount)
 		}
 	}
 
