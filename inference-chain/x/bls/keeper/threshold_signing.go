@@ -14,15 +14,15 @@ import (
 
 // RequestThresholdSignature is the main entry point for other modules to request BLS threshold signatures
 func (k Keeper) RequestThresholdSignature(ctx sdk.Context, signingData types.SigningData) error {
-	// Validate current epoch has completed DKG
+	// Require SIGNED phase (not just COMPLETED) so we know
+	// the previous epoch confirmed the new group key
 	epochBLSData, err := k.GetEpochBLSData(ctx, signingData.CurrentEpochId)
 	if err != nil {
 		return fmt.Errorf("failed to get epoch %d BLS data: %w", signingData.CurrentEpochId, err)
 	}
 
-	// Verify epoch has completed DKG (has group public key)
-	if epochBLSData.DkgPhase != types.DKGPhase_DKG_PHASE_COMPLETED && epochBLSData.DkgPhase != types.DKGPhase_DKG_PHASE_SIGNED {
-		return fmt.Errorf("epoch %d DKG not completed, current phase: %s", signingData.CurrentEpochId, epochBLSData.DkgPhase.String())
+	if epochBLSData.DkgPhase != types.DKGPhase_DKG_PHASE_SIGNED {
+		return fmt.Errorf("epoch %d DKG is not signed, current phase: %s", signingData.CurrentEpochId, epochBLSData.DkgPhase.String())
 	}
 
 	if len(epochBLSData.GroupPublicKey) == 0 {
