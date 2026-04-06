@@ -20,8 +20,9 @@ func (p DelegationAdjustmentParams) IsNoOp() bool {
 // ApplyDelegationWeightAdjustment modifies consensus weights in-place based on
 // resolved participation modes per model group.
 //
-// DIRECT and INTENT participants are never penalized. For non-DIRECT participants
-// in each eligible group:
+// DIRECT participants are never penalized. INTENT hosts that didn't deploy
+// are treated as NONE (r_penalty applies). For non-DIRECT participants in
+// each eligible group:
 //   - REFUSE:   weight -= weight * r_refusal
 //   - NONE:     weight -= weight * r_penalty
 //   - DELEGATE: delta = weight * r_delegation; weight -= delta; delegate.weight += delta
@@ -59,7 +60,7 @@ func ApplyDelegationWeightAdjustment(
 			}
 
 			switch mode {
-			case ModeDirect, ModeIntent:
+			case ModeDirect:
 				// No adjustment
 				continue
 			case ModeRefuse:
@@ -67,7 +68,7 @@ func ApplyDelegationWeightAdjustment(
 					penalty := params.RRefusal.MulInt64(p.Weight).TruncateInt64()
 					p.Weight -= penalty
 				}
-			case ModeNone:
+			case ModeNone, ModeIntent:
 				if !params.RPenalty.IsZero() {
 					penalty := params.RPenalty.MulInt64(p.Weight).TruncateInt64()
 					p.Weight -= penalty

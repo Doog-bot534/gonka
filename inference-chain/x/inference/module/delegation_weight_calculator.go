@@ -287,3 +287,4 @@ func (wc *DelegationWeightCalculator) ComputeGroupVotingPowers(
 
 	return votingPower
 }
+

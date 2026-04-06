@@ -124,8 +124,56 @@ func (am AppModule) getPreviousConsensusWeights(ctx context.Context) (map[string
 	return weights, total
 }
 
-// loadDelegationState reads all delegation, refusal, and intent entries from keeper.
+// loadDelegationState returns delegation state, preferring the frozen snapshot
+// captured at start_poc - deploy_window. Falls back to live mutable state when
+// no snapshot exists (first epoch after upgrade or deploy_window = 0).
 func (am AppModule) loadDelegationState(ctx context.Context) (
+	delegations map[string]map[string]string,
+	refusals map[string]map[string]bool,
+	intents map[string]map[string]bool,
+) {
+	snapshot, found := am.keeper.GetDelegationSnapshot(ctx)
+	if found {
+		return parseDelegationSnapshot(snapshot)
+	}
+	return am.loadLiveDelegationState(ctx)
+}
+
+// parseDelegationSnapshot converts a DelegationSnapshot into the map format
+// used by DelegationWeightCalculator.
+func parseDelegationSnapshot(snapshot types.DelegationSnapshot) (
+	delegations map[string]map[string]string,
+	refusals map[string]map[string]bool,
+	intents map[string]map[string]bool,
+) {
+	delegations = make(map[string]map[string]string)
+	refusals = make(map[string]map[string]bool)
+	intents = make(map[string]map[string]bool)
+
+	for _, d := range snapshot.Delegations {
+		if delegations[d.ModelId] == nil {
+			delegations[d.ModelId] = make(map[string]string)
+		}
+		delegations[d.ModelId][d.Delegator] = d.DelegateTo
+	}
+	for _, r := range snapshot.Refusals {
+		if refusals[r.ModelId] == nil {
+			refusals[r.ModelId] = make(map[string]bool)
+		}
+		refusals[r.ModelId][r.Participant] = true
+	}
+	for _, i := range snapshot.Intents {
+		if intents[i.ModelId] == nil {
+			intents[i.ModelId] = make(map[string]bool)
+		}
+		intents[i.ModelId][i.Participant] = true
+	}
+	return delegations, refusals, intents
+}
+
+// loadLiveDelegationState reads all delegation, refusal, and intent entries
+// directly from mutable keeper state.
+func (am AppModule) loadLiveDelegationState(ctx context.Context) (
 	delegations map[string]map[string]string,
 	refusals map[string]map[string]bool,
 	intents map[string]map[string]bool,
@@ -144,7 +192,6 @@ func (am AppModule) loadDelegationState(ctx context.Context) (
 		}
 	}
 
-	// Iterate refusals
 	refusalIter, err := am.keeper.PoCRefusals.Iterate(ctx, nil)
 	if err == nil {
 		keys, err := refusalIter.Keys()
@@ -159,7 +206,6 @@ func (am AppModule) loadDelegationState(ctx context.Context) (
 		}
 	}
 
-	// Iterate intents
 	intentIter, err := am.keeper.PoCDirectIntents.Iterate(ctx, nil)
 	if err == nil {
 		keys, err := intentIter.Keys()
@@ -175,6 +221,60 @@ func (am AppModule) loadDelegationState(ctx context.Context) (
 	}
 
 	return delegations, refusals, intents
+}
+
+// captureDelegationSnapshot reads current raw delegation state and stores it
+// as a DelegationSnapshot. Called at start_poc - deploy_window.
+func (am AppModule) captureDelegationSnapshot(ctx context.Context, blockHeight int64) {
+	allDelegations, err := am.keeper.GetAllPoCDelegations(ctx)
+	if err != nil {
+		am.LogError("captureDelegationSnapshot: failed to get delegations", types.PoC, "error", err)
+		allDelegations = nil
+	}
+
+	var refusals []*types.PoCRefusal
+	refusalIter, err := am.keeper.PoCRefusals.Iterate(ctx, nil)
+	if err == nil {
+		keys, _ := refusalIter.Keys()
+		for _, key := range keys {
+			refusals = append(refusals, &types.PoCRefusal{
+				ModelId: key.K1(), Participant: key.K2(),
+			})
+		}
+	}
+
+	var intents []*types.PoCDirectIntent
+	intentIter, err := am.keeper.PoCDirectIntents.Iterate(ctx, nil)
+	if err == nil {
+		keys, _ := intentIter.Keys()
+		for _, key := range keys {
+			intents = append(intents, &types.PoCDirectIntent{
+				ModelId: key.K1(), Participant: key.K2(),
+			})
+		}
+	}
+
+	delegationPtrs := make([]*types.PoCDelegation, len(allDelegations))
+	for i := range allDelegations {
+		delegationPtrs[i] = &allDelegations[i]
+	}
+
+	snapshot := types.DelegationSnapshot{
+		SnapshotHeight: blockHeight,
+		Delegations:    delegationPtrs,
+		Refusals:       refusals,
+		Intents:        intents,
+	}
+
+	if err := am.keeper.SetDelegationSnapshot(ctx, snapshot); err != nil {
+		am.LogError("captureDelegationSnapshot: failed to store", types.PoC, "error", err)
+		return
+	}
+	am.LogInfo("captureDelegationSnapshot: stored delegation snapshot", types.PoC,
+		"height", blockHeight,
+		"delegations", len(allDelegations),
+		"refusals", len(refusals),
+		"intents", len(intents))
 }
 
 // ComputeModelVotingPowers computes per-model voting powers for PoC validation acceptance.
@@ -221,39 +321,19 @@ func ComputeModelVotingPowers(
 	return modelVotingPowers
 }
 
-// delegationAdjustmentParams extracts DelegationAdjustmentParams from governance params.
-func (am AppModule) delegationAdjustmentParams(params types.Params) DelegationAdjustmentParams {
-	if params.DelegationParams == nil {
-		return DelegationAdjustmentParams{
-			RRefusal:    mathsdk.LegacyZeroDec(),
-			RPenalty:    mathsdk.LegacyZeroDec(),
-			RDelegation: mathsdk.LegacyZeroDec(),
-		}
-	}
-	dp := params.DelegationParams
-	return DelegationAdjustmentParams{
-		RRefusal:    protoDecToLegacy(dp.RRefusal),
-		RPenalty:    protoDecToLegacy(dp.RPenalty),
-		RDelegation: protoDecToLegacy(dp.RDelegation),
-	}
-}
-
 // computeAndSetVotingPowers computes per-group voting powers from final weights
-// and writes them to each participant's VotingPowers field.
+// and writes them to each participant's VotingPowers field for visibility.
 func (am AppModule) computeAndSetVotingPowers(
 	activeParticipants []*types.ActiveParticipant,
 	dwc *DelegationWeightCalculator,
 	eligibleGroups []string,
 	allModes map[string]map[string]ParticipationMode,
 ) {
-	// Build final weights map from participants
 	finalWeights := make(map[string]int64, len(activeParticipants))
 	for _, p := range activeParticipants {
 		finalWeights[p.Index] = p.Weight
 	}
 
-	// For each eligible group, compute voting powers and distribute to participants
-	// participantVP accumulates: participant -> []ModelVotingPower
 	participantVP := make(map[string][]*types.ModelVotingPower)
 
 	for _, modelID := range eligibleGroups {
@@ -272,7 +352,6 @@ func (am AppModule) computeAndSetVotingPowers(
 		}
 	}
 
-	// Write voting powers to participants, sorted by model_id
 	for _, p := range activeParticipants {
 		vps := participantVP[p.Index]
 		if len(vps) > 0 {
@@ -283,3 +362,21 @@ func (am AppModule) computeAndSetVotingPowers(
 		}
 	}
 }
+
+// delegationAdjustmentParams extracts DelegationAdjustmentParams from governance params.
+func (am AppModule) delegationAdjustmentParams(params types.Params) DelegationAdjustmentParams {
+	if params.DelegationParams == nil {
+		return DelegationAdjustmentParams{
+			RRefusal:    mathsdk.LegacyZeroDec(),
+			RPenalty:    mathsdk.LegacyZeroDec(),
+			RDelegation: mathsdk.LegacyZeroDec(),
+		}
+	}
+	dp := params.DelegationParams
+	return DelegationAdjustmentParams{
+		RRefusal:    protoDecToLegacy(dp.RRefusal),
+		RPenalty:    protoDecToLegacy(dp.RPenalty),
+		RDelegation: protoDecToLegacy(dp.RDelegation),
+	}
+}
+

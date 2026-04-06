@@ -101,7 +101,8 @@ type (
 		// PoC delegation collections
 		PoCDelegations   collections.Map[collections.Pair[string, string], types.PoCDelegation]
 		PoCRefusals      collections.KeySet[collections.Pair[string, string]]
-		PoCDirectIntents collections.KeySet[collections.Pair[string, string]]
+		PoCDirectIntents   collections.KeySet[collections.Pair[string, string]]
+		DelegationSnapshot collections.Item[types.DelegationSnapshot]
 	}
 )
 
@@ -527,6 +528,12 @@ func NewKeeper(
 			types.PoCDirectIntentPrefix,
 			"poc_direct_intent",
 			collections.PairKeyCodec(collections.StringKey, collections.StringKey),
+		),
+		DelegationSnapshot: collections.NewItem(
+			sb,
+			types.DelegationSnapshotPrefix,
+			"delegation_snapshot",
+			codec.CollValue[types.DelegationSnapshot](cdc),
 		),
 	}
 	// Build the collections schema

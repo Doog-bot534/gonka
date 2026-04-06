@@ -30,6 +30,15 @@ message ModelVotingPower {
   int64  voting_power = 2;
 }
 
+// DelegationSnapshot captures raw delegation state frozen at start_poc - deploy_window.
+// Overwritten each epoch. Mode resolution happens later at PoC evaluation time.
+message DelegationSnapshot {
+  int64 snapshot_height                  = 1;
+  repeated PoCDelegation delegations     = 2;
+  repeated PoCRefusal refusals           = 3;
+  repeated PoCDirectIntent intents       = 4;
+}
+
 // --- Transaction messages ---
 
 message MsgSetPoCDelegation {

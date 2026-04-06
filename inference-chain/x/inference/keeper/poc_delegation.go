@@ -148,6 +148,26 @@ func (k Keeper) GetPoCDirectIntentsForParticipant(ctx context.Context, participa
 
 // --- Last-write-wins clearing ---
 
+// --- DelegationSnapshot ---
+
+func (k Keeper) SetDelegationSnapshot(ctx context.Context, snapshot types.DelegationSnapshot) error {
+	return k.DelegationSnapshot.Set(ctx, snapshot)
+}
+
+func (k Keeper) GetDelegationSnapshot(ctx context.Context) (types.DelegationSnapshot, bool) {
+	snapshot, err := k.DelegationSnapshot.Get(ctx)
+	if err != nil {
+		return types.DelegationSnapshot{}, false
+	}
+	return snapshot, true
+}
+
+func (k Keeper) DeleteDelegationSnapshot(ctx context.Context) error {
+	return k.DelegationSnapshot.Remove(ctx)
+}
+
+// --- Last-write-wins clearing ---
+
 // ClearOtherDelegationState removes delegation state for the given (modelID, participant)
 // except the type indicated by keep ("delegation", "refusal", or "intent").
 func (k Keeper) ClearOtherDelegationState(ctx context.Context, modelID, participant, keep string) {

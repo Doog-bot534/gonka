@@ -273,7 +273,7 @@ func (am AppModule) handleConfirmationPoCPhaseTransitions(
 
 	// GENERATION -> VALIDATION transition
 	if event.ShouldTransitionToValidation(blockHeight, epochParams) {
-		am.captureValidationSnapshot(ctx, blockHeight, event.TriggerHeight, "confirmation PoC")
+		am.captureConfirmationValidationSnapshot(ctx, blockHeight, event.TriggerHeight)
 
 		event.Phase = types.ConfirmationPoCPhase_CONFIRMATION_POC_VALIDATION
 		updated = true
