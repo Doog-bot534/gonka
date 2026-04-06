@@ -135,8 +135,10 @@ func makeHostStats(n int, costPerSlot uint64) []*types.SubnetSettlementHostStats
 			Cost:                 costPerSlot,
 			RequiredValidations:  10,
 			CompletedValidations: 9,
-			InferenceCount:       11,
+			InferenceCount:       12,
 			Validated:            12,
+			Missed:               0,
+			Invalid:              0,
 		}
 	}
 	return stats
