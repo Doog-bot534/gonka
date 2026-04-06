@@ -312,7 +312,15 @@ func (am AppModule) buildBootstrapDelegationSnapshot(
 	effectiveParticipants := effectiveState.participants
 	consensusWeights := effectiveState.weights
 	totalNetworkWeight := effectiveState.totalWeight
-	activeModels := am.getCurrentEpochActiveModelSet(ctx, effectiveParticipants)
+	// Active = has voting powers in AP(N). Must match computeStoreCommitVotingPowers.
+	activeModels := make(map[string]bool)
+	for _, p := range effectiveParticipants {
+		for _, vp := range p.VotingPowers {
+			if vp != nil && vp.ModelId != "" {
+				activeModels[vp.ModelId] = true
+			}
+		}
+	}
 	bootstrapModelIDs := bootstrapCandidateModelIDs(params.PocParams, activeModels)
 
 	bootstrapDelegationEntries,
@@ -377,48 +385,6 @@ func (am AppModule) getEpochZeroEffectiveParticipationState(ctx context.Context)
 		weights:      consensusWeights,
 		totalWeight:  totalNetworkWeight,
 	}
-}
-
-func activeModelSet(participants []*types.ActiveParticipant) map[string]bool {
-	models := make(map[string]bool)
-	for _, participant := range participants {
-		for _, modelID := range participant.Models {
-			if modelID != "" {
-				models[modelID] = true
-			}
-		}
-		for _, vp := range participant.VotingPowers {
-			if vp != nil && vp.ModelId != "" {
-				models[vp.ModelId] = true
-			}
-		}
-	}
-	return models
-}
-
-func (am AppModule) getCurrentEpochActiveModelSet(
-	ctx context.Context,
-	participants []*types.ActiveParticipant,
-) map[string]bool {
-	activeModels := activeModelSet(participants)
-
-	epochIndex, found := am.keeper.GetEffectiveEpochIndex(ctx)
-	if !found {
-		return activeModels
-	}
-
-	parentGroupData, found := am.keeper.GetEpochGroupData(ctx, epochIndex, "")
-	if !found {
-		return activeModels
-	}
-
-	for _, modelID := range parentGroupData.SubGroupModels {
-		if modelID != "" {
-			activeModels[modelID] = true
-		}
-	}
-
-	return activeModels
 }
 
 func bootstrapCandidateModelIDs(

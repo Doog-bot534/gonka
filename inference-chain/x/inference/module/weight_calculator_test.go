@@ -210,6 +210,76 @@ func TestPoCWeightCalculator_CalculateParticipantWeight_ProducesRawWeights(t *te
 	require.Equal(t, int64(30), consensusWeight)
 }
 
+func TestPoCWeightCalculator_Calculate_RejectsWhenVotingPowerIsInsufficient(t *testing.T) {
+	key := types.PoCParticipantModelKey{
+		ParticipantAddress: testutil.Executor,
+		ModelID:            "model-a",
+	}
+
+	wc := &PoCWeightCalculator{
+		ModelVotingPowers: map[string]map[string]int64{
+			"model-a": {
+				testutil.Validator: 40,
+			},
+		},
+		TotalNetworkWeight: 100,
+		StoreCommits: map[types.PoCParticipantModelKey]types.PoCV2StoreCommit{
+			key: {
+				ParticipantAddress:       testutil.Executor,
+				PocStageStartBlockHeight: 100,
+				Count:                    10,
+				ModelId:                  "model-a",
+			},
+		},
+		NodeWeightDistributions: map[types.PoCParticipantModelKey]types.MLNodeWeightDistribution{
+			key: {
+				ParticipantAddress:       testutil.Executor,
+				PocStageStartBlockHeight: 100,
+				ModelId:                  "model-a",
+				Weights: []*types.MLNodeWeight{{
+					NodeId: "node-a",
+					Weight: 10,
+				}},
+			},
+		},
+		Validations: map[types.PoCParticipantModelKey][]types.PoCValidationV2{
+			key: {
+				{
+					ValidatorParticipantAddress: testutil.Validator,
+					ValidatedWeight:             10,
+				},
+			},
+		},
+		PocParams: &types.PocParams{
+			Models: []*types.PoCModelConfig{
+				{
+					ModelId:           "model-a",
+					WeightScaleFactor: types.DecimalFromFloat(1.0),
+				},
+			},
+		},
+		Participants: map[string]types.Participant{
+			testutil.Executor: {
+				Index:        testutil.Executor,
+				Address:      testutil.Executor,
+				ValidatorKey: "validator-key",
+				InferenceUrl: "http://executor.example.com",
+			},
+		},
+		Seeds: map[string]types.RandomSeed{
+			testutil.Executor: {
+				Participant: testutil.Executor,
+				EpochIndex:  1,
+				Signature:   "seed-sig",
+			},
+		},
+		Logger:                  noopLogger{},
+		TimeNormalizationFactor: mathsdk.LegacyOneDec(),
+	}
+
+	require.Empty(t, wc.Calculate())
+}
+
 func TestUpdateConfirmationWeightsV2_UsesPerModelWeightScaleFactor(t *testing.T) {
 	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonkapub")
 

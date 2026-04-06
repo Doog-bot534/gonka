@@ -795,7 +795,6 @@ func (am AppModule) captureConfirmationValidationSnapshot(ctx context.Context, b
 type effectiveValidationBaseState struct {
 	participation             effectiveParticipationState
 	existingModelVotingPowers []*types.ModelVotingPowers
-	isEpochZero               bool
 }
 
 // getEffectiveValidationBaseState centralizes the only epoch-0 special case used
@@ -812,7 +811,6 @@ func (am AppModule) getEffectiveValidationBaseState(ctx context.Context) effecti
 				totalWeight:  0,
 			},
 			existingModelVotingPowers: nil,
-			isEpochZero:               false,
 		}
 	}
 
@@ -820,7 +818,6 @@ func (am AppModule) getEffectiveValidationBaseState(ctx context.Context) effecti
 		return effectiveValidationBaseState{
 			participation:             am.getEpochZeroEffectiveParticipationState(ctx),
 			existingModelVotingPowers: nil,
-			isEpochZero:               true,
 		}
 	}
 
@@ -833,7 +830,6 @@ func (am AppModule) getEffectiveValidationBaseState(ctx context.Context) effecti
 				totalWeight:  0,
 			},
 			existingModelVotingPowers: nil,
-			isEpochZero:               false,
 		}
 	}
 
@@ -869,7 +865,6 @@ func (am AppModule) getEffectiveValidationBaseState(ctx context.Context) effecti
 			totalWeight:  totalWeight,
 		},
 		existingModelVotingPowers: modelWeights,
-		isEpochZero:               false,
 	}
 }
 
@@ -889,14 +884,11 @@ func (am AppModule) computeStoreCommitVotingPowers(ctx context.Context, snapshot
 		mergedValidationVotingPowers[mvw.ModelId] = types.VotingPowerSliceToMap(mvw.VotingPowers)
 	}
 
-	bootstrapSnapshot, bootstrapDelegations, _, found := am.loadBootstrapSnapshotState(ctx)
-	bootstrapPreEligibleByModel := map[string]*types.BootstrapModelPreEligibility{}
+	_, bootstrapDelegations, _, found := am.loadBootstrapSnapshotState(ctx)
 	if !found {
 		am.LogError("computeStoreCommitVotingPowers: bootstrap delegation snapshot not found", types.PoC,
 			"context", logContext)
 		bootstrapDelegations = map[string]map[string]string{}
-	} else {
-		bootstrapPreEligibleByModel = indexBootstrapPreEligibility(bootstrapSnapshot.Preeligibility)
 	}
 
 	allStoreCommits, err := am.keeper.GetAllPoCV2StoreCommitsForStage(ctx, snapshotKey)
@@ -912,11 +904,6 @@ func (am AppModule) computeStoreCommitVotingPowers(ctx context.Context, snapshot
 	for key := range allStoreCommits {
 		if _, alreadyActive := mergedValidationVotingPowers[key.ModelID]; alreadyActive {
 			continue
-		}
-		if !baseState.isEpochZero {
-			if result, ok := bootstrapPreEligibleByModel[key.ModelID]; ok && !result.PreEligible {
-				continue
-			}
 		}
 		bootstrapModelStoreCommitKeys = append(bootstrapModelStoreCommitKeys, key)
 	}
