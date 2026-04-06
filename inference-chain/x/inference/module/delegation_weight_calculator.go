@@ -37,14 +37,29 @@ type WeightParams struct {
 // cross-group concerns: eligibility, caps, consensus weight, delegation modes,
 // and per-group voting power.
 type DelegationWeightCalculator struct {
-	Groups             map[string]*GroupData          // model_id -> group data
-	ConsensusWeights   map[string]int64               // participant -> ActiveParticipant.Weight from N-1
-	TotalNetworkWeight int64                          // sum(ConsensusWeights)
-	Delegations        map[string]map[string]string   // model_id -> (delegator -> delegate_to)
-	Refusals           map[string]map[string]bool     // model_id -> (participant -> true)
-	Intents            map[string]map[string]bool     // model_id -> (participant -> true)
+	Groups             map[string]*GroupData        // model_id -> group data
+	ConsensusWeights   map[string]int64             // participant -> ActiveParticipant.Weight from N-1
+	TotalNetworkWeight int64                        // sum(ConsensusWeights)
+	Delegations        map[string]map[string]string // model_id -> (delegator -> delegate_to)
+	Refusals           map[string]map[string]bool   // model_id -> (participant -> true)
+	Intents            map[string]map[string]bool   // model_id -> (participant -> true)
 	Params             WeightParams
 	Logger             types.InferenceLogger
+}
+
+func buildWeightParams(params types.Params) WeightParams {
+	wp := WeightParams{
+		WThreshold: mathsdk.LegacyZeroDec(),
+		VMin:       0,
+		CapFactor:  mathsdk.LegacyZeroDec(),
+	}
+	if params.DelegationParams != nil {
+		dp := params.DelegationParams
+		wp.WThreshold = protoDecToLegacy(dp.WThreshold)
+		wp.VMin = dp.VMin
+		wp.CapFactor = protoDecToLegacy(dp.CapFactor)
+	}
+	return wp
 }
 
 // IsGovernanceApproved checks if a model group exists with a defined coefficient.
@@ -96,6 +111,36 @@ func (wc *DelegationWeightCalculator) IsGroupPreEligible(modelID string) bool {
 	return wc.IsGovernanceApproved(modelID) &&
 		wc.MeetsWeightThreshold(modelID) &&
 		wc.MeetsMinHosts(modelID)
+}
+
+func (wc *DelegationWeightCalculator) ProjectedReachableVotingPower(modelID string) int64 {
+	g, ok := wc.Groups[modelID]
+	if !ok {
+		return 0
+	}
+
+	memberSet := make(map[string]bool, len(g.Members))
+	reachable := int64(0)
+	for _, m := range g.Members {
+		memberSet[m] = true
+		reachable += wc.ConsensusWeights[m]
+	}
+
+	for delegator, target := range wc.Delegations[modelID] {
+		if !memberSet[target] || memberSet[delegator] {
+			continue
+		}
+		reachable += wc.ConsensusWeights[delegator]
+	}
+
+	return reachable
+}
+
+func (wc *DelegationWeightCalculator) MeetsReachabilityThreshold(modelID string) bool {
+	if wc.TotalNetworkWeight <= 0 {
+		return false
+	}
+	return wc.ProjectedReachableVotingPower(modelID)*3 > wc.TotalNetworkWeight*2
 }
 
 // IsGroupEligible checks post-PoC eligibility. At least V_min members must have
@@ -287,4 +332,3 @@ func (wc *DelegationWeightCalculator) ComputeGroupVotingPowers(
 
 	return votingPower
 }
-

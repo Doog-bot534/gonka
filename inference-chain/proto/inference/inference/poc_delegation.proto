@@ -30,13 +30,35 @@ message ModelVotingPower {
   int64  voting_power = 2;
 }
 
-// DelegationSnapshot captures raw delegation state frozen at start_poc - deploy_window.
-// Overwritten each epoch. Mode resolution happens later at PoC evaluation time.
+// DelegationSnapshot captures the frozen delegation state used during PoC
+// validation and later epoch-local voting power calculations.
+// Intents are intentionally excluded.
 message DelegationSnapshot {
-  int64 snapshot_height                  = 1;
-  repeated PoCDelegation delegations     = 2;
-  repeated PoCRefusal refusals           = 3;
-  repeated PoCDirectIntent intents       = 4;
+  int64 snapshot_height              = 1;
+  repeated PoCDelegation delegations = 2;
+  repeated PoCRefusal refusals       = 3;
+}
+
+message BootstrapModelPreEligibility {
+  string model_id                 = 1;
+  bool pre_eligible               = 2;
+  bool meets_weight_threshold     = 3;
+  bool meets_v_min                = 4;
+  bool meets_reachability         = 5;
+  int64 intent_host_count         = 6;
+  int64 intent_weight             = 7;
+  int64 reachable_voting_power    = 8;
+}
+
+// BootstrapDelegationSnapshot captures the delegation and intent state
+// needed to evaluate whether a not-yet-active approved model is pre-eligible.
+// Overwritten on each start_poc - deploy_window capture.
+message BootstrapDelegationSnapshot {
+  int64 snapshot_height                                  = 1;
+  repeated PoCDelegation delegations                     = 2;
+  repeated PoCDirectIntent intents                       = 3;
+  int64 total_network_weight                             = 4;
+  repeated BootstrapModelPreEligibility group_preeligibility = 5;
 }
 
 // --- Transaction messages ---

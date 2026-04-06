@@ -275,11 +275,9 @@ func (wc *PoCWeightCalculator) getParticipantValidations(key types.PoCParticipan
 func (wc *PoCWeightCalculator) pocValidated(vals []types.PoCValidationV2, key types.PoCParticipantModelKey) bool {
 	votingPowers := wc.ModelVotingPowers[key.ModelID]
 	if len(votingPowers) == 0 {
-		// No per-model voting data (no snapshot or model not in snapshot).
-		// Accept: matches pre-delegation behavior and handles bootstrap epochs.
-		wc.Logger.LogInfo("Calculate: No voting powers for model. Accepting.", types.PoC,
+		wc.Logger.LogWarn("Calculate: No voting powers for model. Rejecting.", types.PoC,
 			"participant", key.ParticipantAddress, "modelId", key.ModelID)
-		return true
+		return false
 	}
 
 	if wc.ValidationSlots > 0 {
@@ -352,7 +350,6 @@ type ValidationOutcome struct {
 	ValidWeight   int64
 	InvalidWeight int64
 }
-
 
 // guardianProtection handles tie-breaking when no clear majority exists.
 // All voting guardians must agree unanimously for the decision to pass.
@@ -1166,4 +1163,3 @@ func (am AppModule) filterStoreCommitsFromInferenceNodes(
 
 	return filteredCommits, filteredDistributions
 }
-

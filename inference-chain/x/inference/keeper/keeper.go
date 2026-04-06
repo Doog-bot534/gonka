@@ -99,10 +99,11 @@ type (
 		SubnetHostEpochStatsMap collections.Map[collections.Pair[uint64, sdk.AccAddress], types.SubnetHostEpochStats]
 		SubnetEscrowsByEpoch    collections.Map[collections.Pair[uint64, uint64], collections.NoValue]
 		// PoC delegation collections
-		PoCDelegations   collections.Map[collections.Pair[string, string], types.PoCDelegation]
-		PoCRefusals      collections.KeySet[collections.Pair[string, string]]
-		PoCDirectIntents   collections.KeySet[collections.Pair[string, string]]
-		DelegationSnapshot collections.Item[types.DelegationSnapshot]
+		PoCDelegations              collections.Map[collections.Pair[string, string], types.PoCDelegation]
+		PoCRefusals                 collections.KeySet[collections.Pair[string, string]]
+		PoCDirectIntents            collections.KeySet[collections.Pair[string, string]]
+		DelegationSnapshot          collections.Item[types.DelegationSnapshot]
+		BootstrapDelegationSnapshot collections.Item[types.BootstrapDelegationSnapshot]
 	}
 )
 
@@ -534,6 +535,12 @@ func NewKeeper(
 			types.DelegationSnapshotPrefix,
 			"delegation_snapshot",
 			codec.CollValue[types.DelegationSnapshot](cdc),
+		),
+		BootstrapDelegationSnapshot: collections.NewItem(
+			sb,
+			types.BootstrapDelegationSnapshotPrefix,
+			"bootstrap_delegation_snapshot",
+			codec.CollValue[types.BootstrapDelegationSnapshot](cdc),
 		),
 	}
 	// Build the collections schema

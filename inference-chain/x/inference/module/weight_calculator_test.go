@@ -34,6 +34,26 @@ func (noopLogger) LogError(string, types.SubSystem, ...interface{}) {}
 func (noopLogger) LogWarn(string, types.SubSystem, ...interface{})  {}
 func (noopLogger) LogDebug(string, types.SubSystem, ...interface{}) {}
 
+func TestPoCWeightCalculator_PocValidated_RejectsWhenVotingPowersMissing(t *testing.T) {
+	wc := &PoCWeightCalculator{
+		ModelVotingPowers:  map[string]map[string]int64{},
+		TotalNetworkWeight: 100,
+		Logger:             noopLogger{},
+	}
+
+	ok := wc.pocValidated([]types.PoCValidationV2{
+		{
+			ValidatorParticipantAddress: testutil.Validator,
+			ValidatedWeight:             1,
+		},
+	}, types.PoCParticipantModelKey{
+		ParticipantAddress: testutil.Executor,
+		ModelID:            "missing-model",
+	})
+
+	require.False(t, ok)
+}
+
 func TestPoCWeightCalculator_CalculateParticipantWeight_ProducesRawWeights(t *testing.T) {
 	modelAKey := types.PoCParticipantModelKey{
 		ParticipantAddress: testutil.Executor,

@@ -36,9 +36,7 @@ func (k Keeper) GetPoCDelegationsForModel(ctx context.Context, modelID string) (
 		return nil, err
 	}
 	result := make([]types.PoCDelegation, len(vals))
-	for i := range vals {
-		result[i] = vals[i]
-	}
+	copy(result, vals)
 	return result, nil
 }
 
@@ -52,9 +50,7 @@ func (k Keeper) GetAllPoCDelegations(ctx context.Context) ([]types.PoCDelegation
 		return nil, err
 	}
 	result := make([]types.PoCDelegation, len(vals))
-	for i := range vals {
-		result[i] = vals[i]
-	}
+	copy(result, vals)
 	return result, nil
 }
 
@@ -164,6 +160,24 @@ func (k Keeper) GetDelegationSnapshot(ctx context.Context) (types.DelegationSnap
 
 func (k Keeper) DeleteDelegationSnapshot(ctx context.Context) error {
 	return k.DelegationSnapshot.Remove(ctx)
+}
+
+// --- BootstrapDelegationSnapshot ---
+
+func (k Keeper) SetBootstrapDelegationSnapshot(ctx context.Context, snapshot types.BootstrapDelegationSnapshot) error {
+	return k.BootstrapDelegationSnapshot.Set(ctx, snapshot)
+}
+
+func (k Keeper) GetBootstrapDelegationSnapshot(ctx context.Context) (types.BootstrapDelegationSnapshot, bool) {
+	snapshot, err := k.BootstrapDelegationSnapshot.Get(ctx)
+	if err != nil {
+		return types.BootstrapDelegationSnapshot{}, false
+	}
+	return snapshot, true
+}
+
+func (k Keeper) DeleteBootstrapDelegationSnapshot(ctx context.Context) error {
+	return k.BootstrapDelegationSnapshot.Remove(ctx)
 }
 
 // --- Last-write-wins clearing ---

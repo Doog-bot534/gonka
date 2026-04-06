@@ -80,6 +80,7 @@ var (
 	PoCRefusalPrefix                       = collections.NewPrefix(54)
 	PoCDirectIntentPrefix                  = collections.NewPrefix(55)
 	DelegationSnapshotPrefix               = collections.NewPrefix(56)
+	BootstrapDelegationSnapshotPrefix      = collections.NewPrefix(57)
 	ParamsKey                              = []byte("p_inference")
 )
 

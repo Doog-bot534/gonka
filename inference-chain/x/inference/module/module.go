@@ -455,19 +455,17 @@ func (am AppModule) EndBlock(ctx context.Context) error {
 		am.captureGenerationStartTimestamp(ctx, blockTime, upcomingEpoch.PocStartBlockHeight)
 	}
 
-	// Capture delegation snapshot at start_poc - deploy_window
-	if params.DelegationParams != nil && params.DelegationParams.DeployWindow > 0 {
-		nextPocStart := epochContext.NextPoCStart()
-		snapshotHeight := nextPocStart - params.DelegationParams.DeployWindow
-		if blockHeight == snapshotHeight {
-			am.captureDelegationSnapshot(ctx, blockHeight)
-		}
+	// Capture the pre-eligibility snapshot at start_poc - deploy_window.
+	if params.DelegationParams != nil &&
+		epochContext.IsDelegationSnapshotHeight(blockHeight, params.DelegationParams.DeployWindow) {
+		am.captureBootstrapDelegationSnapshot(ctx, blockHeight)
 	}
 
 	// Capture validation snapshot at poc_validation_start for deterministic sampling
 	if epochContext.IsStartOfPoCValidationStage(blockHeight) {
 		upcomingEpoch, found := am.keeper.GetUpcomingEpoch(ctx)
 		if found && upcomingEpoch != nil {
+			am.captureDelegationSnapshot(ctx, blockHeight)
 			am.captureValidationSnapshot(ctx, blockHeight, upcomingEpoch.PocStartBlockHeight, "regular PoC")
 		} else {
 			am.LogError("captureValidationSnapshot: Unable to get upcoming epoch", types.PoC)
@@ -625,9 +623,9 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 		allModes[modelID] = dwc.ResolveGroupParticipation(modelID)
 	}
 
-	// Apply delegation weight adjustment (no-op when all r_* = 0 or all participants are DIRECT)
-	adjParams := am.delegationAdjustmentParams(params)
-	ApplyDelegationWeightAdjustment(activeParticipants, dwc, eligibleGroups, allModes, adjParams)
+	// TODO: Adjust bitcoin style reward instead of weight?
+	// adjParams := am.delegationAdjustmentParams(params)
+	// ApplyDelegationWeightAdjustment(activeParticipants, dwc, eligibleGroups, allModes, adjParams)
 
 	// Adjust weights based on collateral after the grace period. This modifies the weights in-place.
 	if err := am.keeper.AdjustWeightsByCollateral(ctx, activeParticipants); err != nil {
@@ -761,8 +759,10 @@ func (am AppModule) captureGenerationStartTimestamp(ctx context.Context, blockTi
 // captureValidationSnapshot stores per-model voting powers and app_hash at validation phase start
 // for deterministic sampling synchronization between chain and DAPI.
 //
-// For regular PoC: voting powers are computed from DelegationSnapshot + AP(N-1).Weight + store commits.
-// DIRECT = who submitted store commits.
+// For regular PoC:
+// - models already present in AP(N).voting_powers reuse those voting powers
+// - new models derive voting powers from bootstrap delegation + AP(N).weight + store commits
+// DIRECT = who submitted store commits for the new-model branch.
 //
 // For confirmation PoC: voting powers come from AP(N).voting_powers (already delegation-resolved
 // at epoch formation). DIRECT = who was assigned models in AP(N).
@@ -778,13 +778,26 @@ func (am AppModule) captureConfirmationValidationSnapshot(ctx context.Context, b
 	am.writeValidationSnapshot(ctx, blockHeight, snapshotKey, "confirmation PoC", modelWeights, totalWeight)
 }
 
-// computeStoreCommitVotingPowers derives voting powers from DelegationSnapshot + AP(N-1) + store commits.
+// computeStoreCommitVotingPowers builds validation-time voting powers by combining:
+// - existing model voting powers from the effective epoch
+// - bootstrap-model voting powers derived from bootstrap delegation + AP(N).weight + store commits
 func (am AppModule) computeStoreCommitVotingPowers(ctx context.Context, snapshotKey int64, logContext string) ([]*types.ModelVotingPowers, int64) {
 	consensusWeights, totalNetworkWeight := am.getPreviousConsensusWeights(ctx)
-	delegations, _, _ := am.loadDelegationState(ctx)
-
 	if totalNetworkWeight == 0 {
 		return nil, 0
+	}
+
+	existingModelVotingPowers, _ := am.getEffectiveEpochVotingPowerMap(ctx)
+	existingModelSet := make(map[string]bool, len(existingModelVotingPowers))
+	for modelID := range existingModelVotingPowers {
+		existingModelSet[modelID] = true
+	}
+
+	bootstrapDelegations, _, found := am.loadBootstrapDelegationState(ctx)
+	if !found {
+		am.LogError("computeStoreCommitVotingPowers: bootstrap delegation snapshot not found", types.PoC,
+			"context", logContext)
+		bootstrapDelegations = map[string]map[string]string{}
 	}
 
 	allStoreCommits, err := am.keeper.GetAllPoCV2StoreCommitsForStage(ctx, snapshotKey)
@@ -793,15 +806,25 @@ func (am AppModule) computeStoreCommitVotingPowers(ctx context.Context, snapshot
 			"context", logContext, "error", err)
 		return nil, totalNetworkWeight
 	}
-	storeCommitKeys := make([]types.PoCParticipantModelKey, 0, len(allStoreCommits))
+	bootstrapModelStoreCommitKeys := make([]types.PoCParticipantModelKey, 0, len(allStoreCommits))
 	for key := range allStoreCommits {
-		storeCommitKeys = append(storeCommitKeys, key)
+		if existingModelSet[key.ModelID] {
+			continue
+		}
+		bootstrapModelStoreCommitKeys = append(bootstrapModelStoreCommitKeys, key)
 	}
 
-	modelVotingPowers := ComputeModelVotingPowers(storeCommitKeys, consensusWeights, delegations)
+	bootstrapModelVotingPowers := ComputeModelVotingPowers(bootstrapModelStoreCommitKeys, consensusWeights, bootstrapDelegations)
+	mergedValidationVotingPowers := make(map[string]map[string]int64, len(existingModelVotingPowers)+len(bootstrapModelVotingPowers))
+	for modelID, vps := range existingModelVotingPowers {
+		mergedValidationVotingPowers[modelID] = vps
+	}
+	for modelID, vps := range bootstrapModelVotingPowers {
+		mergedValidationVotingPowers[modelID] = vps
+	}
 
 	var modelWeights []*types.ModelVotingPowers
-	for modelID, vps := range modelVotingPowers {
+	for modelID, vps := range mergedValidationVotingPowers {
 		modelWeights = append(modelWeights, &types.ModelVotingPowers{
 			ModelId:      modelID,
 			VotingPowers: types.VotingPowerMapToSlice(vps),
@@ -811,6 +834,15 @@ func (am AppModule) computeStoreCommitVotingPowers(ctx context.Context, snapshot
 		return cmp.Compare(a.ModelId, b.ModelId)
 	})
 	return modelWeights, totalNetworkWeight
+}
+
+func (am AppModule) getEffectiveEpochVotingPowerMap(ctx context.Context) (map[string]map[string]int64, int64) {
+	modelWeights, totalWeight := am.getEffectiveEpochVotingPowers(ctx)
+	modelVPMap := make(map[string]map[string]int64, len(modelWeights))
+	for _, mvw := range modelWeights {
+		modelVPMap[mvw.ModelId] = types.VotingPowerSliceToMap(mvw.VotingPowers)
+	}
+	return modelVPMap, totalWeight
 }
 
 // getEffectiveEpochVotingPowers reads AP(N).voting_powers from the current effective epoch.
@@ -888,7 +920,6 @@ func (am AppModule) writeValidationSnapshot(
 		"exchangeEndTimestamp", blockTime,
 	)
 }
-
 
 func (am AppModule) addEpochMembers(ctx context.Context, upcomingEg *epochgroup.EpochGroup, activeParticipants []*types.ActiveParticipant) {
 	params, err := am.keeper.GetParams(ctx)
