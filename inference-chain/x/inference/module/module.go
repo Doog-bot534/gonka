@@ -606,27 +606,34 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 	modelAssigner := NewModelAssigner(am.keeper, am.keeper)
 	modelAssigner.setModelsForParticipants(ctx, activeParticipants, *upcomingEpoch)
 
-	// --- DelegationWeightCalculator phase 1: eligibility, caps, consensus weight, modes ---
-	coefficients := ModelCoefficients(params.PocParams)
-	dwc := am.buildDelegationWeightCalculator(ctx, activeParticipants, coefficients, params)
-	eligibleGroups := dwc.EligibleGroups()
-
-	// Compute consensus weights with caps applied and write to participants
-	consensusWeights := dwc.ComputeConsensusWeights(eligibleGroups)
-	for _, p := range activeParticipants {
-		p.Weight = consensusWeights[p.Index]
+	participationState, err := am.prepareEpochParticipationState(
+		ctx,
+		activeParticipants,
+		params,
+		upcomingEpoch.PocStartBlockHeight,
+	)
+	if err != nil {
+		am.LogError("onEndOfPoCValidationStage: failed to prepare participation state", types.PoC, "error", err)
+		return
 	}
 
-	// Resolve participation modes for each eligible group
-	allModes := make(map[string]map[string]ParticipationMode, len(eligibleGroups))
-	for _, modelID := range eligibleGroups {
-		allModes[modelID] = dwc.ResolveGroupParticipation(modelID)
+	// Compute consensus weights with caps applied and write to participants
+	consensusWeights := participationState.calculator.ComputeConsensusWeights(participationState.eligibleModels)
+	for _, p := range activeParticipants {
+		p.Weight = consensusWeights[p.Index]
 	}
 
 	// TODO: Adjust bitcoin style reward instead of weight?
 	// We at least must limit increas weight of any participant
 	adjParams := am.delegationAdjustmentParams(params)
-	ApplyDelegationWeightAdjustment(activeParticipants, dwc, eligibleGroups, allModes, adjParams)
+	ApplyDelegationWeightAdjustment(
+		activeParticipants,
+		participationState.calculator,
+		participationState.regularAdjustmentModels(),
+		participationState.participationByModel,
+		adjParams,
+	)
+	ApplyBootstrapPenaltyAdjustment(activeParticipants, participationState.bootstrapPenaltyByModel, adjParams)
 
 	// Adjust weights based on collateral after the grace period. This modifies the weights in-place.
 	if err := am.keeper.AdjustWeightsByCollateral(ctx, activeParticipants); err != nil {
@@ -639,7 +646,12 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 	activeParticipants = am.applyEpochPowerCapping(ctx, activeParticipants)
 
 	// Write per-model voting powers to ActiveParticipant for visibility
-	am.computeAndSetVotingPowers(activeParticipants, dwc, eligibleGroups, allModes)
+	am.computeAndSetVotingPowers(
+		activeParticipants,
+		participationState.calculator,
+		participationState.eligibleModels,
+		participationState.participationByModel,
+	)
 
 	modelAssigner.AllocateMLNodesForPoC(ctx, *upcomingEpoch, activeParticipants)
 	am.LogInfo("Finished PoC allocation for all participants", types.EpochGroup, "step", "poc_allocation_complete")
@@ -794,11 +806,14 @@ func (am AppModule) computeStoreCommitVotingPowers(ctx context.Context, snapshot
 		mergedValidationVotingPowers[mvw.ModelId] = types.VotingPowerSliceToMap(mvw.VotingPowers)
 	}
 
-	bootstrapDelegations, found := am.loadBootstrapDelegationState(ctx)
+	bootstrapSnapshot, bootstrapDelegations, _, found := am.loadBootstrapSnapshotState(ctx)
+	bootstrapPreEligibleByModel := map[string]*types.BootstrapModelPreEligibility{}
 	if !found {
 		am.LogError("computeStoreCommitVotingPowers: bootstrap delegation snapshot not found", types.PoC,
 			"context", logContext)
 		bootstrapDelegations = map[string]map[string]string{}
+	} else {
+		bootstrapPreEligibleByModel = indexBootstrapPreEligibility(bootstrapSnapshot.Preeligibility)
 	}
 
 	allStoreCommits, err := am.keeper.GetAllPoCV2StoreCommitsForStage(ctx, snapshotKey)
@@ -813,6 +828,9 @@ func (am AppModule) computeStoreCommitVotingPowers(ctx context.Context, snapshot
 	bootstrapModelStoreCommitKeys := make([]types.PoCParticipantModelKey, 0, len(allStoreCommits))
 	for key := range allStoreCommits {
 		if _, alreadyActive := mergedValidationVotingPowers[key.ModelID]; alreadyActive {
+			continue
+		}
+		if result, ok := bootstrapPreEligibleByModel[key.ModelID]; ok && !result.PreEligible {
 			continue
 		}
 		bootstrapModelStoreCommitKeys = append(bootstrapModelStoreCommitKeys, key)

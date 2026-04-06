@@ -139,7 +139,7 @@ class DelegationTests : TestermintTest() {
     }
 
     @Test
-    fun `none and refuse penalties reduce weight for non-direct participants`() {
+    fun `non pre-eligible bootstrap model contributes no weight and penalizes missing choice`() {
         val delegationSpec = spec<DelegationParams> {
             this[DelegationParams::deployWindow] = 1L
             this[DelegationParams::rRefusal] = Decimal.fromDouble(0.25)
@@ -160,7 +160,8 @@ class DelegationTests : TestermintTest() {
         setupModelAOnly(nodeB)
         setupModelAOnly(nodeC)
 
-        logSection("Node B refuses delegation for secondModel")
+        logSection("Node A declares intent and Node B refuses delegation for secondModel")
+        assertThat(nodeA.declarePoCIntent(secondModel).code).isEqualTo(0)
         nodeB.refusePoCDelegation(secondModel)
 
         logSection("Waiting for PoC cycles to stabilize (genesis PoC lags ~1 epoch behind joins)")
@@ -178,38 +179,97 @@ class DelegationTests : TestermintTest() {
         logSection("Node B: weight=${pB.weight}, votingPowers=${pB.votingPowers}")
         logSection("Node C: weight=${pC.weight}, votingPowers=${pC.votingPowers}")
 
-        // Expected weights:
-        // A serves both: consensus=60, DIRECT for both -> no penalty -> weight=60
-        // B serves A only: consensus=50, REFUSE for B -> penalty=floor(50*0.25)=12 -> weight=38
-        // C serves A only: consensus=50, NONE for B -> penalty=floor(50*0.5)=25 -> weight=25
-        assertThat(pA.weight).isEqualTo(60)
-        assertThat(pB.weight).isEqualTo(38)
+        // secondModel is bootstrap-only and not pre-eligible here.
+        // It contributes zero consensus weight.
+        // A declared bootstrap intent, which is acceptable while preEligible=false.
+        // B refused and C made no choice, so both are punished as NONE.
+        // A keeps model A only -> 50
+        // B serves A only -> floor(50 * 0.5) penalty -> 25
+        // C serves A only -> floor(50 * 0.5) penalty -> 25
+        assertThat(pA.weight).isEqualTo(50)
+        assertThat(pB.weight).isEqualTo(25)
         assertThat(pC.weight).isEqualTo(25)
 
-        // Refusal is less punitive than doing nothing
-        assertThat(pB.weight).isGreaterThan(pC.weight)
-
-        // Voting powers for A: DIRECT for both models
+        // Voting powers only exist for model A because secondModel never entered validation.
         assertThat(pA.votingPowers).isNotNull
         val vpA = pA.votingPowers!!.associateBy { it.modelId }
         assertThat(vpA).containsKey(defaultModel)
-        assertThat(vpA).containsKey(secondModel)
-        assertThat(vpA[defaultModel]!!.votingPower).isEqualTo(60)
-        assertThat(vpA[secondModel]!!.votingPower).isEqualTo(60)
+        assertThat(vpA).doesNotContainKey(secondModel)
+        assertThat(vpA[defaultModel]!!.votingPower).isEqualTo(50)
 
-        // Voting powers for B: DIRECT only for model A, not for model B
         assertThat(pB.votingPowers).isNotNull
         val vpB = pB.votingPowers!!.associateBy { it.modelId }
         assertThat(vpB).containsKey(defaultModel)
         assertThat(vpB).doesNotContainKey(secondModel)
-        assertThat(vpB[defaultModel]!!.votingPower).isEqualTo(38)
+        assertThat(vpB[defaultModel]!!.votingPower).isEqualTo(25)
 
-        // Voting powers for C: DIRECT only for model A, not for model B
         assertThat(pC.votingPowers).isNotNull
         val vpC = pC.votingPowers!!.associateBy { it.modelId }
         assertThat(vpC).containsKey(defaultModel)
         assertThat(vpC).doesNotContainKey(secondModel)
         assertThat(vpC[defaultModel]!!.votingPower).isEqualTo(25)
+    }
+
+    @Test
+    fun `pre eligible bootstrap intent without commit is punished like refusal`() {
+        val delegationSpec = spec<DelegationParams> {
+            this[DelegationParams::deployWindow] = 1L
+            this[DelegationParams::rRefusal] = Decimal.fromDouble(0.25)
+            this[DelegationParams::rPenalty] = Decimal.fromDouble(0.5)
+            this[DelegationParams::rDelegation] = Decimal.fromDouble(0.0)
+            this[DelegationParams::vMin] = 1L
+        }
+        val (cluster, genesis) = initCluster(2, reboot = true, mergeSpec = baseMultiModelSpec(delegationSpec))
+
+        genesis.waitForStage(EpochStage.SET_NEW_VALIDATORS)
+
+        val nodeA = genesis
+        val nodeB = cluster.joinPairs[0]
+        val nodeC = cluster.joinPairs[1]
+
+        setupBothModels(nodeA)
+        setupModelAOnly(nodeB)
+        setupModelAOnly(nodeC)
+
+        val addrA = nodeA.node.getColdAddress()
+
+        logSection("Bootstrap pre-eligibility inputs: A intent, B intent, C delegation for secondModel")
+        assertThat(nodeA.declarePoCIntent(secondModel).code).isEqualTo(0)
+        assertThat(nodeB.declarePoCIntent(secondModel).code).isEqualTo(0)
+        assertThat(nodeC.setPoCDelegation(secondModel, addrA).code).isEqualTo(0)
+
+        logSection("Waiting for PoC cycles to stabilize with bootstrap pre-eligibility")
+        genesis.waitForStage(EpochStage.SET_NEW_VALIDATORS, 3)
+
+        val participants = genesis.api.getActiveParticipants().activeParticipants.participants
+        val pA = participants.first { it.index == nodeA.node.getColdAddress() }
+        val pB = participants.first { it.index == nodeB.node.getColdAddress() }
+        val pC = participants.first { it.index == nodeC.node.getColdAddress() }
+
+        logSection("Node A: weight=${pA.weight}, votingPowers=${pA.votingPowers}")
+        logSection("Node B: weight=${pB.weight}, votingPowers=${pB.votingPowers}")
+        logSection("Node C: weight=${pC.weight}, votingPowers=${pC.votingPowers}")
+
+        // secondModel becomes pre-eligible from frozen bootstrap state.
+        // A actually commits directly -> okay, keeps model B contribution.
+        // B declared intent but never committed directly -> punished like refusal.
+        // C delegated -> okay.
+        assertThat(pA.weight).isEqualTo(60)
+        assertThat(pB.weight).isEqualTo(38)
+        assertThat(pC.weight).isEqualTo(50)
+
+        val vpA = pA.votingPowers!!.associateBy { it.modelId }
+        val vpB = pB.votingPowers!!.associateBy { it.modelId }
+        val vpC = pC.votingPowers!!.associateBy { it.modelId }
+
+        assertThat(vpA[defaultModel]!!.votingPower).isEqualTo(60)
+        assertThat(vpB[defaultModel]!!.votingPower).isEqualTo(38)
+        assertThat(vpC[defaultModel]!!.votingPower).isEqualTo(50)
+
+        // For secondModel, only A is direct. C delegated and B's missed intent contributes nothing.
+        assertThat(vpA[secondModel]!!.votingPower).isEqualTo(110)
+        assertThat(vpB).doesNotContainKey(secondModel)
+        assertThat(vpC).doesNotContainKey(secondModel)
     }
 
     @Test

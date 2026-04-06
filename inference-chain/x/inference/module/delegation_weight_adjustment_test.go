@@ -108,3 +108,86 @@ func TestApplyDelegationWeightAdjustment_CompoundsAcrossGroups(t *testing.T) {
 	// 1000 * 0.9 = 900 after model1, then 900 * 0.9 = 810 after model2
 	require.Equal(t, int64(810), participants[0].Weight)
 }
+
+func TestResolveBootstrapPenaltyModes_PreEligibleFalse(t *testing.T) {
+	participants := []*types.ActiveParticipant{
+		{Index: "direct", Weight: 50},
+		{Index: "delegator", Weight: 40},
+		{Index: "intender", Weight: 30},
+		{Index: "none", Weight: 20},
+	}
+	reportByModel := map[string]*types.BootstrapModelPreEligibility{
+		"bootstrap-model": {ModelId: "bootstrap-model", PreEligible: false},
+	}
+	delegations := map[string]map[string]string{
+		"bootstrap-model": {"delegator": "direct"},
+	}
+	intents := map[string]map[string]bool{
+		"bootstrap-model": {"intender": true},
+	}
+	directCommitters := map[string]map[string]bool{
+		"bootstrap-model": {"direct": true},
+	}
+
+	modes := ResolveBootstrapPenaltyModes(participants, reportByModel, delegations, intents, directCommitters)
+	require.Equal(t, BootstrapPenaltyNone, modes["bootstrap-model"]["direct"])
+	require.Equal(t, BootstrapPenaltyDelegate, modes["bootstrap-model"]["delegator"])
+	require.Equal(t, BootstrapPenaltyIntentOK, modes["bootstrap-model"]["intender"])
+	require.Equal(t, BootstrapPenaltyNone, modes["bootstrap-model"]["none"])
+}
+
+func TestResolveBootstrapPenaltyModes_PreEligibleTrue(t *testing.T) {
+	participants := []*types.ActiveParticipant{
+		{Index: "direct", Weight: 50},
+		{Index: "delegator", Weight: 40},
+		{Index: "intender", Weight: 30},
+		{Index: "none", Weight: 20},
+	}
+	reportByModel := map[string]*types.BootstrapModelPreEligibility{
+		"bootstrap-model": {ModelId: "bootstrap-model", PreEligible: true},
+	}
+	delegations := map[string]map[string]string{
+		"bootstrap-model": {"delegator": "direct"},
+	}
+	intents := map[string]map[string]bool{
+		"bootstrap-model": {"intender": true},
+	}
+	directCommitters := map[string]map[string]bool{
+		"bootstrap-model": {"direct": true},
+	}
+
+	modes := ResolveBootstrapPenaltyModes(participants, reportByModel, delegations, intents, directCommitters)
+	require.Equal(t, BootstrapPenaltyDirect, modes["bootstrap-model"]["direct"])
+	require.Equal(t, BootstrapPenaltyDelegate, modes["bootstrap-model"]["delegator"])
+	require.Equal(t, BootstrapPenaltyIntentMissed, modes["bootstrap-model"]["intender"])
+	require.Equal(t, BootstrapPenaltyNone, modes["bootstrap-model"]["none"])
+}
+
+func TestApplyBootstrapPenaltyAdjustment_MapsIntentMissedAndNone(t *testing.T) {
+	participants := []*types.ActiveParticipant{
+		{Index: "direct", Weight: 100},
+		{Index: "delegate", Weight: 80},
+		{Index: "intent_missed", Weight: 50},
+		{Index: "none", Weight: 50},
+	}
+	modes := map[string]map[string]BootstrapPenaltyMode{
+		"bootstrap-model": {
+			"direct":        BootstrapPenaltyDirect,
+			"delegate":      BootstrapPenaltyDelegate,
+			"intent_missed": BootstrapPenaltyIntentMissed,
+			"none":          BootstrapPenaltyNone,
+		},
+	}
+	params := DelegationAdjustmentParams{
+		RRefusal:    mathsdk.LegacyMustNewDecFromStr("0.25"),
+		RPenalty:    mathsdk.LegacyMustNewDecFromStr("0.5"),
+		RDelegation: mathsdk.LegacyZeroDec(),
+	}
+
+	ApplyBootstrapPenaltyAdjustment(participants, modes, params)
+
+	require.Equal(t, int64(100), participants[0].Weight)
+	require.Equal(t, int64(80), participants[1].Weight)
+	require.Equal(t, int64(38), participants[2].Weight)
+	require.Equal(t, int64(25), participants[3].Weight)
+}

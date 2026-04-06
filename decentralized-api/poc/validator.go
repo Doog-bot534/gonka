@@ -205,47 +205,59 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 	logging.Info("OffChainValidator: found participants with commits", types.PoC,
 		"count", len(commitsResp.Commits))
 
-	// Query validation snapshot for per-model sampling (if enabled)
+	// Query validation snapshot for per-model sampling and authoritative model gating.
 	validationSlots := int(pocParams.ValidationSlots)
 	var snapshotAppHash string
 	var snapshotTotalNetworkWeight int64
+	snapshotFound := false
 	type modelSamplingData struct {
 		entries     []calculations.WeightEntry
 		totalWeight int64
 	}
 	modelSampling := make(map[string]*modelSamplingData)
-	if validationSlots > 0 {
-		snapshotResp, err := queryClient.PoCValidationSnapshot(context.Background(),
-			&types.QueryPoCValidationSnapshotRequest{
-				PocStageStartHeight: pocStageStartBlockHeight,
-			})
-		if err != nil {
+	snapshotResp, err := queryClient.PoCValidationSnapshot(context.Background(),
+		&types.QueryPoCValidationSnapshotRequest{
+			PocStageStartHeight: pocStageStartBlockHeight,
+		})
+	if err != nil {
+		if validationSlots > 0 {
 			logging.Warn("OffChainValidator: failed to query validation snapshot, falling back to O(N^2)", types.PoC,
 				"error", err)
 			validationSlots = 0
-		} else if snapshotResp.Found && snapshotResp.Snapshot != nil && len(snapshotResp.Snapshot.ModelVotingPowers) > 0 {
-			snapshotAppHash = snapshotResp.Snapshot.AppHash
-			snapshotTotalNetworkWeight = snapshotResp.Snapshot.TotalNetworkWeight
-			for _, mvw := range snapshotResp.Snapshot.ModelVotingPowers {
-				weights := types.VotingPowerSliceToMap(mvw.VotingPowers)
-				entries, total := calculations.PrepareSortedEntries(weights)
-				modelSampling[mvw.ModelId] = &modelSamplingData{entries: entries, totalWeight: total}
-			}
+		}
+	} else if snapshotResp.Found && snapshotResp.Snapshot != nil {
+		snapshotFound = true
+		snapshotAppHash = snapshotResp.Snapshot.AppHash
+		snapshotTotalNetworkWeight = snapshotResp.Snapshot.TotalNetworkWeight
+		for _, mvw := range snapshotResp.Snapshot.ModelVotingPowers {
+			weights := types.VotingPowerSliceToMap(mvw.VotingPowers)
+			entries, total := calculations.PrepareSortedEntries(weights)
+			modelSampling[mvw.ModelId] = &modelSamplingData{entries: entries, totalWeight: total}
+		}
+		if validationSlots > 0 {
 			logging.Info("OffChainValidator: using per-model validation snapshot for sampling", types.PoC,
 				"appHash", snapshotAppHash,
 				"validationSlots", validationSlots,
 				"numModels", len(modelSampling),
 			)
-		} else {
-			logging.Warn("OffChainValidator: validation snapshot not found, falling back to O(N^2)", types.PoC)
-			validationSlots = 0
 		}
+	} else if validationSlots > 0 {
+		logging.Warn("OffChainValidator: validation snapshot not found, falling back to O(N^2)", types.PoC)
+		validationSlots = 0
 	}
 
 	// Build work items with participant URLs
 	workItems := make([]participantWork, 0, len(commitsResp.Commits))
 	skippedNotAssigned := 0
+	skippedExcludedModel := 0
 	for _, commit := range commitsResp.Commits {
+		if snapshotFound {
+			if _, allowed := modelSampling[commit.ModelId]; !allowed {
+				skippedExcludedModel++
+				continue
+			}
+		}
+
 		// If sampling is enabled, check if we're assigned to validate this participant-model pair.
 		// Only the model-local share of slots is sampled; the remainder behaves as abstention.
 		if validationSlots > 0 {
@@ -265,7 +277,6 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 					continue
 				}
 			}
-			// No sampling data for this model -> validate (bootstrap model path).
 		}
 
 		// Get participant's inference URL
@@ -300,11 +311,12 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 		})
 	}
 
-	if validationSlots > 0 {
-		logging.Info("OffChainValidator: filtered work items by sampling", types.PoC,
+	if validationSlots > 0 || snapshotFound {
+		logging.Info("OffChainValidator: filtered work items before validation", types.PoC,
 			"totalCommits", len(commitsResp.Commits),
 			"assignedToUs", len(workItems),
 			"skippedNotAssigned", skippedNotAssigned,
+			"skippedExcludedModel", skippedExcludedModel,
 		)
 	}
 

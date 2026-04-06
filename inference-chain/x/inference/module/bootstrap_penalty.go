@@ -1,0 +1,200 @@
+package inference
+
+import (
+	"context"
+	"sort"
+
+	"github.com/productscience/inference/x/inference/types"
+)
+
+// BootstrapPenaltyMode is bootstrap-specific and intentionally separate from the
+// shared next-epoch ParticipationMode used by DelegationWeightCalculator.
+type BootstrapPenaltyMode int
+
+const (
+	BootstrapPenaltyDirect BootstrapPenaltyMode = iota
+	BootstrapPenaltyDelegate
+	BootstrapPenaltyIntentOK
+	BootstrapPenaltyIntentMissed
+	BootstrapPenaltyNone
+)
+
+type bootstrapPenaltyInputs struct {
+	Delegations   map[string]map[string]string
+	Intents       map[string]map[string]bool
+	ReportByModel map[string]*types.BootstrapModelPreEligibility
+}
+
+func (i bootstrapPenaltyInputs) modelSet() map[string]bool {
+	result := make(map[string]bool, len(i.ReportByModel))
+	for modelID := range i.ReportByModel {
+		result[modelID] = true
+	}
+	return result
+}
+
+func (am AppModule) loadBootstrapPenaltyInputs(ctx context.Context) (bootstrapPenaltyInputs, bool) {
+	snapshot, delegations, intents, found := am.loadBootstrapSnapshotState(ctx)
+	if !found {
+		return bootstrapPenaltyInputs{}, false
+	}
+
+	return bootstrapPenaltyInputs{
+		Delegations:   delegations,
+		Intents:       intents,
+		ReportByModel: indexBootstrapPreEligibility(snapshot.Preeligibility),
+	}, true
+}
+
+func (am AppModule) loadBootstrapDirectCommitters(
+	ctx context.Context,
+	pocStageStartHeight int64,
+	modelSet map[string]bool,
+) (map[string]map[string]bool, error) {
+	allStoreCommits, err := am.keeper.GetAllPoCV2StoreCommitsForStage(ctx, pocStageStartHeight)
+	if err != nil {
+		return nil, err
+	}
+
+	directCommitters := make(map[string]map[string]bool)
+	for key := range allStoreCommits {
+		if !modelSet[key.ModelID] {
+			continue
+		}
+		if directCommitters[key.ModelID] == nil {
+			directCommitters[key.ModelID] = make(map[string]bool)
+		}
+		directCommitters[key.ModelID][key.ParticipantAddress] = true
+	}
+	return directCommitters, nil
+}
+
+func (am AppModule) resolveBootstrapPenaltyModes(
+	ctx context.Context,
+	participants []*types.ActiveParticipant,
+	pocStageStartHeight int64,
+	inputs bootstrapPenaltyInputs,
+) (map[string]map[string]BootstrapPenaltyMode, error) {
+	if len(inputs.ReportByModel) == 0 {
+		return map[string]map[string]BootstrapPenaltyMode{}, nil
+	}
+
+	directCommitters, err := am.loadBootstrapDirectCommitters(ctx, pocStageStartHeight, inputs.modelSet())
+	if err != nil {
+		return nil, err
+	}
+
+	return ResolveBootstrapPenaltyModes(
+		participants,
+		inputs.ReportByModel,
+		inputs.Delegations,
+		inputs.Intents,
+		directCommitters,
+	), nil
+}
+
+func ResolveBootstrapPenaltyModes(
+	participants []*types.ActiveParticipant,
+	reportByModel map[string]*types.BootstrapModelPreEligibility,
+	delegations map[string]map[string]string,
+	intents map[string]map[string]bool,
+	directCommitters map[string]map[string]bool,
+) map[string]map[string]BootstrapPenaltyMode {
+	modelIDs := make([]string, 0, len(reportByModel))
+	for modelID := range reportByModel {
+		modelIDs = append(modelIDs, modelID)
+	}
+	sort.Strings(modelIDs)
+
+	modes := make(map[string]map[string]BootstrapPenaltyMode, len(modelIDs))
+	for _, modelID := range modelIDs {
+		report := reportByModel[modelID]
+		preEligible := report != nil && report.PreEligible
+
+		modelModes := make(map[string]BootstrapPenaltyMode)
+		modelDelegations := delegations[modelID]
+		modelIntents := intents[modelID]
+		modelCommitters := directCommitters[modelID]
+
+		for _, participant := range participants {
+			if participant == nil || participant.Weight <= 0 {
+				continue
+			}
+
+			addr := participant.Index
+			if preEligible {
+				switch {
+				case modelCommitters[addr]:
+					modelModes[addr] = BootstrapPenaltyDirect
+				case modelDelegations != nil && modelDelegations[addr] != "":
+					modelModes[addr] = BootstrapPenaltyDelegate
+				case modelIntents != nil && modelIntents[addr]:
+					modelModes[addr] = BootstrapPenaltyIntentMissed
+				default:
+					modelModes[addr] = BootstrapPenaltyNone
+				}
+				continue
+			}
+
+			switch {
+			case modelDelegations != nil && modelDelegations[addr] != "":
+				modelModes[addr] = BootstrapPenaltyDelegate
+			case modelIntents != nil && modelIntents[addr]:
+				modelModes[addr] = BootstrapPenaltyIntentOK
+			default:
+				modelModes[addr] = BootstrapPenaltyNone
+			}
+		}
+
+		modes[modelID] = modelModes
+	}
+
+	return modes
+}
+
+func ApplyBootstrapPenaltyAdjustment(
+	participants []*types.ActiveParticipant,
+	modes map[string]map[string]BootstrapPenaltyMode,
+	params DelegationAdjustmentParams,
+) {
+	if params.IsNoOp() || len(modes) == 0 {
+		return
+	}
+
+	weightIndex := make(map[string]*types.ActiveParticipant, len(participants))
+	for _, p := range participants {
+		weightIndex[p.Index] = p
+	}
+
+	modelIDs := make([]string, 0, len(modes))
+	for modelID := range modes {
+		modelIDs = append(modelIDs, modelID)
+	}
+	sort.Strings(modelIDs)
+
+	for _, modelID := range modelIDs {
+		for addr, mode := range modes[modelID] {
+			p, ok := weightIndex[addr]
+			if !ok || p.Weight <= 0 {
+				continue
+			}
+
+			switch mode {
+			case BootstrapPenaltyIntentMissed:
+				if !params.RRefusal.IsZero() {
+					penalty := params.RRefusal.MulInt64(p.Weight).TruncateInt64()
+					p.Weight -= penalty
+				}
+			case BootstrapPenaltyNone:
+				if !params.RPenalty.IsZero() {
+					penalty := params.RPenalty.MulInt64(p.Weight).TruncateInt64()
+					p.Weight -= penalty
+				}
+			}
+
+			if p.Weight < 0 {
+				p.Weight = 0
+			}
+		}
+	}
+}

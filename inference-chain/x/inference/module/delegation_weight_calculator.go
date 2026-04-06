@@ -254,11 +254,11 @@ func (wc *DelegationWeightCalculator) EligibleGroups() []string {
 }
 
 // ComputeConsensusWeights produces final ActiveParticipant.Weight for each
-// participant across all eligible groups, applying coefficients and caps.
-func (wc *DelegationWeightCalculator) ComputeConsensusWeights(eligibleGroups []string) map[string]int64 {
+// participant across all eligible models, applying coefficients and caps.
+func (wc *DelegationWeightCalculator) ComputeConsensusWeights(eligibleModels []string) map[string]int64 {
 	result := make(map[string]int64)
 
-	for _, modelID := range eligibleGroups {
+	for _, modelID := range eligibleModels {
 		g := wc.Groups[modelID]
 		if g == nil {
 			continue

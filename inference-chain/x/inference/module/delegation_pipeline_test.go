@@ -65,9 +65,9 @@ func TestBuildBootstrapDelegationSnapshot_FiltersActiveParticipantsOnly(t *testi
 	require.Len(t, snapshot.Delegations, 1)
 	require.Equal(t, testutil.Validator, snapshot.Delegations[0].Delegator)
 	require.Len(t, snapshot.Intents, 2)
-
-	results, totalNetworkWeight, err := am.buildBootstrapPreEligibilityReport(ctx, snapshot)
-	require.NoError(t, err)
+	results := snapshot.Preeligibility
+	totalNetworkWeight := snapshot.TotalNetworkWeight
+	require.Equal(t, int64(200), snapshot.TotalNetworkWeight)
 	require.Equal(t, int64(200), totalNetworkWeight)
 	require.Len(t, results, 1)
 	require.Equal(t, "new-model", results[0].ModelId)
@@ -268,9 +268,9 @@ func TestCaptureBootstrapDelegationSnapshot_StoresSnapshotAndEmitsEvents(t *test
 	snapshot, found := k.GetBootstrapDelegationSnapshot(ctx)
 	require.True(t, found)
 	require.Equal(t, int64(197), snapshot.SnapshotHeight)
-
-	resultsSlice, totalNetworkWeight, err := am.buildBootstrapPreEligibilityReport(ctx, snapshot)
-	require.NoError(t, err)
+	resultsSlice := snapshot.Preeligibility
+	totalNetworkWeight := snapshot.TotalNetworkWeight
+	require.Equal(t, int64(200), snapshot.TotalNetworkWeight)
 	require.Equal(t, int64(200), totalNetworkWeight)
 	require.Len(t, resultsSlice, 2)
 
@@ -340,6 +340,10 @@ func TestComputeStoreCommitVotingPowers_UsesExistingVotingPowersAndBootstrapDele
 			{ModelId: "new-model", WeightScaleFactor: types.DecimalFromFloat(1)},
 		},
 	}
+	params.DelegationParams = &types.DelegationParams{
+		WThreshold: types.DecimalFromFloat(0.5),
+		VMin:       1,
+	}
 	require.NoError(t, k.SetParams(ctx, params))
 
 	require.NoError(t, k.SetEffectiveEpochIndex(ctx, 1))
@@ -376,6 +380,21 @@ func TestComputeStoreCommitVotingPowers_UsesExistingVotingPowersAndBootstrapDele
 				DelegateTo: testutil.Executor,
 			},
 		},
+		Intents: []*types.PoCDirectIntent{
+			{
+				ModelId:     "new-model",
+				Participant: testutil.Executor,
+			},
+		},
+		TotalNetworkWeight: 200,
+		Preeligibility: []*types.BootstrapModelPreEligibility{
+			{
+				ModelId:           "new-model",
+				PreEligible:       true,
+				MeetsVMin:         true,
+				MeetsReachability: true,
+			},
+		},
 	}))
 
 	require.NoError(t, k.SetPoCV2StoreCommit(ctx, types.PoCV2StoreCommit{
@@ -407,6 +426,66 @@ func TestComputeStoreCommitVotingPowers_UsesExistingVotingPowersAndBootstrapDele
 	require.Equal(t, map[string]int64{
 		testutil.Executor: 140,
 	}, got["new-model"])
+}
+
+func TestComputeStoreCommitVotingPowers_ConsumesFrozenBootstrapPreEligibility(t *testing.T) {
+	k, ctx := newMinimalInferenceKeeper(t)
+
+	params, err := k.GetParams(ctx)
+	require.NoError(t, err)
+	params.PocParams = &types.PocParams{
+		Models: []*types.PoCModelConfig{
+			{ModelId: "new-model", WeightScaleFactor: types.DecimalFromFloat(1)},
+		},
+	}
+	params.DelegationParams = &types.DelegationParams{
+		WThreshold: types.DecimalFromFloat(0.4),
+		VMin:       1,
+	}
+	require.NoError(t, k.SetParams(ctx, params))
+
+	require.NoError(t, k.SetEffectiveEpochIndex(ctx, 1))
+	require.NoError(t, k.SetActiveParticipants(ctx, types.ActiveParticipants{
+		EpochId:             1,
+		EpochGroupId:        1,
+		PocStartBlockHeight: 100,
+		Participants: []*types.ActiveParticipant{
+			{Index: testutil.Executor, Weight: 100},
+			{Index: testutil.Validator, Weight: 40},
+		},
+	}))
+
+	require.NoError(t, k.SetBootstrapDelegationSnapshot(ctx, types.BootstrapDelegationSnapshot{
+		SnapshotHeight: 111,
+		Intents: []*types.PoCDirectIntent{
+			{
+				ModelId:     "new-model",
+				Participant: testutil.Executor,
+			},
+		},
+		TotalNetworkWeight: 140,
+		Preeligibility: []*types.BootstrapModelPreEligibility{
+			{
+				ModelId:              "new-model",
+				PreEligible:          false,
+				MeetsWeightThreshold: true,
+				MeetsVMin:            true,
+				MeetsReachability:    false,
+			},
+		},
+	}))
+
+	require.NoError(t, k.SetPoCV2StoreCommit(ctx, types.PoCV2StoreCommit{
+		ParticipantAddress:       testutil.Executor,
+		PocStageStartBlockHeight: 180,
+		ModelId:                  "new-model",
+		Count:                    1,
+	}))
+
+	am := NewAppModule(nil, k, nil, nil, nil, nil)
+	modelWeights, totalWeight := am.computeStoreCommitVotingPowers(ctx, 180, "test")
+	require.Equal(t, int64(140), totalWeight)
+	require.Empty(t, modelWeights)
 }
 
 func TestComputeStoreCommitVotingPowers_DoesNotFallbackToLiveDelegations(t *testing.T) {

@@ -31,7 +31,7 @@ func (p DelegationAdjustmentParams) IsNoOp() bool {
 func ApplyDelegationWeightAdjustment(
 	participants []*types.ActiveParticipant,
 	dwc *DelegationWeightCalculator,
-	eligibleGroups []string,
+	eligibleModels []string,
 	modes map[string]map[string]ParticipationMode,
 	params DelegationAdjustmentParams,
 ) {
@@ -45,8 +45,8 @@ func ApplyDelegationWeightAdjustment(
 		weightIndex[p.Index] = p
 	}
 
-	// Process groups in deterministic order (eligibleGroups is sorted)
-	for _, modelID := range eligibleGroups {
+	// Process models in deterministic order (eligibleModels is sorted)
+	for _, modelID := range eligibleModels {
 		groupModes := modes[modelID]
 		if groupModes == nil {
 			continue
