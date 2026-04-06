@@ -41,31 +41,6 @@ func TestApplyDelegationWeightAdjustment_DirectNoPenalty(t *testing.T) {
 	require.Equal(t, int64(1000), participants[0].Weight)
 }
 
-func TestApplyDelegationWeightAdjustment_IntentPenalizedAsNone(t *testing.T) {
-	participants := []*types.ActiveParticipant{
-		{Index: "alice", Weight: 1000},
-		{Index: "bob", Weight: 1000},
-	}
-	dwc := &DelegationWeightCalculator{}
-	modes := map[string]map[string]ParticipationMode{
-		"model1": {
-			"alice": ModeIntent,
-			"bob":   ModeNone,
-		},
-	}
-	params := DelegationAdjustmentParams{
-		RRefusal:    mathsdk.LegacyZeroDec(),
-		RPenalty:    mathsdk.LegacyMustNewDecFromStr("0.1"),
-		RDelegation: mathsdk.LegacyZeroDec(),
-	}
-
-	ApplyDelegationWeightAdjustment(participants, dwc, []string{"model1"}, modes, params)
-
-	// Both INTENT and NONE get r_penalty applied
-	require.Equal(t, int64(900), participants[0].Weight, "INTENT should get r_penalty")
-	require.Equal(t, int64(900), participants[1].Weight, "NONE should get r_penalty")
-}
-
 func TestApplyDelegationWeightAdjustment_RefusePenalty(t *testing.T) {
 	participants := []*types.ActiveParticipant{
 		{Index: "alice", Weight: 1000},

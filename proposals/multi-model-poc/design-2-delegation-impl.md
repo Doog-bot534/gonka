@@ -40,6 +40,7 @@ A host becomes DIRECT for a model only if it actually participates in PoC for th
    - used only for bootstrap models not already active in `AP(N)`
    - stores delegation + direct intent
    - used for advisory pre-eligibility and for bootstrap-model validation-time voting power, with delegators drawn from the existing active set and base weights from `AP(N).weight`
+   - late delegation submitted after this snapshot does not affect the current bootstrap-model validation path
 
 2. `DelegationSnapshot`
    - captured at `poc_validation_start`
@@ -83,6 +84,8 @@ Emit an event so operators can see whether a bootstrap model looks viable before
 Hosts with direct intent deploy hardware for bootstrap models they expect to qualify.
 
 This deploy window is operational only. It does not create trust. If the host is not ready at PoC time, it is not DIRECT.
+
+If a host overwrites direct intent with delegation after the bootstrap snapshot, that change is too late for the current bootstrap-model validation path. The frozen bootstrap snapshot still controls current-cycle bootstrap validation.
 
 ### 4. At `poc_validation_start`
 
@@ -159,7 +162,6 @@ For a model group and epoch, a participant with positive consensus weight resolv
 | Mode | Meaning |
 |------|---------|
 | `DIRECT` | Member of the group for that epoch. Validates directly. |
-| `INTENT` | Declared bootstrap intent to join a not-yet-active model. |
 | `DELEGATE` | Delegates to one direct member in that group. |
 | `REFUSE` | Explicitly refuses delegation for that group. |
 | `NONE` | No valid delegation, no refusal, no direct membership. |
@@ -169,7 +171,6 @@ Resolution logic (pseudocode):
 ```
 for each participant with ConsensusWeights[p] > 0:
     if p in group.Members  -> DIRECT
-    else if Intents[p]     -> INTENT
     else if Refusals[p]    -> REFUSE
     else if Delegations[p] targets a valid DIRECT member with positive weight -> DELEGATE
     else                   -> NONE
@@ -177,14 +178,15 @@ for each participant with ConsensusWeights[p] > 0:
 
 Invalid delegate target (not a member, or member with zero weight) resolves to NONE. An event is emitted for operator visibility. Resolution never panics or aborts epoch creation.
 
-INTENT only matters when a bootstrap group is on the border of pre-eligibility. If the group is already pre-eligible from existing members plus delegations, INTENT adds nothing -- the host can just deploy and become DIRECT. INTENT exists so hosts can signal commitment before deploying hardware, letting the chain count them toward pre-eligibility thresholds.
+Direct intent only matters in bootstrap pre-eligibility. If the group is already pre-eligible from existing members plus delegations, intent adds nothing -- the host can just deploy and become DIRECT. Intent exists so hosts can signal commitment before deploying hardware, letting the chain count them toward pre-eligibility thresholds.
 
 A group that fails pre-eligibility can still become eligible if enough hosts independently participate in PoC for it. Pre-eligibility is advisory, not a hard block.
 
 Important nuance on current implementation:
-- `INTENT` matters in bootstrap pre-eligibility evaluation
-- `INTENT` is not part of `DelegationSnapshot`
-- current repo code does not carry INTENT into next-epoch mode resolution
+- direct intent matters only in bootstrap pre-eligibility evaluation
+- direct intent is not part of `DelegationSnapshot`
+- next-epoch participation resolution has no separate `INTENT` mode
+- a missed bootstrap intent is handled implicitly: no commit means no DIRECT role, and a late delegation after the bootstrap snapshot does not change current bootstrap validation
 
 ## State
 
@@ -252,8 +254,8 @@ At most one of `{delegation, refusal, intent}` may exist per `(model_id, partici
 - snapshot height
 - filtered delegations for bootstrap models
 - filtered intents for bootstrap models
-- total network weight from `AP(N).weight`
-- per-model advisory pre-eligibility results
+
+Bootstrap pre-eligibility results are emitted as advisory events at snapshot time. They are not persisted inside the snapshot state.
 
 `DelegationSnapshot`
 - snapshot height
@@ -297,7 +299,6 @@ The cross-group calculator operates on:
 - `ConsensusWeights` from `AP(N).weight`
 - `Delegations`
 - `Refusals`
-- optional `Intents`
 - governance params `WThreshold`, `VMin`, `CapFactor`
 
 It provides:
@@ -369,10 +370,10 @@ Design intent:
 
 Current repo status:
 - the adjustment code exists
-- the call site in `onEndOfPoCValidationStage` is commented out
+- the call site in `onEndOfPoCValidationStage` is active
 - the current TODO is to decide whether this should affect reward, consensus weight, or both
 
-So this part of the design is not active in the current implementation.
+So this part of the design is active in code, but the economics are still not final.
 
 ## File Layout
 

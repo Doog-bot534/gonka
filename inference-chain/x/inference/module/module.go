@@ -788,13 +788,13 @@ func (am AppModule) computeStoreCommitVotingPowers(ctx context.Context, snapshot
 		return nil, 0
 	}
 
-	existingModelVotingPowers, _ := am.getEffectiveEpochVotingPowerMap(ctx)
-	existingModelSet := make(map[string]bool, len(existingModelVotingPowers))
-	for modelID := range existingModelVotingPowers {
-		existingModelSet[modelID] = true
+	existingModelVotingPowers, _ := am.getEffectiveEpochVotingPowers(ctx)
+	mergedValidationVotingPowers := make(map[string]map[string]int64, len(existingModelVotingPowers))
+	for _, mvw := range existingModelVotingPowers {
+		mergedValidationVotingPowers[mvw.ModelId] = types.VotingPowerSliceToMap(mvw.VotingPowers)
 	}
 
-	bootstrapDelegations, _, found := am.loadBootstrapDelegationState(ctx)
+	bootstrapDelegations, found := am.loadBootstrapDelegationState(ctx)
 	if !found {
 		am.LogError("computeStoreCommitVotingPowers: bootstrap delegation snapshot not found", types.PoC,
 			"context", logContext)
@@ -807,19 +807,18 @@ func (am AppModule) computeStoreCommitVotingPowers(ctx context.Context, snapshot
 			"context", logContext, "error", err)
 		return nil, totalNetworkWeight
 	}
+	// Bootstrap intent is frozen at start_poc - deploy_window. If a participant
+	// switches from intent to delegation after that snapshot, the late delegation
+	// is intentionally ignored for the current bootstrap-model validation path.
 	bootstrapModelStoreCommitKeys := make([]types.PoCParticipantModelKey, 0, len(allStoreCommits))
 	for key := range allStoreCommits {
-		if existingModelSet[key.ModelID] {
+		if _, alreadyActive := mergedValidationVotingPowers[key.ModelID]; alreadyActive {
 			continue
 		}
 		bootstrapModelStoreCommitKeys = append(bootstrapModelStoreCommitKeys, key)
 	}
 
 	bootstrapModelVotingPowers := ComputeModelVotingPowers(bootstrapModelStoreCommitKeys, consensusWeights, bootstrapDelegations)
-	mergedValidationVotingPowers := make(map[string]map[string]int64, len(existingModelVotingPowers)+len(bootstrapModelVotingPowers))
-	for modelID, vps := range existingModelVotingPowers {
-		mergedValidationVotingPowers[modelID] = vps
-	}
 	for modelID, vps := range bootstrapModelVotingPowers {
 		mergedValidationVotingPowers[modelID] = vps
 	}
@@ -835,15 +834,6 @@ func (am AppModule) computeStoreCommitVotingPowers(ctx context.Context, snapshot
 		return cmp.Compare(a.ModelId, b.ModelId)
 	})
 	return modelWeights, totalNetworkWeight
-}
-
-func (am AppModule) getEffectiveEpochVotingPowerMap(ctx context.Context) (map[string]map[string]int64, int64) {
-	modelWeights, totalWeight := am.getEffectiveEpochVotingPowers(ctx)
-	modelVPMap := make(map[string]map[string]int64, len(modelWeights))
-	for _, mvw := range modelWeights {
-		modelVPMap[mvw.ModelId] = types.VotingPowerSliceToMap(mvw.VotingPowers)
-	}
-	return modelVPMap, totalWeight
 }
 
 // getEffectiveEpochVotingPowers reads AP(N).voting_powers from the current effective epoch.

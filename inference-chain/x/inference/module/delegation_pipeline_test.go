@@ -62,15 +62,19 @@ func TestBuildBootstrapDelegationSnapshot_FiltersActiveParticipantsOnly(t *testi
 	snapshot, err := am.buildBootstrapDelegationSnapshot(ctx, 197)
 	require.NoError(t, err)
 
-	require.Equal(t, int64(200), snapshot.TotalNetworkWeight)
 	require.Len(t, snapshot.Delegations, 1)
 	require.Equal(t, testutil.Validator, snapshot.Delegations[0].Delegator)
 	require.Len(t, snapshot.Intents, 2)
-	require.Equal(t, "new-model", snapshot.GroupPreeligibility[0].ModelId)
-	require.True(t, snapshot.GroupPreeligibility[0].PreEligible)
-	require.Equal(t, int64(2), snapshot.GroupPreeligibility[0].IntentHostCount)
-	require.Equal(t, int64(160), snapshot.GroupPreeligibility[0].IntentWeight)
-	require.Equal(t, int64(200), snapshot.GroupPreeligibility[0].ReachableVotingPower)
+
+	results, totalNetworkWeight, err := am.buildBootstrapPreEligibilityReport(ctx, snapshot)
+	require.NoError(t, err)
+	require.Equal(t, int64(200), totalNetworkWeight)
+	require.Len(t, results, 1)
+	require.Equal(t, "new-model", results[0].ModelId)
+	require.True(t, results[0].PreEligible)
+	require.Equal(t, int64(2), results[0].IntentHostCount)
+	require.Equal(t, int64(160), results[0].IntentWeight)
+	require.Equal(t, int64(200), results[0].ReachableVotingPower)
 }
 
 func TestGetPreviousConsensusWeights_FallsBackToEpochZeroGroupWeights(t *testing.T) {
@@ -264,10 +268,14 @@ func TestCaptureBootstrapDelegationSnapshot_StoresSnapshotAndEmitsEvents(t *test
 	snapshot, found := k.GetBootstrapDelegationSnapshot(ctx)
 	require.True(t, found)
 	require.Equal(t, int64(197), snapshot.SnapshotHeight)
-	require.Len(t, snapshot.GroupPreeligibility, 2)
+
+	resultsSlice, totalNetworkWeight, err := am.buildBootstrapPreEligibilityReport(ctx, snapshot)
+	require.NoError(t, err)
+	require.Equal(t, int64(200), totalNetworkWeight)
+	require.Len(t, resultsSlice, 2)
 
 	results := map[string]*types.BootstrapModelPreEligibility{}
-	for _, result := range snapshot.GroupPreeligibility {
+	for _, result := range resultsSlice {
 		results[result.ModelId] = result
 	}
 	require.True(t, results["eligible-model"].PreEligible)

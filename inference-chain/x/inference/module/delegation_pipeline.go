@@ -31,7 +31,12 @@ func (am AppModule) buildDelegationWeightCalculator(
 	coefficients map[string]mathsdk.LegacyDec,
 	params types.Params,
 ) *DelegationWeightCalculator {
-	nextEpochDelegations, nextEpochRefusals := am.loadNextEpochDelegationState(ctx)
+	nextEpochDelegations, nextEpochRefusals, found := am.loadDelegationSnapshotState(ctx)
+	if !found {
+		am.LogError("delegation snapshot not found", types.PoC, "context", "onEndOfPoCValidationStage")
+		nextEpochDelegations = map[string]map[string]string{}
+		nextEpochRefusals = map[string]map[string]bool{}
+	}
 	consensusWeights, totalWeight := am.getPreviousConsensusWeights(ctx)
 	groups := buildGroupData(activeParticipants, coefficients)
 
@@ -41,7 +46,6 @@ func (am AppModule) buildDelegationWeightCalculator(
 		TotalNetworkWeight: totalWeight,
 		Delegations:        nextEpochDelegations,
 		Refusals:           nextEpochRefusals,
-		Intents:            map[string]map[string]bool{},
 		Params:             buildWeightParams(params),
 	}
 }
@@ -155,7 +159,7 @@ func parseDelegationSnapshot(snapshot types.DelegationSnapshot) (
 	return delegations, refusals
 }
 
-func (am AppModule) loadValidationDelegationState(ctx context.Context) (map[string]map[string]string, map[string]map[string]bool, bool) {
+func (am AppModule) loadDelegationSnapshotState(ctx context.Context) (map[string]map[string]string, map[string]map[string]bool, bool) {
 	snapshot, found := am.keeper.GetDelegationSnapshot(ctx)
 	if !found {
 		return nil, nil, false
@@ -205,7 +209,7 @@ func (am AppModule) loadNextEpochDelegationState(ctx context.Context) (
 	map[string]map[string]string,
 	map[string]map[string]bool,
 ) {
-	delegations, refusals, found := am.loadValidationDelegationState(ctx)
+	delegations, refusals, found := am.loadDelegationSnapshotState(ctx)
 	if !found {
 		am.LogError("validation delegation snapshot not found", types.PoC, "context", "onEndOfPoCValidationStage")
 		return map[string]map[string]string{}, map[string]map[string]bool{}
@@ -228,12 +232,17 @@ func (am AppModule) captureBootstrapDelegationSnapshot(ctx context.Context, bloc
 		return
 	}
 
-	am.emitBootstrapPreEligibilityEvents(ctx, snapshot)
+	results, totalNetworkWeight, err := am.buildBootstrapPreEligibilityReport(ctx, snapshot)
+	if err != nil {
+		am.LogError("captureBootstrapDelegationSnapshot: failed to compute report", types.PoC, "error", err)
+		return
+	}
+	am.emitBootstrapPreEligibilityEvents(ctx, snapshot.SnapshotHeight, totalNetworkWeight, results)
 	am.LogInfo("captureBootstrapDelegationSnapshot: stored bootstrap snapshot", types.PoC,
 		"height", blockHeight,
 		"delegations", len(snapshot.Delegations),
 		"intents", len(snapshot.Intents),
-		"bootstrapModels", len(snapshot.GroupPreeligibility))
+		"bootstrapModels", len(results))
 }
 
 func (am AppModule) buildBootstrapDelegationSnapshot(ctx context.Context, blockHeight int64) (types.BootstrapDelegationSnapshot, error) {
@@ -242,20 +251,16 @@ func (am AppModule) buildBootstrapDelegationSnapshot(ctx context.Context, blockH
 		return types.BootstrapDelegationSnapshot{}, err
 	}
 
-	effectiveParticipants, consensusWeights, totalNetworkWeight := am.getEffectiveParticipantsWithConsensusWeights(ctx)
+	effectiveParticipants, _, _ := am.getEffectiveParticipantsWithConsensusWeights(ctx)
 	activeModels := activeModelSet(effectiveParticipants)
 	bootstrapModelIDs := bootstrapCandidateModelIDs(params.PocParams, activeModels)
 
-	bootstrapDelegationEntries, bootstrapIntentEntries, bootstrapDelegations, bootstrapIntents := am.loadFilteredBootstrapState(ctx, effectiveParticipants, bootstrapModelIDs)
-	calculator := buildBootstrapPreEligibilityCalculator(consensusWeights, totalNetworkWeight, bootstrapModelIDs, bootstrapDelegations, bootstrapIntents, params)
-	results := buildBootstrapPreEligibilityResults(calculator, bootstrapModelIDs)
+	bootstrapDelegationEntries, bootstrapIntentEntries, _, _ := am.loadFilteredBootstrapState(ctx, effectiveParticipants, bootstrapModelIDs)
 
 	return types.BootstrapDelegationSnapshot{
-		SnapshotHeight:      blockHeight,
-		Delegations:         bootstrapDelegationEntries,
-		Intents:             bootstrapIntentEntries,
-		TotalNetworkWeight:  totalNetworkWeight,
-		GroupPreeligibility: results,
+		SnapshotHeight: blockHeight,
+		Delegations:    bootstrapDelegationEntries,
+		Intents:        bootstrapIntentEntries,
 	}, nil
 }
 
@@ -431,32 +436,21 @@ func (am AppModule) loadFilteredBootstrapState(
 	return delegationEntries, intentEntries, delegations, intents
 }
 
-func (am AppModule) loadBootstrapDelegationState(ctx context.Context) (
-	map[string]map[string]string,
-	map[string]map[string]bool,
-	bool,
-) {
+func (am AppModule) loadBootstrapDelegationState(ctx context.Context) (map[string]map[string]string, bool) {
 	snapshot, found := am.keeper.GetBootstrapDelegationSnapshot(ctx)
 	if !found {
-		return nil, nil, false
+		return nil, false
 	}
 
 	bootstrapDelegations := make(map[string]map[string]string)
-	bootstrapIntents := make(map[string]map[string]bool)
 	for _, delegation := range snapshot.Delegations {
 		if bootstrapDelegations[delegation.ModelId] == nil {
 			bootstrapDelegations[delegation.ModelId] = make(map[string]string)
 		}
 		bootstrapDelegations[delegation.ModelId][delegation.Delegator] = delegation.DelegateTo
 	}
-	for _, intent := range snapshot.Intents {
-		if bootstrapIntents[intent.ModelId] == nil {
-			bootstrapIntents[intent.ModelId] = make(map[string]bool)
-		}
-		bootstrapIntents[intent.ModelId][intent.Participant] = true
-	}
 
-	return bootstrapDelegations, bootstrapIntents, true
+	return bootstrapDelegations, true
 }
 
 func buildBootstrapPreEligibilityCalculator(
@@ -494,9 +488,48 @@ func buildBootstrapPreEligibilityCalculator(
 		TotalNetworkWeight: totalNetworkWeight,
 		Delegations:        bootstrapDelegations,
 		Refusals:           map[string]map[string]bool{},
-		Intents:            bootstrapIntents,
 		Params:             buildWeightParams(params),
 	}
+}
+
+func (am AppModule) buildBootstrapPreEligibilityReport(
+	ctx context.Context,
+	snapshot types.BootstrapDelegationSnapshot,
+) ([]*types.BootstrapModelPreEligibility, int64, error) {
+	params, err := am.keeper.GetParams(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	effectiveParticipants, consensusWeights, totalNetworkWeight := am.getEffectiveParticipantsWithConsensusWeights(ctx)
+	activeModels := activeModelSet(effectiveParticipants)
+	bootstrapModelIDs := bootstrapCandidateModelIDs(params.PocParams, activeModels)
+
+	bootstrapDelegations := make(map[string]map[string]string)
+	bootstrapIntents := make(map[string]map[string]bool)
+	for _, delegation := range snapshot.Delegations {
+		if bootstrapDelegations[delegation.ModelId] == nil {
+			bootstrapDelegations[delegation.ModelId] = make(map[string]string)
+		}
+		bootstrapDelegations[delegation.ModelId][delegation.Delegator] = delegation.DelegateTo
+	}
+	for _, intent := range snapshot.Intents {
+		if bootstrapIntents[intent.ModelId] == nil {
+			bootstrapIntents[intent.ModelId] = make(map[string]bool)
+		}
+		bootstrapIntents[intent.ModelId][intent.Participant] = true
+	}
+
+	calculator := buildBootstrapPreEligibilityCalculator(
+		consensusWeights,
+		totalNetworkWeight,
+		bootstrapModelIDs,
+		bootstrapDelegations,
+		bootstrapIntents,
+		params,
+	)
+
+	return buildBootstrapPreEligibilityResults(calculator, bootstrapModelIDs), totalNetworkWeight, nil
 }
 
 func buildBootstrapPreEligibilityResults(
@@ -534,12 +567,17 @@ func buildBootstrapPreEligibilityResults(
 	return results
 }
 
-func (am AppModule) emitBootstrapPreEligibilityEvents(ctx context.Context, snapshot types.BootstrapDelegationSnapshot) {
+func (am AppModule) emitBootstrapPreEligibilityEvents(
+	ctx context.Context,
+	snapshotHeight int64,
+	totalNetworkWeight int64,
+	results []*types.BootstrapModelPreEligibility,
+) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	for _, result := range snapshot.GroupPreeligibility {
+	for _, result := range results {
 		sdkCtx.EventManager().EmitEvent(sdk.NewEvent(
 			"bootstrap_model_preeligibility",
-			sdk.NewAttribute("snapshot_height", strconv.FormatInt(snapshot.SnapshotHeight, 10)),
+			sdk.NewAttribute("snapshot_height", strconv.FormatInt(snapshotHeight, 10)),
 			sdk.NewAttribute("model_id", result.ModelId),
 			sdk.NewAttribute("pre_eligible", strconv.FormatBool(result.PreEligible)),
 			sdk.NewAttribute("meets_weight_threshold", strconv.FormatBool(result.MeetsWeightThreshold)),
@@ -548,7 +586,7 @@ func (am AppModule) emitBootstrapPreEligibilityEvents(ctx context.Context, snaps
 			sdk.NewAttribute("intent_host_count", strconv.FormatInt(result.IntentHostCount, 10)),
 			sdk.NewAttribute("intent_weight", strconv.FormatInt(result.IntentWeight, 10)),
 			sdk.NewAttribute("reachable_voting_power", strconv.FormatInt(result.ReachableVotingPower, 10)),
-			sdk.NewAttribute("total_network_weight", strconv.FormatInt(snapshot.TotalNetworkWeight, 10)),
+			sdk.NewAttribute("total_network_weight", strconv.FormatInt(totalNetworkWeight, 10)),
 		))
 	}
 }

@@ -12,10 +12,9 @@ type ParticipationMode int
 
 const (
 	ModeDirect   ParticipationMode = iota // Member of the group (has MLNode deployed)
-	ModeIntent                            // Declared intent to deploy but didn't participate in PoC
 	ModeRefuse                            // Explicitly refused delegation
 	ModeDelegate                          // Delegates consensus weight to a group member
-	ModeNone                              // No valid delegation, no refusal, no intent
+	ModeNone                              // No valid delegation, no refusal, no direct membership
 )
 
 // GroupData holds per-model group information.
@@ -42,9 +41,7 @@ type DelegationWeightCalculator struct {
 	TotalNetworkWeight int64                        // sum(ConsensusWeights)
 	Delegations        map[string]map[string]string // model_id -> (delegator -> delegate_to)
 	Refusals           map[string]map[string]bool   // model_id -> (participant -> true)
-	Intents            map[string]map[string]bool   // model_id -> (participant -> true)
 	Params             WeightParams
-	Logger             types.InferenceLogger
 }
 
 func buildWeightParams(params types.Params) WeightParams {
@@ -143,8 +140,9 @@ func (wc *DelegationWeightCalculator) MeetsReachabilityThreshold(modelID string)
 	return wc.ProjectedReachableVotingPower(modelID)*3 > wc.TotalNetworkWeight*2
 }
 
-// IsGroupEligible checks post-PoC eligibility. At least V_min members must have
-// pocWeight > 0, plus governance approval and weight threshold.
+// IsGroupEligible checks post-PoC eligibility. Unlike MeetsMinHosts(), which
+// uses prior consensus-weight-bearing members, this check requires at least
+// V_min members with positive pocWeight in the current PoC results.
 func (wc *DelegationWeightCalculator) IsGroupEligible(modelID string) bool {
 	if !wc.IsGovernanceApproved(modelID) {
 		return false
@@ -169,6 +167,10 @@ func (wc *DelegationWeightCalculator) IsGroupEligible(modelID string) bool {
 
 // ResolveGroupParticipation returns participation mode for each participant
 // with positive N-1 consensus weight, for one model group.
+//
+// Bootstrap direct intent is handled earlier by the bootstrap snapshot and never
+// enters this next-epoch calculator. By the time this runs, a participant is
+// either DIRECT, REFUSE, DELEGATE, or NONE for the group.
 func (wc *DelegationWeightCalculator) ResolveGroupParticipation(modelID string) map[string]ParticipationMode {
 	g, ok := wc.Groups[modelID]
 	if !ok {
@@ -187,11 +189,6 @@ func (wc *DelegationWeightCalculator) ResolveGroupParticipation(modelID string) 
 		}
 		if memberSet[p] {
 			modes[p] = ModeDirect
-			continue
-		}
-		// Check intent (INTENT > REFUSE > DELEGATE > NONE)
-		if intents, ok := wc.Intents[modelID]; ok && intents[p] {
-			modes[p] = ModeIntent
 			continue
 		}
 		if refusals, ok := wc.Refusals[modelID]; ok && refusals[p] {

@@ -54,11 +54,9 @@ message BootstrapModelPreEligibility {
 // needed to evaluate whether a not-yet-active approved model is pre-eligible.
 // Overwritten on each start_poc - deploy_window capture.
 message BootstrapDelegationSnapshot {
-  int64 snapshot_height                                  = 1;
-  repeated PoCDelegation delegations                     = 2;
-  repeated PoCDirectIntent intents                       = 3;
-  int64 total_network_weight                             = 4;
-  repeated BootstrapModelPreEligibility group_preeligibility = 5;
+  int64 snapshot_height              = 1;
+  repeated PoCDelegation delegations = 2;
+  repeated PoCDirectIntent intents   = 3;
 }
 
 // --- Transaction messages ---

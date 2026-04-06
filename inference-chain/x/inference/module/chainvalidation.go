@@ -245,7 +245,9 @@ func (wc *PoCWeightCalculator) getParticipantValidations(key types.PoCParticipan
 		"participant", key.ParticipantAddress, "modelId", key.ModelID, "len(vals)", len(vals), "validators", validators)
 
 	// Filter to validations from participants with voting power for this model.
-	// When no per-model voting data exists (bootstrap), accept all validations.
+	// When no voting-power snapshot exists for the model yet, keep the original
+	// validations list for logging and guardian handling. pocValidated() still
+	// rejects later if the model has no voting-power data.
 	modelVP := wc.ModelVotingPowers[key.ModelID]
 	filteredVals := make([]types.PoCValidationV2, 0, len(vals))
 	if len(modelVP) == 0 {
