@@ -75,6 +75,15 @@ type participantWork struct {
 	retryAfter time.Time // don't process before this time
 }
 
+type modelSamplingData struct {
+	entries     []calculations.WeightEntry
+	totalWeight int64
+}
+
+func hasModelList(snapshotFound bool, modelSampling map[string]*modelSamplingData) bool {
+	return snapshotFound && len(modelSampling) > 0
+}
+
 func buildValidationCallbackURL(callbackBase, modelID string) string {
 	return callbackBase + "/v2/poc-batches/" + url.PathEscape(url.PathEscape(modelID))
 }
@@ -206,14 +215,12 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 		"count", len(commitsResp.Commits))
 
 	// Query validation snapshot for per-model sampling and authoritative model gating.
+	// An empty model set is treated as non-authoritative so bootstrap/startup epochs
+	// do not accidentally exclude all validation work.
 	validationSlots := int(pocParams.ValidationSlots)
 	var snapshotAppHash string
 	var snapshotTotalNetworkWeight int64
 	snapshotFound := false
-	type modelSamplingData struct {
-		entries     []calculations.WeightEntry
-		totalWeight int64
-	}
 	modelSampling := make(map[string]*modelSamplingData)
 	snapshotResp, err := queryClient.PoCValidationSnapshot(context.Background(),
 		&types.QueryPoCValidationSnapshotRequest{
@@ -250,8 +257,9 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 	workItems := make([]participantWork, 0, len(commitsResp.Commits))
 	skippedNotAssigned := 0
 	skippedExcludedModel := 0
+	authoritativeModelAllowlist := hasModelList(snapshotFound, modelSampling)
 	for _, commit := range commitsResp.Commits {
-		if snapshotFound {
+		if authoritativeModelAllowlist {
 			if _, allowed := modelSampling[commit.ModelId]; !allowed {
 				skippedExcludedModel++
 				continue
@@ -890,4 +898,3 @@ func (v *OffChainValidator) reportInvalidParticipant(pocHeight int64, participan
 			"participant", participantAddress)
 	}
 }
-

@@ -57,6 +57,12 @@ type epochParticipationState struct {
 	bootstrapPenaltyByModel map[string]map[string]BootstrapPenaltyMode
 }
 
+type effectiveParticipationState struct {
+	participants []*types.ActiveParticipant
+	weights      map[string]int64
+	totalWeight  int64
+}
+
 func buildParticipationByModel(
 	calculator *DelegationWeightCalculator,
 	eligibleModels []string,
@@ -165,46 +171,8 @@ func buildGroupData(
 // getPreviousConsensusWeights reads ActiveParticipants from the effective epoch
 // to get N-1 consensus weights.
 func (am AppModule) getPreviousConsensusWeights(ctx context.Context) (map[string]int64, int64) {
-	epochIndex, found := am.keeper.GetEffectiveEpochIndex(ctx)
-	if !found {
-		return make(map[string]int64), 0
-	}
-	effectiveAP, found := am.keeper.GetActiveParticipants(ctx, epochIndex)
-	if found {
-		weights := make(map[string]int64, len(effectiveAP.Participants))
-		total := int64(0)
-		for _, p := range effectiveAP.Participants {
-			weights[p.Index] = p.Weight
-			total += p.Weight
-		}
-		return weights, total
-	}
-
-	// Bootstrap the epoch0 -> epoch1 transition from the genesis epoch-group
-	// validator weights when ActiveParticipants(0) was never seeded.
-	if epochIndex == 0 {
-		return am.getEpochZeroValidationWeights(ctx)
-	}
-
-	return make(map[string]int64), 0
-}
-
-func (am AppModule) getEpochZeroValidationWeights(ctx context.Context) (map[string]int64, int64) {
-	epochGroupData, found := am.keeper.GetEpochGroupData(ctx, 0, "")
-	if !found {
-		return make(map[string]int64), 0
-	}
-
-	weights := make(map[string]int64, len(epochGroupData.ValidationWeights))
-	total := int64(0)
-	for _, validationWeight := range epochGroupData.ValidationWeights {
-		if validationWeight == nil {
-			continue
-		}
-		weights[validationWeight.MemberAddress] = validationWeight.Weight
-		total += validationWeight.Weight
-	}
-	return weights, total
+	state := am.getEffectiveParticipationState(ctx)
+	return state.weights, state.totalWeight
 }
 
 func parseRegularDelegationSnapshot(snapshot types.DelegationSnapshot) (
@@ -293,7 +261,8 @@ func (am AppModule) buildDelegationSnapshot(ctx context.Context, blockHeight int
 		return types.DelegationSnapshot{}, err
 	}
 
-	effectiveParticipants, _, _ := am.getEffectiveParticipantsWithConsensusWeights(ctx)
+	effectiveState := am.getEffectiveParticipationState(ctx)
+	effectiveParticipants := effectiveState.participants
 	modelIDs := approvedModelIDs(params.PocParams)
 	delegationEntries, refusalEntries := am.loadFilteredDelegationSnapshotState(ctx, effectiveParticipants, modelIDs)
 
@@ -339,14 +308,17 @@ func (am AppModule) buildBootstrapDelegationSnapshot(
 		return types.BootstrapDelegationSnapshot{}, err
 	}
 
-	effectiveParticipants, consensusWeights, totalNetworkWeight := am.getEffectiveParticipantsWithConsensusWeights(ctx)
-	activeModels := activeModelSet(effectiveParticipants)
+	effectiveState := am.getEffectiveParticipationState(ctx)
+	effectiveParticipants := effectiveState.participants
+	consensusWeights := effectiveState.weights
+	totalNetworkWeight := effectiveState.totalWeight
+	activeModels := am.getCurrentEpochActiveModelSet(ctx, effectiveParticipants)
 	bootstrapModelIDs := bootstrapCandidateModelIDs(params.PocParams, activeModels)
 
 	bootstrapDelegationEntries,
-	bootstrapIntentEntries,
-	bootstrapDelegations,
-	bootstrapIntents := am.loadFilteredBootstrapState(
+		bootstrapIntentEntries,
+		bootstrapDelegations,
+		bootstrapIntents := am.loadFilteredBootstrapState(
 		ctx,
 		effectiveParticipants,
 		bootstrapModelIDs,
@@ -370,27 +342,41 @@ func (am AppModule) buildBootstrapDelegationSnapshot(
 	}, nil
 }
 
-func (am AppModule) getEffectiveParticipantsWithConsensusWeights(
-	ctx context.Context,
-) ([]*types.ActiveParticipant, map[string]int64, int64) {
-	epochIndex, found := am.keeper.GetEffectiveEpochIndex(ctx)
+func (am AppModule) getEffectiveParticipationState(ctx context.Context) effectiveParticipationState {
+	return am.getEffectiveValidationBaseState(ctx).participation
+}
+
+func (am AppModule) getEpochZeroEffectiveParticipationState(ctx context.Context) effectiveParticipationState {
+	epochGroupData, found := am.keeper.GetEpochGroupData(ctx, 0, "")
 	if !found {
-		return nil, map[string]int64{}, 0
+		return effectiveParticipationState{
+			participants: nil,
+			weights:      map[string]int64{},
+			totalWeight:  0,
+		}
 	}
 
-	ap, found := am.keeper.GetActiveParticipants(ctx, epochIndex)
-	if !found {
-		return nil, map[string]int64{}, 0
-	}
-
-	consensusWeights := make(map[string]int64, len(ap.Participants))
+	participants := make([]*types.ActiveParticipant, 0, len(epochGroupData.ValidationWeights))
+	consensusWeights := make(map[string]int64, len(epochGroupData.ValidationWeights))
 	totalNetworkWeight := int64(0)
-	for _, participant := range ap.Participants {
-		consensusWeights[participant.Index] = participant.Weight
-		totalNetworkWeight += participant.Weight
+
+	for _, validationWeight := range epochGroupData.ValidationWeights {
+		if validationWeight == nil {
+			continue
+		}
+		participants = append(participants, &types.ActiveParticipant{
+			Index:  validationWeight.MemberAddress,
+			Weight: validationWeight.Weight,
+		})
+		consensusWeights[validationWeight.MemberAddress] = validationWeight.Weight
+		totalNetworkWeight += validationWeight.Weight
 	}
 
-	return ap.Participants, consensusWeights, totalNetworkWeight
+	return effectiveParticipationState{
+		participants: participants,
+		weights:      consensusWeights,
+		totalWeight:  totalNetworkWeight,
+	}
 }
 
 func activeModelSet(participants []*types.ActiveParticipant) map[string]bool {
@@ -410,7 +396,35 @@ func activeModelSet(participants []*types.ActiveParticipant) map[string]bool {
 	return models
 }
 
-func bootstrapCandidateModelIDs(pocParams *types.PocParams, activeModels map[string]bool) []string {
+func (am AppModule) getCurrentEpochActiveModelSet(
+	ctx context.Context,
+	participants []*types.ActiveParticipant,
+) map[string]bool {
+	activeModels := activeModelSet(participants)
+
+	epochIndex, found := am.keeper.GetEffectiveEpochIndex(ctx)
+	if !found {
+		return activeModels
+	}
+
+	parentGroupData, found := am.keeper.GetEpochGroupData(ctx, epochIndex, "")
+	if !found {
+		return activeModels
+	}
+
+	for _, modelID := range parentGroupData.SubGroupModels {
+		if modelID != "" {
+			activeModels[modelID] = true
+		}
+	}
+
+	return activeModels
+}
+
+func bootstrapCandidateModelIDs(
+	pocParams *types.PocParams,
+	activeModels map[string]bool,
+) []string {
 	if pocParams == nil {
 		return nil
 	}

@@ -5,8 +5,8 @@ import (
 
 	"decentralized-api/broker"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/productscience/inference/x/inference/types"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSampleLeafIndices_ZeroCount(t *testing.T) {
@@ -163,4 +163,12 @@ func TestFilterValidationNodesForModel_DoesNotUseFallbackWhenExplicitMembershipE
 
 	filtered := filterValidationNodesForModel(nodes, "model-a")
 	assert.Empty(t, filtered)
+}
+
+func TestHasModelList(t *testing.T) {
+	assert.False(t, hasModelList(false, map[string]*modelSamplingData{}))
+	assert.False(t, hasModelList(true, map[string]*modelSamplingData{}))
+	assert.True(t, hasModelList(true, map[string]*modelSamplingData{
+		"model-a": {totalWeight: 10},
+	}))
 }
