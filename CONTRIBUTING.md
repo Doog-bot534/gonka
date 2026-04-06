@@ -187,7 +187,7 @@ Once a Proposal has enough clarity and support, break it into scoped Issues with
 
 **Optional: AI-assisted self-review (`ai-reviewer`)**
 
-Before opening or updating a PR, contributors may use [gonka-ai/ai-reviewer](https://github.com/gonka-ai/ai-reviewer), a single-binary CLI for structured, repo-aware review. It runs multiple specialized review personas, such as security, correctness, architecture, and project-specific lenses, and supports primers for project context and waivers for explicit policy. It is intended to complement human review, not replace it, especially as the volume of change grows.
+Before opening or updating a PR, contributors are strongly encouraged to use [gonka-ai/ai-reviewer](https://github.com/gonka-ai/ai-reviewer), a single-binary CLI for structured, repo-aware review. It runs multiple specialized review personas, such as security, correctness, architecture, and project-specific lenses, and supports primers for project context and waivers for explicit policy. It is intended to complement human review, not replace it, especially as the volume of change grows.
 It is also recommended to review the full presentation before using the tool in practice.
 
 - [Full presentation recording on Discord](https://discord.com/channels/1336477374442770503/1415622117629624362/1485979219711234058)
