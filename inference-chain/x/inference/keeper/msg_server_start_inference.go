@@ -358,7 +358,7 @@ func (k msgServer) processInferencePayments(
 // * Update CoinBalance
 // * Update EpochStats
 // * Log the owed-subaccount transaction
-func (k msgServer) processParticipantPayment(
+func (k *Keeper) processParticipantPayment(
 	ctx sdk.Context,
 	participant *types.Participant,
 	payout int64,
