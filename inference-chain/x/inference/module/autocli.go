@@ -47,9 +47,9 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 				},
 
 				{
-					RpcMethod:      "InferenceParticipant",
-					Use:            "inference-participant [address]",
-					Short:          "Query inference-participant",
+					RpcMethod:      "AccountByAddress",
+					Use:            "account-by-address [address]",
+					Short:          "Query account public key and balance by address",
 					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "address"}},
 				},
 
@@ -132,17 +132,6 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 					PositionalArgs: []*autocliv1.PositionalArgDescriptor{},
 				},
 
-				{
-					RpcMethod: "TopMinerAll",
-					Use:       "list-top-miner",
-					Short:     "List all top_miner",
-				},
-				{
-					RpcMethod:      "TopMiner",
-					Use:            "show-top-miner [id]",
-					Short:          "Shows a top_miner",
-					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "address"}},
-				},
 				{
 					RpcMethod: "InferenceTimeoutAll",
 					Use:       "list-inference-timeout",

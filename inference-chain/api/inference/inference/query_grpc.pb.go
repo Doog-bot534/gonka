@@ -24,7 +24,7 @@ const (
 	Query_InferenceAll_FullMethodName                              = "/inference.inference.Query/InferenceAll"
 	Query_Participant_FullMethodName                               = "/inference.inference.Query/Participant"
 	Query_ParticipantAll_FullMethodName                            = "/inference.inference.Query/ParticipantAll"
-	Query_InferenceParticipant_FullMethodName                      = "/inference.inference.Query/InferenceParticipant"
+	Query_AccountByAddress_FullMethodName                          = "/inference.inference.Query/AccountByAddress"
 	Query_GetRandomExecutor_FullMethodName                         = "/inference.inference.Query/GetRandomExecutor"
 	Query_EpochGroupData_FullMethodName                            = "/inference.inference.Query/EpochGroupData"
 	Query_EpochGroupDataAll_FullMethodName                         = "/inference.inference.Query/EpochGroupDataAll"
@@ -44,8 +44,6 @@ const (
 	Query_GetUnitOfComputePriceProposal_FullMethodName             = "/inference.inference.Query/GetUnitOfComputePriceProposal"
 	Query_CurrentEpochGroupData_FullMethodName                     = "/inference.inference.Query/CurrentEpochGroupData"
 	Query_ModelsAll_FullMethodName                                 = "/inference.inference.Query/ModelsAll"
-	Query_TopMiner_FullMethodName                                  = "/inference.inference.Query/TopMiner"
-	Query_TopMinerAll_FullMethodName                               = "/inference.inference.Query/TopMinerAll"
 	Query_InferenceTimeout_FullMethodName                          = "/inference.inference.Query/InferenceTimeout"
 	Query_InferenceTimeoutAll_FullMethodName                       = "/inference.inference.Query/InferenceTimeoutAll"
 	Query_InferenceValidationDetails_FullMethodName                = "/inference.inference.Query/InferenceValidationDetails"
@@ -118,8 +116,8 @@ type QueryClient interface {
 	// Queries a list of Participant items.
 	Participant(ctx context.Context, in *QueryGetParticipantRequest, opts ...grpc.CallOption) (*QueryGetParticipantResponse, error)
 	ParticipantAll(ctx context.Context, in *QueryAllParticipantRequest, opts ...grpc.CallOption) (*QueryAllParticipantResponse, error)
-	// Queries a list of InferenceParticipant items.
-	InferenceParticipant(ctx context.Context, in *QueryInferenceParticipantRequest, opts ...grpc.CallOption) (*QueryInferenceParticipantResponse, error)
+	// Queries account public key and balance by address.
+	AccountByAddress(ctx context.Context, in *QueryAccountByAddressRequest, opts ...grpc.CallOption) (*QueryAccountByAddressResponse, error)
 	// Queries a list of GetRandomExecutor items.
 	GetRandomExecutor(ctx context.Context, in *QueryGetRandomExecutorRequest, opts ...grpc.CallOption) (*QueryGetRandomExecutorResponse, error)
 	// Queries a list of EpochGroupData items.
@@ -152,9 +150,6 @@ type QueryClient interface {
 	CurrentEpochGroupData(ctx context.Context, in *QueryCurrentEpochGroupDataRequest, opts ...grpc.CallOption) (*QueryCurrentEpochGroupDataResponse, error)
 	// Queries a list of ModelsAll items.
 	ModelsAll(ctx context.Context, in *QueryModelsAllRequest, opts ...grpc.CallOption) (*QueryModelsAllResponse, error)
-	// Queries a list of TopMiner items.
-	TopMiner(ctx context.Context, in *QueryGetTopMinerRequest, opts ...grpc.CallOption) (*QueryGetTopMinerResponse, error)
-	TopMinerAll(ctx context.Context, in *QueryAllTopMinerRequest, opts ...grpc.CallOption) (*QueryAllTopMinerResponse, error)
 	// Queries a list of InferenceTimeout items.
 	InferenceTimeout(ctx context.Context, in *QueryGetInferenceTimeoutRequest, opts ...grpc.CallOption) (*QueryGetInferenceTimeoutResponse, error)
 	InferenceTimeoutAll(ctx context.Context, in *QueryAllInferenceTimeoutRequest, opts ...grpc.CallOption) (*QueryAllInferenceTimeoutResponse, error)
@@ -310,9 +305,9 @@ func (c *queryClient) ParticipantAll(ctx context.Context, in *QueryAllParticipan
 	return out, nil
 }
 
-func (c *queryClient) InferenceParticipant(ctx context.Context, in *QueryInferenceParticipantRequest, opts ...grpc.CallOption) (*QueryInferenceParticipantResponse, error) {
-	out := new(QueryInferenceParticipantResponse)
-	err := c.cc.Invoke(ctx, Query_InferenceParticipant_FullMethodName, in, out, opts...)
+func (c *queryClient) AccountByAddress(ctx context.Context, in *QueryAccountByAddressRequest, opts ...grpc.CallOption) (*QueryAccountByAddressResponse, error) {
+	out := new(QueryAccountByAddressResponse)
+	err := c.cc.Invoke(ctx, Query_AccountByAddress_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -484,24 +479,6 @@ func (c *queryClient) CurrentEpochGroupData(ctx context.Context, in *QueryCurren
 func (c *queryClient) ModelsAll(ctx context.Context, in *QueryModelsAllRequest, opts ...grpc.CallOption) (*QueryModelsAllResponse, error) {
 	out := new(QueryModelsAllResponse)
 	err := c.cc.Invoke(ctx, Query_ModelsAll_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *queryClient) TopMiner(ctx context.Context, in *QueryGetTopMinerRequest, opts ...grpc.CallOption) (*QueryGetTopMinerResponse, error) {
-	out := new(QueryGetTopMinerResponse)
-	err := c.cc.Invoke(ctx, Query_TopMiner_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *queryClient) TopMinerAll(ctx context.Context, in *QueryAllTopMinerRequest, opts ...grpc.CallOption) (*QueryAllTopMinerResponse, error) {
-	out := new(QueryAllTopMinerResponse)
-	err := c.cc.Invoke(ctx, Query_TopMinerAll_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1042,8 +1019,8 @@ type QueryServer interface {
 	// Queries a list of Participant items.
 	Participant(context.Context, *QueryGetParticipantRequest) (*QueryGetParticipantResponse, error)
 	ParticipantAll(context.Context, *QueryAllParticipantRequest) (*QueryAllParticipantResponse, error)
-	// Queries a list of InferenceParticipant items.
-	InferenceParticipant(context.Context, *QueryInferenceParticipantRequest) (*QueryInferenceParticipantResponse, error)
+	// Queries account public key and balance by address.
+	AccountByAddress(context.Context, *QueryAccountByAddressRequest) (*QueryAccountByAddressResponse, error)
 	// Queries a list of GetRandomExecutor items.
 	GetRandomExecutor(context.Context, *QueryGetRandomExecutorRequest) (*QueryGetRandomExecutorResponse, error)
 	// Queries a list of EpochGroupData items.
@@ -1076,9 +1053,6 @@ type QueryServer interface {
 	CurrentEpochGroupData(context.Context, *QueryCurrentEpochGroupDataRequest) (*QueryCurrentEpochGroupDataResponse, error)
 	// Queries a list of ModelsAll items.
 	ModelsAll(context.Context, *QueryModelsAllRequest) (*QueryModelsAllResponse, error)
-	// Queries a list of TopMiner items.
-	TopMiner(context.Context, *QueryGetTopMinerRequest) (*QueryGetTopMinerResponse, error)
-	TopMinerAll(context.Context, *QueryAllTopMinerRequest) (*QueryAllTopMinerResponse, error)
 	// Queries a list of InferenceTimeout items.
 	InferenceTimeout(context.Context, *QueryGetInferenceTimeoutRequest) (*QueryGetInferenceTimeoutResponse, error)
 	InferenceTimeoutAll(context.Context, *QueryAllInferenceTimeoutRequest) (*QueryAllInferenceTimeoutResponse, error)
@@ -1201,8 +1175,8 @@ func (UnimplementedQueryServer) Participant(context.Context, *QueryGetParticipan
 func (UnimplementedQueryServer) ParticipantAll(context.Context, *QueryAllParticipantRequest) (*QueryAllParticipantResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ParticipantAll not implemented")
 }
-func (UnimplementedQueryServer) InferenceParticipant(context.Context, *QueryInferenceParticipantRequest) (*QueryInferenceParticipantResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method InferenceParticipant not implemented")
+func (UnimplementedQueryServer) AccountByAddress(context.Context, *QueryAccountByAddressRequest) (*QueryAccountByAddressResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AccountByAddress not implemented")
 }
 func (UnimplementedQueryServer) GetRandomExecutor(context.Context, *QueryGetRandomExecutorRequest) (*QueryGetRandomExecutorResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetRandomExecutor not implemented")
@@ -1260,12 +1234,6 @@ func (UnimplementedQueryServer) CurrentEpochGroupData(context.Context, *QueryCur
 }
 func (UnimplementedQueryServer) ModelsAll(context.Context, *QueryModelsAllRequest) (*QueryModelsAllResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ModelsAll not implemented")
-}
-func (UnimplementedQueryServer) TopMiner(context.Context, *QueryGetTopMinerRequest) (*QueryGetTopMinerResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method TopMiner not implemented")
-}
-func (UnimplementedQueryServer) TopMinerAll(context.Context, *QueryAllTopMinerRequest) (*QueryAllTopMinerResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method TopMinerAll not implemented")
 }
 func (UnimplementedQueryServer) InferenceTimeout(context.Context, *QueryGetInferenceTimeoutRequest) (*QueryGetInferenceTimeoutResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method InferenceTimeout not implemented")
@@ -1544,20 +1512,20 @@ func _Query_ParticipantAll_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Query_InferenceParticipant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(QueryInferenceParticipantRequest)
+func _Query_AccountByAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryAccountByAddressRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(QueryServer).InferenceParticipant(ctx, in)
+		return srv.(QueryServer).AccountByAddress(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Query_InferenceParticipant_FullMethodName,
+		FullMethod: Query_AccountByAddress_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(QueryServer).InferenceParticipant(ctx, req.(*QueryInferenceParticipantRequest))
+		return srv.(QueryServer).AccountByAddress(ctx, req.(*QueryAccountByAddressRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1900,42 +1868,6 @@ func _Query_ModelsAll_Handler(srv interface{}, ctx context.Context, dec func(int
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(QueryServer).ModelsAll(ctx, req.(*QueryModelsAllRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _Query_TopMiner_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(QueryGetTopMinerRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(QueryServer).TopMiner(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Query_TopMiner_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(QueryServer).TopMiner(ctx, req.(*QueryGetTopMinerRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _Query_TopMinerAll_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(QueryAllTopMinerRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(QueryServer).TopMinerAll(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Query_TopMinerAll_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(QueryServer).TopMinerAll(ctx, req.(*QueryAllTopMinerRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3012,8 +2944,8 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Query_ParticipantAll_Handler,
 		},
 		{
-			MethodName: "InferenceParticipant",
-			Handler:    _Query_InferenceParticipant_Handler,
+			MethodName: "AccountByAddress",
+			Handler:    _Query_AccountByAddress_Handler,
 		},
 		{
 			MethodName: "GetRandomExecutor",
@@ -3090,14 +3022,6 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ModelsAll",
 			Handler:    _Query_ModelsAll_Handler,
-		},
-		{
-			MethodName: "TopMiner",
-			Handler:    _Query_TopMiner_Handler,
-		},
-		{
-			MethodName: "TopMinerAll",
-			Handler:    _Query_TopMinerAll_Handler,
 		},
 		{
 			MethodName: "InferenceTimeout",
