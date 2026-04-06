@@ -624,8 +624,9 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 	}
 
 	// TODO: Adjust bitcoin style reward instead of weight?
-	// adjParams := am.delegationAdjustmentParams(params)
-	// ApplyDelegationWeightAdjustment(activeParticipants, dwc, eligibleGroups, allModes, adjParams)
+	// We at least must limit increas weight of any participant
+	adjParams := am.delegationAdjustmentParams(params)
+	ApplyDelegationWeightAdjustment(activeParticipants, dwc, eligibleGroups, allModes, adjParams)
 
 	// Adjust weights based on collateral after the grace period. This modifies the weights in-place.
 	if err := am.keeper.AdjustWeightsByCollateral(ctx, activeParticipants); err != nil {

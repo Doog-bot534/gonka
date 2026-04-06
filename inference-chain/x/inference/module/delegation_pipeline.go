@@ -96,14 +96,39 @@ func (am AppModule) getPreviousConsensusWeights(ctx context.Context) (map[string
 		return make(map[string]int64), 0
 	}
 	effectiveAP, found := am.keeper.GetActiveParticipants(ctx, epochIndex)
+	if found {
+		weights := make(map[string]int64, len(effectiveAP.Participants))
+		total := int64(0)
+		for _, p := range effectiveAP.Participants {
+			weights[p.Index] = p.Weight
+			total += p.Weight
+		}
+		return weights, total
+	}
+
+	// Bootstrap the epoch0 -> epoch1 transition from the genesis epoch-group
+	// validator weights when ActiveParticipants(0) was never seeded.
+	if epochIndex == 0 {
+		return am.getEpochZeroValidationWeights(ctx)
+	}
+
+	return make(map[string]int64), 0
+}
+
+func (am AppModule) getEpochZeroValidationWeights(ctx context.Context) (map[string]int64, int64) {
+	epochGroupData, found := am.keeper.GetEpochGroupData(ctx, 0, "")
 	if !found {
 		return make(map[string]int64), 0
 	}
-	weights := make(map[string]int64, len(effectiveAP.Participants))
+
+	weights := make(map[string]int64, len(epochGroupData.ValidationWeights))
 	total := int64(0)
-	for _, p := range effectiveAP.Participants {
-		weights[p.Index] = p.Weight
-		total += p.Weight
+	for _, validationWeight := range epochGroupData.ValidationWeights {
+		if validationWeight == nil {
+			continue
+		}
+		weights[validationWeight.MemberAddress] = validationWeight.Weight
+		total += validationWeight.Weight
 	}
 	return weights, total
 }

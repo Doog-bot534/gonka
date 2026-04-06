@@ -73,6 +73,29 @@ func TestBuildBootstrapDelegationSnapshot_FiltersActiveParticipantsOnly(t *testi
 	require.Equal(t, int64(200), snapshot.GroupPreeligibility[0].ReachableVotingPower)
 }
 
+func TestGetPreviousConsensusWeights_FallsBackToEpochZeroGroupWeights(t *testing.T) {
+	k, ctx := newMinimalInferenceKeeper(t)
+
+	require.NoError(t, k.SetEffectiveEpochIndex(ctx, 0))
+	k.SetEpochGroupData(ctx, types.EpochGroupData{
+		EpochIndex: 0,
+		ModelId:    "",
+		ValidationWeights: []*types.ValidationWeight{
+			{MemberAddress: testutil.Validator, Weight: 100},
+			{MemberAddress: testutil.Validator2, Weight: 201},
+		},
+	})
+
+	am := NewAppModule(nil, k, nil, nil, nil, nil)
+	weights, total := am.getPreviousConsensusWeights(ctx)
+
+	require.Equal(t, int64(301), total)
+	require.Equal(t, map[string]int64{
+		testutil.Validator:  100,
+		testutil.Validator2: 201,
+	}, weights)
+}
+
 func TestBuildDelegationSnapshot_FiltersActiveParticipantsAndExcludesIntents(t *testing.T) {
 	k, ctx := newMinimalInferenceKeeper(t)
 
