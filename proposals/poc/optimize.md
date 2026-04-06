@@ -28,6 +28,8 @@ This is not scalable. With 100 participants, 10,000 validations occur per epoch.
 
 Reduce complexity to O(N × N_SLOTS) by assigning each participant a fixed set of validation slots through weighted random sampling. For a model-local validator set, only the model-local share of slots is sampled; the remaining slots behave as implicit abstentions against the full network-wide threshold.
 
+Note: the synthetic-abstention rule in this section was added to support the multi-model delegation design. The original single-model slot approach sampled all `N_SLOTS` from one validator population. In the multi-model case, each model group may hold only a fraction of total network voting power, so the unsampled remainder must count as abstention to preserve the full-network acceptance threshold.
+
 ### Core Mechanism
 
 1. Each participant gets `N_SLOTS` total validation slots.
