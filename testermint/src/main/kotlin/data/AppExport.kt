@@ -257,11 +257,11 @@ data class SubnetEscrowParams(
     @SerializedName("group_size")
     val groupSize: Long,
     @SerializedName("allowed_creator_addresses")
-    val allowedCreatorAddresses: List<String> = emptyList(),
+    val allowedCreatorAddresses: List<String>? = emptyList(),
     @SerializedName("token_price")
     val tokenPrice: Long,
     @SerializedName("approved_versions")
-    val approvedVersions: List<SubnetApprovedVersion> = emptyList(),
+    val approvedVersions: List<SubnetApprovedVersion>? = emptyList(),
 )
 
 data class PocParams(
