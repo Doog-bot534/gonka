@@ -105,8 +105,17 @@ func TestApplyDiff_StartInference(t *testing.T) {
 // TestApplyDiff_StartInference_MaxPerSubnetCap verifies the 2000-inference hard cap.
 func TestApplyDiff_StartInference_MaxPerSubnetCap(t *testing.T) {
 	hosts := []*signing.Secp256k1Signer{testutil.MustGenerateKey(t), testutil.MustGenerateKey(t), testutil.MustGenerateKey(t)}
-	sm, user := newTestSM(t, hosts, 10000)
-	maxInferences := sm.SnapshotState().Config.MaxInferencesPerSubnet
+
+	maxInferences := uint32(4)
+
+	config := testutil.DefaultConfig(len(hosts))
+	config.MaxInferencesPerSubnet = maxInferences
+
+	user := testutil.MustGenerateKey(t)
+	group := testutil.MakeGroup(hosts)
+	verifier := signing.NewSecp256k1Verifier()
+	sm, err := NewStateMachine("escrow-1", config, group, 10000, user.Address(), verifier)
+	require.NoError(t, err)
 
 	for nonce := uint64(1); nonce <= uint64(maxInferences); nonce++ {
 		diff := testutil.SignDiff(t, user, "escrow-1", nonce, []*types.SubnetTx{txStart(&types.MsgStartInference{
@@ -117,7 +126,7 @@ func TestApplyDiff_StartInference_MaxPerSubnetCap(t *testing.T) {
 			MaxTokens:   0,
 			StartedAt:   1000,
 		})})
-		_, err := sm.ApplyDiff(diff)
+		_, err = sm.ApplyDiff(diff)
 		require.NoError(t, err)
 	}
 
@@ -131,7 +140,7 @@ func TestApplyDiff_StartInference_MaxPerSubnetCap(t *testing.T) {
 		MaxTokens:   0,
 		StartedAt:   1000,
 	})})
-	_, err := sm.ApplyDiff(diff)
+	_, err = sm.ApplyDiff(diff)
 	require.ErrorIs(t, err, types.ErrInferenceLimitReached)
 
 	state := sm.SnapshotState()
