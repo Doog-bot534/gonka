@@ -208,6 +208,7 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 	// Query validation snapshot for per-model sampling (if enabled)
 	validationSlots := int(pocParams.ValidationSlots)
 	var snapshotAppHash string
+	var snapshotTotalNetworkWeight int64
 	type modelSamplingData struct {
 		entries     []calculations.WeightEntry
 		totalWeight int64
@@ -224,6 +225,7 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 			validationSlots = 0
 		} else if snapshotResp.Found && snapshotResp.Snapshot != nil && len(snapshotResp.Snapshot.ModelVotingPowers) > 0 {
 			snapshotAppHash = snapshotResp.Snapshot.AppHash
+			snapshotTotalNetworkWeight = snapshotResp.Snapshot.TotalNetworkWeight
 			for _, mvw := range snapshotResp.Snapshot.ModelVotingPowers {
 				weights := types.VotingPowerSliceToMap(mvw.VotingPowers)
 				entries, total := calculations.PrepareSortedEntries(weights)
@@ -244,24 +246,26 @@ func (v *OffChainValidator) ValidateAll(pocStageStartBlockHeight int64, pocStart
 	workItems := make([]participantWork, 0, len(commitsResp.Commits))
 	skippedNotAssigned := 0
 	for _, commit := range commitsResp.Commits {
-		// If sampling is enabled, check if we're assigned to validate this participant-model pair
+		// If sampling is enabled, check if we're assigned to validate this participant-model pair.
+		// Only the model-local share of slots is sampled; the remainder behaves as abstention.
 		if validationSlots > 0 {
 			sampling, hasSampling := modelSampling[commit.ModelId]
 			if hasSampling {
+				sampledSlots := calculations.ComputeSampledSlotCount(sampling.totalWeight, snapshotTotalNetworkWeight, validationSlots)
 				assignedValidators := calculations.GetSlotsFromSorted(
 					snapshotAppHash,
 					commit.ParticipantAddress,
 					commit.ModelId,
 					sampling.entries,
 					sampling.totalWeight,
-					validationSlots,
+					sampledSlots,
 				)
 				if !slices.Contains(assignedValidators, v.validatorAddress) {
 					skippedNotAssigned++
 					continue
 				}
 			}
-			// No sampling data for this model -> validate (new model bootstrap)
+			// No sampling data for this model -> validate (bootstrap model path).
 		}
 
 		// Get participant's inference URL

@@ -23,6 +23,7 @@ import (
 	"github.com/productscience/inference/testutil"
 	blskeeper "github.com/productscience/inference/x/bls/keeper"
 	blstypes "github.com/productscience/inference/x/bls/types"
+	"github.com/productscience/inference/x/inference/calculations"
 	"github.com/productscience/inference/x/inference/keeper"
 	"github.com/productscience/inference/x/inference/types"
 )
@@ -52,6 +53,76 @@ func TestPoCWeightCalculator_PocValidated_RejectsWhenVotingPowersMissing(t *test
 	})
 
 	require.False(t, ok)
+}
+
+func TestPoCWeightCalculator_PocValidated_SlotSamplingTreatsMissingWeightAsAbstention(t *testing.T) {
+	key := types.PoCParticipantModelKey{
+		ParticipantAddress: testutil.Executor,
+		ModelID:            "model-a",
+	}
+	modelVotingPowers := map[string]int64{
+		testutil.Validator: 40,
+	}
+	entries, totalWeight := calculations.PrepareSortedEntries(modelVotingPowers)
+	require.Equal(t, int64(40), totalWeight)
+	require.Equal(t, 51, calculations.ComputeSampledSlotCount(totalWeight, 100, 128))
+
+	wc := &PoCWeightCalculator{
+		ModelVotingPowers: map[string]map[string]int64{
+			"model-a": modelVotingPowers,
+		},
+		TotalNetworkWeight: 100,
+		ValidationSlots:    128,
+		AppHash:            "test-hash",
+		sortedVotingPowers: map[string]sortedModelVP{
+			"model-a": {entries: entries, totalWeight: totalWeight},
+		},
+		Logger: noopLogger{},
+	}
+
+	ok := wc.pocValidated([]types.PoCValidationV2{
+		{
+			ValidatorParticipantAddress: testutil.Validator,
+			ValidatedWeight:             1,
+		},
+	}, key)
+
+	require.False(t, ok)
+}
+
+func TestPoCWeightCalculator_PocValidated_SlotSamplingAcceptsWhenGroupControlsEnoughWeight(t *testing.T) {
+	key := types.PoCParticipantModelKey{
+		ParticipantAddress: testutil.Executor,
+		ModelID:            "model-a",
+	}
+	modelVotingPowers := map[string]int64{
+		testutil.Validator: 80,
+	}
+	entries, totalWeight := calculations.PrepareSortedEntries(modelVotingPowers)
+	require.Equal(t, int64(80), totalWeight)
+	require.Equal(t, 102, calculations.ComputeSampledSlotCount(totalWeight, 100, 128))
+
+	wc := &PoCWeightCalculator{
+		ModelVotingPowers: map[string]map[string]int64{
+			"model-a": modelVotingPowers,
+		},
+		TotalNetworkWeight: 100,
+		ValidationSlots:    128,
+		AppHash:            "test-hash",
+		sortedVotingPowers: map[string]sortedModelVP{
+			"model-a": {entries: entries, totalWeight: totalWeight},
+		},
+		Logger: noopLogger{},
+	}
+
+	ok := wc.pocValidated([]types.PoCValidationV2{
+		{
+			ValidatorParticipantAddress: testutil.Validator,
+			ValidatedWeight:             1,
+		},
+	}, key)
+
+	require.True(t, ok)
 }
 
 func TestPoCWeightCalculator_CalculateParticipantWeight_ProducesRawWeights(t *testing.T) {

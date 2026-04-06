@@ -24,6 +24,16 @@ func TestGetSlots_Determinism(t *testing.T) {
 	require.Equal(t, slots1, slots2, "same inputs should produce same outputs")
 }
 
+func TestComputeSampledSlotCount(t *testing.T) {
+	require.Equal(t, 0, ComputeSampledSlotCount(0, 100, 128))
+	require.Equal(t, 0, ComputeSampledSlotCount(40, 0, 128))
+	require.Equal(t, 0, ComputeSampledSlotCount(40, 100, 0))
+	require.Equal(t, 51, ComputeSampledSlotCount(40, 100, 128))
+	require.Equal(t, 85, ComputeSampledSlotCount(67, 100, 128))
+	require.Equal(t, 128, ComputeSampledSlotCount(100, 100, 128))
+	require.Equal(t, 128, ComputeSampledSlotCount(140, 100, 128))
+}
+
 func TestGetSlots_WeightDistribution(t *testing.T) {
 	weights := map[string]int64{
 		"node1": 100,
@@ -341,7 +351,6 @@ func TestGetSlots_OrderIndependentOfMapIteration(t *testing.T) {
 		}
 	}
 }
-
 
 func TestGetSlots_DifferentModels(t *testing.T) {
 	weights := map[string]int64{

@@ -283,16 +283,19 @@ func (wc *PoCWeightCalculator) pocValidated(vals []types.PoCValidationV2, key ty
 	if wc.ValidationSlots > 0 {
 		// Slot-based: sample validators, count per-slot (each slot = 1 weight).
 		// Preserves duplicates -- a validator with 2 slots gets their vote counted twice.
+		// Only the model-local share of total network weight is sampled; the
+		// unsampled remainder behaves like abstention against the full slot count.
 		cached := wc.sortedVotingPowers[key.ModelID]
+		sampledSlots := calculations.ComputeSampledSlotCount(cached.totalWeight, wc.TotalNetworkWeight, wc.ValidationSlots)
 		assigned := calculations.GetSlotsFromSorted(
 			wc.AppHash, key.ParticipantAddress, key.ModelID,
-			cached.entries, cached.totalWeight, wc.ValidationSlots,
+			cached.entries, cached.totalWeight, sampledSlots,
 		)
 		voteMap := make(map[string]int64)
 		for _, v := range vals {
 			voteMap[v.ValidatorParticipantAddress] = v.ValidatedWeight
 		}
-		totalSlots := int64(len(assigned))
+		totalSlots := int64(wc.ValidationSlots)
 		var validSlots, invalidSlots int64
 		for _, slotValidator := range assigned {
 			vote, hasVote := voteMap[slotValidator]

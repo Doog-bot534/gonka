@@ -115,6 +115,28 @@ func GetSlotFromSorted(
 	return sortedEntries[len(sortedEntries)-1].Address
 }
 
+// ComputeSampledSlotCount returns the number of slots that should be sampled
+// from a model-local voting-power set when the full threshold is still checked
+// against the total network slot count. Conservative rounding is used so any
+// fractional remainder becomes abstention rather than additional sampled power.
+func ComputeSampledSlotCount(modelVotingPower, totalNetworkWeight int64, nSlots int) int {
+	if nSlots <= 0 || modelVotingPower <= 0 || totalNetworkWeight <= 0 {
+		return 0
+	}
+	if modelVotingPower >= totalNetworkWeight {
+		return nSlots
+	}
+
+	groupSlots := (modelVotingPower * int64(nSlots)) / totalNetworkWeight
+	if groupSlots <= 0 {
+		return 0
+	}
+	if groupSlots >= int64(nSlots) {
+		return nSlots
+	}
+	return int(groupSlots)
+}
+
 func slotRandomVal(appHash, participantAddress, modelID string, slotIdx int, totalWeight int64) int64 {
 	seedData := fmt.Sprintf("%s%s%s%d", appHash, participantAddress, modelID, slotIdx)
 	hash := sha256.Sum256([]byte(seedData))
