@@ -184,7 +184,7 @@ func TestApplyBootstrapPenaltyAdjustment_MapsIntentMissedAndNone(t *testing.T) {
 		RDelegation: mathsdk.LegacyZeroDec(),
 	}
 
-	ApplyBootstrapPenaltyAdjustment(participants, modes, params)
+	ApplyBootstrapPenaltyAdjustment(participants, modes, nil, params)
 
 	require.Equal(t, int64(100), participants[0].Weight)
 	require.Equal(t, int64(80), participants[1].Weight)

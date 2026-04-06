@@ -623,17 +623,17 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 		p.Weight = consensusWeights[p.Index]
 	}
 
-	// TODO: Adjust bitcoin style reward instead of weight?
-	// We at least must limit increas weight of any participant
+	// Delegation adjustment applies to ALL eligible models (including bootstrap
+	// models that became eligible). Bootstrap intent penalty is separate.
 	adjParams := am.delegationAdjustmentParams(params)
 	ApplyDelegationWeightAdjustment(
 		activeParticipants,
 		participationState.calculator,
-		participationState.regularAdjustmentModels(),
+		participationState.eligibleModels,
 		participationState.participationByModel,
 		adjParams,
 	)
-	ApplyBootstrapPenaltyAdjustment(activeParticipants, participationState.bootstrapPenaltyByModel, adjParams)
+	ApplyBootstrapPenaltyAdjustment(activeParticipants, participationState.bootstrapPenaltyByModel, participationState.eligibleModels, adjParams)
 
 	// Adjust weights based on collateral after the grace period. This modifies the weights in-place.
 	if err := am.keeper.AdjustWeightsByCollateral(ctx, activeParticipants); err != nil {

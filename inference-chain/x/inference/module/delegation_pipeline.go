@@ -74,20 +74,6 @@ func buildParticipationByModel(
 	return participationByModel
 }
 
-func (state *epochParticipationState) regularAdjustmentModels() []string {
-	if len(state.bootstrapPenaltyByModel) == 0 {
-		return state.eligibleModels
-	}
-
-	regularModels := make([]string, 0, len(state.eligibleModels))
-	for _, modelID := range state.eligibleModels {
-		if _, isBootstrapModel := state.bootstrapPenaltyByModel[modelID]; isBootstrapModel {
-			continue
-		}
-		regularModels = append(regularModels, modelID)
-	}
-	return regularModels
-}
 
 func (am AppModule) prepareEpochParticipationState(
 	ctx context.Context,

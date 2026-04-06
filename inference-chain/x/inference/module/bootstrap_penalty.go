@@ -152,13 +152,23 @@ func ResolveBootstrapPenaltyModes(
 	return modes
 }
 
+// ApplyBootstrapPenaltyAdjustment penalizes participants for bootstrap models.
+// For eligible models (already handled by regular delegation adjustment), only
+// IntentMissed is applied -- the rest is covered by regular adjustment.
+// For non-eligible models, all bootstrap penalties apply.
 func ApplyBootstrapPenaltyAdjustment(
 	participants []*types.ActiveParticipant,
 	modes map[string]map[string]BootstrapPenaltyMode,
+	eligibleModels []string,
 	params DelegationAdjustmentParams,
 ) {
 	if params.IsNoOp() || len(modes) == 0 {
 		return
+	}
+
+	eligibleSet := make(map[string]bool, len(eligibleModels))
+	for _, modelID := range eligibleModels {
+		eligibleSet[modelID] = true
 	}
 
 	weightIndex := make(map[string]*types.ActiveParticipant, len(participants))
@@ -173,6 +183,8 @@ func ApplyBootstrapPenaltyAdjustment(
 	sort.Strings(modelIDs)
 
 	for _, modelID := range modelIDs {
+		eligible := eligibleSet[modelID]
+
 		for addr, mode := range modes[modelID] {
 			p, ok := weightIndex[addr]
 			if !ok || p.Weight <= 0 {
@@ -186,7 +198,10 @@ func ApplyBootstrapPenaltyAdjustment(
 					p.Weight -= penalty
 				}
 			case BootstrapPenaltyNone:
-				if !params.RPenalty.IsZero() {
+				// For eligible models, ModeNone penalty is already applied by
+				// regular delegation adjustment. Only penalize here for
+				// non-eligible bootstrap models.
+				if !eligible && !params.RPenalty.IsZero() {
 					penalty := params.RPenalty.MulInt64(p.Weight).TruncateInt64()
 					p.Weight -= penalty
 				}
