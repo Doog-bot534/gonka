@@ -151,12 +151,11 @@ func setupTestProxy(t *testing.T, numHosts int, engines []subnet.InferenceEngine
 	}
 	userKey := testutil.MustGenerateKey(t)
 	group := testutil.MakeGroup(hostSigners)
-	config := types.SessionConfig{
-		RefusalTimeout:   1,
-		ExecutionTimeout: 1,
-		TokenPrice:       1,
-		VoteThreshold:    uint32(numHosts) / 2,
-	}
+	config := testutil.DefaultConfig(numHosts)
+	config.RefusalTimeout = 1
+	config.ExecutionTimeout = 1
+	config.TokenPrice = 1
+
 	verifier := signing.NewSecp256k1Verifier()
 
 	killables := make([]*killableClient, numHosts)

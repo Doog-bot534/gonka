@@ -436,13 +436,9 @@ func TestUser_Finalize_SeedRevealAndSettlement(t *testing.T) {
 	}
 	userKey := testutil.MustSignerFromHex(t, "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
 	group := testutil.MakeGroup(hosts)
-	config := types.SessionConfig{
-		RefusalTimeout:   60,
-		ExecutionTimeout: 1200,
-		TokenPrice:       1,
-		VoteThreshold:    uint32(numHosts) / 2,
-		ValidationRate:   10000, // 100%
-	}
+	config := testutil.DefaultConfig(len(hosts))
+	config.ValidationRate = 10000 // 100%
+
 	verifier := signing.NewSecp256k1Verifier()
 
 	clients := make([]HostClient, numHosts)

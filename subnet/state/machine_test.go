@@ -1271,7 +1271,9 @@ func TestApplyDiff_CostOverflow_StartInference(t *testing.T) {
 		InputLength: math.MaxUint64 / 2, MaxTokens: 1, StartedAt: 1000,
 	})})
 	// With TokenPrice=1, the mul won't overflow. Use a custom SM with higher price.
-	config := types.SessionConfig{TokenPrice: 3, VoteThreshold: 1}
+	config := testutil.DefaultConfig(len(hosts))
+	config.TokenPrice = 3
+	config.VoteThreshold = 1
 	group := testutil.MakeGroup(hosts)
 	verifier := signing.NewSecp256k1Verifier()
 	smHigh, err := NewStateMachine("escrow-1", config, group, math.MaxUint64, user.Address(), verifier)
@@ -1846,13 +1848,13 @@ func TestApplyDiff_RevealSeed_ComplianceComputed(t *testing.T) {
 	hosts := fixedSigners(t)
 	user := testutil.MustSignerFromHex(t, "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
 	group := testutil.MakeGroup(hosts)
-	config := types.SessionConfig{
-		RefusalTimeout:   60,
-		ExecutionTimeout: 1200,
-		TokenPrice:       1,
-		VoteThreshold:    uint32(len(hosts)) / 2,
-		ValidationRate:   10000, // 100%
-	}
+	config := testutil.DefaultConfig(len(hosts))
+	config.RefusalTimeout = 60
+	config.ExecutionTimeout = 1200
+	config.TokenPrice = 1
+	config.VoteThreshold = uint32(len(hosts)) / 2
+	config.ValidationRate = 10000 // 100%
+
 	verifier := signing.NewSecp256k1Verifier()
 	sm, err := NewStateMachine("escrow-1", config, group, 100000, user.Address(), verifier)
 	require.NoError(t, err)
@@ -1898,13 +1900,13 @@ func TestApplyDiff_RevealSeed_CompletedValidationsCounted(t *testing.T) {
 	hosts := fixedSigners(t)
 	user := testutil.MustSignerFromHex(t, "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
 	group := testutil.MakeGroup(hosts)
-	config := types.SessionConfig{
-		RefusalTimeout:   60,
-		ExecutionTimeout: 1200,
-		TokenPrice:       1,
-		VoteThreshold:    uint32(len(hosts)) / 2,
-		ValidationRate:   10000,
-	}
+	config := testutil.DefaultConfig(len(hosts))
+	config.RefusalTimeout = 60
+	config.ExecutionTimeout = 1200
+	config.TokenPrice = 1
+	config.VoteThreshold = uint32(len(hosts)) / 2
+	config.ValidationRate = 10000
+
 	verifier := signing.NewSecp256k1Verifier()
 	sm, err := NewStateMachine("escrow-1", config, group, 100000, user.Address(), verifier)
 	require.NoError(t, err)
@@ -1952,13 +1954,13 @@ func TestApplyDiff_Validation_MultipleValidators_ComplianceCredit(t *testing.T) 
 	hosts := fixedSigners(t)
 	user := testutil.MustSignerFromHex(t, "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
 	group := testutil.MakeGroup(hosts)
-	config := types.SessionConfig{
-		RefusalTimeout:   60,
-		ExecutionTimeout: 1200,
-		TokenPrice:       1,
-		VoteThreshold:    uint32(len(hosts)) / 2,
-		ValidationRate:   10000, // 100%
-	}
+	config := testutil.DefaultConfig(len(hosts))
+	config.RefusalTimeout = 60
+	config.ExecutionTimeout = 1200
+	config.TokenPrice = 1
+	config.VoteThreshold = uint32(len(hosts)) / 2
+	config.ValidationRate = 10000 // 100%
+
 	verifier := signing.NewSecp256k1Verifier()
 	sm, err := NewStateMachine("escrow-1", config, group, 100000, user.Address(), verifier)
 	require.NoError(t, err)
@@ -2023,13 +2025,13 @@ func TestApplyDiff_RevealSeed_ZeroRateNoRequirements(t *testing.T) {
 	hosts := fixedSigners(t)
 	user := testutil.MustSignerFromHex(t, "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
 	group := testutil.MakeGroup(hosts)
-	config := types.SessionConfig{
-		RefusalTimeout:   60,
-		ExecutionTimeout: 1200,
-		TokenPrice:       1,
-		VoteThreshold:    uint32(len(hosts)) / 2,
-		ValidationRate:   0, // 0% -- no validations required
-	}
+	config := testutil.DefaultConfig(len(hosts))
+	config.RefusalTimeout = 60
+	config.ExecutionTimeout = 1200
+	config.TokenPrice = 1
+	config.VoteThreshold = uint32(len(hosts)) / 2
+	config.ValidationRate = 0 // 0% -- no validations required
+
 	verifier := signing.NewSecp256k1Verifier()
 	sm, err := NewStateMachine("escrow-1", config, group, 100000, user.Address(), verifier)
 	require.NoError(t, err)
@@ -2060,10 +2062,13 @@ func TestApplyDiff_RevealSeed_MultipleRevealers(t *testing.T) {
 	hosts := fixedSigners(t)
 	user := testutil.MustSignerFromHex(t, "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
 	group := testutil.MakeGroup(hosts)
-	config := types.SessionConfig{
-		RefusalTimeout: 60, ExecutionTimeout: 1200, TokenPrice: 1,
-		VoteThreshold: uint32(len(hosts)) / 2, ValidationRate: 10000,
-	}
+	config := testutil.DefaultConfig(len(hosts))
+	config.RefusalTimeout = 60
+	config.ExecutionTimeout = 1200
+	config.TokenPrice = 1
+	config.VoteThreshold = uint32(len(hosts)) / 2
+	config.ValidationRate = 10000
+
 	verifier := signing.NewSecp256k1Verifier()
 	sm, err := NewStateMachine("escrow-1", config, group, 100000, user.Address(), verifier)
 	require.NoError(t, err)
@@ -2118,13 +2123,13 @@ func TestApplyDiff_RevealSeed_ExecutorSkipsSelf(t *testing.T) {
 	}
 	user := testutil.MustGenerateKey(t)
 	group := testutil.MakeGroup(hosts)
-	config := types.SessionConfig{
-		RefusalTimeout:   60,
-		ExecutionTimeout: 1200,
-		TokenPrice:       1,
-		VoteThreshold:    uint32(len(hosts)) / 2,
-		ValidationRate:   10000,
-	}
+	config := testutil.DefaultConfig(len(hosts))
+	config.RefusalTimeout = 60
+	config.ExecutionTimeout = 1200
+	config.TokenPrice = 1
+	config.VoteThreshold = uint32(len(hosts)) / 2
+	config.ValidationRate = 10000
+
 	verifier := signing.NewSecp256k1Verifier()
 	sm, err := NewStateMachine("escrow-1", config, group, 100000, user.Address(), verifier)
 	require.NoError(t, err)
@@ -2568,10 +2573,13 @@ func TestCompliance_FinishAfterReveal(t *testing.T) {
 	hosts := fixedSigners(t)
 	user := testutil.MustSignerFromHex(t, "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
 	group := testutil.MakeGroup(hosts)
-	config := types.SessionConfig{
-		RefusalTimeout: 60, ExecutionTimeout: 1200, TokenPrice: 1,
-		VoteThreshold: uint32(len(hosts)) / 2, ValidationRate: 10000,
-	}
+	config := testutil.DefaultConfig(len(hosts))
+	config.RefusalTimeout = 60
+	config.ExecutionTimeout = 1200
+	config.TokenPrice = 1
+	config.VoteThreshold = uint32(len(hosts)) / 2
+	config.ValidationRate = 10000
+
 	verifier := signing.NewSecp256k1Verifier()
 	sm, err := NewStateMachine("escrow-1", config, group, 100000, user.Address(), verifier)
 	require.NoError(t, err)

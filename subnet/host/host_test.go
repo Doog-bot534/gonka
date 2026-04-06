@@ -920,13 +920,10 @@ func TestHost_ValidationTriggersOnFinishedInference(t *testing.T) {
 	user := testutil.MustGenerateKey(t)
 	group := testutil.MakeGroup(hosts)
 	// Use 100% validation rate so ShouldValidate always returns true.
-	config := types.SessionConfig{
-		RefusalTimeout:   60,
-		ExecutionTimeout: 1200,
-		TokenPrice:       1,
-		VoteThreshold:    1,
-		ValidationRate:   10000,
-	}
+	config := testutil.DefaultConfig(len(hosts))
+	config.VoteThreshold = 1
+	config.ValidationRate = 10000
+
 	verifier := signing.NewSecp256k1Verifier()
 	sm, err := state.NewStateMachine("escrow-1", config, group, 100000, user.Address(), verifier)
 	require.NoError(t, err)
