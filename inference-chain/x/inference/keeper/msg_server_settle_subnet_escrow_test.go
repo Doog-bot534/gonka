@@ -415,7 +415,7 @@ func TestSettleSubnetEscrow_UpdatesCurrentEpochStats(t *testing.T) {
 		SlotId:         0,
 		Missed:         1,
 		Invalid:        2,
-		InferenceCount: 3,
+		InferenceCount: 6,
 		Validated:      4,
 	}
 	hostStats := []*types.SubnetSettlementHostStats{&fixtureHostStats}
@@ -483,7 +483,7 @@ func TestSettleSubnetEscrow_UpdatesSubnetHostEpochStats(t *testing.T) {
 		Cost:                 7,
 		RequiredValidations:  5,
 		CompletedValidations: 4,
-		InferenceCount:       10,
+		InferenceCount:       14,
 		Validated:            11,
 	}
 	hostStats := []*types.SubnetSettlementHostStats{&fixtureHostStats}
