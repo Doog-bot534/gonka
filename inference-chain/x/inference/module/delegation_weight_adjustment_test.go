@@ -186,8 +186,8 @@ func TestApplyBootstrapPenaltyAdjustment_MapsIntentMissedAndNone(t *testing.T) {
 
 	ApplyBootstrapPenaltyAdjustment(participants, modes, nil, params)
 
-	require.Equal(t, int64(100), participants[0].Weight)
-	require.Equal(t, int64(80), participants[1].Weight)
-	require.Equal(t, int64(38), participants[2].Weight)
-	require.Equal(t, int64(25), participants[3].Weight)
+	require.Equal(t, int64(100), participants[0].Weight) // Direct: no penalty
+	require.Equal(t, int64(80), participants[1].Weight)  // Delegate: no penalty
+	require.Equal(t, int64(25), participants[2].Weight)  // IntentMissed: RPenalty 50*0.5=25
+	require.Equal(t, int64(25), participants[3].Weight)  // None: RPenalty 50*0.5=25
 }
