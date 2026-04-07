@@ -7,7 +7,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,23 +28,62 @@ func getTransport(baseURL string) *http.Transport {
 	if t, ok := sharedTransports.Load(baseURL); ok {
 		return t.(*http.Transport)
 	}
+	fallbackAddress := transportAddress(baseURL)
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
 	t := &http.Transport{
 		MaxIdleConnsPerHost: 4,
 		IdleConnTimeout:     120 * time.Second,
 		TLSHandshakeTimeout: 10 * time.Second,
+		DialContext:         DefaultHostConnectionTracker().TrackDialContext(dialer.DialContext, fallbackAddress),
 	}
 	actual, _ := sharedTransports.LoadOrStore(baseURL, t)
 	return actual.(*http.Transport)
 }
 
+func transportAddress(baseURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(baseURL))
+	if err == nil && parsed != nil && parsed.Host != "" {
+		return parsed.Hostname()
+	}
+	return strings.TrimSpace(baseURL)
+}
+
 // ClientConfig holds per-endpoint timeout settings.
 type ClientConfig struct {
-	InferenceTimeout time.Duration          // /chat/completions, default 20m
-	GossipTimeout    time.Duration          // gossip/nonce, gossip/txs, default 10s
-	VerifyTimeout    time.Duration          // verify-timeout, default 3m
-	QueryTimeout     time.Duration          // diffs, mempool GETs, default 30s
+	InferenceTimeout time.Duration                   // /chat/completions, default 20m
+	GossipTimeout    time.Duration                   // gossip/nonce, gossip/txs, default 10s
+	VerifyTimeout    time.Duration                   // verify-timeout, default 3m
+	QueryTimeout     time.Duration                   // diffs, mempool GETs, default 30s
 	StreamCallback   func(nonce uint64, line string) // if set, receives raw SSE data lines during inference
 	ReceiptCallback  func(nonce uint64)              // if set, called when subnet_receipt SSE event arrives
+	ParticipantKey   string                          // shared participant/IP identity for admission control
+	Admission        RequestAdmissionController
+}
+
+// RequestAdmissionController can reject participant-bound transport requests
+// before they are sent to the remote host.
+type RequestAdmissionController interface {
+	AllowRequest(participantKey, path string) error
+	ObserveResult(participantKey, path string, statusCode int)
+}
+
+type UpstreamStatusError struct {
+	Path       string
+	StatusCode int
+	Body       string
+}
+
+func (e *UpstreamStatusError) Error() string {
+	if e == nil {
+		return "upstream status error"
+	}
+	if e.Body == "" {
+		return fmt.Sprintf("http %s: status %d", e.Path, e.StatusCode)
+	}
+	return fmt.Sprintf("http %s: status %d: %s", e.Path, e.StatusCode, e.Body)
 }
 
 func DefaultClientConfig() ClientConfig {
@@ -75,7 +116,7 @@ func NewHTTPClient(baseURL, escrowID string, signer signing.Signer, cfgs ...Clie
 		escrowID: escrowID,
 		signer:   signer,
 		http: &http.Client{
-			Transport: getTransport(baseURL),
+			Transport: DefaultHostConnectionTracker().WrapRoundTripper(getTransport(baseURL)),
 		},
 		config: cfg,
 	}
@@ -355,6 +396,9 @@ func (c *HTTPClient) GetMempool(ctx context.Context) ([]*types.SubnetTx, error) 
 // Caller is responsible for closing resp.Body.
 func (c *HTTPClient) doPostRaw(ctx context.Context, path string, body []byte) (*http.Response, error) {
 	url := c.baseURL + "/v1/subnet" + path
+	if err := c.allowRequest(path); err != nil {
+		return nil, err
+	}
 
 	ts := time.Now().Unix()
 	sig, err := SignRequest(c.signer, c.escrowID, body, ts)
@@ -374,11 +418,16 @@ func (c *HTTPClient) doPostRaw(ctx context.Context, path string, body []byte) (*
 	if err != nil {
 		return nil, fmt.Errorf("http post %s: %w", path, err)
 	}
+	c.observeResult(path, resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		return nil, fmt.Errorf("http %s: status %d: %s", path, resp.StatusCode, string(respBody))
+		return nil, &UpstreamStatusError{
+			Path:       path,
+			StatusCode: resp.StatusCode,
+			Body:       string(respBody),
+		}
 	}
 
 	return resp, nil
@@ -397,6 +446,9 @@ func (c *HTTPClient) doPost(ctx context.Context, path string, body []byte) ([]by
 // doGet sends a GET request and returns the response body.
 // No auth signing -- GET endpoints skip auth on the server side for now.
 func (c *HTTPClient) doGet(ctx context.Context, url string) ([]byte, error) {
+	if err := c.allowRequest(url); err != nil {
+		return nil, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -407,10 +459,30 @@ func (c *HTTPClient) doGet(ctx context.Context, url string) ([]byte, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	c.observeResult(url, resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("get %s: status %d", url, resp.StatusCode)
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, &UpstreamStatusError{
+			Path:       url,
+			StatusCode: resp.StatusCode,
+			Body:       string(respBody),
+		}
 	}
 
 	return io.ReadAll(resp.Body)
+}
+
+func (c *HTTPClient) allowRequest(path string) error {
+	if c == nil || c.config.Admission == nil || strings.TrimSpace(c.config.ParticipantKey) == "" {
+		return nil
+	}
+	return c.config.Admission.AllowRequest(c.config.ParticipantKey, path)
+}
+
+func (c *HTTPClient) observeResult(path string, statusCode int) {
+	if c == nil || c.config.Admission == nil || strings.TrimSpace(c.config.ParticipantKey) == "" {
+		return
+	}
+	c.config.Admission.ObserveResult(c.config.ParticipantKey, path, statusCode)
 }

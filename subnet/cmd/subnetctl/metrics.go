@@ -1,0 +1,457 @@
+package main
+
+import (
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"subnet/transport"
+)
+
+type SubnetMetrics struct {
+	registry *prometheus.Registry
+	handler  http.Handler
+
+	httpRequests               *prometheus.CounterVec
+	httpRequestDuration        *prometheus.HistogramVec
+	gatewayLimitRejections     *prometheus.CounterVec
+	participantLimitRejections *prometheus.CounterVec
+	participantTransportErrors *prometheus.CounterVec
+	speculativeDecisions       *prometheus.CounterVec
+	speculativeAttempts        *prometheus.CounterVec
+	inferenceTimeouts          *prometheus.CounterVec
+	hostReceiptSeconds         *prometheus.HistogramVec
+	hostFirstTokenSeconds      *prometheus.HistogramVec
+	hostCTTFLSecondsPerToken   *prometheus.HistogramVec
+	hostTotalSeconds           *prometheus.HistogramVec
+}
+
+func NewSubnetMetrics() *SubnetMetrics {
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+	)
+
+	m := &SubnetMetrics{
+		registry: registry,
+		httpRequests: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "subnet_http_requests_total",
+				Help: "Total HTTP requests handled by the subnet gateway.",
+			},
+			[]string{"path", "method", "status"},
+		),
+		httpRequestDuration: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name:    "subnet_http_request_duration_seconds",
+				Help:    "End-to-end HTTP request duration for the subnet gateway.",
+				Buckets: prometheus.DefBuckets,
+			},
+			[]string{"path", "method"},
+		),
+		gatewayLimitRejections: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "subnet_gateway_limit_rejections_total",
+				Help: "Total gateway limiter rejections by reason.",
+			},
+			[]string{"reason"},
+		),
+		participantLimitRejections: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "subnet_gateway_participant_limit_rejections_total",
+				Help: "Total participant-budget rejections by routing scope.",
+			},
+			[]string{"scope"},
+		),
+		participantTransportErrors: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "subnet_gateway_participant_transport_errors_total",
+				Help: "Total participant-bound transport request errors by request kind and upstream status.",
+			},
+			[]string{"path_kind", "status"},
+		),
+		speculativeDecisions: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "subnet_speculative_decisions_total",
+				Help: "Total speculative execution decisions by reason.",
+			},
+			[]string{"reason"},
+		),
+		speculativeAttempts: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "subnet_speculative_attempt_starts_total",
+				Help: "Total speculative extra inference attempt starts by reason.",
+			},
+			[]string{"reason"},
+		),
+		inferenceTimeouts: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "subnet_inference_timeouts_total",
+				Help: "Total inference timeout handling attempts by reason.",
+			},
+			[]string{"reason"},
+		),
+		hostReceiptSeconds: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name:    "subnet_host_receipt_seconds",
+				Help:    "Time from inference send until host receipt confirmation.",
+				Buckets: prometheus.ExponentialBuckets(0.01, 2, 12),
+			},
+			[]string{"subnet_id", "host_idx"},
+		),
+		hostFirstTokenSeconds: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name:    "subnet_host_first_token_seconds",
+				Help:    "Time from inference send until first streamed token.",
+				Buckets: prometheus.ExponentialBuckets(0.01, 2, 12),
+			},
+			[]string{"subnet_id", "host_idx"},
+		),
+		hostCTTFLSecondsPerToken: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name:    "subnet_host_cttfl_seconds_per_input_token",
+				Help:    "Prefill time per input token, computed from receipt to first token.",
+				Buckets: prometheus.ExponentialBuckets(0.0001, 2, 12),
+			},
+			[]string{"subnet_id", "host_idx"},
+		),
+		hostTotalSeconds: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name:    "subnet_host_total_time_seconds",
+				Help:    "Total inference time observed per host.",
+				Buckets: prometheus.ExponentialBuckets(0.01, 2, 12),
+			},
+			[]string{"subnet_id", "host_idx"},
+		),
+	}
+
+	registry.MustRegister(
+		m.httpRequests,
+		m.httpRequestDuration,
+		m.gatewayLimitRejections,
+		m.participantLimitRejections,
+		m.participantTransportErrors,
+		m.speculativeDecisions,
+		m.speculativeAttempts,
+		m.inferenceTimeouts,
+		m.hostReceiptSeconds,
+		m.hostFirstTokenSeconds,
+		m.hostCTTFLSecondsPerToken,
+		m.hostTotalSeconds,
+	)
+
+	m.handler = promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
+	return m
+}
+
+func (m *SubnetMetrics) AttachGateway(g *Gateway) {
+	if m == nil || g == nil {
+		return
+	}
+	m.registry.MustRegister(newGatewayMetricsCollector(g))
+}
+
+func (m *SubnetMetrics) Handler() http.Handler {
+	if m == nil {
+		return http.NotFoundHandler()
+	}
+	return m.handler
+}
+
+func (m *SubnetMetrics) Wrap(next http.Handler) http.Handler {
+	if m == nil {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := normalizeMetricsPath(r.URL.Path)
+		if path == "/metrics" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		start := time.Now()
+		recorder := &metricsResponseWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(recorder, r)
+
+		method := r.Method
+		status := strconv.Itoa(recorder.status)
+		m.httpRequests.WithLabelValues(path, method, status).Inc()
+		m.httpRequestDuration.WithLabelValues(path, method).Observe(time.Since(start).Seconds())
+	})
+}
+
+func (m *SubnetMetrics) RecordLimitRejection(reason string) {
+	if m == nil {
+		return
+	}
+	m.gatewayLimitRejections.WithLabelValues(reason).Inc()
+}
+
+func (m *SubnetMetrics) RecordParticipantLimitRejection(scope string) {
+	if m == nil {
+		return
+	}
+	m.participantLimitRejections.WithLabelValues(scope).Inc()
+}
+
+func (m *SubnetMetrics) RecordParticipantTransportError(pathKind string, statusCode int) {
+	if m == nil {
+		return
+	}
+	m.participantTransportErrors.WithLabelValues(pathKind, strconv.Itoa(statusCode)).Inc()
+}
+
+func (m *SubnetMetrics) RecordSpeculativeDecision(reason string) {
+	if m == nil {
+		return
+	}
+	m.speculativeDecisions.WithLabelValues(reason).Inc()
+}
+
+func (m *SubnetMetrics) RecordSpeculativeAttemptStart(reason string) {
+	if m == nil {
+		return
+	}
+	m.speculativeAttempts.WithLabelValues(reason).Inc()
+}
+
+func (m *SubnetMetrics) RecordInferenceTimeout(reason string) {
+	if m == nil {
+		return
+	}
+	m.inferenceTimeouts.WithLabelValues(reason).Inc()
+}
+
+func (m *SubnetMetrics) ObserveRequestSample(subnetID string, sample RequestSample) {
+	if m == nil {
+		return
+	}
+
+	labels := []string{subnetID, strconv.Itoa(sample.HostIdx)}
+	if receiptSeconds := sample.ReceiptMs() / 1000; receiptSeconds > 0 {
+		m.hostReceiptSeconds.WithLabelValues(labels...).Observe(receiptSeconds)
+	}
+	if !sample.SendTime.IsZero() && !sample.FirstToken.IsZero() {
+		m.hostFirstTokenSeconds.WithLabelValues(labels...).Observe(sample.FirstToken.Sub(sample.SendTime).Seconds())
+	}
+	if cttfl := sample.CTTFL() / 1000; cttfl > 0 {
+		m.hostCTTFLSecondsPerToken.WithLabelValues(labels...).Observe(cttfl)
+	}
+	if sample.TotalTime > 0 {
+		m.hostTotalSeconds.WithLabelValues(labels...).Observe(sample.TotalTime.Seconds())
+	}
+}
+
+type gatewayMetricsCollector struct {
+	gateway         *Gateway
+	hostConnections hostConnectionSnapshotter
+
+	inflightRequestsDesc          *prometheus.Desc
+	inflightTokensDesc            *prometheus.Desc
+	runtimeActiveDesc             *prometheus.Desc
+	runtimeRequestsDesc           *prometheus.Desc
+	runtimeReservedDesc           *prometheus.Desc
+	participantExhaustedDesc      *prometheus.Desc
+	escrowParticipantLimitedDesc  *prometheus.Desc
+	escrowBlockedParticipantsDesc *prometheus.Desc
+	hostOpenDesc                  *prometheus.Desc
+	hostStateDesc                 *prometheus.Desc
+}
+
+func newGatewayMetricsCollector(gateway *Gateway) *gatewayMetricsCollector {
+	return newGatewayMetricsCollectorWithHostConnections(gateway, transport.DefaultHostConnectionTracker())
+}
+
+type hostConnectionSnapshotter interface {
+	Snapshots() []transport.HostConnectionSnapshot
+}
+
+func newGatewayMetricsCollectorWithHostConnections(gateway *Gateway, hostConnections hostConnectionSnapshotter) *gatewayMetricsCollector {
+	return &gatewayMetricsCollector{
+		gateway:         gateway,
+		hostConnections: hostConnections,
+		inflightRequestsDesc: prometheus.NewDesc(
+			"subnet_gateway_inflight_requests",
+			"Current number of in-flight requests tracked by the gateway limiter.",
+			nil,
+			nil,
+		),
+		inflightTokensDesc: prometheus.NewDesc(
+			"subnet_gateway_inflight_input_tokens",
+			"Current number of in-flight input tokens tracked by the gateway limiter.",
+			nil,
+			nil,
+		),
+		runtimeActiveDesc: prometheus.NewDesc(
+			"subnet_runtime_active",
+			"Whether a subnet runtime is active.",
+			[]string{"subnet_id", "model"},
+			nil,
+		),
+		runtimeRequestsDesc: prometheus.NewDesc(
+			"subnet_runtime_active_requests",
+			"Current number of active requests assigned to a subnet runtime.",
+			[]string{"subnet_id", "model"},
+			nil,
+		),
+		runtimeReservedDesc: prometheus.NewDesc(
+			"subnet_runtime_reserved_tokens",
+			"Current number of reserved input tokens assigned to a subnet runtime.",
+			[]string{"subnet_id", "model"},
+			nil,
+		),
+		participantExhaustedDesc: prometheus.NewDesc(
+			"subnet_gateway_participants_exhausted",
+			"Current number of participant budgets that are exhausted.",
+			nil,
+			nil,
+		),
+		escrowParticipantLimitedDesc: prometheus.NewDesc(
+			"subnet_gateway_escrow_participant_limited",
+			"Whether an escrow is currently blocked by at least one participant budget.",
+			[]string{"subnet_id", "model"},
+			nil,
+		),
+		escrowBlockedParticipantsDesc: prometheus.NewDesc(
+			"subnet_gateway_escrow_blocked_participants",
+			"Current number of blocked participants within an escrow.",
+			[]string{"subnet_id", "model"},
+			nil,
+		),
+		hostOpenDesc: prometheus.NewDesc(
+			"subnet_host_transport_open_connections",
+			"Current number of open host transport connections by remote address.",
+			[]string{"address"},
+			nil,
+		),
+		hostStateDesc: prometheus.NewDesc(
+			"subnet_host_transport_connections",
+			"Current number of host transport connections by remote address and lifecycle state.",
+			[]string{"address", "state"},
+			nil,
+		),
+	}
+}
+
+func (c *gatewayMetricsCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- c.inflightRequestsDesc
+	ch <- c.inflightTokensDesc
+	ch <- c.runtimeActiveDesc
+	ch <- c.runtimeRequestsDesc
+	ch <- c.runtimeReservedDesc
+	ch <- c.participantExhaustedDesc
+	ch <- c.escrowParticipantLimitedDesc
+	ch <- c.escrowBlockedParticipantsDesc
+	ch <- c.hostOpenDesc
+	ch <- c.hostStateDesc
+}
+
+func (c *gatewayMetricsCollector) Collect(ch chan<- prometheus.Metric) {
+	if c.gateway == nil {
+		return
+	}
+
+	if c.gateway.limiter != nil {
+		snapshot := c.gateway.limiter.Snapshot()
+		ch <- prometheus.MustNewConstMetric(c.inflightRequestsDesc, prometheus.GaugeValue, float64(snapshot.InFlightRequests))
+		ch <- prometheus.MustNewConstMetric(c.inflightTokensDesc, prometheus.GaugeValue, float64(snapshot.InFlightInputTokens))
+	}
+	if c.gateway.participantLimiter != nil {
+		ch <- prometheus.MustNewConstMetric(
+			c.participantExhaustedDesc,
+			prometheus.GaugeValue,
+			float64(c.gateway.participantLimiter.ExhaustedCount()),
+		)
+	}
+
+	c.gateway.mu.Lock()
+	runtimes := append([]*subnetRuntime(nil), c.gateway.runtimeOrder...)
+	c.gateway.mu.Unlock()
+	for _, rt := range runtimes {
+		active := 0.0
+		if rt.active.Load() {
+			active = 1
+		}
+		labels := []string{rt.id, rt.model}
+		ch <- prometheus.MustNewConstMetric(c.runtimeActiveDesc, prometheus.GaugeValue, active, labels...)
+		ch <- prometheus.MustNewConstMetric(c.runtimeRequestsDesc, prometheus.GaugeValue, float64(rt.activeRequests.Load()), labels...)
+		ch <- prometheus.MustNewConstMetric(c.runtimeReservedDesc, prometheus.GaugeValue, float64(rt.reservedTokens.Load()), labels...)
+		blocked := 0
+		if c.gateway.participantLimiter != nil {
+			blocked = len(c.gateway.participantLimiter.BlockedParticipants(rt.participantKeys))
+		}
+		limited := 0.0
+		if blocked > 0 {
+			limited = 1
+		}
+		ch <- prometheus.MustNewConstMetric(c.escrowParticipantLimitedDesc, prometheus.GaugeValue, limited, labels...)
+		ch <- prometheus.MustNewConstMetric(c.escrowBlockedParticipantsDesc, prometheus.GaugeValue, float64(blocked), labels...)
+	}
+
+	if c.hostConnections == nil {
+		return
+	}
+	for _, snapshot := range c.hostConnections.Snapshots() {
+		ch <- prometheus.MustNewConstMetric(c.hostOpenDesc, prometheus.GaugeValue, float64(snapshot.OpenTotal), snapshot.Address)
+		ch <- prometheus.MustNewConstMetric(c.hostStateDesc, prometheus.GaugeValue, float64(snapshot.Active), snapshot.Address, "active")
+		ch <- prometheus.MustNewConstMetric(c.hostStateDesc, prometheus.GaugeValue, float64(snapshot.Idle), snapshot.Address, "idle")
+		ch <- prometheus.MustNewConstMetric(c.hostStateDesc, prometheus.GaugeValue, float64(snapshot.HoldAfterClose), snapshot.Address, "hold_after_close")
+	}
+}
+
+type metricsResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *metricsResponseWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func normalizeMetricsPath(path string) string {
+	switch {
+	case path == "":
+		return "/"
+	case path == "/metrics":
+		return path
+	case strings.HasPrefix(path, "/subnet/"):
+		if subnetID, inner, ok := parseSubnetPath(path); ok && subnetID != "" {
+			return "/subnet/{id}" + inner
+		}
+		return "/subnet/{id}"
+	case strings.HasPrefix(path, "/v1/admin/subnets/"):
+		trimmed := strings.Trim(strings.TrimPrefix(path, "/v1/admin/subnets/"), "/")
+		parts := strings.Split(trimmed, "/")
+		if len(parts) >= 2 && parts[0] != "" {
+			return "/v1/admin/subnets/{id}/" + parts[1]
+		}
+		if len(parts) >= 1 && parts[0] != "" {
+			return "/v1/admin/subnets/{id}"
+		}
+		return "/v1/admin/subnets"
+	default:
+		return path
+	}
+}
+
+func limiterReasonLabel(err error) string {
+	if err == nil {
+		return "unknown"
+	}
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "concurrent requests"):
+		return "max_concurrent_requests"
+	case strings.Contains(msg, "input tokens in flight"):
+		return "max_input_tokens_in_flight"
+	default:
+		return "unknown"
+	}
+}

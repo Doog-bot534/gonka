@@ -49,25 +49,27 @@ type InferenceParams struct {
 	InputLength uint64
 	MaxTokens   uint64
 	StartedAt   int64
+	Stream      bool
 }
 
 // Session manages the user side of the subnet protocol.
 type Session struct {
-	mu            sync.Mutex
-	sm            *state.StateMachine
-	signer        signing.Signer
-	verifier      signing.Verifier
-	escrowID      string
-	group         []types.SlotAssignment
-	addrToSlots   map[string][]uint32 // validator address -> slot IDs
-	clients       []HostClient
-	nonce         uint64
-	diffs         []types.Diff                 // append-only log
-	hostSyncNonce map[int]uint64               // hostIdx -> last nonce sent
-	pendingTxs    []*types.SubnetTx            // from host mempools, for next diff
-	pendingTxKeys map[string]struct{}          // dedup set keyed by tx_type:id
-	signatures    map[uint64]map[uint32][]byte // nonce -> slotID -> sig
-	store         storage.Storage              // optional persistent storage
+	mu              sync.Mutex
+	sm              *state.StateMachine
+	signer          signing.Signer
+	verifier        signing.Verifier
+	escrowID        string
+	group           []types.SlotAssignment
+	addrToSlots     map[string][]uint32 // validator address -> slot IDs
+	participantKeys []string
+	clients         []HostClient
+	nonce           uint64
+	diffs           []types.Diff                 // append-only log
+	hostSyncNonce   map[int]uint64               // hostIdx -> last nonce sent
+	pendingTxs      []*types.SubnetTx            // from host mempools, for next diff
+	pendingTxKeys   map[string]struct{}          // dedup set keyed by tx_type:id
+	signatures      map[uint64]map[uint32][]byte // nonce -> slotID -> sig
+	store           storage.Storage              // optional persistent storage
 }
 
 // SessionOption configures optional Session behavior.
@@ -101,16 +103,20 @@ func NewSession(
 		addrToSlots[s.ValidatorAddress] = append(addrToSlots[s.ValidatorAddress], s.SlotID)
 	}
 	sess := &Session{
-		sm:            sm,
-		signer:        signer,
-		verifier:      verifier,
-		escrowID:      escrowID,
-		group:         group,
-		addrToSlots:   addrToSlots,
-		clients:       clients,
-		hostSyncNonce: make(map[int]uint64),
-		pendingTxKeys: make(map[string]struct{}),
-		signatures:    make(map[uint64]map[uint32][]byte),
+		sm:              sm,
+		signer:          signer,
+		verifier:        verifier,
+		escrowID:        escrowID,
+		group:           group,
+		addrToSlots:     addrToSlots,
+		participantKeys: make([]string, len(group)),
+		clients:         clients,
+		hostSyncNonce:   make(map[int]uint64),
+		pendingTxKeys:   make(map[string]struct{}),
+		signatures:      make(map[uint64]map[uint32][]byte),
+	}
+	for i, slot := range group {
+		sess.participantKeys[i] = slot.ValidatorAddress
 	}
 	for _, opt := range opts {
 		opt(sess)
@@ -615,6 +621,39 @@ func (s *Session) TimeoutVerifiers() map[int]TimeoutVerifier {
 // timeout verifiers or other operations that need direct host access.
 func (s *Session) Clients() []HostClient { return s.clients }
 
+// SetParticipantKeys overrides the per-slot participant identifiers used by
+// higher-level admission control. Keys should align with the session group.
+func (s *Session) SetParticipantKeys(keys []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(keys) != len(s.group) {
+		return
+	}
+	s.participantKeys = append([]string(nil), keys...)
+}
+
+// ParticipantKeys returns the unique participant identifiers for this session.
+func (s *Session) ParticipantKeys() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	seen := make(map[string]struct{}, len(s.participantKeys))
+	keys := make([]string, 0, len(s.participantKeys))
+	for i, key := range s.participantKeys {
+		if key == "" && i < len(s.group) {
+			key = s.group[i].ValidatorAddress
+		}
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+	return keys
+}
+
 // Close releases the underlying storage, if any. Safe to call multiple times.
 func (s *Session) Close() error {
 	if s.store != nil {
@@ -626,6 +665,17 @@ func (s *Session) Close() error {
 // TimeoutVerifier contacts a host for timeout verification votes.
 type TimeoutVerifier interface {
 	VerifyTimeout(ctx context.Context, inferenceID uint64, reason types.TimeoutReason, payload *host.InferencePayload, diffs []types.Diff) (accept bool, sig []byte, voterSlot uint32, err error)
+}
+
+func timeoutReasonLogLabel(reason types.TimeoutReason) string {
+	switch reason {
+	case types.TimeoutReason_TIMEOUT_REASON_EXECUTION:
+		return "execution"
+	case types.TimeoutReason_TIMEOUT_REASON_REFUSED:
+		return "refused"
+	default:
+		return "unknown"
+	}
 }
 
 // CollectTimeoutVotes contacts non-executor hosts to collect signed votes.
@@ -650,8 +700,9 @@ func (s *Session) CollectTimeoutVotes(
 	// not just the single executor index. This prevents a multi-slot executor from
 	// voting on its own timeout through a different slot.
 	type addrVerifier struct {
-		idx      int
-		verifier TimeoutVerifier
+		idx          int
+		verifier     TimeoutVerifier
+		verifierAddr string
 	}
 	seen := make(map[string]bool)
 	seen[executorAddr] = true
@@ -662,32 +713,45 @@ func (s *Session) CollectTimeoutVotes(
 			continue
 		}
 		seen[addr] = true
-		deduped = append(deduped, addrVerifier{idx, v})
+		deduped = append(deduped, addrVerifier{idx: idx, verifier: v, verifierAddr: addr})
 	}
 
 	type voteResult struct {
-		vote *types.TimeoutVote
-		err  error
+		vote         *types.TimeoutVote
+		err          error
+		verifierIdx  int
+		verifierAddr string
 	}
 
 	results := make(chan voteResult, len(deduped))
 	for _, av := range deduped {
-		go func(verifier TimeoutVerifier) {
-			accept, sig, voterSlot, err := verifier.VerifyTimeout(ctx, inferenceID, reason, payload, diffs)
+		logging.Info("timeout vote requested",
+			"subsystem", "session",
+			"escrow_id", s.escrowID,
+			"inference_id", inferenceID,
+			"reason", timeoutReasonLogLabel(reason),
+			"verifier_host_idx", av.idx,
+			"verifier_addr", av.verifierAddr)
+		go func(av addrVerifier) {
+			accept, sig, voterSlot, err := av.verifier.VerifyTimeout(ctx, inferenceID, reason, payload, diffs)
 			if err != nil {
-				results <- voteResult{err: err}
+				results <- voteResult{err: err, verifierIdx: av.idx, verifierAddr: av.verifierAddr}
 				return
 			}
 			if !accept {
-				results <- voteResult{} // nil vote, no error
+				results <- voteResult{verifierIdx: av.idx, verifierAddr: av.verifierAddr} // nil vote, no error
 				return
 			}
 			results <- voteResult{vote: &types.TimeoutVote{
 				VoterSlot: voterSlot,
 				Accept:    true,
 				Signature: sig,
-			}}
-		}(av.verifier)
+			}, verifierIdx: av.idx, verifierAddr: av.verifierAddr}
+		}(addrVerifier{
+			idx:          av.idx,
+			verifier:     av.verifier,
+			verifierAddr: av.verifierAddr,
+		})
 	}
 
 	var votes []*types.TimeoutVote
@@ -700,6 +764,17 @@ func (s *Session) CollectTimeoutVotes(
 		res := <-results
 		if res.err != nil {
 			errors++
+			logging.Info("timeout vote result",
+				"subsystem", "session",
+				"escrow_id", s.escrowID,
+				"inference_id", inferenceID,
+				"reason", timeoutReasonLogLabel(reason),
+				"verifier_host_idx", res.verifierIdx,
+				"verifier_addr", res.verifierAddr,
+				"outcome", "error",
+				"running_weight", accWeight,
+				"threshold", voteThreshold,
+				"error", res.err)
 			logging.Debug("timeout vote error",
 				"subsystem", "session", "inference_id", inferenceID, "error", res.err)
 			continue // skip failed hosts
@@ -707,14 +782,50 @@ func (s *Session) CollectTimeoutVotes(
 		if res.vote != nil {
 			votes = append(votes, res.vote)
 			voterAddr := s.sm.SlotAddress(res.vote.VoterSlot)
-			accWeight += s.sm.AddressSlotCount(voterAddr)
+			weight := s.sm.AddressSlotCount(voterAddr)
+			accWeight += weight
+			logging.Info("timeout vote result",
+				"subsystem", "session",
+				"escrow_id", s.escrowID,
+				"inference_id", inferenceID,
+				"reason", timeoutReasonLogLabel(reason),
+				"verifier_host_idx", res.verifierIdx,
+				"verifier_addr", res.verifierAddr,
+				"outcome", "accept",
+				"voter_slot", res.vote.VoterSlot,
+				"voter_addr", voterAddr,
+				"weight", weight,
+				"running_weight", accWeight,
+				"threshold", voteThreshold)
 		} else {
 			rejects++
+			logging.Info("timeout vote result",
+				"subsystem", "session",
+				"escrow_id", s.escrowID,
+				"inference_id", inferenceID,
+				"reason", timeoutReasonLogLabel(reason),
+				"verifier_host_idx", res.verifierIdx,
+				"verifier_addr", res.verifierAddr,
+				"outcome", "reject",
+				"running_weight", accWeight,
+				"threshold", voteThreshold)
 		}
 		if accWeight > voteThreshold {
 			break
 		}
 	}
+	logging.Info("timeout vote tally",
+		"subsystem", "session",
+		"escrow_id", s.escrowID,
+		"inference_id", inferenceID,
+		"reason", timeoutReasonLogLabel(reason),
+		"accept", len(votes),
+		"weight", accWeight,
+		"reject", rejects,
+		"errors", errors,
+		"threshold", voteThreshold,
+		"verifiers", expected,
+		"sufficient", accWeight > voteThreshold)
 	logging.Debug("timeout vote collection",
 		"subsystem", "session", "inference_id", inferenceID,
 		"accept", len(votes), "weight", accWeight,

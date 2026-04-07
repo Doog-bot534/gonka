@@ -272,5 +272,5 @@ func (t *PerfTracker) IsUnresponsive(hostIdx int) bool {
 	if st.TotalSamples == 0 {
 		return false
 	}
-	return st.ResponsiveRate < 1.0
+	return st.ResponsiveRate < UnresponsiveThreshold
 }

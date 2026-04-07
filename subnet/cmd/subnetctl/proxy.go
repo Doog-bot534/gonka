@@ -153,13 +153,17 @@ func normalizeContent(body []byte) []byte {
 }
 
 func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
+	ctx, _ := ensureRequestLogContext(r.Context())
+	r = r.WithContext(ctx)
 	if r.Method != http.MethodPost {
+		logRequestStage(ctx, "proxy_method_not_allowed", "method", r.Method)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		logRequestStage(ctx, "proxy_read_body_failed", "error", err)
 		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -168,6 +172,7 @@ func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	var req chatRequest
 	if err := json.Unmarshal(body, &req); err != nil {
+		logRequestStage(ctx, "proxy_parse_failed", "error", err)
 		http.Error(w, "parse request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -190,7 +195,9 @@ func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		InputLength: uint64(len(body)),
 		MaxTokens:   maxTokens,
 		StartedAt:   time.Now().Unix(),
+		Stream:      req.Stream,
 	}
+	logRequestStage(ctx, "proxy_request_started", "escrow", p.escrowID, "model", model, "stream", req.Stream, "input_tokens", params.InputLength)
 
 	if req.Stream {
 		p.handleStreaming(w, r, params)
@@ -239,9 +246,11 @@ func (p *Proxy) handleStreaming(w http.ResponseWriter, r *http.Request, params u
 
 	err := p.engine.RunInference(r.Context(), params, dw)
 	if err != nil {
+		logRequestStage(r.Context(), "proxy_stream_failed", "escrow", p.escrowID, "error", err)
+		statusCode := gatewayStatusCodeForError(err)
 		if !dw.started {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadGateway)
+			w.WriteHeader(statusCode)
 			fmt.Fprintf(w, `{"error":{"message":%q}}`, err.Error())
 			return
 		}
@@ -251,6 +260,7 @@ func (p *Proxy) handleStreaming(w http.ResponseWriter, r *http.Request, params u
 		return
 	}
 
+	logRequestStage(r.Context(), "proxy_stream_completed", "escrow", p.escrowID)
 	fmt.Fprint(dw, "data: [DONE]\n\n")
 	dw.Flush()
 }
@@ -260,13 +270,15 @@ func (p *Proxy) handleNonStreaming(w http.ResponseWriter, r *http.Request, param
 
 	err := p.engine.RunInference(r.Context(), params, &buf)
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusBadGateway)
+		logRequestStage(r.Context(), "proxy_request_failed", "escrow", p.escrowID, "error", err)
+		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), gatewayStatusCodeForError(err))
 		return
 	}
 
 	assembled := assembleSSEChunks(buf.String())
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(assembled)
+	logRequestStage(r.Context(), "proxy_request_completed", "escrow", p.escrowID)
 }
 
 // assembleSSEChunks extracts the last data line from SSE output as the response.

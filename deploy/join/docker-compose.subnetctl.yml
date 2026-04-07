@@ -2,27 +2,21 @@ services:
   subnetctl:
     container_name: ${SUBNET_INSTANCE_NAME:-subnetctl}
     image: libermans/gonka-subnet-proxy:latest
+    env_file:
+      - ${SUBNET_ENV_FILE:-./config.subnet.env}
     environment:
-      - SUBNET_PRIVATE_KEY=${SUBNET_PRIVATE_KEY}
-      - SUBNET_ESCROW_ID=${SUBNET_ESCROW_ID}
-      - SUBNETS_JSON=${SUBNETS_JSON:-}
       - SUBNET_CHAIN_REST=http://node:1317
-      - SUBNET_MODEL=${SUBNET_MODEL:-Qwen/Qwen2.5-7B-Instruct}
       - SUBNET_PORT=8080
-      - SUBNET_STORAGE_PATH=/root/.subnetctl/subnet-${SUBNET_ESCROW_ID}.db
       - SUBNET_STORAGE_DIR=/root/.subnetctl
-      - SUBNET_API_KEYS=${SUBNET_API_KEYS:-}
-      - GATEWAY_MAX_CONCURRENT_REQUESTS=${GATEWAY_MAX_CONCURRENT_REQUESTS:-0}
-      - GATEWAY_MAX_INPUT_TOKENS_IN_FLIGHT=${GATEWAY_MAX_INPUT_TOKENS_IN_FLIGHT:-0}
-      - GATEWAY_DEFAULT_MAX_TOKENS=${GATEWAY_DEFAULT_MAX_TOKENS:-10000}
     volumes:
-      - .subnetctl-${SUBNET_INSTANCE_NAME:-subnetctl}:/root/.subnetctl
+      - ${SUBNET_STORAGE_HOST_DIR:-.subnetctl}:/root/.subnetctl
     expose:
       - "8080"
     networks:
       join_default:
         aliases:
           - subnet-pool
+          - subnetctl-multi
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/v1/status"]

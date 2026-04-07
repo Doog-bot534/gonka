@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
@@ -143,6 +144,24 @@ func zeroReceiptTimeout(t *testing.T) {
 	t.Cleanup(func() { ReceiptTimeout = saved })
 }
 
+func setSpeculativeTiming(t *testing.T, receipt time.Duration, firstTokenCap time.Duration, perInputToken time.Duration, secondaryWait time.Duration) {
+	t.Helper()
+	savedReceipt := ReceiptTimeout
+	savedFirstTokenCap := FirstTokenTimeoutCap
+	savedPerInputToken := PerInputTokenFirstTokenLag
+	savedSecondaryWait := SecondaryWaitAfterWinner
+	ReceiptTimeout = receipt
+	FirstTokenTimeoutCap = firstTokenCap
+	PerInputTokenFirstTokenLag = perInputToken
+	SecondaryWaitAfterWinner = secondaryWait
+	t.Cleanup(func() {
+		ReceiptTimeout = savedReceipt
+		FirstTokenTimeoutCap = savedFirstTokenCap
+		PerInputTokenFirstTokenLag = savedPerInputToken
+		SecondaryWaitAfterWinner = savedSecondaryWait
+	})
+}
+
 func setupTestProxy(t *testing.T, numHosts int, engines []subnet.InferenceEngine, verifierAccept bool) *testProxyEnv {
 	t.Helper()
 	hostSigners := make([]*signing.Secp256k1Signer, numHosts)
@@ -255,6 +274,32 @@ func TestRunInference_SpeculativeOnKill(t *testing.T) {
 	}
 }
 
+func TestRunInference_SpeculativeFallsThroughMultipleDeadHosts(t *testing.T) {
+	zeroReceiptTimeout(t)
+	env := setupTestProxy(t, 4, nil, true)
+
+	// nonce 1 -> host 1, nonce 2 -> host 2, nonce 3 -> host 3.
+	env.killables[1].Kill()
+	env.killables[2].Kill()
+
+	var buf bytes.Buffer
+	err := env.proxy.engine.RunInference(context.Background(), defaultParams(), &buf)
+	require.NoError(t, err)
+
+	requests := env.proxy.perf.RecentRequests()
+	require.NotEmpty(t, requests)
+
+	last := requests[len(requests)-1]
+	require.Equal(t, uint64(3), last.WinnerNonce)
+	require.Equal(t, 3, last.WinnerHostIdx)
+	require.Len(t, last.Hosts, 3)
+	require.True(t, last.Hosts[2].Winner)
+
+	st := env.sm.SnapshotState()
+	_, ok := st.Inferences[3]
+	require.True(t, ok, "third inference should exist after falling through dead hosts")
+}
+
 func TestRunInference_PerfTracking(t *testing.T) {
 	zeroReceiptTimeout(t)
 	env := setupTestProxy(t, 3, nil, true)
@@ -272,6 +317,113 @@ func TestRunInference_PerfTracking(t *testing.T) {
 		totalSamples += s.TotalSamples
 	}
 	require.GreaterOrEqual(t, totalSamples, 1, "at least one sample recorded")
+}
+
+func TestRunInference_ExportsPrometheusMetrics(t *testing.T) {
+	zeroReceiptTimeout(t)
+	env := setupTestProxy(t, 3, nil, true)
+	env.proxy.engine.metrics = NewSubnetMetrics()
+	env.proxy.engine.subnetID = "escrow-proxy"
+	env.killables[1].Kill()
+
+	var buf bytes.Buffer
+	err := env.proxy.engine.RunInference(context.Background(), defaultParams(), &buf)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rec := httptest.NewRecorder()
+	env.proxy.engine.metrics.Handler().ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	body := rec.Body.String()
+	require.Contains(t, body, "subnet_speculative_decisions_total")
+	require.Contains(t, body, "subnet_speculative_attempt_starts_total")
+	require.Contains(t, body, `reason="receipt_timeout"`)
+	require.Contains(t, body, `reason="attempt_failed"`)
+	require.Contains(t, body, `subnet_id="escrow-proxy"`)
+	require.Contains(t, body, "subnet_host_total_time_seconds")
+}
+
+func TestPerfTrackerIsUnresponsiveUsesThreshold(t *testing.T) {
+	perf := NewPerfTracker(nil)
+	perf.Record(RequestSample{HostIdx: 0, Responsive: true})
+	perf.Record(RequestSample{HostIdx: 0, Responsive: true})
+	perf.Record(RequestSample{HostIdx: 0, Responsive: true})
+	perf.Record(RequestSample{HostIdx: 0, Responsive: false})
+
+	saved := UnresponsiveThreshold
+	UnresponsiveThreshold = 0.70
+	t.Cleanup(func() { UnresponsiveThreshold = saved })
+
+	require.False(t, perf.IsUnresponsive(0))
+
+	UnresponsiveThreshold = 0.90
+	require.True(t, perf.IsUnresponsive(0))
+}
+
+func TestFirstTokenFallbackDelayCapsAtOneSecond(t *testing.T) {
+	setSpeculativeTiming(t, 50*time.Millisecond, time.Second, 10*time.Millisecond, time.Minute)
+	require.Equal(t, time.Second, firstTokenFallbackDelay(50))
+	require.Equal(t, 5*time.Second, firstTokenFallbackDelay(500))
+	require.Equal(t, time.Second, firstTokenFallbackDelay(0))
+}
+
+func TestWaitForFirstTokenUntilReturnsWhenTokenArrives(t *testing.T) {
+	inf := &inflight{
+		firstTokenCh: make(chan struct{}),
+		done:         make(chan struct{}),
+	}
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		inf.firstToken = time.Now()
+		close(inf.firstTokenCh)
+	}()
+
+	ok := waitForFirstTokenUntil(context.Background(), inf, time.Now().Add(100*time.Millisecond))
+	require.True(t, ok)
+}
+
+func TestWaitForFirstTokenUntilTimesOutWithoutToken(t *testing.T) {
+	inf := &inflight{
+		firstTokenCh: make(chan struct{}),
+		done:         make(chan struct{}),
+	}
+
+	ok := waitForFirstTokenUntil(context.Background(), inf, time.Now().Add(20*time.Millisecond))
+	require.False(t, ok)
+}
+
+func TestNonStreamingFallbackDelayUsesMaxThreshold(t *testing.T) {
+	setSpeculativeTiming(t, 50*time.Millisecond, time.Second, 10*time.Millisecond, time.Minute)
+	savedFloor := NonStreamResponseFloor
+	savedLag := PerInputTokenResponseLag
+	NonStreamResponseFloor = 20 * time.Second
+	PerInputTokenResponseLag = 20 * time.Millisecond
+	t.Cleanup(func() {
+		NonStreamResponseFloor = savedFloor
+		PerInputTokenResponseLag = savedLag
+	})
+
+	require.Equal(t, 20*time.Second, nonStreamingFallbackDelay(100))
+	require.Equal(t, 24*time.Second, nonStreamingFallbackDelay(1200))
+}
+
+func TestWaitForInflightDoneUntilReturnsWhenDoneArrives(t *testing.T) {
+	inf := &inflight{done: make(chan struct{})}
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		close(inf.done)
+	}()
+
+	ok := waitForInflightDoneUntil(context.Background(), inf, time.Now().Add(100*time.Millisecond))
+	require.True(t, ok)
+}
+
+func TestWaitForInflightDoneUntilTimesOut(t *testing.T) {
+	inf := &inflight{done: make(chan struct{})}
+
+	ok := waitForInflightDoneUntil(context.Background(), inf, time.Now().Add(20*time.Millisecond))
+	require.False(t, ok)
 }
 
 func TestDecision_UnresponsiveHost(t *testing.T) {

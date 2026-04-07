@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -208,4 +209,81 @@ func TestHTTPClient_Send_SSE(t *testing.T) {
 		}
 	}
 	require.True(t, hasFinish, "mempool should contain MsgFinishInference")
+}
+
+type stubAdmissionController struct {
+	calls    []string
+	observed []string
+	err      error
+}
+
+func (s *stubAdmissionController) AllowRequest(participantKey, path string) error {
+	s.calls = append(s.calls, participantKey+":"+path)
+	return s.err
+}
+
+func (s *stubAdmissionController) ObserveResult(participantKey, path string, statusCode int) {
+	s.observed = append(s.observed, fmt.Sprintf("%s:%s:%d", participantKey, path, statusCode))
+}
+
+func TestHTTPClient_Send_UsesAdmissionController(t *testing.T) {
+	client, _, userSigner, _ := setupClientTestEnv(t)
+	ctx := context.Background()
+	admission := &stubAdmissionController{err: fmt.Errorf("participant request budget exhausted")}
+	client.config.ParticipantKey = "shared-host"
+	client.config.Admission = admission
+
+	diff := testutil.SignDiff(t, userSigner, "escrow-1", 1, []*types.SubnetTx{testutil.StartTx(1)})
+	_, err := client.Send(ctx, host.HostRequest{
+		Diffs: []types.Diff{diff},
+		Nonce: 1,
+		Payload: &host.InferencePayload{
+			Prompt:      testutil.TestPrompt,
+			Model:       "llama",
+			InputLength: 100,
+			MaxTokens:   50,
+			StartedAt:   1000,
+		},
+	})
+	require.ErrorContains(t, err, "participant request budget exhausted")
+	require.Len(t, admission.calls, 1)
+	require.Contains(t, admission.calls[0], "shared-host")
+	require.Contains(t, admission.calls[0], "/sessions/escrow-1/chat/completions")
+}
+
+func TestHTTPClient_Send_ObservesUpstream503(t *testing.T) {
+	signer := testutil.MustGenerateKey(t)
+	admission := &stubAdmissionController{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("nginx limit"))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewHTTPClient(server.URL, "escrow-1", signer, ClientConfig{
+		InferenceTimeout: DefaultClientConfig().InferenceTimeout,
+		GossipTimeout:    DefaultClientConfig().GossipTimeout,
+		VerifyTimeout:    DefaultClientConfig().VerifyTimeout,
+		QueryTimeout:     DefaultClientConfig().QueryTimeout,
+		ParticipantKey:   "shared-host",
+		Admission:        admission,
+	})
+
+	_, err := client.Send(context.Background(), host.HostRequest{
+		Nonce: 1,
+		Payload: &host.InferencePayload{
+			Prompt:      testutil.TestPrompt,
+			Model:       "llama",
+			InputLength: 100,
+			MaxTokens:   50,
+			StartedAt:   1000,
+		},
+	})
+	require.Error(t, err)
+	var upstreamErr *UpstreamStatusError
+	require.ErrorAs(t, err, &upstreamErr)
+	require.Equal(t, http.StatusServiceUnavailable, upstreamErr.StatusCode)
+	require.Len(t, admission.observed, 1)
+	require.Contains(t, admission.observed[0], "shared-host")
+	require.Contains(t, admission.observed[0], ":503")
 }

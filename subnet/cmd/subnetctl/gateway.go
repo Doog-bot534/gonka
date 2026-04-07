@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,6 +17,7 @@ import (
 	"sync/atomic"
 
 	"subnet/bridge"
+	"subnet/transport"
 	"subnet/user"
 )
 
@@ -28,34 +30,41 @@ type RuntimeConfig struct {
 }
 
 type Gateway struct {
-	runtimes       map[string]*subnetRuntime
-	runtimeOrder   []*subnetRuntime
-	limiter        *GatewayLimiter
-	defaultModel   string
-	mu             sync.Mutex
-	roundRobinSeed atomic.Uint64
+	runtimes           map[string]*subnetRuntime
+	runtimeOrder       []*subnetRuntime
+	limiter            *GatewayLimiter
+	participantLimiter *ParticipantRequestLimiter
+	metrics            *SubnetMetrics
+	settings           GatewaySettings
+	store              *GatewayStore
+	baseStorageDir     string
+	mu                 sync.Mutex
+	roundRobinSeed     atomic.Uint64
 }
 
 type subnetRuntime struct {
-	id        string
-	model     string
-	handler   http.Handler
-	proxy     *Proxy
-	session   *user.Session
-	perfStore *PerfStore
+	id              string
+	model           string
+	handler         http.Handler
+	proxy           *Proxy
+	session         *user.Session
+	perfStore       *PerfStore
+	participantKeys []string
 
+	active         atomic.Bool
 	activeRequests atomic.Int64
 	reservedTokens atomic.Int64
 }
 
 type runtimeStatus struct {
-	ID               string `json:"id"`
-	Model            string `json:"model"`
-	Phase            string `json:"phase,omitempty"`
-	Nonce            uint64 `json:"nonce,omitempty"`
-	Balance          uint64 `json:"balance,omitempty"`
-	ActiveRequests   int64  `json:"active_requests"`
-	ReservedTokens   int64  `json:"reserved_tokens"`
+	ID             string `json:"id"`
+	Model          string `json:"model"`
+	Active         bool   `json:"active"`
+	Phase          string `json:"phase,omitempty"`
+	Nonce          uint64 `json:"nonce,omitempty"`
+	Balance        uint64 `json:"balance,omitempty"`
+	ActiveRequests int64  `json:"active_requests"`
+	ReservedTokens int64  `json:"reserved_tokens"`
 }
 
 var (
@@ -101,12 +110,13 @@ func buildRuntime(cfg RuntimeConfig, chainREST, defaultModel string) (*subnetRun
 
 	br := bridge.NewRESTBridge(chainREST)
 	session, sm, err := user.NewHTTPSession(user.HTTPSessionConfig{
-		PrivateKeyHex:   keyHex,
-		EscrowID:        cfg.ID,
-		Bridge:          br,
-		StoragePath:     cfg.StoragePath,
-		StreamCallback:  registry.callback,
-		ReceiptCallback: receiptCB,
+		PrivateKeyHex:    keyHex,
+		EscrowID:         cfg.ID,
+		Bridge:           br,
+		StoragePath:      cfg.StoragePath,
+		StreamCallback:   registry.callback,
+		ReceiptCallback:  receiptCB,
+		RequestAdmission: sharedParticipantRequestLimiter,
 	})
 	if err != nil {
 		perfStore.Close()
@@ -124,14 +134,17 @@ func buildRuntime(cfg RuntimeConfig, chainREST, defaultModel string) (*subnetRun
 		perf:     perf,
 	}
 
-	return &subnetRuntime{
-		id:        cfg.ID,
-		model:     model,
-		handler:   newRuntimeMux(proxy),
-		proxy:     proxy,
-		session:   session,
-		perfStore: perfStore,
-	}, nil
+	rt := &subnetRuntime{
+		id:              cfg.ID,
+		model:           model,
+		handler:         newRuntimeMux(proxy),
+		proxy:           proxy,
+		session:         session,
+		perfStore:       perfStore,
+		participantKeys: session.ParticipantKeys(),
+	}
+	rt.active.Store(true)
+	return rt, nil
 }
 
 func (rt *subnetRuntime) close() error {
@@ -148,6 +161,7 @@ func (rt *subnetRuntime) snapshot() runtimeStatus {
 	status := runtimeStatus{
 		ID:             rt.id,
 		Model:          rt.model,
+		Active:         rt.active.Load(),
 		ActiveRequests: rt.activeRequests.Load(),
 		ReservedTokens: rt.reservedTokens.Load(),
 	}
@@ -177,14 +191,33 @@ func (rt *subnetRuntime) score() int64 {
 func NewGateway(runtimes []*subnetRuntime, limiter *GatewayLimiter, defaultModel string) *Gateway {
 	byID := make(map[string]*subnetRuntime, len(runtimes))
 	for _, rt := range runtimes {
+		rt.active.Store(true)
 		byID[rt.id] = rt
 	}
-	return &Gateway{
-		runtimes:     byID,
-		runtimeOrder: runtimes,
-		limiter:      limiter,
-		defaultModel: defaultModel,
+	g := &Gateway{
+		runtimes:           byID,
+		runtimeOrder:       runtimes,
+		limiter:            limiter,
+		participantLimiter: sharedParticipantRequestLimiter,
+		metrics:            NewSubnetMetrics(),
+		settings: GatewaySettings{
+			DefaultModel: defaultModel,
+		},
 	}
+	g.participantLimiter.SetMetrics(g.metrics)
+	g.metrics.AttachGateway(g)
+	for _, rt := range runtimes {
+		g.attachMetrics(rt)
+	}
+	return g
+}
+
+func NewManagedGateway(runtimes []*subnetRuntime, limiter *GatewayLimiter, settings GatewaySettings, baseStorageDir string, store *GatewayStore) *Gateway {
+	g := NewGateway(runtimes, limiter, settings.DefaultModel)
+	g.settings = settings
+	g.baseStorageDir = baseStorageDir
+	g.store = store
+	return g
 }
 
 func (g *Gateway) Close() error {
@@ -199,8 +232,13 @@ func (g *Gateway) Close() error {
 
 func (g *Gateway) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.Handle("/metrics", g.metrics.Handler())
 	mux.HandleFunc("/v1/chat/completions", g.handlePooledChat)
 	mux.HandleFunc("/v1/status", g.handlePooledStatus)
+	mux.HandleFunc("/v1/admin/state", g.handleAdminState)
+	mux.HandleFunc("/v1/admin/settings", g.handleAdminSettings)
+	mux.HandleFunc("/v1/admin/subnets", g.handleAdminSubnets)
+	mux.HandleFunc("/v1/admin/subnets/", g.handleAdminSubnetAction)
 	mux.HandleFunc("/v1/finalize", g.handleSingleOnly)
 	mux.HandleFunc("/v1/debug/pending", g.handleSingleOnly)
 	mux.HandleFunc("/v1/debug/state", g.handleSingleOnly)
@@ -210,63 +248,88 @@ func (g *Gateway) Handler() http.Handler {
 }
 
 func (g *Gateway) handlePooledStatus(w http.ResponseWriter, r *http.Request) {
-	if len(g.runtimeOrder) == 1 {
-		g.runtimeOrder[0].handler.ServeHTTP(w, r)
+	g.mu.Lock()
+	runtimes := append([]*subnetRuntime(nil), g.runtimeOrder...)
+	g.mu.Unlock()
+	if len(runtimes) == 1 {
+		runtimes[0].handler.ServeHTTP(w, r)
 		return
 	}
 
-	runtimes := make([]runtimeStatus, 0, len(g.runtimeOrder))
-	for _, rt := range g.runtimeOrder {
-		runtimes = append(runtimes, rt.snapshot())
+	statuses := make([]runtimeStatus, 0, len(runtimes))
+	for _, rt := range runtimes {
+		statuses = append(statuses, rt.snapshot())
 	}
 	writeJSON(w, map[string]any{
 		"mode":     "gateway",
-		"subnets":  runtimes,
+		"subnets":  statuses,
 		"limiter":  g.limiter.Snapshot(),
-		"runtimes": len(g.runtimeOrder),
+		"runtimes": len(runtimes),
 	})
 }
 
 func (g *Gateway) handleSingleOnly(w http.ResponseWriter, r *http.Request) {
-	if len(g.runtimeOrder) == 1 {
-		g.runtimeOrder[0].handler.ServeHTTP(w, r)
+	g.mu.Lock()
+	runtimes := append([]*subnetRuntime(nil), g.runtimeOrder...)
+	g.mu.Unlock()
+	if len(runtimes) == 1 {
+		runtimes[0].handler.ServeHTTP(w, r)
 		return
 	}
 	http.Error(w, `{"error":{"message":"use /subnet/{id} prefix for this endpoint when multiple subnets are configured"}}`, http.StatusBadRequest)
 }
 
 func (g *Gateway) handlePooledChat(w http.ResponseWriter, r *http.Request) {
+	ctx, _ := ensureRequestLogContext(r.Context())
+	r = r.WithContext(ctx)
 	body, model, inputTokens, err := parseChatReservation(r)
 	if err != nil {
+		logRequestStage(ctx, "gateway_parse_failed", "error", err)
 		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusBadRequest)
 		return
 	}
+	logRequestStage(ctx, "gateway_request_received", "model", firstNonEmpty(model, g.settings.DefaultModel), "input_tokens", inputTokens)
 
 	if err := g.limiter.Acquire(inputTokens); err != nil {
+		g.metrics.RecordLimitRejection(limiterReasonLabel(err))
+		logRequestStage(ctx, "gateway_limiter_rejected", "reason", limiterReasonLabel(err), "input_tokens", inputTokens)
 		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusTooManyRequests)
 		return
 	}
 	defer g.limiter.Release(inputTokens)
+	logRequestStage(ctx, "gateway_limiter_acquired", "input_tokens", inputTokens)
 
 	rt, err := g.reserveRuntimeForModel(model, inputTokens)
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusBadGateway)
+		logRequestStage(ctx, "gateway_runtime_select_failed", "error", err)
+		if isParticipantRateLimitError(err) {
+			g.metrics.RecordParticipantLimitRejection("pooled_route")
+		}
+		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), gatewayStatusCodeForError(err))
 		return
 	}
 	defer g.releaseRuntime(rt, inputTokens)
+	logRequestStage(ctx, "gateway_runtime_selected", "escrow", rt.id)
 
 	g.serveChatToRuntime(rt, "/v1/chat/completions", body, w, r)
 }
 
 func (g *Gateway) handleSubnet(w http.ResponseWriter, r *http.Request) {
+	ctx, _ := ensureRequestLogContext(r.Context())
+	r = r.WithContext(ctx)
 	subnetID, innerPath, ok := parseSubnetPath(r.URL.Path)
 	if !ok {
+		logRequestStage(ctx, "gateway_subnet_path_invalid", "path", r.URL.Path)
 		http.NotFound(w, r)
 		return
 	}
+	logRequestStage(ctx, "gateway_subnet_request_received", "escrow", subnetID, "path", innerPath)
 
+	g.mu.Lock()
 	rt, ok := g.runtimes[subnetID]
+	g.mu.Unlock()
 	if !ok {
+		logRequestStage(ctx, "gateway_subnet_not_found", "escrow", subnetID)
 		http.Error(w, fmt.Sprintf(`{"error":{"message":"unknown subnet %s"}}`, subnetID), http.StatusNotFound)
 		return
 	}
@@ -274,17 +337,29 @@ func (g *Gateway) handleSubnet(w http.ResponseWriter, r *http.Request) {
 	if innerPath == "/v1/chat/completions" {
 		body, _, inputTokens, err := parseChatReservation(r)
 		if err != nil {
+			logRequestStage(ctx, "gateway_subnet_parse_failed", "escrow", subnetID, "error", err)
 			http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusBadRequest)
 			return
 		}
 		if err := g.limiter.Acquire(inputTokens); err != nil {
+			g.metrics.RecordLimitRejection(limiterReasonLabel(err))
+			logRequestStage(ctx, "gateway_subnet_limiter_rejected", "escrow", subnetID, "reason", limiterReasonLabel(err), "input_tokens", inputTokens)
 			http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusTooManyRequests)
 			return
 		}
 		defer g.limiter.Release(inputTokens)
+		logRequestStage(ctx, "gateway_subnet_limiter_acquired", "escrow", subnetID, "input_tokens", inputTokens)
+
+		if err := g.ensureRuntimeAvailable(rt); err != nil {
+			g.metrics.RecordLimitRejection("participant_request_budget")
+			logRequestStage(ctx, "gateway_subnet_participant_limiter_rejected", "escrow", subnetID, "error", err)
+			http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), gatewayStatusCodeForError(err))
+			return
+		}
 
 		g.reserveRuntime(rt, inputTokens)
 		defer g.releaseRuntime(rt, inputTokens)
+		logRequestStage(ctx, "gateway_subnet_runtime_selected", "escrow", subnetID, "input_tokens", inputTokens)
 
 		g.serveChatToRuntime(rt, innerPath, body, w, r)
 		return
@@ -304,6 +379,7 @@ func (g *Gateway) serveChatToRuntime(rt *subnetRuntime, path string, body []byte
 	req.URL.RawPath = path
 	req.RequestURI = path
 	w.Header().Set("X-Subnet-ID", rt.id)
+	logRequestStage(req.Context(), "gateway_request_forwarded", "escrow", rt.id, "path", path)
 	rt.handler.ServeHTTP(w, req)
 }
 
@@ -311,10 +387,21 @@ func (g *Gateway) reserveRuntimeForModel(requestModel string, inputTokens int64)
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	candidates := g.runtimeOrder
+	var candidates []*subnetRuntime
+	skippedForParticipants := false
+	for _, rt := range g.runtimeOrder {
+		if !rt.active.Load() {
+			continue
+		}
+		if err := g.ensureRuntimeAvailable(rt); err != nil {
+			skippedForParticipants = true
+			continue
+		}
+		candidates = append(candidates, rt)
+	}
 	if requestModel != "" {
 		var matching []*subnetRuntime
-		for _, rt := range g.runtimeOrder {
+		for _, rt := range candidates {
 			if rt.model == requestModel {
 				matching = append(matching, rt)
 			}
@@ -324,6 +411,9 @@ func (g *Gateway) reserveRuntimeForModel(requestModel string, inputTokens int64)
 		}
 	}
 	if len(candidates) == 0 {
+		if skippedForParticipants {
+			return nil, &EscrowParticipantRateLimitError{}
+		}
 		return nil, fmt.Errorf("no subnet runtimes configured")
 	}
 
@@ -364,6 +454,36 @@ func (g *Gateway) reserveRuntimeLocked(rt *subnetRuntime, inputTokens int64) {
 func (g *Gateway) releaseRuntime(rt *subnetRuntime, inputTokens int64) {
 	rt.activeRequests.Add(-1)
 	rt.reservedTokens.Add(-inputTokens)
+}
+
+func (g *Gateway) ensureRuntimeAvailable(rt *subnetRuntime) error {
+	if g == nil || g.participantLimiter == nil || rt == nil {
+		return nil
+	}
+	return g.participantLimiter.CanAcceptEscrow(rt.participantKeys)
+}
+
+func gatewayStatusCodeForError(err error) int {
+	if isParticipantRateLimitError(err) {
+		return http.StatusTooManyRequests
+	}
+	var upstreamErr *transport.UpstreamStatusError
+	if errors.As(err, &upstreamErr) && isParticipantThrottleStatus(upstreamErr.StatusCode) {
+		return http.StatusTooManyRequests
+	}
+	return http.StatusBadGateway
+}
+
+func isParticipantRateLimitError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var participantErr *ParticipantRateLimitError
+	if errors.As(err, &participantErr) {
+		return true
+	}
+	var escrowErr *EscrowParticipantRateLimitError
+	return errors.As(err, &escrowErr)
 }
 
 func parseSubnetPath(path string) (subnetID, innerPath string, ok bool) {
@@ -470,6 +590,396 @@ func resolveRuntimeConfigs(singleEscrowID, singleKeyHex, singleModel, singleStor
 	}}, nil
 }
 
+func defaultStoragePath(baseStorageDir, escrowID string) string {
+	return filepath.Join(baseStorageDir, fmt.Sprintf("escrow-%s", escrowID), "state.db")
+}
+
+type adminSubnetRequest struct {
+	ID          string `json:"id"`
+	PrivateKey  string `json:"private_key"`
+	Model       string `json:"model,omitempty"`
+	StoragePath string `json:"storage_path,omitempty"`
+}
+
+type adminSettingsRequest struct {
+	ChainREST               *string `json:"chain_rest,omitempty"`
+	DefaultModel            *string `json:"default_model,omitempty"`
+	MaxConcurrentRequests   *int64  `json:"max_concurrent_requests,omitempty"`
+	MaxInputTokensInFlight  *int64  `json:"max_input_tokens_in_flight,omitempty"`
+	DefaultRequestMaxTokens *uint64 `json:"default_request_max_tokens,omitempty"`
+}
+
+func (g *Gateway) handleAdminState(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if g.store == nil {
+		http.Error(w, `{"error":{"message":"gateway state store unavailable"}}`, http.StatusServiceUnavailable)
+		return
+	}
+	state, ok, err := g.store.LoadState()
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		writeJSON(w, map[string]any{
+			"settings": g.settings,
+			"subnets":  []GatewaySubnetState{},
+		})
+		return
+	}
+
+	g.mu.Lock()
+	runtimeByID := make(map[string]runtimeStatus, len(g.runtimeOrder))
+	for _, rt := range g.runtimeOrder {
+		runtimeByID[rt.id] = rt.snapshot()
+	}
+	g.mu.Unlock()
+
+	type adminSubnetView struct {
+		GatewaySubnetState
+		Runtime *runtimeStatus `json:"runtime,omitempty"`
+	}
+	views := make([]adminSubnetView, 0, len(state.Subnets))
+	for _, subnet := range state.Subnets {
+		view := adminSubnetView{GatewaySubnetState: subnet}
+		if snapshot, ok := runtimeByID[subnet.ID]; ok {
+			s := snapshot
+			view.Runtime = &s
+		}
+		views = append(views, view)
+	}
+	writeJSON(w, map[string]any{
+		"settings": state.Settings,
+		"subnets":  views,
+		"limiter":  g.limiter.Snapshot(),
+	})
+}
+
+func (g *Gateway) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
+	if g.store == nil {
+		http.Error(w, `{"error":{"message":"gateway state store unavailable"}}`, http.StatusServiceUnavailable)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		g.mu.Lock()
+		settings := g.settings
+		g.mu.Unlock()
+		writeJSON(w, settings)
+	case http.MethodPost:
+		var req adminSettingsRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusBadRequest)
+			return
+		}
+
+		g.mu.Lock()
+		settings := g.settings
+		if req.ChainREST != nil {
+			settings.ChainREST = strings.TrimSpace(*req.ChainREST)
+		}
+		if req.DefaultModel != nil {
+			settings.DefaultModel = strings.TrimSpace(*req.DefaultModel)
+		}
+		if req.MaxConcurrentRequests != nil {
+			settings.MaxConcurrentRequests = *req.MaxConcurrentRequests
+		}
+		if req.MaxInputTokensInFlight != nil {
+			settings.MaxInputTokensInFlight = *req.MaxInputTokensInFlight
+		}
+		if req.DefaultRequestMaxTokens != nil {
+			settings.DefaultRequestMaxTokens = *req.DefaultRequestMaxTokens
+		}
+		if err := g.store.UpdateSettings(settings); err != nil {
+			g.mu.Unlock()
+			http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+		g.settings = settings
+		g.limiter.UpdateLimits(settings.MaxConcurrentRequests, settings.MaxInputTokensInFlight)
+		DefaultRequestMaxTokens = settings.DefaultRequestMaxTokens
+		g.mu.Unlock()
+
+		writeJSON(w, settings)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (g *Gateway) handleAdminSubnets(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		g.handleAdminState(w, r)
+	case http.MethodPost:
+		g.handleAdminAddSubnet(w, r)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (g *Gateway) handleAdminSubnetAction(w http.ResponseWriter, r *http.Request) {
+	trimmed := strings.TrimPrefix(r.URL.Path, "/v1/admin/subnets/")
+	parts := strings.Split(strings.Trim(trimmed, "/"), "/")
+	if len(parts) == 0 || parts[0] == "" {
+		http.NotFound(w, r)
+		return
+	}
+	id := parts[0]
+	if len(parts) == 1 && r.Method == http.MethodDelete {
+		g.handleAdminCleanSubnet(w, r, id)
+		return
+	}
+	if len(parts) == 2 && parts[1] == "deactivate" && r.Method == http.MethodPost {
+		g.handleAdminDeactivateSubnet(w, r, id)
+		return
+	}
+	http.NotFound(w, r)
+}
+
+func (g *Gateway) handleAdminAddSubnet(w http.ResponseWriter, r *http.Request) {
+	if g.store == nil {
+		http.Error(w, `{"error":{"message":"gateway state store unavailable"}}`, http.StatusServiceUnavailable)
+		return
+	}
+	var req adminSubnetRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusBadRequest)
+		return
+	}
+	req.ID = strings.TrimSpace(req.ID)
+	if req.ID == "" {
+		http.Error(w, `{"error":{"message":"id is required"}}`, http.StatusBadRequest)
+		return
+	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	state, ok, err := g.store.LoadState()
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, `{"error":{"message":"gateway state is not initialized"}}`, http.StatusServiceUnavailable)
+		return
+	}
+
+	record, found := findGatewaySubnet(state.Subnets, req.ID)
+	if found {
+		if strings.TrimSpace(req.PrivateKey) != "" {
+			record.PrivateKeyHex = strings.TrimSpace(req.PrivateKey)
+		}
+		if strings.TrimSpace(req.Model) != "" {
+			record.Model = strings.TrimSpace(req.Model)
+		}
+		if strings.TrimSpace(req.StoragePath) != "" {
+			record.StoragePath = strings.TrimSpace(req.StoragePath)
+		}
+		record.Active = true
+	} else {
+		if strings.TrimSpace(req.PrivateKey) == "" {
+			http.Error(w, `{"error":{"message":"private_key is required for a new subnet"}}`, http.StatusBadRequest)
+			return
+		}
+		record = GatewaySubnetState{
+			RuntimeConfig: RuntimeConfig{
+				ID:            req.ID,
+				PrivateKeyHex: strings.TrimSpace(req.PrivateKey),
+				Model:         strings.TrimSpace(req.Model),
+				StoragePath:   strings.TrimSpace(req.StoragePath),
+			},
+			Active: true,
+		}
+	}
+
+	if existing, exists := g.runtimes[req.ID]; exists {
+		if existing.active.Load() {
+			http.Error(w, `{"error":{"message":"subnet already active"}}`, http.StatusConflict)
+			return
+		}
+		if err := g.store.UpsertSubnet(record); err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusInternalServerError)
+			return
+		}
+		existing.active.Store(true)
+		writeJSON(w, map[string]any{
+			"id":           record.ID,
+			"active":       true,
+			"model":        record.Model,
+			"storage_path": record.StoragePath,
+		})
+		return
+	}
+
+	if record.Model == "" {
+		record.Model = state.Settings.DefaultModel
+	}
+	if record.StoragePath == "" {
+		record.StoragePath = defaultStoragePath(g.baseStorageDir, record.ID)
+	}
+
+	rt, err := buildRuntime(record.RuntimeConfig, state.Settings.ChainREST, state.Settings.DefaultModel)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusBadRequest)
+		return
+	}
+	if err := g.store.UpsertSubnet(record); err != nil {
+		rt.close()
+		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+	g.runtimes[record.ID] = rt
+	g.runtimeOrder = append(g.runtimeOrder, rt)
+	g.attachMetrics(rt)
+	g.sortRuntimeOrderLocked()
+	writeJSON(w, map[string]any{
+		"id":           record.ID,
+		"active":       true,
+		"model":        record.Model,
+		"storage_path": record.StoragePath,
+	})
+}
+
+func (g *Gateway) handleAdminDeactivateSubnet(w http.ResponseWriter, r *http.Request, id string) {
+	if g.store == nil {
+		http.Error(w, `{"error":{"message":"gateway state store unavailable"}}`, http.StatusServiceUnavailable)
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	rt, ok := g.runtimes[id]
+	if !ok {
+		http.Error(w, fmt.Sprintf(`{"error":{"message":"subnet %s is not active"}}`, id), http.StatusNotFound)
+		return
+	}
+	if rt.activeRequests.Load() > 0 {
+		http.Error(w, fmt.Sprintf(`{"error":{"message":"subnet %s has active requests"}}`, id), http.StatusConflict)
+		return
+	}
+	if err := g.store.SetSubnetActive(id, false); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+	rt.active.Store(false)
+	writeJSON(w, map[string]any{
+		"id":     id,
+		"active": false,
+	})
+}
+
+func (g *Gateway) handleAdminCleanSubnet(w http.ResponseWriter, r *http.Request, id string) {
+	if g.store == nil {
+		http.Error(w, `{"error":{"message":"gateway state store unavailable"}}`, http.StatusServiceUnavailable)
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	state, ok, err := g.store.LoadState()
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, `{"error":{"message":"gateway state is not initialized"}}`, http.StatusServiceUnavailable)
+		return
+	}
+	record, found := findGatewaySubnet(state.Subnets, id)
+	if !found {
+		http.Error(w, fmt.Sprintf(`{"error":{"message":"subnet %s not found"}}`, id), http.StatusNotFound)
+		return
+	}
+	if record.Active {
+		http.Error(w, fmt.Sprintf(`{"error":{"message":"subnet %s is active; deactivate it first"}}`, id), http.StatusConflict)
+		return
+	}
+	if rt, ok := g.runtimes[id]; ok {
+		if rt.activeRequests.Load() > 0 {
+			http.Error(w, fmt.Sprintf(`{"error":{"message":"subnet %s has active requests"}}`, id), http.StatusConflict)
+			return
+		}
+		delete(g.runtimes, id)
+		g.runtimeOrder = removeRuntime(g.runtimeOrder, id)
+		if err := rt.close(); err != nil {
+			log.Printf("close subnet %s: %v", id, err)
+		}
+	}
+	if err := g.store.DeleteSubnet(id); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+	if err := removeSubnetStorage(record.StoragePath, g.baseStorageDir); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{
+		"id":      id,
+		"deleted": true,
+	})
+}
+
+func findGatewaySubnet(subnets []GatewaySubnetState, id string) (GatewaySubnetState, bool) {
+	for _, subnet := range subnets {
+		if subnet.ID == id {
+			return subnet, true
+		}
+	}
+	return GatewaySubnetState{}, false
+}
+
+func removeRuntime(runtimes []*subnetRuntime, id string) []*subnetRuntime {
+	out := runtimes[:0]
+	for _, rt := range runtimes {
+		if rt.id != id {
+			out = append(out, rt)
+		}
+	}
+	return out
+}
+
+func (g *Gateway) sortRuntimeOrderLocked() {
+	slices.SortFunc(g.runtimeOrder, func(a, b *subnetRuntime) int {
+		return strings.Compare(a.id, b.id)
+	})
+}
+
+func (g *Gateway) attachMetrics(rt *subnetRuntime) {
+	if g == nil || g.metrics == nil || rt == nil || rt.proxy == nil || rt.proxy.engine == nil {
+		return
+	}
+	rt.proxy.engine.metrics = g.metrics
+	rt.proxy.engine.subnetID = rt.id
+}
+
+func removeSubnetStorage(storagePath, baseStorageDir string) error {
+	if strings.TrimSpace(storagePath) == "" {
+		return nil
+	}
+	storagePath = filepath.Clean(storagePath)
+	baseStorageDir = filepath.Clean(baseStorageDir)
+	if !strings.HasPrefix(storagePath, baseStorageDir+string(os.PathSeparator)) && storagePath != baseStorageDir {
+		return fmt.Errorf("refusing to delete storage outside base dir: %s", storagePath)
+	}
+	parent := filepath.Dir(storagePath)
+	if filepath.Base(storagePath) == "state.db" && strings.HasPrefix(parent, baseStorageDir+string(os.PathSeparator)) {
+		return os.RemoveAll(parent)
+	}
+	for _, path := range []string{storagePath, storagePath + "-shm", storagePath + "-wal"} {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove %s: %w", path, err)
+		}
+	}
+	if err := os.Remove(parent); err != nil && !os.IsNotExist(err) {
+		return nil
+	}
+	return nil
+}
+
 func finalizeRuntimeConfigs(runtimes []RuntimeConfig, defaultModel, baseStorageDir string) ([]RuntimeConfig, error) {
 	out := make([]RuntimeConfig, 0, len(runtimes))
 	seen := make(map[string]struct{}, len(runtimes))
@@ -486,7 +996,7 @@ func finalizeRuntimeConfigs(runtimes []RuntimeConfig, defaultModel, baseStorageD
 			cfg.Model = defaultModel
 		}
 		if cfg.StoragePath == "" {
-			cfg.StoragePath = filepath.Join(baseStorageDir, fmt.Sprintf("subnet-%s.db", cfg.ID))
+			cfg.StoragePath = defaultStoragePath(baseStorageDir, cfg.ID)
 		}
 		out = append(out, cfg)
 	}

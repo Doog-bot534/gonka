@@ -3,6 +3,8 @@ package user
 import (
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"subnet/bridge"
 	"subnet/signing"
@@ -14,12 +16,13 @@ import (
 
 // HTTPSessionConfig holds the parameters needed to create an HTTP-backed user session.
 type HTTPSessionConfig struct {
-	PrivateKeyHex   string
-	EscrowID        string
-	Bridge          bridge.MainnetBridge
-	StoragePath     string                          // optional: path to SQLite DB for session persistence
-	StreamCallback  func(nonce uint64, line string) // optional: receives raw SSE data lines during inference
-	ReceiptCallback func(nonce uint64)              // optional: called when subnet_receipt SSE event arrives
+	PrivateKeyHex    string
+	EscrowID         string
+	Bridge           bridge.MainnetBridge
+	StoragePath      string                          // optional: path to SQLite DB for session persistence
+	StreamCallback   func(nonce uint64, line string) // optional: receives raw SSE data lines during inference
+	ReceiptCallback  func(nonce uint64)              // optional: called when subnet_receipt SSE event arrives
+	RequestAdmission transport.RequestAdmissionController
 }
 
 // NewHTTPSession creates a user Session wired with HTTP clients to real dapi hosts.
@@ -49,10 +52,12 @@ func NewHTTPSession(cfg HTTPSessionConfig) (*Session, *state.StateMachine, error
 	)
 
 	clients := make([]HostClient, len(group))
+	participantKeys := make([]string, len(group))
 	clientCache := make(map[string]*transport.HTTPClient)
 	for i, slot := range group {
 		if c, ok := clientCache[slot.ValidatorAddress]; ok {
 			clients[i] = c
+			participantKeys[i] = participantRequestKey(slot.ValidatorAddress, "")
 			continue
 		}
 		info, err := cfg.Bridge.GetHostInfo(slot.ValidatorAddress)
@@ -64,11 +69,19 @@ func NewHTTPSession(cfg HTTPSessionConfig) (*Session, *state.StateMachine, error
 			cc := transport.DefaultClientConfig()
 			cc.StreamCallback = cfg.StreamCallback
 			cc.ReceiptCallback = cfg.ReceiptCallback
+			cc.ParticipantKey = participantRequestKey(slot.ValidatorAddress, info.URL)
+			cc.Admission = cfg.RequestAdmission
+			clientCfgs = append(clientCfgs, cc)
+		} else if cfg.RequestAdmission != nil {
+			cc := transport.DefaultClientConfig()
+			cc.ParticipantKey = participantRequestKey(slot.ValidatorAddress, info.URL)
+			cc.Admission = cfg.RequestAdmission
 			clientCfgs = append(clientCfgs, cc)
 		}
 		c := transport.NewHTTPClient(info.URL, cfg.EscrowID, signer, clientCfgs...)
 		clientCache[slot.ValidatorAddress] = c
 		clients[i] = c
+		participantKeys[i] = participantRequestKey(slot.ValidatorAddress, info.URL)
 	}
 
 	var opts []SessionOption
@@ -113,6 +126,19 @@ func NewHTTPSession(cfg HTTPSessionConfig) (*Session, *state.StateMachine, error
 	if err != nil {
 		return nil, nil, fmt.Errorf("create session: %w", err)
 	}
+	session.SetParticipantKeys(participantKeys)
 
 	return session, sm, nil
+}
+
+func participantRequestKey(address, rawURL string) string {
+	if parsed, err := url.Parse(strings.TrimSpace(rawURL)); err == nil {
+		if host := strings.TrimSpace(parsed.Hostname()); host != "" {
+			return host
+		}
+	}
+	if addr := strings.TrimSpace(address); addr != "" {
+		return addr
+	}
+	return strings.TrimSpace(rawURL)
 }

@@ -14,10 +14,10 @@ type GatewayLimiter struct {
 }
 
 type LimiterSnapshot struct {
-	InFlightRequests   int64 `json:"in_flight_requests"`
+	InFlightRequests    int64 `json:"in_flight_requests"`
 	InFlightInputTokens int64 `json:"in_flight_input_tokens"`
-	MaxConcurrent      int64 `json:"max_concurrent_requests"`
-	MaxInputTokens     int64 `json:"max_input_tokens_in_flight"`
+	MaxConcurrent       int64 `json:"max_concurrent_requests"`
+	MaxInputTokens      int64 `json:"max_input_tokens_in_flight"`
 }
 
 func NewGatewayLimiter(maxConcurrent, maxInputTokens int64) *GatewayLimiter {
@@ -36,6 +36,13 @@ func (l *GatewayLimiter) Snapshot() LimiterSnapshot {
 		MaxConcurrent:       l.maxConcurrent,
 		MaxInputTokens:      l.maxInputTokens,
 	}
+}
+
+func (l *GatewayLimiter) UpdateLimits(maxConcurrent, maxInputTokens int64) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.maxConcurrent = maxConcurrent
+	l.maxInputTokens = maxInputTokens
 }
 
 func (l *GatewayLimiter) Acquire(inputTokens int64) error {
