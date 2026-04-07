@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 
+	"cosmossdk.io/store/prefix"
 	"github.com/cosmos/cosmos-sdk/runtime"
 	inferencetypes "github.com/productscience/inference/x/inference/types"
 )
@@ -25,7 +26,8 @@ func (k Keeper) ClearTrainingState(ctx context.Context) error {
 		[]byte(inferencetypes.InProgressTrainingTaskKeyPrefix),
 		[]byte("TrainingTask/sync/"),
 	} {
-		iterator := store.Iterator(keyPrefix, nil)
+		prefixStore := prefix.NewStore(store, keyPrefix)
+		iterator := prefixStore.Iterator(nil, nil)
 		var keysToDelete [][]byte
 		for ; iterator.Valid(); iterator.Next() {
 			key := iterator.Key()
@@ -36,7 +38,7 @@ func (k Keeper) ClearTrainingState(ctx context.Context) error {
 		iterator.Close()
 
 		for _, key := range keysToDelete {
-			store.Delete(key)
+			prefixStore.Delete(key)
 		}
 	}
 
