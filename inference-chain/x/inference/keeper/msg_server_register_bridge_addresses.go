@@ -2,7 +2,9 @@ package keeper
 
 import (
 	"context"
+	"strings"
 
+	"cosmossdk.io/collections"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/productscience/inference/x/inference/types"
 )
@@ -25,6 +27,24 @@ func (k msgServer) RegisterBridgeAddresses(goCtx context.Context, msg *types.Msg
 				"chainId", chainId,
 				"address", address)
 			continue
+		}
+
+		// If this address was previously (or fraudulently) registered as a CW20
+		// wrapped token, remove both the forward mapping and the reverse index before
+		// registering it as a bridge address. The orphaned CW20 contract remains on-chain
+		// but becomes unreachable from the inference module — RequestBridgeWithdrawal will
+		// reject it because getWrappedTokenMetadata will return found=false.
+		if existingWrapped, found := k.GetWrappedTokenContract(ctx, chainId, address); found {
+			k.LogWarn("Register bridge addresses: Removing stale wrapped token record for bridge address",
+				types.Messages,
+				"chainId", chainId,
+				"bridgeAddress", address,
+				"orphanedCW20", existingWrapped.WrappedContractAddress,
+			)
+			_ = k.WrappedTokenContractsMap.Remove(ctx,
+				collections.Join(chainId, strings.ToLower(address)))
+			_ = k.WrappedContractReverseIndex.Remove(ctx,
+				strings.ToLower(existingWrapped.WrappedContractAddress))
 		}
 
 		bridgeAddr := types.BridgeContractAddress{
