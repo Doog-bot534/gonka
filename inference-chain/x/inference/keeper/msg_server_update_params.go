@@ -22,6 +22,17 @@ func (k msgServer) UpdateParams(goCtx context.Context, req *types.MsgUpdateParam
 	if err := k.SetParams(ctx, req.Params); err != nil {
 		return nil, err
 	}
+
+	// Sync FeeParams to its dedicated KV store so GonkaFeeChecker reads the
+	// governance-updated values. FeeParams lives in a separate key because it
+	// was added after the initial Params proto and needs to be readable by the
+	// ante handler without deserializing the full Params object.
+	if req.Params.FeeParams != nil {
+		if err := k.SetFeeParams(ctx, req.Params.FeeParams); err != nil {
+			return nil, errorsmod.Wrap(err, "failed to sync fee params")
+		}
+	}
+
 	err := k.PrecomputeSPRTValues(ctx)
 	if err != nil {
 		k.LogError("Failed to precompute SPRT values", types.Validation, "error", err)
