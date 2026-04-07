@@ -117,7 +117,7 @@ def validation(
     enforced_str: Optional[str] = None,
     enforced_tokens: Optional[EnforcedTokens] = None,
 ) -> Dict[str, Any]:
-    url = f"{model_info.url}/v1/chat/completions"
+    url = f"{model_info.url.rstrip('/')}/v1/chat/completions"
     payload = {
         "model": model_info.name,
         "messages": _prepare_messages(prompt),

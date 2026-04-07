@@ -272,11 +272,12 @@ def main() -> None:
 
     def _work(item: InferenceArtifactItem) -> tuple:
         enforced_tokens = EnforcedTokens.from_result(item.inference_result)
+        row_params = item.request_params
 
         def _call():
             return validation_call(
                 validation_model,
-                request_params,
+                row_params,
                 item.prompt,
                 enforced_tokens=enforced_tokens,
             )
@@ -301,7 +302,7 @@ def main() -> None:
             validation_result=validation_result,
             inference_model=item.inference_model,
             validation_model=validation_model,
-            request_params=request_params,
+            request_params=row_params,
         )
         return out_item.model_dump_json() + "\n", n_tokens, prompt_elapsed
 
