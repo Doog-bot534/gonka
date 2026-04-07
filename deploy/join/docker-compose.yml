@@ -11,7 +11,7 @@ services:
   node:
     container_name: node
     image: ghcr.io/product-science/inferenced:0.2.11
-    command: ["sh", "./init-docker.sh"]
+    command: [ "sh", "./init-docker.sh" ]
     volumes:
       - .inference:/root/.inference
       - ../../genesis/genesis.json:/root/genesis.json
@@ -75,7 +75,7 @@ services:
       - "9100:9100"
       - "127.0.0.1:9200:9200"
     restart: always
-  
+
   bridge:
     container_name: bridge
     image: ghcr.io/product-science/bridge:0.2.5-post5@sha256:8d2f217115c65b27fcb6fe1497471c30891534f18685bd3007d168aa7f1a9371
@@ -96,7 +96,7 @@ services:
       - .inference-eth/persistent-db:/persistent-db
     depends_on:
       - api
-  
+
   proxy:
     container_name: proxy
     image: ghcr.io/product-science/proxy:0.2.11
@@ -107,7 +107,7 @@ services:
       - NGINX_MODE=${NGINX_MODE:-http}
       - SERVER_NAME=${SERVER_NAME:-}
       - GONKA_API_PORT=9000
-      - GONKA_API_EXEMPT_ROUTES=chat inference poc/proofs
+      - GONKA_API_EXEMPT_ROUTES=chat inference poc/proofs subnet
       - GONKA_API_BLOCKED_ROUTES=poc-batches training
       - CHAIN_RPC_PORT=26657
       - CHAIN_API_PORT=1317
@@ -137,7 +137,7 @@ services:
         required: false
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -182,7 +182,7 @@ services:
       - ./secrets/certbot:/app/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -194,5 +194,3 @@ services:
     expose:
       - "5173"
     restart: unless-stopped
-
-
