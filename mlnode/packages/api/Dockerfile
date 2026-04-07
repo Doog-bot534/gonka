@@ -82,8 +82,9 @@ COPY packages/train/resources /app/packages/train/resources
 
 COPY packages/common/src /app/packages/common/src
 
-ENV PYTHONPATH="/app"
-ENV PYTHONPATH="${PYTHONPATH}:/app/packages/api/src"
+ENV PYTHONPATH="/app:/app/packages/api/src"
+ENV VLLM_ALLOW_INSECURE_SERIALIZATION=1
+ENV LD_LIBRARY_PATH="/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
 
 COPY packages/api/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
