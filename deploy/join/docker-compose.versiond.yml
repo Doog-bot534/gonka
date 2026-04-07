@@ -1,0 +1,32 @@
+services:
+  versiond:
+    container_name: versiond
+    image: ghcr.io/product-science/versiond:0.2.11
+    environment:
+      - VERSIOND_ORACLE_URL=http://api:9100/versions
+      - HF_HOME=/root/.cache
+      # Override a specific version binary for development:
+      # - VERSIOND_OVERRIDE_v0_2_11=/opt/local/subnet-dev
+      # Force versions not yet approved by governance:
+      # - VERSIOND_FORCE=v0.2.13-rc1
+    volumes:
+      - ${HF_HOME:-${HOME}/.cache}:/root/.cache
+      - versiond-bin:/opt/versiond/bin
+      - versiond-data:/opt/versiond/data
+    ports:
+      - "${PORT:-8080}:8080"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ipc: host
+    depends_on:
+      - api
+    restart: always
+
+volumes:
+  versiond-bin:
+  versiond-data:
