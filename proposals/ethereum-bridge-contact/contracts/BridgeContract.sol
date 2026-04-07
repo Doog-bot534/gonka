@@ -298,17 +298,18 @@ contract BridgeContract is ERC20, Ownable, ReentrancyGuard {
             revert InvalidEpochSequence();
         }
 
+        require(epochId > 1, "Epoch 1 must be set via Admin");
+
         // Verify group public key is 256 bytes (G2 point uncompressed)
         require(groupPublicKey.length == 256, "Invalid group key length");
 
-        // Verify validation signature against previous epoch (if not genesis)
+        // Verify validation signature against previous epoch
         GroupKey memory newGroupKeyStruct = _bytesToGroupKey(groupPublicKey);
-        if (epochId > 1) {
-            GroupKey memory prevGroupKeyStruct = epochGroupKeys[epochId - 1];
-            require(!_isGroupKeyEmpty(prevGroupKeyStruct), "Previous epoch not found");
-            
-            require(_verifyTransitionSignature(prevGroupKeyStruct, newGroupKeyStruct, validationSig, epochId - 1), "Invalid transition signature");
-        }
+        
+        GroupKey memory prevGroupKeyStruct = epochGroupKeys[epochId - 1];
+        require(!_isGroupKeyEmpty(prevGroupKeyStruct), "Previous epoch not found");
+        
+        require(_verifyTransitionSignature(prevGroupKeyStruct, newGroupKeyStruct, validationSig, epochId - 1), "Invalid transition signature");
 
         // Store only the group public key
         epochGroupKeys[epochId] = newGroupKeyStruct;
