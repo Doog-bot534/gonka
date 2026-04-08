@@ -329,3 +329,52 @@ func TestApplyRecoveredDiffs_emptyWarmKeyDeltaSkipsInject(t *testing.T) {
 	require.GreaterOrEqual(t, resolverCalls.Load(), uint32(1),
 		"without injected delta, ConfirmStart must use ResolveWarmKey")
 }
+
+// Bad WarmKeyDelta followed by apply failure must not leave poisoned warm keys (retry-safe).
+func TestApplyRecoveredDiffs_rollbackWarmKeysOnApplyFailure(t *testing.T) {
+	const escrowID = "escrow-1"
+	hosts := []*signing.Secp256k1Signer{
+		testutil.MustGenerateKey(t), testutil.MustGenerateKey(t),
+		testutil.MustGenerateKey(t), testutil.MustGenerateKey(t),
+	}
+	user := testutil.MustGenerateKey(t)
+	warmSigner := testutil.MustGenerateKey(t)
+	executorSlot := uint32(1 % 4)
+
+	resolver := func(warmAddr, coldAddr string) (bool, error) {
+		return warmAddr == warmSigner.Address() && coldAddr == hosts[executorSlot].Address(), nil
+	}
+
+	mem := storage.NewMemory()
+	group := testutil.MakeGroup(hosts)
+	config := testutil.DefaultConfig(len(hosts))
+	require.NoError(t, mem.CreateSession(storage.CreateSessionParams{
+		EscrowID: escrowID, Config: config, Group: group, InitialBalance: 10000,
+	}))
+	store := newRecoverySigStore(mem)
+	store.setPreSignatures(1, []uint32{0, 1, 2})
+
+	promptHash := []byte("prompt")
+	txs := []*types.SubnetTx{
+		txStartInference(&types.MsgStartInference{
+			InferenceId: 1, PromptHash: promptHash, Model: "llama",
+			InputLength: 100, MaxTokens: 50, StartedAt: 1000,
+		}),
+		txConfirmStart(&types.MsgConfirmStart{
+			InferenceId: 1, ExecutorSig: testutil.SignExecutorReceipt(t, warmSigner, escrowID, 1, promptHash, "llama", 100, 50, 1000, 1000),
+			ConfirmedAt: 1000,
+		}),
+	}
+	diff := testutil.SignDiff(t, user, escrowID, 1, txs)
+	diff.UserSig[0] ^= 0xff
+
+	rec := types.DiffRecord{
+		Diff:         diff,
+		WarmKeyDelta: map[uint32]string{executorSlot: warmSigner.Address()},
+	}
+
+	h := newRecoveryTestHost(t, 0, hosts, user, store, resolver)
+	_, err := h.ApplyRecoveredDiffs(context.Background(), []types.DiffRecord{rec})
+	require.Error(t, err)
+	require.Empty(t, h.sm.WarmKeys())
+}

@@ -846,10 +846,20 @@ func (h *Host) ApplyRecoveredDiffs(ctx context.Context, diffs []types.DiffRecord
 	var sigs []gossip.GossipSig
 
 	for _, rec := range diffs {
-		if rec.Nonce <= finalized && len(rec.WarmKeyDelta) > 0 {
+		// InjectWarmKeys only when we will actually apply this nonce; otherwise a no-op
+		// apply would still leave poisoned warm keys. If apply fails before the nonce
+		// advances, roll back injection so retries are not stuck with bad bindings.
+		var warmSnap map[uint32]string
+		needInject := rec.Nonce <= finalized && len(rec.WarmKeyDelta) > 0 && rec.Nonce > h.sm.LatestNonce()
+		if needInject {
+			warmSnap = h.sm.WarmKeys()
 			h.sm.InjectWarmKeys(rec.WarmKeyDelta)
 		}
+		nonceBefore := h.sm.LatestNonce()
 		if err := h.applyAndPersist(rec.Diff); err != nil {
+			if needInject && h.sm.LatestNonce() == nonceBefore {
+				h.sm.RestoreWarmKeys(warmSnap)
+			}
 			return sigs, fmt.Errorf("apply recovered diff nonce %d: %w", rec.Nonce, err)
 		}
 
