@@ -54,6 +54,22 @@ func (k msgServer) SettleSubnetEscrow(goCtx context.Context, msg *types.MsgSettl
 		}
 		addr := escrow.Slots[hs.SlotId]
 
+		// IFF the subnet is being settled in a different epoch than it was created,
+		// and the validator was punished in the previous epoch, then they shouldn't be paid.
+		//
+		// We're inferring that `RewardedCoins` being 0 means the validator was punished.
+		if !isSameEpochSettlement {
+			summary, summaryFound := k.GetEpochPerformanceSummary(goCtx, escrow.EpochIndex, addr)
+			if !summaryFound || summary.RewardedCoins == 0 {
+				k.LogInfo("Skipping subnet escrow payout: host was punished in previous epoch", types.Settle,
+					"participant", addr,
+					"escrow_id", escrow.Id,
+					"escrow_epoch", escrow.EpochIndex,
+				)
+				continue
+			}
+		}
+
 		// Assign cost of running inferences to this slot's validator
 		nextValidatorPayout, carry := bits.Add64(validatorPayouts[addr], hs.Cost, 0)
 		if carry != 0 {

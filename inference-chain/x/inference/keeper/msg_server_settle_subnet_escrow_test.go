@@ -269,6 +269,128 @@ func TestSettleSubnetEscrow_ZeroCostSettlement(t *testing.T) {
 	require.True(t, settled.Settled)
 }
 
+// This test checks that if a subnet was created on an epoch X and settled on a different epoch Y, and
+// if the host was punished on epoch X, then they should not be paid in the settlement of this subnet.
+// The payment should be refunded to the user instead.
+func TestSettleSubnetEscrow_CrossEpochSkipsTransferWithoutRewardedCoins(t *testing.T) {
+	k, ms, ctx, mocks := setupSubnetEscrowTest(t)
+	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
+
+	key, err := dcrdsecp.GeneratePrivateKey()
+	require.NoError(t, err)
+	addr := cosmosAddressFromDcrdKey(key).String()
+
+	creator := sdk.AccAddress(make([]byte, 20))
+	creator[0] = 0x77
+	escrow := types.SubnetEscrow{
+		Id:         1,
+		Creator:    creator.String(),
+		Amount:     1_000,
+		Slots:      []string{addr},
+		EpochIndex: 5,
+		Settled:    false,
+	}
+
+	// Set current epoch to 6 so settlement is cross-epoch with escrow epoch 5.
+	setupEpochGroupForSubnet(ctx, k, 6)
+
+	_, err = k.StoreSubnetEscrow(ctx, &escrow, 1)
+	require.NoError(t, err)
+
+	// Summary exists but has no rewarded coins, so transfer should be skipped.
+	err = k.SetEpochPerformanceSummary(ctx, types.EpochPerformanceSummary{
+		EpochIndex:    escrow.EpochIndex,
+		ParticipantId: addr,
+		RewardedCoins: 0,
+	})
+	require.NoError(t, err)
+
+	hostStats := []*types.SubnetSettlementHostStats{{
+		SlotId: 0,
+		Cost:   100,
+	}}
+	msg := buildSettlementTestData(t, escrow, []*dcrdsecp.PrivateKey{key}, hostStats, 0)
+
+	// No payout transfer expected; full escrow should be refunded to creator.
+	mocks.BankKeeper.EXPECT().
+		SendCoinsFromModuleToAccount(gomock.Any(), types.ModuleName, creator, gomock.Any(), gomock.Eq("subnet_escrow_refund")).
+		DoAndReturn(func(_ context.Context, _ string, _ sdk.AccAddress, coins sdk.Coins, _ string) error {
+			require.Len(t, coins, 1)
+			require.Equal(t, escrow.Amount, coins[0].Amount.Uint64())
+			return nil
+		})
+
+	resp, err := ms.SettleSubnetEscrow(ctx, msg)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+}
+
+// This test checks that if a subnet was created on an epoch X and settled on a different epoch Y, and
+// if the host was NOT punished on epoch X,
+// then the payout is immediately transferred directly to the host.
+func TestSettleSubnetEscrow_CrossEpochTransfersWithRewardedCoins(t *testing.T) {
+	k, ms, ctx, mocks := setupSubnetEscrowTest(t)
+	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
+
+	key, err := dcrdsecp.GeneratePrivateKey()
+	require.NoError(t, err)
+	addr := cosmosAddressFromDcrdKey(key).String()
+	recipient, err := sdk.AccAddressFromBech32(addr)
+	require.NoError(t, err)
+
+	creator := sdk.AccAddress(make([]byte, 20))
+	creator[0] = 0x88
+	escrow := types.SubnetEscrow{
+		Id:         1,
+		Creator:    creator.String(),
+		Amount:     1_000,
+		Slots:      []string{addr},
+		EpochIndex: 5,
+		Settled:    false,
+	}
+
+	// Set current epoch to 6 so settlement is cross-epoch with escrow epoch 5.
+	setupEpochGroupForSubnet(ctx, k, 6)
+
+	_, err = k.StoreSubnetEscrow(ctx, &escrow, 1)
+	require.NoError(t, err)
+
+	// Positive rewarded coins allows payout transfer.
+	err = k.SetEpochPerformanceSummary(ctx, types.EpochPerformanceSummary{
+		EpochIndex:    escrow.EpochIndex,
+		ParticipantId: addr,
+		RewardedCoins: 1,
+	})
+	require.NoError(t, err)
+
+	hostStats := []*types.SubnetSettlementHostStats{{
+		SlotId: 0,
+		Cost:   100,
+	}}
+	msg := buildSettlementTestData(t, escrow, []*dcrdsecp.PrivateKey{key}, hostStats, 0)
+
+	// Since this subnet is being settled in a different epoch than it was created,
+	// we expect a direct bank transfer to the validator's account.
+	mocks.BankKeeper.EXPECT().
+		SendCoinsFromModuleToAccount(gomock.Any(), types.ModuleName, recipient, gomock.Any(), gomock.Eq("subnet_escrow_payment")).
+		DoAndReturn(func(_ context.Context, _ string, _ sdk.AccAddress, coins sdk.Coins, _ string) error {
+			require.Len(t, coins, 1)
+			require.Equal(t, uint64(100), coins[0].Amount.Uint64())
+			return nil
+		})
+	mocks.BankKeeper.EXPECT().
+		SendCoinsFromModuleToAccount(gomock.Any(), types.ModuleName, creator, gomock.Any(), gomock.Eq("subnet_escrow_refund")).
+		DoAndReturn(func(_ context.Context, _ string, _ sdk.AccAddress, coins sdk.Coins, _ string) error {
+			require.Len(t, coins, 1)
+			require.Equal(t, escrow.Amount-100, coins[0].Amount.Uint64())
+			return nil
+		})
+
+	resp, err := ms.SettleSubnetEscrow(ctx, msg)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+}
+
 // TestSettleSubnetEscrow_UpdatesCurrentEpochStats verifies settlement aggregates host stats into CurrentEpochStats.
 func TestSettleSubnetEscrow_UpdatesCurrentEpochStats(t *testing.T) {
 	// Setup keeper, message server, and bech32 config.
