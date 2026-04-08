@@ -27,7 +27,6 @@ type ChatRequest struct {
 	TransferSignature string // signature of the transfer address
 	PromptHash        string
 	SignBodyHash      string
-	LogprobsMode      string
 }
 
 type OpenAiRequest struct {

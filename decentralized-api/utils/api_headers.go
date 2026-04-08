@@ -11,5 +11,4 @@ const (
 	XPromptHashHeader       = "X-Prompt-Hash"
 	XValidatorAddressHeader = "X-Validator-Address"
 	XEpochIdHeader          = "X-Epoch-Id"
-	XLogprobsModeHeader     = "X-Logprobs-Mode"
 )

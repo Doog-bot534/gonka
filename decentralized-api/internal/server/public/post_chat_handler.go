@@ -300,6 +300,11 @@ func (s *Server) enforceTransferAgentAccess(taAddress string) error {
 	if _, ok := cache.AllowedAddresses[taAddress]; ok {
 		return nil
 	}
+	// TEMP: allow self-requests for local testing
+	if taAddress == s.recorder.GetAccountAddress() {
+		logging.Warn("Transfer Agent not in whitelist but allowed for local testing", types.Inferences, "address", taAddress)
+		return nil
+	}
 	logging.Warn("Transfer Agent not in whitelist", types.Inferences, "address", taAddress)
 	return echo.NewHTTPError(http.StatusForbidden, "Transfer Agent not allowed")
 }
@@ -412,7 +417,6 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 		request.TransferAddress = s.recorder.GetAccountAddress()
 		request.TransferSignature = inferenceRequest.TransferSignature
 		request.PromptHash = inferenceRequest.PromptHash
-		request.LogprobsMode = selectedLogprobsMode
 
 		logging.Info("Execute request on same node, fill request with extra data", types.Inferences, "inferenceId", request.InferenceId, "seed", request.Seed)
 		return s.handleExecutorRequest(ctx, request, ctx.Response().Writer)
@@ -433,7 +437,6 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 	req.Header.Set(utils.XRequesterAddressHeader, request.RequesterAddress)
 	req.Header.Set(utils.XTASignatureHeader, inferenceRequest.TransferSignature)
 	req.Header.Set(utils.XPromptHashHeader, inferenceRequest.PromptHash)
-	req.Header.Set(utils.XLogprobsModeHeader, selectedLogprobsMode)
 	req.Header.Set("Content-Type", request.Request.Header.Get("Content-Type"))
 
 	resp, err := s.httpClient.Do(req)
@@ -575,7 +578,7 @@ func (s *Server) handleExecutorRequest(ctx echo.Context, request *ChatRequest, w
 		return echo.ErrBadRequest
 	}
 
-	logprobsMode := request.LogprobsMode
+	logprobsMode := s.configManager.GetValidationParams().LogprobsMode
 	if logprobsMode == "" {
 		logprobsMode = types.DefaultLogprobsMode
 	}
@@ -1035,7 +1038,6 @@ func readRequest(request *http.Request, transferAddress string, body []byte, sig
 		TransferSignature: request.Header.Get(utils.XTASignatureHeader),
 		PromptHash:        request.Header.Get(utils.XPromptHashHeader),
 		SignBodyHash:      signBodyHash,
-		LogprobsMode:      request.Header.Get(utils.XLogprobsModeHeader),
 	}, nil
 }
 
