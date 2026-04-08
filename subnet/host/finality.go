@@ -1,6 +1,7 @@
 package host
 
 import (
+	"subnet/logging"
 	"subnet/storage"
 	"subnet/types"
 )
@@ -18,6 +19,7 @@ func computeFinalizedNonce(store storage.Storage, escrowID string, latestNonce u
 	for n := uint64(1); n <= latestNonce; n++ {
 		sigs, err := store.GetSignatures(escrowID, n)
 		if err != nil {
+			logging.Error("get signatures failed", "subsystem", "host", "escrow_id", escrowID, "nonce", n, "error", err)
 			continue
 		}
 		for slotID := range sigs {
