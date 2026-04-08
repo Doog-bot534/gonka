@@ -27,11 +27,17 @@ func (msg *MsgSubmitHardwareDiff) ValidateBasic() error {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "newOrModified has more than %d elements", MaxNewOrModified)
 	}
 	for _, node := range msg.Removed {
+		if node == nil {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "removed contains nil hardware node")
+		}
 		if err := node.ValidateBasic(); err != nil {
 			return err
 		}
 	}
 	for _, node := range msg.NewOrModified {
+		if node == nil {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "newOrModified contains nil hardware node")
+		}
 		if err := node.ValidateBasic(); err != nil {
 			return err
 		}
