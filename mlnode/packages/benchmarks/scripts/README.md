@@ -121,8 +121,8 @@ If `--exp-dir` is not provided, each script creates a new timestamped directory 
 
 | Image | Tag | URL |
 |-------|-----|-----|
-| vLLM | `v0.15.1-alpha` | `ghcr.io/product-science/vllm:v0.15.1-alpha` |
-| MLNode | `3.0.13-alpha` | `ghcr.io/product-science/mlnode:3.0.13-alpha` |
+| vLLM | `v0.15.1-alpha1` | `ghcr.io/product-science/vllm:v0.15.1-alpha1` |
+| MLNode | `3.0.13-alpha1` | `ghcr.io/product-science/mlnode:3.0.13-alpha1` |
 
 ### Server requirements
 
