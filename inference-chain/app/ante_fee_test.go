@@ -175,9 +175,9 @@ func TestIsExemptMessageType(t *testing.T) {
 	require.True(t, isExemptMessageType(&blstypes.MsgSubmitVerificationVector{}))
 	require.True(t, isExemptMessageType(&blstypes.MsgSubmitGroupKeyValidationSignature{}))
 	require.True(t, isExemptMessageType(&blstypes.MsgSubmitPartialSignature{}))
-	require.True(t, isExemptMessageType(&blstypes.MsgRequestThresholdSignature{}))
 
 	// Not exempt
+	require.False(t, isExemptMessageType(&blstypes.MsgRequestThresholdSignature{})) // open to anyone, no rate limit
 	require.False(t, isExemptMessageType(&inferencetypes.MsgPoCV2StoreCommit{}))
 	require.False(t, isExemptMessageType(&inferencetypes.MsgClaimRewards{}))
 	require.False(t, isExemptMessageType(&inferencetypes.MsgSubmitNewParticipant{}))

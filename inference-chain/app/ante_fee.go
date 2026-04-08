@@ -129,13 +129,16 @@ func isExemptMessageType(msg sdk.Msg) bool {
 		*inferencetypes.MsgRevalidateInference:
 		return true
 
-	// BLS DKG protocol messages (epoch-scoped)
+	// BLS DKG protocol messages (epoch-scoped, duplicate-checked, deadline-enforced)
 	case *blstypes.MsgSubmitDealerPart,
 		*blstypes.MsgSubmitVerificationVector,
 		*blstypes.MsgSubmitGroupKeyValidationSignature,
-		*blstypes.MsgSubmitPartialSignature,
-		*blstypes.MsgRequestThresholdSignature:
+		*blstypes.MsgSubmitPartialSignature:
 		return true
+
+	// NOTE: MsgRequestThresholdSignature is intentionally NOT exempt.
+	// It has no per-participant rate limit — anyone can request signatures
+	// with arbitrary RequestIds.
 
 	default:
 		return false
