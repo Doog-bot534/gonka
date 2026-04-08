@@ -152,7 +152,7 @@ func isPrivateIP(ip net.IP) bool {
 
 func ValidateNodeId(nodeId string) error {
 	if nodeId == "" {
-		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "node_id is cannot be blank")
+		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "node_id cannot be blank")
 	}
 	if len(nodeId) > 256 {
 		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "node_id is too long")
