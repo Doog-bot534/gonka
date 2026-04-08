@@ -40,6 +40,9 @@ func (msg *MsgSubmitHardwareDiff) ValidateBasic() error {
 }
 
 func (node *HardwareNode) ValidateBasic() error {
+	if node == nil {
+		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "node is nil")
+	}
 	err := utils.ValidateNodeId(node.LocalId)
 	if err != nil {
 		return err
@@ -62,6 +65,9 @@ func (node *HardwareNode) ValidateBasic() error {
 		}
 	}
 	for _, hardware := range node.Hardware {
+		if hardware == nil {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "hardware is nil")
+		}
 		if len(hardware.Type) > 256 {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "hardware type is too long")
 		}
