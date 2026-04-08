@@ -366,9 +366,14 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "no executors available for model")
 	}
 
+	selectedLogprobsMode := s.configManager.GetValidationParams().LogprobsMode
+	if selectedLogprobsMode == "" {
+		selectedLogprobsMode = types.DefaultLogprobsMode
+	}
+
 	seed := rand.Int31()
 	inferenceUUID := request.AuthKey
-	inferenceRequest, err := createInferenceStartRequest(s, request, seed, request.AuthKey, executor, s.configManager.GetCurrentNodeVersion(), promptTokenCount)
+	inferenceRequest, err := createInferenceStartRequest(s, request, seed, request.AuthKey, executor, s.configManager.GetCurrentNodeVersion(), promptTokenCount, selectedLogprobsMode)
 	if err != nil {
 		logging.Error("Failed to create inference start request", types.Inferences, "error", err)
 		return err
@@ -407,6 +412,7 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 		request.TransferAddress = s.recorder.GetAccountAddress()
 		request.TransferSignature = inferenceRequest.TransferSignature
 		request.PromptHash = inferenceRequest.PromptHash
+		request.LogprobsMode = selectedLogprobsMode
 
 		logging.Info("Execute request on same node, fill request with extra data", types.Inferences, "inferenceId", request.InferenceId, "seed", request.Seed)
 		return s.handleExecutorRequest(ctx, request, ctx.Response().Writer)
@@ -427,6 +433,7 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 	req.Header.Set(utils.XRequesterAddressHeader, request.RequesterAddress)
 	req.Header.Set(utils.XTASignatureHeader, inferenceRequest.TransferSignature)
 	req.Header.Set(utils.XPromptHashHeader, inferenceRequest.PromptHash)
+	req.Header.Set(utils.XLogprobsModeHeader, selectedLogprobsMode)
 	req.Header.Set("Content-Type", request.Request.Header.Get("Content-Type"))
 
 	resp, err := s.httpClient.Do(req)
@@ -568,7 +575,11 @@ func (s *Server) handleExecutorRequest(ctx echo.Context, request *ChatRequest, w
 		return echo.ErrBadRequest
 	}
 
-	modifiedRequestBody, err := completionapi.ModifyRequestBody(request.Body, int32(seed))
+	logprobsMode := request.LogprobsMode
+	if logprobsMode == "" {
+		logprobsMode = types.DefaultLogprobsMode
+	}
+	modifiedRequestBody, err := completionapi.ModifyRequestBodyWithLogprobsMode(request.Body, int32(seed), logprobsMode)
 	if err != nil {
 		logging.Warn("Unable to modify request body", types.Inferences, "error", err)
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid chat completion request: "+err.Error())
@@ -926,8 +937,8 @@ func getModifiedPromptHash(requestBytes []byte) (string, []byte, error) {
 	return promptHash, []byte(canonicalJSON), nil
 }
 
-func createInferenceStartRequest(s *Server, request *ChatRequest, seed int32, inferenceId string, executor *ExecutorDestination, nodeVersion string, promptTokenCount int) (*inference.MsgStartInference, error) {
-	modifiedRequest, err := completionapi.ModifyRequestBody(request.Body, seed)
+func createInferenceStartRequest(s *Server, request *ChatRequest, seed int32, inferenceId string, executor *ExecutorDestination, nodeVersion string, promptTokenCount int, logprobsMode string) (*inference.MsgStartInference, error) {
+	modifiedRequest, err := completionapi.ModifyRequestBodyWithLogprobsMode(request.Body, seed, logprobsMode)
 	if err != nil {
 		logging.Warn("Unable to normalize request body for inference start", types.Inferences, "error", err)
 		return nil, echo.NewHTTPError(http.StatusBadRequest, "invalid chat completion request: "+err.Error())
@@ -1024,6 +1035,7 @@ func readRequest(request *http.Request, transferAddress string, body []byte, sig
 		TransferSignature: request.Header.Get(utils.XTASignatureHeader),
 		PromptHash:        request.Header.Get(utils.XPromptHashHeader),
 		SignBodyHash:      signBodyHash,
+		LogprobsMode:      request.Header.Get(utils.XLogprobsModeHeader),
 	}, nil
 }
 
