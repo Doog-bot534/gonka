@@ -12,30 +12,21 @@ import (
 // A slot that signed at nonce n is considered to have implicitly confirmed all
 // nonces <= n by building on top of them.
 func computeFinalizedNonce(store storage.Storage, escrowID string, latestNonce uint64, group []types.SlotAssignment) uint64 {
-	// confirmedBy[n] = bitmap of slots that have signed at nonce >= n.
-	// Bitmap128 is a value type (16 bytes); max group size is 128.
-	confirmedBy := make(map[uint64]types.Bitmap128)
-
-	for n := uint64(1); n <= latestNonce; n++ {
+	// Walk nonces high→low. After processing nonce n, running is the set of slots that
+	// signed at any nonce in [n, latestNonce], i.e. signed at nonce >= n 
+	threshold := twoThirdsWeight(group)
+	var running types.Bitmap128
+	for n := latestNonce; n > 0; n-- {
 		sigs, err := store.GetSignatures(escrowID, n)
 		if err != nil {
 			logging.Error("get signatures failed", "subsystem", "host", "escrow_id", escrowID, "nonce", n, "error", err)
-			continue
-		}
-		for slotID := range sigs {
-			// This slot signed at n, confirming all nonces 1..n.
-			for prev := uint64(1); prev <= n; prev++ {
-				bm := confirmedBy[prev] // zero value if absent
-				bm.Set(slotID)
-				confirmedBy[prev] = bm
+		} else {
+			for slotID := range sigs {
+				running.Set(slotID)
 			}
 		}
-	}
-
-	threshold := twoThirdsWeight(group)
-	for f := latestNonce; f > 0; f-- {
-		if bitmapSlotWeight(confirmedBy[f], group) >= threshold {
-			return f
+		if bitmapSlotWeight(running, group) >= threshold {
+			return n
 		}
 	}
 	return 0 // warm-up period: not yet finalized

@@ -118,7 +118,8 @@ func newRecoveryTestHost(
 	group := testutil.MakeGroup(hosts)
 	config := testutil.DefaultConfig(len(hosts))
 	verifier := signing.NewSecp256k1Verifier()
-	sm := state.NewStateMachine("escrow-1", config, group, 10000, user.Address(), verifier, state.WithWarmKeyResolver(resolver))
+	sm, err := state.NewStateMachine("escrow-1", config, group, 10000, user.Address(), verifier, state.WithWarmKeyResolver(resolver))
+	require.NoError(t, err)
 	engine := stub.NewInferenceEngine()
 	h, err := NewHost(sm, hosts[hostIdx], engine, "escrow-1", group, nil,
 		WithGrace(10), WithStorage(store), WithVerifier(verifier))
