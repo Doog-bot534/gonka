@@ -41,10 +41,20 @@ func (k msgServer) RegisterBridgeAddresses(goCtx context.Context, msg *types.Msg
 				"bridgeAddress", address,
 				"orphanedCW20", existingWrapped.WrappedContractAddress,
 			)
-			_ = k.WrappedTokenContractsMap.Remove(ctx,
-				collections.Join(chainId, strings.ToLower(address)))
-			_ = k.WrappedContractReverseIndex.Remove(ctx,
-				strings.ToLower(existingWrapped.WrappedContractAddress))
+			tokenKey := collections.Join(chainId, strings.ToLower(address))
+			
+			if err := k.WrappedTokenContractsMap.Remove(ctx, tokenKey); err != nil {
+				return nil, err
+			}
+			if err := k.WrappedContractReverseIndex.Remove(ctx, strings.ToLower(existingWrapped.WrappedContractAddress)); err != nil {
+				return nil, err
+			}
+			if err := k.WrappedTokenMetadataMap.Remove(ctx, tokenKey); err != nil {
+				return nil, err
+			}
+			if err := k.LiquidityPoolApprovedTokensMap.Remove(ctx, tokenKey); err != nil {
+				return nil, err
+			}
 		}
 
 		bridgeAddr := types.BridgeContractAddress{
