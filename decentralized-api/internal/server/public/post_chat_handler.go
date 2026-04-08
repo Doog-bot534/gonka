@@ -300,11 +300,6 @@ func (s *Server) enforceTransferAgentAccess(taAddress string) error {
 	if _, ok := cache.AllowedAddresses[taAddress]; ok {
 		return nil
 	}
-	// TEMP: allow self-requests for local testing
-	if taAddress == s.recorder.GetAccountAddress() {
-		logging.Warn("Transfer Agent not in whitelist but allowed for local testing", types.Inferences, "address", taAddress)
-		return nil
-	}
 	logging.Warn("Transfer Agent not in whitelist", types.Inferences, "address", taAddress)
 	return echo.NewHTTPError(http.StatusForbidden, "Transfer Agent not allowed")
 }
