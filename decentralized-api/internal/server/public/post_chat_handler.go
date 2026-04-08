@@ -288,15 +288,16 @@ func (s *Server) handleTransferRequest(ctx echo.Context, request *ChatRequest) e
 	logging.Debug("GET inference requester for transfer", types.Inferences, "address", request.RequesterAddress)
 
 	queryClient := s.recorder.NewInferenceQueryClient()
-	requester, err := queryClient.InferenceParticipant(ctx.Request().Context(), &types.QueryInferenceParticipantRequest{Address: request.RequesterAddress})
+	requester, err := queryClient.AccountByAddress(ctx.Request().Context(), &types.QueryAccountByAddressRequest{Address: request.RequesterAddress})
 	if err != nil {
 		logging.Error("Failed to get inference requester", types.Inferences, "address", request.RequesterAddress, "error", err)
 		return err
 	}
 
-	promptText := ""
-	for _, message := range request.OpenAiRequest.Messages {
-		promptText += message.Content + "\n"
+	promptText, ignoredParts := FlattenMessagesText(request.OpenAiRequest.Messages)
+	if ignoredParts > 0 {
+		logging.Info("Ignored non-text prompt parts while estimating prompt size", types.Inferences,
+			"ignored_parts", ignoredParts, "model", request.OpenAiRequest.Model)
 	}
 
 	promptTokenCount, err := s.getPromptTokenEstimation(promptText, request.OpenAiRequest.Model)
@@ -501,9 +502,10 @@ func (s *Server) extractPromptTextFromRequest(requestBytes []byte) (string, erro
 		return "", err
 	}
 
-	promptText := ""
-	for _, message := range openAiRequest.Messages {
-		promptText += message.Content + "\n"
+	promptText, ignoredParts := FlattenMessagesText(openAiRequest.Messages)
+	if ignoredParts > 0 {
+		logging.Info("Ignored non-text prompt parts while extracting prompt text", types.Inferences,
+			"ignored_parts", ignoredParts, "model", openAiRequest.Model)
 	}
 	return promptText, nil
 }
@@ -524,7 +526,7 @@ func (s *Server) handleExecutorRequest(ctx echo.Context, request *ChatRequest, w
 	modifiedRequestBody, err := completionapi.ModifyRequestBody(request.Body, int32(seed))
 	if err != nil {
 		logging.Warn("Unable to modify request body", types.Inferences, "error", err)
-		return err
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid chat completion request: "+err.Error())
 	}
 
 	computedPromptHash, promptPayload, err := getModifiedPromptHash(modifiedRequestBody.NewBody)
@@ -622,7 +624,7 @@ func (s *Server) getAllowedPubKeys(ctx echo.Context, granterAddress string) ([]s
 
 func (s *Server) validateFullRequest(ctx echo.Context, request *ChatRequest) error {
 	queryClient := s.recorder.NewInferenceQueryClient()
-	dev, err := queryClient.InferenceParticipant(ctx.Request().Context(), &types.QueryInferenceParticipantRequest{Address: request.RequesterAddress})
+	dev, err := queryClient.AccountByAddress(ctx.Request().Context(), &types.QueryAccountByAddressRequest{Address: request.RequesterAddress})
 	if err != nil {
 		logging.Error("Failed to get inference requester", types.Inferences, "address", request.RequesterAddress, "error", err)
 		return err
@@ -875,7 +877,8 @@ func getModifiedPromptHash(requestBytes []byte) (string, []byte, error) {
 func createInferenceStartRequest(s *Server, request *ChatRequest, seed int32, inferenceId string, executor *ExecutorDestination, nodeVersion string, promptTokenCount int) (*inference.MsgStartInference, error) {
 	modifiedRequest, err := completionapi.ModifyRequestBody(request.Body, seed)
 	if err != nil {
-		return nil, err
+		logging.Warn("Unable to normalize request body for inference start", types.Inferences, "error", err)
+		return nil, echo.NewHTTPError(http.StatusBadRequest, "invalid chat completion request: "+err.Error())
 	}
 	modifiedPromptHash, _, err := getModifiedPromptHash(modifiedRequest.NewBody)
 	if err != nil {
@@ -933,7 +936,8 @@ func readRequest(request *http.Request, writer http.ResponseWriter, transferAddr
 	openAiRequest := OpenAiRequest{}
 	err = json.Unmarshal(body, &openAiRequest)
 	if err != nil {
-		return nil, err
+		logging.Warn("Invalid chat completion request body", types.Inferences, "error", err)
+		return nil, echo.NewHTTPError(http.StatusBadRequest, "invalid chat completion request: "+err.Error())
 	}
 
 	timestamp, err := strconv.ParseInt(request.Header.Get(utils.XTimestampHeader), 10, 64)
@@ -972,10 +976,10 @@ func readRequestBody(r *http.Request, writer http.ResponseWriter) ([]byte, error
 }
 
 // validateRequester validates requester with dynamic pricing fallback to legacy
-func (s *Server) validateRequester(ctx context.Context, request *ChatRequest, requester *types.QueryInferenceParticipantResponse, promptTokenCount int) error {
+func (s *Server) validateRequester(ctx context.Context, request *ChatRequest, requester *types.QueryAccountByAddressResponse, promptTokenCount int) error {
 	if requester == nil {
-		logging.Error("Inference participant not found", types.Inferences, "address", request.RequesterAddress)
-		return ErrInferenceParticipantNotFound
+		logging.Error("Account not found", types.Inferences, "address", request.RequesterAddress)
+		return ErrAccountNotFound
 	}
 
 	err := validateTransferRequest(request, requester.Pubkey)

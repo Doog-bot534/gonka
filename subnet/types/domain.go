@@ -15,7 +15,7 @@ const (
 type InferenceStatus uint8
 
 const (
-	StatusPending     InferenceStatus = iota
+	StatusPending InferenceStatus = iota
 	StatusStarted
 	StatusFinished
 	StatusChallenged
@@ -26,22 +26,22 @@ const (
 
 // InferenceRecord tracks the state of a single inference within a session.
 type InferenceRecord struct {
-	Status       InferenceStatus
-	ExecutorSlot uint32
-	Model        string
-	PromptHash   []byte
-	ResponseHash []byte
-	InputLength  uint64
-	MaxTokens    uint64
-	InputTokens  uint64
-	OutputTokens uint64
-	ReservedCost uint64
-	ActualCost   uint64
-	StartedAt    int64
-	ConfirmedAt  int64
-	VotesValid   uint32
-	VotesInvalid uint32
-	ValidatedBy  Bitmap128
+	Status       InferenceStatus `json:"status"`
+	ExecutorSlot uint32          `json:"executor_slot"`
+	Model        string          `json:"model"`
+	PromptHash   []byte          `json:"prompt_hash"`
+	ResponseHash []byte          `json:"response_hash,omitempty"`
+	InputLength  uint64          `json:"input_length"`
+	MaxTokens    uint64          `json:"max_tokens"`
+	InputTokens  uint64          `json:"input_tokens,omitempty"`
+	OutputTokens uint64          `json:"output_tokens,omitempty"`
+	ReservedCost uint64          `json:"reserved_cost"`
+	ActualCost   uint64          `json:"actual_cost,omitempty"`
+	StartedAt    int64           `json:"started_at"`
+	ConfirmedAt  int64           `json:"confirmed_at,omitempty"`
+	VotesValid   uint32          `json:"votes_valid,omitempty"`
+	VotesInvalid uint32          `json:"votes_invalid,omitempty"`
+	ValidatedBy  Bitmap128       `json:"validated_by,omitempty"`
 }
 
 // HostStats tracks per-host performance metrics within a session.
@@ -57,17 +57,20 @@ type HostStats struct {
 type SessionConfig struct {
 	RefusalTimeout   int64  // seconds before reason=refused timeout
 	ExecutionTimeout int64  // seconds before reason=execution timeout
-	TokenPrice       uint64 // price per unit (flat per session)
+	TokenPrice       uint64 // price per input / output token (flat per session)
+	CreateSubnetFee  uint64 // one-time fee charged when creating a subnet session
+	FeePerNonce      uint64 // fee charged per applied nonce (diff)
 	VoteThreshold    uint32 // minimum accept votes for timeout (total_slots / 2)
 	ValidationRate   uint32 // basis points (10000 = 100%, 1000 = 10%)
 }
 
 // EscrowState is the full state of a subnet session.
 type EscrowState struct {
-	EscrowID    string
-	Config      SessionConfig
-	Group       []SlotAssignment
+	EscrowID      string
+	Config        SessionConfig
+	Group         []SlotAssignment
 	Balance       uint64
+	Fees          uint64 // total fees collected (subnet create + per-nonce)
 	Phase         SessionPhase
 	FinalizeNonce uint64
 	Inferences    map[uint64]*InferenceRecord

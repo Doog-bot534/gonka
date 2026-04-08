@@ -12,7 +12,6 @@ import (
 	"decentralized-api/internal/validation"
 	"decentralized-api/logging"
 	"decentralized-api/statsstorage"
-	"decentralized-api/training"
 	"decentralized-api/upgrade"
 	"encoding/json"
 	"errors"
@@ -30,6 +29,8 @@ const (
 	// BLS Typed Event Types (from EmitTypedEvent)
 	blsKeyGenerationInitiatedEvent    = "inference.bls.EventKeyGenerationInitiated"
 	blsVerifyingPhaseStartedEvent     = "inference.bls.EventVerifyingPhaseStarted"
+	blsDisputePhaseStartedEvent       = "inference.bls.EventDisputePhaseStarted"
+	blsDKGFailedEvent                 = "inference.bls.EventDKGFailed"
 	blsGroupPublicKeyGeneratedEvent   = "inference.bls.EventGroupPublicKeyGenerated"
 	blsThresholdSigningRequestedEvent = "inference.bls.EventThresholdSigningRequested"
 
@@ -44,7 +45,6 @@ type EventListener struct {
 	configManager         *apiconfig.ConfigManager
 	validator             *validation.InferenceValidator
 	transactionRecorder   cosmosclient.InferenceCosmosClient
-	trainingExecutor      *training.Executor
 	blsManager            *bls.BlsManager
 	nodeCaughtUp          atomic.Bool
 	phaseTracker          *chainphase.ChainPhaseTracker
@@ -73,7 +73,6 @@ func NewEventListener(
 	nodeBroker *broker.Broker,
 	validator *validation.InferenceValidator,
 	transactionRecorder cosmosclient.InferenceCosmosClient,
-	trainingExecutor *training.Executor,
 	phaseTracker *chainphase.ChainPhaseTracker,
 	cancelFunc context.CancelFunc,
 	blsManager *bls.BlsManager,
@@ -96,7 +95,6 @@ func NewEventListener(
 		&InferenceStatusUpdatedEventHandler{},
 		&InferenceValidationEventHandler{},
 		&SubmitProposalEventHandler{},
-		&TrainingTaskAssignedEventHandler{},
 	}
 
 	bo := NewBlockObserver(configManager)
@@ -106,7 +104,6 @@ func NewEventListener(
 		transactionRecorder:   transactionRecorder,
 		configManager:         configManager,
 		validator:             validator,
-		trainingExecutor:      trainingExecutor,
 		phaseTracker:          phaseTracker,
 		dispatcher:            dispatcher,
 		cancelFunc:            cancelFunc,
@@ -370,7 +367,7 @@ func (el *EventListener) handleBLSEvents(event *chainevents.JSONRPCResponse, wor
 		logging.Info("Key generation initiated event received", types.EventProcessing, "worker", workerName)
 		err := el.blsManager.ProcessKeyGenerationInitiated(event)
 		if err != nil {
-			logging.Error("Failed to process key generation initiated event", types.EventProcessing, "error", err, "worker", workerName)
+			el.logBLSEventError("Failed to process key generation initiated event", err, workerName)
 		}
 	}
 
@@ -378,7 +375,23 @@ func (el *EventListener) handleBLSEvents(event *chainevents.JSONRPCResponse, wor
 		logging.Info("Verifying phase started event received", types.EventProcessing, "worker", workerName)
 		err := el.blsManager.ProcessVerifyingPhaseStarted(event)
 		if err != nil {
-			logging.Error("Failed to process verifying phase started event", types.EventProcessing, "error", err, "worker", workerName)
+			el.logBLSEventError("Failed to process verifying phase started event", err, workerName)
+		}
+	}
+
+	if epochIdValues := event.Result.Events[blsDisputePhaseStartedEvent+".epoch_id"]; len(epochIdValues) > 0 {
+		logging.Info("Dispute phase started event received", types.EventProcessing, "worker", workerName)
+		err := el.blsManager.ProcessDisputePhaseStarted(event)
+		if err != nil {
+			el.logBLSEventError("Failed to process dispute phase started event", err, workerName)
+		}
+	}
+
+	if epochIdValues := event.Result.Events[blsDKGFailedEvent+".epoch_id"]; len(epochIdValues) > 0 {
+		logging.Info("DKG failed event received", types.EventProcessing, "worker", workerName)
+		err := el.blsManager.ProcessDKGFailed(event)
+		if err != nil {
+			el.logBLSEventError("Failed to process DKG failed event", err, workerName)
 		}
 	}
 
@@ -386,9 +399,19 @@ func (el *EventListener) handleBLSEvents(event *chainevents.JSONRPCResponse, wor
 		logging.Info("Group public key generated event received", types.EventProcessing, "worker", workerName)
 		err := el.blsManager.ProcessGroupPublicKeyGenerated(event)
 		if err != nil {
-			logging.Error("Failed to process group public key generated event", types.EventProcessing, "error", err, "worker", workerName)
+			el.logBLSEventError("Failed to process group public key generated event", err, workerName)
 		}
 	}
+}
+
+func (el *EventListener) logBLSEventError(message string, err error, workerName string) {
+	if errors.Is(err, bls.ErrOperationQueuedForRetry) {
+		logging.Warn(message+" (queued for async retry)", types.EventProcessing,
+			"error", err,
+			"worker", workerName)
+		return
+	}
+	logging.Error(message, types.EventProcessing, "error", err, "worker", workerName)
 }
 
 func (el *EventListener) handleMessage(event *chainevents.JSONRPCResponse, name string) {
@@ -671,30 +694,6 @@ func (e *SubmitProposalEventHandler) Handle(event *chainevents.JSONRPCResponse, 
 		return errors.New("proposal_id not found in event")
 	}
 	logging.Debug("Handling `submit_proposal` event", types.EventProcessing, "proposalId", proposalIds[0])
-	return nil
-}
-
-type TrainingTaskAssignedEventHandler struct{}
-
-func (e *TrainingTaskAssignedEventHandler) GetName() string {
-	return "training_task_assigned"
-}
-
-func (e *TrainingTaskAssignedEventHandler) CanHandle(event *chainevents.JSONRPCResponse) bool {
-	return len(event.Result.Events["training_task_assigned.task_id"]) > 0
-}
-
-func (e *TrainingTaskAssignedEventHandler) Handle(event *chainevents.JSONRPCResponse, el *EventListener) error {
-	if el.isNodeSynced() {
-		for _, taskId := range event.Result.Events["training_task_assigned.task_id"] {
-			taskIdUint, err := strconv.ParseUint(taskId, 10, 64)
-			if err != nil {
-				logging.Error("Failed to parse task ID", types.Training, "error", err)
-				continue // Continue to the next task ID
-			}
-			el.trainingExecutor.ProcessTaskAssignedEvent(taskIdUint)
-		}
-	}
 	return nil
 }
 
