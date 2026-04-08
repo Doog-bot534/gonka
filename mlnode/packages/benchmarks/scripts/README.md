@@ -117,6 +117,13 @@ If `--exp-dir` is not provided, each script creates a new timestamped directory 
 
 ## Prerequisites
 
+### Docker images
+
+| Image | Tag | URL |
+|-------|-----|-----|
+| vLLM | `v0.15.1-alpha` | `ghcr.io/product-science/vllm:v0.15.1-alpha` |
+| MLNode | `3.0.13-alpha` | `ghcr.io/product-science/mlnode:3.0.13-alpha` |
+
 ### Server requirements
 
 The target server must be running the mlnode API (`api.app:app` on port 8080). Key endpoints:
@@ -134,7 +141,6 @@ On the target machine:
 
 ```bash
 . /app/packages/api/.venv/bin/activate
-export VLLM_ATTENTION_BACKEND=FLASHINFER
 cd /app/packages
 python -m uvicorn api.app:app --host 0.0.0.0 --port 8080
 ```
@@ -148,61 +154,50 @@ python -m uvicorn api.app:app --host 0.0.0.0 --port 8080
 | FP8 | `Qwen/Qwen3-235B-A22B-Instruct-2507-FP8` |
 | INT4 (W4A16 GPTQ) | `chriswritescode/Qwen3-235B-A22B-Instruct-2507-INT4-W4A16` |
 
-| Parameter | Value |
-|-----------|-------|
-| `VLLM_ATTENTION_BACKEND` | `FLASHINFER` (must be set before starting the server) |
-| `--attention-backend` | `FLASHINFER` (can also be passed as a deployment parameter via `additional_args`) |
-| `--max-model-len` | `240000` |
-| `--tensor-parallel-size` | `4` on H100, H200, A100; `2` on B200 |
-| `--max-num-batched-tokens` | `16384` on H100, A100. Not needed on B200/H200. Must be `≥ batch_size × seq_len` for PoC (see below). |
-| `--logprobs-mode` | `processed_logprobs` for production benchmarks (default in our deployments). Use `raw_logprobs` for debugging (see below). |
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| `--max-model-len` | `240000` | Required |
+| `--tensor-parallel-size` | `4` on H100, H200, A100; `2` on B200 | Required |
+| `--attention-backend` | `FLASHINFER` | Baked as default in vLLM v0.15.1. Override via `additional_args` if needed. |
+| `--max-num-batched-tokens` | `32768` | Baked as default. Must be `≥ batch_size × seq_len` for PoC (see below). |
+| `--logprobs-mode` | `processed_logprobs` | Baked as default. Can also be overridden per-request (see below). |
+| `--compilation-config` | `'{"custom_ops": ["+quant_fp8", "+rms_norm", "+silu_and_mul", "+fused_moe", "+rotary_embedding", "+apply_rotary_emb", "none"]}'` | Baked as default for Qwen 235B. |
 
 #### Choosing the attention backend
 
-vLLM selects an attention backend via priority order based on GPU compute capability. You can override this in two ways:
+As of vLLM v0.15.1, `FLASHINFER` is the **baked default** attention backend. You do not need to set it explicitly — it is used automatically unless overridden.
 
-1. **Environment variable** (before starting the API server): `export VLLM_ATTENTION_BACKEND=FLASHINFER`
-2. **Deployment parameter** (in the `/inference/up` request): pass `"--attention-backend", "FLASHINFER"` in `additional_args`
-
-Both are equivalent — the env var is read at vLLM process startup, the CLI flag overrides it. When both are set, the CLI flag wins.
+To override, pass `"--attention-backend", "<BACKEND>"` in `additional_args` when calling `/inference/up`. You can also set the `VLLM_ATTENTION_BACKEND` environment variable before starting the API server; the CLI flag takes precedence when both are set.
 
 Available backends (GPU-dependent):
 
 | Backend | Notes |
 |---------|-------|
-| `FLASH_ATTN` | FlashAttention v2. Default on most Ampere/Hopper GPUs. |
-| `FLASHINFER` | FlashInfer. Required for MoE models like Qwen3-235B for correct PoC behavior. |
+| `FLASH_ATTN` | FlashAttention v2. |
+| `FLASHINFER` | FlashInfer. **Default.** Required for MoE models like Qwen3-235B for correct PoC behavior. |
 | `TRITON_ATTN` | Triton-based. Fallback when Flash/FlashInfer unavailable. |
 | `FLEX_ATTENTION` | PyTorch Flex Attention. |
 
-When `auto` is selected (default), vLLM picks the first compatible backend in priority order: `FLASH_ATTN → FLASHINFER → TRITON_ATTN → FLEX_ATTENTION`. Set explicitly when cross-GPU PoC comparisons require matching backends.
-
 #### Choosing the logprobs mode
 
-vLLM's `--logprobs-mode` flag controls what values are returned in the `logprobs` and `prompt_logprobs` fields. Pass it as a deployment parameter in `additional_args`.
+`--logprobs-mode` controls what values are returned in the `logprobs` and `prompt_logprobs` fields. As of vLLM v0.15.1, `processed_logprobs` is the **baked default**.
 
 | Mode | Description |
 |------|-------------|
-| `processed_logprobs` | Logprobs **after** all logit processors (temperature, top-k/top-p, penalties). Token IDs are returned as strings, `-inf` is clamped to `-9999.0`. **Use this for production benchmarks.** |
-| `raw_logprobs` | Logprobs from the model's raw output **before** any post-processing. Reflects the true model distribution without sampling-parameter artifacts. Useful for debugging. |
+| `processed_logprobs` | Logprobs **after** all logit processors (temperature, top-k/top-p, penalties). Token IDs are returned as strings, `-inf` is clamped to `-9999.0`. **Default.** |
+| `raw_logprobs` | Logprobs from the model's raw output **before** any post-processing. Reflects the true model distribution without sampling-parameter artifacts. |
 | `processed_logits` | Raw logit values (not log-softmax) after processors. |
 | `raw_logits` | Raw logit values before processors. |
 
-**Our deployments use `processed_logprobs`.** Always pass it explicitly so results are comparable across runs:
+**Per-request override:** The logprobs mode can also be set on individual API requests via the `logprobs_mode` field, overriding the deployment-level default. Requests without the override fall back to the deployment default. Mixed batches (some requests raw, some processed) are handled automatically.
 
-```bash
-curl -X POST http://<HOST>:<API_PORT>/api/v1/inference/up \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "Qwen/Qwen3-235B-A22B-Instruct-2507-FP8",
-    "dtype": "auto",
-    "additional_args": ["--tensor-parallel-size", "4", "--max-model-len", "240000", "--max-num-batched-tokens", "16384", "--attention-backend", "FLASHINFER", "--logprobs-mode", "processed_logprobs"]
-  }'
-```
+**Auto-detection for validation:** When a validation request (with `enforced_tokens`) does not specify `logprobs_mode`, vLLM automatically detects whether the original inference used raw or processed logprobs and sets the mode accordingly. This handles backward compatibility with older vLLM versions.
 
-> **Note:** vLLM's built-in default is `raw_logprobs`. We override to `processed_logprobs` because our validation distance metrics (`distance2`) are calibrated against processed logprobs. Switching modes between inference and validation runs will produce incomparable distances.
+> **Priority chain:** explicit `logprobs_mode` on the request > auto-detected mode from enforced token IDs > deployment-level `--logprobs-mode` default.
 
 #### Loading a model
+
+Since `attention_backend`, `logprobs_mode`, `max_num_batched_tokens`, and `compilation_config` are baked as defaults, deployment only requires the model-specific parameters:
 
 **FP8:**
 
@@ -212,7 +207,7 @@ curl -X POST http://<HOST>:<API_PORT>/api/v1/inference/up \
   -d '{
     "model": "Qwen/Qwen3-235B-A22B-Instruct-2507-FP8",
     "dtype": "auto",
-    "additional_args": ["--tensor-parallel-size", "4", "--max-model-len", "240000", "--max-num-batched-tokens", "16384", "--attention-backend", "FLASHINFER", "--logprobs-mode", "processed_logprobs"]
+    "additional_args": ["--tensor-parallel-size", "4", "--max-model-len", "240000"]
   }'
 ```
 
@@ -224,9 +219,11 @@ curl -X POST http://<HOST>:<API_PORT>/api/v1/inference/up \
   -d '{
     "model": "chriswritescode/Qwen3-235B-A22B-Instruct-2507-INT4-W4A16",
     "dtype": "auto",
-    "additional_args": ["--tensor-parallel-size", "4", "--max-model-len", "240000", "--max-num-batched-tokens", "16384", "--attention-backend", "FLASHINFER", "--logprobs-mode", "processed_logprobs"]
+    "additional_args": ["--tensor-parallel-size", "4", "--max-model-len", "240000"]
   }'
 ```
+
+Any baked default can be overridden by including it in `additional_args`.
 
 ### Python environment (client side)
 
@@ -388,7 +385,7 @@ The `servers` URL must point to the **mlnode API port** (8080).
 
 > **Standard PoC test parameters:** When running PoC manually (via `curl` or ad-hoc scripts), always use the canonical values from the config above: `seq_len: 1024`, `k_dim: 12`, `block_hash: "TEST_BLOCK"`, `public_key: "test_pub_keys"`, `block_height: 100`. Using different values (e.g., `seq_len: 16`) produces non-comparable results and invalid throughput numbers.
 >
-> **`batch_size`:** Use `32` on B200/H200. Use `16` on H100/A100 (requires `--max-num-batched-tokens 16384`; see [PoC benchmark results](/cursor_docs/poc_benchmark_results.md) runs 11/14).
+> **`batch_size`:** Use `32` across all GPU types. Requires `--max-num-batched-tokens 32768`.
 
 **SSH tunnel for remote servers** — add to config when inbound ports are firewalled:
 
@@ -445,7 +442,7 @@ For PoC: `collect_data.py` against both servers → `poc_l2_histogram.py`.
 
 ---
 
-## 4. Remote Server Setup (Cloud / Vast.ai)
+## 4. Remote Server Setup (Cloud)
 
 ### Port mapping
 
@@ -464,18 +461,14 @@ ssh -i <key> -p <ssh_port> root@<host>
 touch ~/.no_auto_tmux
 ln -sf /lib/x86_64-linux-gnu/libcuda.so.1 /lib/x86_64-linux-gnu/libcuda.so
 export LD_LIBRARY_PATH=/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
-export VLLM_ALLOW_INSECURE_SERIALIZATION=1
 . /app/packages/api/.venv/bin/activate && \
-  export VLLM_ATTENTION_BACKEND=FLASHINFER && \
   cd /app/packages && \
   python -m uvicorn api.app:app --host 0.0.0.0 --port 8080
 ```
 
 > **CUDA Error 803 workaround:** If vLLM worker processes fail with `system has unsupported display driver / cuda driver combination`, make sure `export LD_LIBRARY_PATH=/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH` is set **before** starting the server. This ensures the correct system CUDA libraries are found first.
 
-> **Triton `cannot find -lcuda` fix:** If vLLM crashes during torch.compile with `subprocess.CalledProcessError` from Triton's `_build()`, the linker can't find `libcuda.so`. Create the missing symlink: `ln -sf /lib/x86_64-linux-gnu/libcuda.so.1 /lib/x86_64-linux-gnu/libcuda.so`. This is common on Vast.ai containers where the versioned `.so.1` exists but the unversioned `.so` does not.
-
-> **`VLLM_ALLOW_INSECURE_SERIALIZATION=1`:** Required when using `enforced_tokens` with the V1 engine. The `EnforcedTokens` type is not registered with vLLM's msgspec-based serializer, so inter-process communication fails. This env var enables pickle fallback. Set it **before** starting the server alongside the other env vars.
+> **Triton `cannot find -lcuda` fix:** If vLLM crashes during torch.compile with `subprocess.CalledProcessError` from Triton's `_build()`, the linker can't find `libcuda.so`. Create the missing symlink: `ln -sf /lib/x86_64-linux-gnu/libcuda.so.1 /lib/x86_64-linux-gnu/libcuda.so`. This is common on cloud containers where the versioned `.so.1` exists but the unversioned `.so` does not.
 
 ### Model pre-download
 
@@ -551,9 +544,9 @@ A full pipeline run produces enough data for this report. **Not all sections are
 
 ## 7. Important Notes
 
-- **SSH key** for remote servers: use `/root/workspace/.ssh/vast_b200` for SSH tunnels and remote access.
-- **`VLLM_ATTENTION_BACKEND`** must match across runs for meaningful PoC comparison.
-- **`--logprobs-mode`** must match across inference and validation runs. Our default is `processed_logprobs` (returns token IDs as strings, clamps `-inf` to `-9999.0`; dummy placeholder token IDs appear in top-k when the model is very confident). See [Choosing the logprobs mode](#choosing-the-logprobs-mode).
+- **SSH key** for remote servers: use your SSH key for SSH tunnels and remote access.
+- **Attention backend** must match across runs for meaningful PoC comparison. `FLASHINFER` is the baked default in vLLM v0.15.1.
+- **Logprobs mode**: `processed_logprobs` is the baked default. vLLM v0.15.1 supports per-request overrides and auto-detects the correct mode for validation requests. See [Choosing the logprobs mode](#choosing-the-logprobs-mode).
 - **Experiment naming**: use the same `--exp-name` for PoC and inference to correlate results.
 - **Resumable PoC**: `collect_data.py --continue` resumes from latest run.
 - **Timing**: both `inference_config.json` and `validation_config.json` include `performance` with `total_time_seconds`, `output_tokens_per_second`, etc.
