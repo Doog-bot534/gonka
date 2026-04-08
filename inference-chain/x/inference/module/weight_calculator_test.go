@@ -436,6 +436,7 @@ func newMinimalInferenceKeeper(t *testing.T) (keeper.Keeper, sdk.Context) {
 		log.NewNopLogger(),
 		authority.String(),
 	)
+	groupStub := &stubGroupKeeper{}
 	k := keeper.NewKeeper(
 		cdc,
 		runtime.NewKVStoreService(storeKey),
@@ -444,7 +445,7 @@ func newMinimalInferenceKeeper(t *testing.T) (keeper.Keeper, sdk.Context) {
 		authority.String(),
 		nil,
 		nil,
-		nil,
+		groupStub,
 		nil,
 		nil,
 		nil,
@@ -455,6 +456,7 @@ func newMinimalInferenceKeeper(t *testing.T) (keeper.Keeper, sdk.Context) {
 		func() wasmkeeper.Keeper { return wasmkeeper.Keeper{} },
 		nil,
 	)
+	groupStub.keeper = k
 
 	ctx := sdk.NewContext(stateStore, cmtproto.Header{}, false, log.NewNopLogger()).
 		WithHeaderInfo(header.Info{

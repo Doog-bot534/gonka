@@ -26,6 +26,7 @@ type EpochMember struct {
 	Reputation         int64
 	Models             []string
 	MlNodes            []*types.ModelMLNodes
+	VotingPowers       []*types.ModelVotingPower
 	ConfirmationWeight int64 // Minimum confirmation weight from confirmation PoC events
 }
 
@@ -49,6 +50,7 @@ func NewEpochMemberFromActiveParticipant(p *types.ActiveParticipant, reputation 
 		Reputation:         reputation,
 		Models:             p.Models,
 		MlNodes:            p.MlNodes,
+		VotingPowers:       p.VotingPowers,
 		ConfirmationWeight: confirmationWeight,
 	}
 }
@@ -216,6 +218,7 @@ func (eg *EpochGroup) updateEpochGroupWithNewMember(ctx context.Context, member 
 	})
 
 	mlNodes := eg.getMLNodeInfo(member, eg.GroupData.ModelId)
+	votingPower := eg.getVotingPowerForModel(member, eg.GroupData.ModelId)
 
 	eg.GroupData.ValidationWeights = append(eg.GroupData.ValidationWeights, &types.ValidationWeight{
 		MemberAddress:      member.Address,
@@ -223,6 +226,7 @@ func (eg *EpochGroup) updateEpochGroupWithNewMember(ctx context.Context, member 
 		Reputation:         int32(member.Reputation),
 		MlNodes:            mlNodes,
 		ConfirmationWeight: member.ConfirmationWeight, // Populated by confirmation PoC weight calculation
+		VotingPower:        votingPower,
 	})
 	eg.GroupData.TotalWeight += member.Weight
 
@@ -256,6 +260,20 @@ func (eg *EpochGroup) getMLNodeInfo(member EpochMember, modelId string) []*types
 	}
 
 	return nil
+}
+
+// getVotingPowerForModel extracts the voting power for a specific model from the member.
+// Returns 0 for root group (modelId == "") or if no matching model is found.
+func (eg *EpochGroup) getVotingPowerForModel(member EpochMember, modelId string) int64 {
+	if modelId == "" {
+		return 0
+	}
+	for _, vp := range member.VotingPowers {
+		if vp != nil && vp.ModelId == modelId {
+			return vp.VotingPower
+		}
+	}
+	return 0
 }
 
 func (eg *EpochGroup) addToModelGroups(ctx context.Context, member EpochMember) {

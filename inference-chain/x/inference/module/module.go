@@ -780,73 +780,113 @@ func (am AppModule) captureGenerationStartTimestamp(ctx context.Context, blockTi
 // For confirmation PoC: voting powers come from AP(N).voting_powers (already delegation-resolved
 // at epoch formation). DIRECT = who was assigned models in AP(N).
 func (am AppModule) captureValidationSnapshot(ctx context.Context, blockHeight, snapshotKey int64, logContext string) {
-	modelWeights, totalWeight := am.computeStoreCommitVotingPowers(ctx, snapshotKey, logContext)
+	baseState := am.getEffectiveValidationBaseState(ctx)
+	modelWeights, totalWeight := am.computeStoreCommitVotingPowers(ctx, baseState, snapshotKey, logContext)
 	am.writeValidationSnapshot(ctx, blockHeight, snapshotKey, logContext, modelWeights, totalWeight)
 }
 
 // captureConfirmationValidationSnapshot is like captureValidationSnapshot but uses
-// AP(N).voting_powers instead of computing from store commits.
+// stored voting powers instead of computing from store commits. Uses the filtered
+// path to exclude members removed mid-epoch.
 func (am AppModule) captureConfirmationValidationSnapshot(ctx context.Context, blockHeight, snapshotKey int64) {
 	baseState := am.getEffectiveValidationBaseState(ctx)
 	am.writeValidationSnapshot(ctx, blockHeight, snapshotKey, "confirmation PoC",
-		baseState.existingModelVotingPowers, baseState.participation.totalWeight)
+		baseState.existingModelVotingPowers, baseState.totalWeight)
 }
 
 type effectiveValidationBaseState struct {
-	participation             effectiveParticipationState
+	participants              []*types.ActiveParticipant
+	weights                   map[string]int64
+	totalWeight               int64
 	existingModelVotingPowers []*types.ModelVotingPowers
 }
 
-// getEffectiveValidationBaseState centralizes the only epoch-0 special case used
-// by validation snapshot construction. Epoch 0 has global consensus weights but
-// no model-aware ActiveParticipants voting powers yet, so later helpers should
-// consume this shared state instead of re-implementing their own fallback.
+// getEffectiveValidationBaseState reads consensus weights and per-model voting
+// powers from EpochGroupData, filtered by SDK group membership. Members removed
+// mid-epoch (weight set to 0 in SDK group) are excluded because GetGroupMembers
+// does not return them.
+//
+// Epoch 0 has no model-aware voting powers yet.
+//
+// TODO: upgrade handler must populate ValidationWeight.voting_power in existing
+// EpochGroupData from AP.VotingPowers so the first post-upgrade epoch reads
+// correct values.
 func (am AppModule) getEffectiveValidationBaseState(ctx context.Context) effectiveValidationBaseState {
 	epochIndex, found := am.keeper.GetEffectiveEpochIndex(ctx)
 	if !found {
-		return effectiveValidationBaseState{
-			participation: effectiveParticipationState{
-				participants: nil,
-				weights:      map[string]int64{},
-				totalWeight:  0,
-			},
-			existingModelVotingPowers: nil,
-		}
+		return emptyValidationBaseState()
 	}
 
 	if epochIndex == 0 {
-		return effectiveValidationBaseState{
-			participation:             am.getEpochZeroEffectiveParticipationState(ctx),
-			existingModelVotingPowers: nil,
-		}
+		return am.getEpochZeroValidationBaseState(ctx)
 	}
 
-	ap, found := am.keeper.GetActiveParticipants(ctx, epochIndex)
-	if !found {
-		return effectiveValidationBaseState{
-			participation: effectiveParticipationState{
-				participants: nil,
-				weights:      map[string]int64{},
-				totalWeight:  0,
-			},
-			existingModelVotingPowers: nil,
-		}
+	currentGroup, err := am.keeper.GetCurrentEpochGroup(ctx)
+	if err != nil || currentGroup == nil {
+		am.LogError("getEffectiveValidationBaseState: failed to get current epoch group", types.PoC, "error", err)
+		return emptyValidationBaseState()
 	}
 
-	consensusWeights := make(map[string]int64, len(ap.Participants))
+	rootMembers, err := currentGroup.GetGroupMembers(ctx)
+	if err != nil {
+		am.LogError("getEffectiveValidationBaseState: failed to get root group members", types.PoC, "error", err)
+		return emptyValidationBaseState()
+	}
+	liveMemberSet := make(map[string]bool, len(rootMembers))
+	for _, m := range rootMembers {
+		liveMemberSet[m.Member.Address] = true
+	}
+
+	rootGroupData := currentGroup.GroupData
+	consensusWeights := make(map[string]int64, len(rootGroupData.ValidationWeights))
 	totalWeight := int64(0)
+	participants := make([]*types.ActiveParticipant, 0, len(rootGroupData.ValidationWeights))
+	for _, vw := range rootGroupData.ValidationWeights {
+		if vw == nil || !liveMemberSet[vw.MemberAddress] {
+			continue
+		}
+		consensusWeights[vw.MemberAddress] = vw.Weight
+		totalWeight += vw.Weight
+		participants = append(participants, &types.ActiveParticipant{
+			Index:  vw.MemberAddress,
+			Weight: vw.Weight,
+		})
+	}
+
 	modelVPMap := make(map[string]map[string]int64)
-	for _, p := range ap.Participants {
-		consensusWeights[p.Index] = p.Weight
-		totalWeight += p.Weight
-		for _, mvp := range p.VotingPowers {
-			if modelVPMap[mvp.ModelId] == nil {
-				modelVPMap[mvp.ModelId] = make(map[string]int64)
+	for _, modelID := range rootGroupData.SubGroupModels {
+		subGroup, err := currentGroup.GetSubGroup(ctx, modelID)
+		if err != nil || subGroup == nil {
+			continue
+		}
+		subMembers, err := subGroup.GetGroupMembers(ctx)
+		if err != nil {
+			continue
+		}
+		liveSubSet := make(map[string]bool, len(subMembers))
+		for _, m := range subMembers {
+			liveSubSet[m.Member.Address] = true
+		}
+		for _, vw := range subGroup.GroupData.ValidationWeights {
+			if vw == nil || !liveSubSet[vw.MemberAddress] || vw.VotingPower <= 0 {
+				continue
 			}
-			modelVPMap[mvp.ModelId][p.Index] = mvp.VotingPower
+			if modelVPMap[modelID] == nil {
+				modelVPMap[modelID] = make(map[string]int64)
+			}
+			modelVPMap[modelID][vw.MemberAddress] = vw.VotingPower
 		}
 	}
 
+	return effectiveValidationBaseState{
+		participants:              participants,
+		weights:                   consensusWeights,
+		totalWeight:               totalWeight,
+		existingModelVotingPowers: modelVPMapToSlice(modelVPMap),
+	}
+}
+
+func modelVPMapToSlice(modelVPMap map[string]map[string]int64) []*types.ModelVotingPowers {
 	modelWeights := make([]*types.ModelVotingPowers, 0, len(modelVPMap))
 	for modelID, vps := range modelVPMap {
 		modelWeights = append(modelWeights, &types.ModelVotingPowers{
@@ -857,24 +897,21 @@ func (am AppModule) getEffectiveValidationBaseState(ctx context.Context) effecti
 	slices.SortFunc(modelWeights, func(a, b *types.ModelVotingPowers) int {
 		return cmp.Compare(a.ModelId, b.ModelId)
 	})
+	return modelWeights
+}
 
+func emptyValidationBaseState() effectiveValidationBaseState {
 	return effectiveValidationBaseState{
-		participation: effectiveParticipationState{
-			participants: ap.Participants,
-			weights:      consensusWeights,
-			totalWeight:  totalWeight,
-		},
-		existingModelVotingPowers: modelWeights,
+		weights: map[string]int64{},
 	}
 }
 
 // computeStoreCommitVotingPowers builds validation-time voting powers by combining:
-// - existing model voting powers from the effective epoch
-// - bootstrap-model voting powers derived from bootstrap delegation + AP(N).weight + store commits
-func (am AppModule) computeStoreCommitVotingPowers(ctx context.Context, snapshotKey int64, logContext string) ([]*types.ModelVotingPowers, int64) {
-	baseState := am.getEffectiveValidationBaseState(ctx)
-	consensusWeights := baseState.participation.weights
-	totalNetworkWeight := baseState.participation.totalWeight
+// - existing model voting powers from the provided base state
+// - bootstrap-model voting powers derived from bootstrap delegation + consensus weights + store commits
+func (am AppModule) computeStoreCommitVotingPowers(ctx context.Context, baseState effectiveValidationBaseState, snapshotKey int64, logContext string) ([]*types.ModelVotingPowers, int64) {
+	consensusWeights := baseState.weights
+	totalNetworkWeight := baseState.totalWeight
 	if totalNetworkWeight == 0 {
 		return nil, 0
 	}

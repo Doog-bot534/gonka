@@ -37,7 +37,8 @@ func (am AppModule) buildDelegationWeightCalculator(
 		nextEpochDelegations = map[string]map[string]string{}
 		nextEpochRefusals = map[string]map[string]bool{}
 	}
-	consensusWeights, totalWeight := am.getPreviousConsensusWeights(ctx)
+	prevState := am.getEffectiveValidationBaseState(ctx)
+	consensusWeights, totalWeight := prevState.weights, prevState.totalWeight
 	groups := buildGroupData(activeParticipants, coefficients)
 
 	return &DelegationWeightCalculator{
@@ -55,12 +56,6 @@ type epochParticipationState struct {
 	eligibleModels          []string
 	participationByModel    map[string]map[string]ParticipationMode
 	bootstrapPenaltyByModel map[string]map[string]BootstrapPenaltyMode
-}
-
-type effectiveParticipationState struct {
-	participants []*types.ActiveParticipant
-	weights      map[string]int64
-	totalWeight  int64
 }
 
 func buildParticipationByModel(
@@ -154,12 +149,6 @@ func buildGroupData(
 	return groups
 }
 
-// getPreviousConsensusWeights reads ActiveParticipants from the effective epoch
-// to get N-1 consensus weights.
-func (am AppModule) getPreviousConsensusWeights(ctx context.Context) (map[string]int64, int64) {
-	state := am.getEffectiveParticipationState(ctx)
-	return state.weights, state.totalWeight
-}
 
 func parseRegularDelegationSnapshot(snapshot types.DelegationSnapshot) (
 	delegations map[string]map[string]string,
@@ -247,7 +236,7 @@ func (am AppModule) buildDelegationSnapshot(ctx context.Context, blockHeight int
 		return types.DelegationSnapshot{}, err
 	}
 
-	effectiveState := am.getEffectiveParticipationState(ctx)
+	effectiveState := am.getEffectiveValidationBaseState(ctx)
 	effectiveParticipants := effectiveState.participants
 	modelIDs := approvedModelIDs(params.PocParams)
 	delegationEntries, refusalEntries := am.loadFilteredDelegationSnapshotState(ctx, effectiveParticipants, modelIDs)
@@ -294,17 +283,15 @@ func (am AppModule) buildBootstrapDelegationSnapshot(
 		return types.BootstrapDelegationSnapshot{}, err
 	}
 
-	effectiveState := am.getEffectiveParticipationState(ctx)
-	effectiveParticipants := effectiveState.participants
-	consensusWeights := effectiveState.weights
-	totalNetworkWeight := effectiveState.totalWeight
-	// Active = has voting powers in AP(N). Must match computeStoreCommitVotingPowers.
+	baseState := am.getEffectiveValidationBaseState(ctx)
+	effectiveParticipants := baseState.participants
+	consensusWeights := baseState.weights
+	totalNetworkWeight := baseState.totalWeight
+	// Active = models with existing voting powers. Must match computeStoreCommitVotingPowers.
 	activeModels := make(map[string]bool)
-	for _, p := range effectiveParticipants {
-		for _, vp := range p.VotingPowers {
-			if vp != nil && vp.ModelId != "" {
-				activeModels[vp.ModelId] = true
-			}
+	for _, mvp := range baseState.existingModelVotingPowers {
+		if mvp != nil && mvp.ModelId != "" {
+			activeModels[mvp.ModelId] = true
 		}
 	}
 	bootstrapModelIDs := bootstrapCandidateModelIDs(params.PocParams, activeModels)
@@ -336,17 +323,11 @@ func (am AppModule) buildBootstrapDelegationSnapshot(
 	}, nil
 }
 
-func (am AppModule) getEffectiveParticipationState(ctx context.Context) effectiveParticipationState {
-	return am.getEffectiveValidationBaseState(ctx).participation
-}
-
-func (am AppModule) getEpochZeroEffectiveParticipationState(ctx context.Context) effectiveParticipationState {
+func (am AppModule) getEpochZeroValidationBaseState(ctx context.Context) effectiveValidationBaseState {
 	epochGroupData, found := am.keeper.GetEpochGroupData(ctx, 0, "")
 	if !found {
-		return effectiveParticipationState{
-			participants: nil,
-			weights:      map[string]int64{},
-			totalWeight:  0,
+		return effectiveValidationBaseState{
+			weights: map[string]int64{},
 		}
 	}
 
@@ -366,7 +347,7 @@ func (am AppModule) getEpochZeroEffectiveParticipationState(ctx context.Context)
 		totalNetworkWeight += validationWeight.Weight
 	}
 
-	return effectiveParticipationState{
+	return effectiveValidationBaseState{
 		participants: participants,
 		weights:      consensusWeights,
 		totalWeight:  totalNetworkWeight,

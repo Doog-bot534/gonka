@@ -1,15 +1,135 @@
 package inference
 
 import (
+	"context"
+	"strconv"
 	"testing"
 
 	sdkmath "cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/x/group"
 	"github.com/stretchr/testify/require"
 
 	"github.com/productscience/inference/testutil"
+	"github.com/productscience/inference/x/inference/keeper"
 	"github.com/productscience/inference/x/inference/types"
 )
+
+// setupEpochGroupDataFromAP populates root and subgroup EpochGroupData from an
+// ActiveParticipants struct so that getEffectiveValidationBaseState (which reads
+// from EpochGroupData filtered by SDK group membership) works in unit tests.
+func setupEpochGroupDataFromAP(k keeper.Keeper, ctx sdk.Context, ap types.ActiveParticipants) {
+	activeModels := map[string]bool{}
+	rootWeights := make([]*types.ValidationWeight, 0, len(ap.Participants))
+	subWeights := map[string][]*types.ValidationWeight{}
+	for _, p := range ap.Participants {
+		rootWeights = append(rootWeights, &types.ValidationWeight{
+			MemberAddress: p.Index,
+			Weight:        p.Weight,
+		})
+		for _, vp := range p.VotingPowers {
+			activeModels[vp.ModelId] = true
+			subWeights[vp.ModelId] = append(subWeights[vp.ModelId], &types.ValidationWeight{
+				MemberAddress: p.Index,
+				Weight:        p.Weight,
+				VotingPower:   vp.VotingPower,
+			})
+		}
+	}
+	subGroupModels := make([]string, 0, len(activeModels))
+	for m := range activeModels {
+		subGroupModels = append(subGroupModels, m)
+	}
+	k.SetEpochGroupData(ctx, types.EpochGroupData{
+		EpochIndex:        ap.EpochId,
+		ModelId:           "",
+		SubGroupModels:    subGroupModels,
+		ValidationWeights: rootWeights,
+	})
+	for modelID, weights := range subWeights {
+		k.SetEpochGroupData(ctx, types.EpochGroupData{
+			EpochIndex:        ap.EpochId,
+			ModelId:           modelID,
+			ValidationWeights: weights,
+		})
+	}
+}
+
+// stubGroupKeeper is a minimal GroupMessageKeeper that returns all members from
+// EpochGroupData.ValidationWeights as live SDK group members. Used in unit tests
+// where the full SDK group module is not available.
+type stubGroupKeeper struct {
+	keeper keeper.Keeper
+}
+
+func (s *stubGroupKeeper) GroupMembers(ctx context.Context, req *group.QueryGroupMembersRequest) (*group.QueryGroupMembersResponse, error) {
+	// Find the EpochGroupData that has this group ID, return its ValidationWeights as members
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	members := s.findMembersForGroup(sdkCtx, req.GroupId)
+	return &group.QueryGroupMembersResponse{Members: members}, nil
+}
+
+func (s *stubGroupKeeper) findMembersForGroup(ctx sdk.Context, groupId uint64) []*group.GroupMember {
+	// Search across all EpochGroupData for a matching EpochGroupId
+	effectiveIdx, found := s.keeper.GetEffectiveEpochIndex(ctx)
+	if !found {
+		return nil
+	}
+	for _, modelId := range append([]string{""}, s.subGroupModelsForEpoch(ctx, effectiveIdx)...) {
+		data, found := s.keeper.GetEpochGroupData(ctx, effectiveIdx, modelId)
+		if !found || data.EpochGroupId != groupId {
+			continue
+		}
+		var members []*group.GroupMember
+		for _, vw := range data.ValidationWeights {
+			if vw == nil {
+				continue
+			}
+			members = append(members, &group.GroupMember{
+				GroupId: groupId,
+				Member: &group.Member{
+					Address: vw.MemberAddress,
+					Weight:  strconv.FormatInt(vw.Weight, 10),
+				},
+			})
+		}
+		return members
+	}
+	return nil
+}
+
+func (s *stubGroupKeeper) subGroupModelsForEpoch(ctx sdk.Context, epochIndex uint64) []string {
+	root, found := s.keeper.GetEpochGroupData(ctx, epochIndex, "")
+	if !found {
+		return nil
+	}
+	return root.SubGroupModels
+}
+
+func (*stubGroupKeeper) CreateGroup(context.Context, *group.MsgCreateGroup) (*group.MsgCreateGroupResponse, error) {
+	return &group.MsgCreateGroupResponse{}, nil
+}
+func (*stubGroupKeeper) CreateGroupWithPolicy(context.Context, *group.MsgCreateGroupWithPolicy) (*group.MsgCreateGroupWithPolicyResponse, error) {
+	return &group.MsgCreateGroupWithPolicyResponse{}, nil
+}
+func (*stubGroupKeeper) UpdateGroupMembers(context.Context, *group.MsgUpdateGroupMembers) (*group.MsgUpdateGroupMembersResponse, error) {
+	return &group.MsgUpdateGroupMembersResponse{}, nil
+}
+func (*stubGroupKeeper) UpdateGroupMetadata(context.Context, *group.MsgUpdateGroupMetadata) (*group.MsgUpdateGroupMetadataResponse, error) {
+	return &group.MsgUpdateGroupMetadataResponse{}, nil
+}
+func (*stubGroupKeeper) SubmitProposal(context.Context, *group.MsgSubmitProposal) (*group.MsgSubmitProposalResponse, error) {
+	return &group.MsgSubmitProposalResponse{}, nil
+}
+func (*stubGroupKeeper) Vote(context.Context, *group.MsgVote) (*group.MsgVoteResponse, error) {
+	return &group.MsgVoteResponse{}, nil
+}
+func (*stubGroupKeeper) GroupInfo(context.Context, *group.QueryGroupInfoRequest) (*group.QueryGroupInfoResponse, error) {
+	return &group.QueryGroupInfoResponse{}, nil
+}
+func (*stubGroupKeeper) ProposalsByGroupPolicy(context.Context, *group.QueryProposalsByGroupPolicyRequest) (*group.QueryProposalsByGroupPolicyResponse, error) {
+	return &group.QueryProposalsByGroupPolicyResponse{}, nil
+}
 
 func TestBuildBootstrapDelegationSnapshot_FiltersActiveParticipantsOnly(t *testing.T) {
 	k, ctx := newMinimalInferenceKeeper(t)
@@ -31,7 +151,7 @@ func TestBuildBootstrapDelegationSnapshot_FiltersActiveParticipantsOnly(t *testi
 
 	require.NoError(t, k.SetEffectiveEpochIndex(ctx, 1))
 	require.NoError(t, k.SetEpoch(ctx, &types.Epoch{Index: 1, PocStartBlockHeight: 100}))
-	require.NoError(t, k.SetActiveParticipants(ctx, types.ActiveParticipants{
+	ap := types.ActiveParticipants{
 		EpochId:             1,
 		EpochGroupId:        1,
 		PocStartBlockHeight: 100,
@@ -40,7 +160,9 @@ func TestBuildBootstrapDelegationSnapshot_FiltersActiveParticipantsOnly(t *testi
 			{Index: testutil.Executor2, Weight: 60, Models: []string{"active-model"}, VotingPowers: []*types.ModelVotingPower{{ModelId: "active-model", VotingPower: 60}}},
 			{Index: testutil.Validator, Weight: 40, Models: []string{"active-model"}, VotingPowers: []*types.ModelVotingPower{{ModelId: "active-model", VotingPower: 40}}},
 		},
-	}))
+	}
+	require.NoError(t, k.SetActiveParticipants(ctx, ap))
+	setupEpochGroupDataFromAP(k, ctx, ap)
 
 	require.NoError(t, k.SetPoCDirectIntent(ctx, "new-model", testutil.Executor))
 	require.NoError(t, k.SetPoCDirectIntent(ctx, "new-model", testutil.Executor2))
@@ -89,7 +211,7 @@ func TestBootstrapCandidateModelIDs_ExcludesModelsAlreadyActiveInCurrentEpoch(t 
 	require.Equal(t, []string{"new-model"}, candidates)
 }
 
-func TestGetPreviousConsensusWeights_FallsBackToEpochZeroGroupWeights(t *testing.T) {
+func TestGetEffectiveValidationBaseState_EpochZeroReadsFromGroupData(t *testing.T) {
 	k, ctx := newMinimalInferenceKeeper(t)
 
 	require.NoError(t, k.SetEffectiveEpochIndex(ctx, 0))
@@ -103,42 +225,19 @@ func TestGetPreviousConsensusWeights_FallsBackToEpochZeroGroupWeights(t *testing
 	})
 
 	am := NewAppModule(nil, k, nil, nil, nil, nil)
-	weights, total := am.getPreviousConsensusWeights(ctx)
+	state := am.getEffectiveValidationBaseState(ctx)
 
-	require.Equal(t, int64(301), total)
+	require.Equal(t, int64(301), state.totalWeight)
+	require.Len(t, state.participants, 2)
 	require.Equal(t, map[string]int64{
 		testutil.Validator:  100,
 		testutil.Validator2: 201,
-	}, weights)
-}
-
-func TestGetEffectiveParticipationState_FallsBackToEpochZeroGroupWeights(t *testing.T) {
-	k, ctx := newMinimalInferenceKeeper(t)
-
-	require.NoError(t, k.SetEffectiveEpochIndex(ctx, 0))
-	k.SetEpochGroupData(ctx, types.EpochGroupData{
-		EpochIndex: 0,
-		ModelId:    "",
-		ValidationWeights: []*types.ValidationWeight{
-			{MemberAddress: testutil.Validator, Weight: 100},
-			{MemberAddress: testutil.Validator2, Weight: 201},
-		},
-	})
-
-	am := NewAppModule(nil, k, nil, nil, nil, nil)
-	state := am.getEffectiveParticipationState(ctx)
-	participants, weights, total := state.participants, state.weights, state.totalWeight
-
-	require.Equal(t, int64(301), total)
-	require.Len(t, participants, 2)
-	require.Equal(t, map[string]int64{
-		testutil.Validator:  100,
-		testutil.Validator2: 201,
-	}, weights)
-	require.Equal(t, testutil.Validator, participants[0].Index)
-	require.Equal(t, int64(100), participants[0].Weight)
-	require.Equal(t, testutil.Validator2, participants[1].Index)
-	require.Equal(t, int64(201), participants[1].Weight)
+	}, state.weights)
+	require.Equal(t, testutil.Validator, state.participants[0].Index)
+	require.Equal(t, int64(100), state.participants[0].Weight)
+	require.Equal(t, testutil.Validator2, state.participants[1].Index)
+	require.Equal(t, int64(201), state.participants[1].Weight)
+	require.Nil(t, state.existingModelVotingPowers)
 }
 
 func TestBuildBootstrapDelegationSnapshot_OnlyVotingPowerModelsTreatedAsActive(t *testing.T) {
@@ -181,6 +280,7 @@ func TestBuildBootstrapDelegationSnapshot_OnlyVotingPowerModelsTreatedAsActive(t
 		},
 	}
 	require.NoError(t, k.SetActiveParticipants(ctx, ap))
+	setupEpochGroupDataFromAP(k, ctx, ap)
 
 	require.NoError(t, k.SetPoCDirectIntent(ctx, "new-model", testutil.Validator))
 
@@ -206,7 +306,7 @@ func TestBuildDelegationSnapshot_FiltersActiveParticipantsAndExcludesIntents(t *
 	require.NoError(t, k.SetParams(ctx, params))
 
 	require.NoError(t, k.SetEffectiveEpochIndex(ctx, 1))
-	require.NoError(t, k.SetActiveParticipants(ctx, types.ActiveParticipants{
+	ap := types.ActiveParticipants{
 		EpochId:             1,
 		EpochGroupId:        1,
 		PocStartBlockHeight: 100,
@@ -214,7 +314,9 @@ func TestBuildDelegationSnapshot_FiltersActiveParticipantsAndExcludesIntents(t *
 			{Index: testutil.Executor, Weight: 100, Models: []string{"active-model"}},
 			{Index: testutil.Executor2, Weight: 60, Models: []string{"active-model"}},
 		},
-	}))
+	}
+	require.NoError(t, k.SetActiveParticipants(ctx, ap))
+	setupEpochGroupDataFromAP(k, ctx, ap)
 
 	require.NoError(t, k.SetPoCDelegation(ctx, types.PoCDelegation{
 		ModelId:    "new-model",
@@ -332,7 +434,7 @@ func TestCaptureBootstrapDelegationSnapshot_StoresSnapshotAndEmitsEvents(t *test
 	require.NoError(t, k.SetParams(ctx, params))
 
 	require.NoError(t, k.SetEffectiveEpochIndex(ctx, 1))
-	require.NoError(t, k.SetActiveParticipants(ctx, types.ActiveParticipants{
+	ap := types.ActiveParticipants{
 		EpochId:             1,
 		EpochGroupId:        1,
 		PocStartBlockHeight: 100,
@@ -341,7 +443,9 @@ func TestCaptureBootstrapDelegationSnapshot_StoresSnapshotAndEmitsEvents(t *test
 			{Index: testutil.Executor2, Weight: 60, Models: []string{"active-model"}, VotingPowers: []*types.ModelVotingPower{{ModelId: "active-model", VotingPower: 60}}},
 			{Index: testutil.Validator, Weight: 40, Models: []string{"active-model"}, VotingPowers: []*types.ModelVotingPower{{ModelId: "active-model", VotingPower: 40}}},
 		},
-	}))
+	}
+	require.NoError(t, k.SetActiveParticipants(ctx, ap))
+	setupEpochGroupDataFromAP(k, ctx, ap)
 
 	require.NoError(t, k.SetPoCDirectIntent(ctx, "eligible-model", testutil.Executor))
 	require.NoError(t, k.SetPoCDirectIntent(ctx, "eligible-model", testutil.Executor2))
@@ -393,7 +497,7 @@ func TestCaptureDelegationSnapshot_StoresFrozenState(t *testing.T) {
 	require.NoError(t, k.SetParams(ctx, params))
 
 	require.NoError(t, k.SetEffectiveEpochIndex(ctx, 1))
-	require.NoError(t, k.SetActiveParticipants(ctx, types.ActiveParticipants{
+	ap := types.ActiveParticipants{
 		EpochId:             1,
 		EpochGroupId:        1,
 		PocStartBlockHeight: 100,
@@ -401,7 +505,9 @@ func TestCaptureDelegationSnapshot_StoresFrozenState(t *testing.T) {
 			{Index: testutil.Executor, Weight: 100, Models: []string{"active-model"}},
 			{Index: testutil.Validator, Weight: 100, Models: []string{"active-model"}},
 		},
-	}))
+	}
+	require.NoError(t, k.SetActiveParticipants(ctx, ap))
+	setupEpochGroupDataFromAP(k, ctx, ap)
 
 	require.NoError(t, k.SetPoCDelegation(ctx, types.PoCDelegation{
 		ModelId:    "candidate",
@@ -439,7 +545,7 @@ func TestComputeStoreCommitVotingPowers_UsesExistingVotingPowersAndBootstrapDele
 	require.NoError(t, k.SetParams(ctx, params))
 
 	require.NoError(t, k.SetEffectiveEpochIndex(ctx, 1))
-	require.NoError(t, k.SetActiveParticipants(ctx, types.ActiveParticipants{
+	ap := types.ActiveParticipants{
 		EpochId:             1,
 		EpochGroupId:        1,
 		PocStartBlockHeight: 100,
@@ -461,7 +567,9 @@ func TestComputeStoreCommitVotingPowers_UsesExistingVotingPowersAndBootstrapDele
 				Weight: 40,
 			},
 		},
-	}))
+	}
+	require.NoError(t, k.SetActiveParticipants(ctx, ap))
+	setupEpochGroupDataFromAP(k, ctx, ap)
 
 	require.NoError(t, k.SetBootstrapDelegationSnapshot(ctx, types.BootstrapDelegationSnapshot{
 		SnapshotHeight: 111,
@@ -503,7 +611,7 @@ func TestComputeStoreCommitVotingPowers_UsesExistingVotingPowersAndBootstrapDele
 	}))
 
 	am := NewAppModule(nil, k, nil, nil, nil, nil)
-	modelWeights, totalWeight := am.computeStoreCommitVotingPowers(ctx, 180, "test")
+	modelWeights, totalWeight := am.computeStoreCommitVotingPowers(ctx, am.getEffectiveValidationBaseState(ctx), 180, "test")
 	require.Equal(t, int64(200), totalWeight)
 
 	got := map[string]map[string]int64{}
@@ -575,7 +683,7 @@ func TestComputeStoreCommitVotingPowers_EpochZeroBypassesBootstrapPreEligibility
 	}))
 
 	am := NewAppModule(nil, k, nil, nil, nil, nil)
-	modelWeights, totalWeight := am.computeStoreCommitVotingPowers(ctx, 180, "test")
+	modelWeights, totalWeight := am.computeStoreCommitVotingPowers(ctx, am.getEffectiveValidationBaseState(ctx), 180, "test")
 	require.Equal(t, int64(140), totalWeight)
 	require.Len(t, modelWeights, 1)
 	require.Equal(t, "new-model", modelWeights[0].ModelId)
@@ -603,7 +711,7 @@ func TestComputeStoreCommitVotingPowers_UsesFrozenBootstrapDelegationsEvenWhenPr
 	require.NoError(t, k.SetParams(ctx, params))
 
 	require.NoError(t, k.SetEffectiveEpochIndex(ctx, 1))
-	require.NoError(t, k.SetActiveParticipants(ctx, types.ActiveParticipants{
+	ap := types.ActiveParticipants{
 		EpochId:             1,
 		EpochGroupId:        1,
 		PocStartBlockHeight: 100,
@@ -611,7 +719,9 @@ func TestComputeStoreCommitVotingPowers_UsesFrozenBootstrapDelegationsEvenWhenPr
 			{Index: testutil.Executor, Weight: 100},
 			{Index: testutil.Validator, Weight: 40},
 		},
-	}))
+	}
+	require.NoError(t, k.SetActiveParticipants(ctx, ap))
+	setupEpochGroupDataFromAP(k, ctx, ap)
 
 	require.NoError(t, k.SetBootstrapDelegationSnapshot(ctx, types.BootstrapDelegationSnapshot{
 		SnapshotHeight: 111,
@@ -648,7 +758,7 @@ func TestComputeStoreCommitVotingPowers_UsesFrozenBootstrapDelegationsEvenWhenPr
 	}))
 
 	am := NewAppModule(nil, k, nil, nil, nil, nil)
-	modelWeights, totalWeight := am.computeStoreCommitVotingPowers(ctx, 180, "test")
+	modelWeights, totalWeight := am.computeStoreCommitVotingPowers(ctx, am.getEffectiveValidationBaseState(ctx), 180, "test")
 	require.Equal(t, int64(140), totalWeight)
 	require.Len(t, modelWeights, 1)
 
@@ -672,7 +782,7 @@ func TestComputeStoreCommitVotingPowers_DoesNotFallbackToLiveDelegations(t *test
 	require.NoError(t, k.SetParams(ctx, params))
 
 	require.NoError(t, k.SetEffectiveEpochIndex(ctx, 1))
-	require.NoError(t, k.SetActiveParticipants(ctx, types.ActiveParticipants{
+	ap := types.ActiveParticipants{
 		EpochId:             1,
 		EpochGroupId:        1,
 		PocStartBlockHeight: 100,
@@ -680,7 +790,9 @@ func TestComputeStoreCommitVotingPowers_DoesNotFallbackToLiveDelegations(t *test
 			{Index: testutil.Executor, Weight: 100},
 			{Index: testutil.Validator, Weight: 40},
 		},
-	}))
+	}
+	require.NoError(t, k.SetActiveParticipants(ctx, ap))
+	setupEpochGroupDataFromAP(k, ctx, ap)
 
 	require.NoError(t, k.SetPoCDelegation(ctx, types.PoCDelegation{
 		ModelId:    "new-model",
@@ -695,7 +807,7 @@ func TestComputeStoreCommitVotingPowers_DoesNotFallbackToLiveDelegations(t *test
 	}))
 
 	am := NewAppModule(nil, k, nil, nil, nil, nil)
-	modelWeights, _ := am.computeStoreCommitVotingPowers(ctx, 180, "test")
+	modelWeights, _ := am.computeStoreCommitVotingPowers(ctx, am.getEffectiveValidationBaseState(ctx), 180, "test")
 	require.Len(t, modelWeights, 1)
 
 	got := types.VotingPowerSliceToMap(modelWeights[0].VotingPowers)
@@ -721,7 +833,7 @@ func TestComputeStoreCommitVotingPowers_BootstrapModelUsesDirectCommittersAndFro
 	require.NoError(t, k.SetParams(ctx, params))
 
 	require.NoError(t, k.SetEffectiveEpochIndex(ctx, 1))
-	require.NoError(t, k.SetActiveParticipants(ctx, types.ActiveParticipants{
+	ap := types.ActiveParticipants{
 		EpochId:             1,
 		EpochGroupId:        1,
 		PocStartBlockHeight: 100,
@@ -730,7 +842,9 @@ func TestComputeStoreCommitVotingPowers_BootstrapModelUsesDirectCommittersAndFro
 			{Index: testutil.Validator, Weight: 40},
 			{Index: testutil.Executor2, Weight: 20},
 		},
-	}))
+	}
+	require.NoError(t, k.SetActiveParticipants(ctx, ap))
+	setupEpochGroupDataFromAP(k, ctx, ap)
 
 	require.NoError(t, k.SetBootstrapDelegationSnapshot(ctx, types.BootstrapDelegationSnapshot{
 		SnapshotHeight: 111,
@@ -767,7 +881,7 @@ func TestComputeStoreCommitVotingPowers_BootstrapModelUsesDirectCommittersAndFro
 	}))
 
 	am := NewAppModule(nil, k, nil, nil, nil, nil)
-	modelWeights, totalWeight := am.computeStoreCommitVotingPowers(ctx, 180, "test")
+	modelWeights, totalWeight := am.computeStoreCommitVotingPowers(ctx, am.getEffectiveValidationBaseState(ctx), 180, "test")
 	require.Equal(t, int64(120), totalWeight)
 	require.Len(t, modelWeights, 1)
 
@@ -791,7 +905,7 @@ func TestBuildDelegationWeightCalculator_UsesValidationSnapshotForNextEpochVotin
 	require.NoError(t, k.SetParams(ctx, params))
 
 	require.NoError(t, k.SetEffectiveEpochIndex(ctx, 1))
-	require.NoError(t, k.SetActiveParticipants(ctx, types.ActiveParticipants{
+	ap := types.ActiveParticipants{
 		EpochId:             1,
 		EpochGroupId:        1,
 		PocStartBlockHeight: 100,
@@ -800,7 +914,9 @@ func TestBuildDelegationWeightCalculator_UsesValidationSnapshotForNextEpochVotin
 			{Index: testutil.Validator, Weight: 40},
 			{Index: testutil.Executor2, Weight: 20},
 		},
-	}))
+	}
+	require.NoError(t, k.SetActiveParticipants(ctx, ap))
+	setupEpochGroupDataFromAP(k, ctx, ap)
 
 	require.NoError(t, k.SetDelegationSnapshot(ctx, types.DelegationSnapshot{
 		SnapshotHeight: 111,
