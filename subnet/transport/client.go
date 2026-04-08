@@ -53,13 +53,11 @@ func transportAddress(baseURL string) string {
 
 // ClientConfig holds per-endpoint timeout settings.
 type ClientConfig struct {
-	InferenceTimeout time.Duration                   // /chat/completions, default 20m
-	GossipTimeout    time.Duration                   // gossip/nonce, gossip/txs, default 10s
-	VerifyTimeout    time.Duration                   // verify-timeout, default 3m
-	QueryTimeout     time.Duration                   // diffs, mempool GETs, default 30s
-	StreamCallback   func(nonce uint64, line string) // if set, receives raw SSE data lines during inference
-	ReceiptCallback  func(nonce uint64)              // if set, called when subnet_receipt SSE event arrives
-	ParticipantKey   string                          // shared participant/IP identity for admission control
+	InferenceTimeout time.Duration // /chat/completions, default 20m
+	GossipTimeout    time.Duration // gossip/nonce, gossip/txs, default 10s
+	VerifyTimeout    time.Duration // verify-timeout, default 3m
+	QueryTimeout     time.Duration // diffs, mempool GETs, default 30s
+	ParticipantKey   string        // shared participant/IP identity for admission control
 	Admission        RequestAdmissionController
 }
 
@@ -154,7 +152,7 @@ func (c *HTTPClient) get(ctx context.Context, path string, timeout time.Duration
 }
 
 // Send implements user.HostClient.
-func (c *HTTPClient) Send(ctx context.Context, req host.HostRequest) (*host.HostResponse, error) {
+func (c *HTTPClient) Send(ctx context.Context, req host.HostRequest, stream io.Writer, receiptHandler func()) (*host.HostResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.config.InferenceTimeout)
 	defer cancel()
 
@@ -176,7 +174,7 @@ func (c *HTTPClient) Send(ctx context.Context, req host.HostRequest) (*host.Host
 
 	contentType := resp.Header.Get("Content-Type")
 	if strings.HasPrefix(contentType, "text/event-stream") {
-		result, err := c.parseSSEResponse(resp.Body, req.Nonce)
+		result, err := c.parseSSEResponse(resp.Body, stream, receiptHandler)
 		if err != nil && result != nil {
 			// Partial result: return both so caller can extract receipt from broken stream.
 			return result, err
@@ -197,8 +195,8 @@ func (c *HTTPClient) Send(ctx context.Context, req host.HostRequest) (*host.Host
 }
 
 // parseSSEResponse reads an SSE stream and extracts subnet_receipt and subnet_meta events.
-// Non-protocol data lines are forwarded to StreamCallback if configured.
-func (c *HTTPClient) parseSSEResponse(r io.Reader, nonce uint64) (*host.HostResponse, error) {
+// Non-protocol data lines are forwarded to stream if configured.
+func (c *HTTPClient) parseSSEResponse(r io.Reader, stream io.Writer, receiptHandler func()) (*host.HostResponse, error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 1<<20), 1<<20) // 1MB max line -- default 64KB breaks on long SSE responses
 	var result host.HostResponse
@@ -210,9 +208,7 @@ func (c *HTTPClient) parseSSEResponse(r io.Reader, nonce uint64) (*host.HostResp
 		}
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
-			if c.config.StreamCallback != nil {
-				c.config.StreamCallback(nonce, line)
-			}
+			writeSSELine(stream, line)
 			continue
 		}
 
@@ -220,9 +216,7 @@ func (c *HTTPClient) parseSSEResponse(r io.Reader, nonce uint64) (*host.HostResp
 		var envelope map[string]json.RawMessage
 		if err := json.Unmarshal([]byte(data), &envelope); err != nil {
 			// Not JSON -- forward as-is.
-			if c.config.StreamCallback != nil {
-				c.config.StreamCallback(nonce, line)
-			}
+			writeSSELine(stream, line)
 			continue
 		}
 
@@ -235,8 +229,8 @@ func (c *HTTPClient) parseSSEResponse(r io.Reader, nonce uint64) (*host.HostResp
 				result.Receipt = receipt.Receipt
 				result.ConfirmedAt = receipt.ConfirmedAt
 			}
-			if c.config.ReceiptCallback != nil {
-				c.config.ReceiptCallback(nonce)
+			if receiptHandler != nil {
+				receiptHandler()
 			}
 			continue
 		}
@@ -253,14 +247,22 @@ func (c *HTTPClient) parseSSEResponse(r io.Reader, nonce uint64) (*host.HostResp
 		}
 
 		// Inference data line -- forward to callback.
-		if c.config.StreamCallback != nil {
-			c.config.StreamCallback(nonce, line)
-		}
+		writeSSELine(stream, line)
 	}
 	if err := scanner.Err(); err != nil {
 		return &result, fmt.Errorf("read SSE stream: %w", err)
 	}
 	return &result, nil
+}
+
+func writeSSELine(w io.Writer, line string) {
+	if w == nil {
+		return
+	}
+	fmt.Fprintf(w, "%s\n\n", line)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 // GossipNonce sends a nonce notification to a peer.

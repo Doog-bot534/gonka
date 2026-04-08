@@ -8,67 +8,12 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"subnet/state"
 	"subnet/types"
 	"subnet/user"
 )
-
-// streamRegistry routes SSE lines to per-request writers by nonce.
-type streamRegistry struct {
-	mu              sync.RWMutex
-	writers         map[uint64]io.Writer
-	receiptHandlers map[uint64]func()
-}
-
-func newStreamRegistry() *streamRegistry {
-	return &streamRegistry{
-		writers:         make(map[uint64]io.Writer),
-		receiptHandlers: make(map[uint64]func()),
-	}
-}
-
-func (r *streamRegistry) register(nonce uint64, w io.Writer) {
-	r.mu.Lock()
-	r.writers[nonce] = w
-	r.mu.Unlock()
-}
-
-func (r *streamRegistry) registerReceiptHandler(nonce uint64, fn func()) {
-	r.mu.Lock()
-	r.receiptHandlers[nonce] = fn
-	r.mu.Unlock()
-}
-
-func (r *streamRegistry) unregister(nonce uint64) {
-	r.mu.Lock()
-	delete(r.writers, nonce)
-	delete(r.receiptHandlers, nonce)
-	r.mu.Unlock()
-}
-
-func (r *streamRegistry) recordReceipt(nonce uint64) {
-	r.mu.RLock()
-	fn := r.receiptHandlers[nonce]
-	r.mu.RUnlock()
-	if fn != nil {
-		fn()
-	}
-}
-
-func (r *streamRegistry) callback(nonce uint64, line string) {
-	r.mu.RLock()
-	w := r.writers[nonce]
-	r.mu.RUnlock()
-	if w != nil {
-		fmt.Fprintf(w, "%s\n\n", line)
-		if f, ok := w.(http.Flusher); ok {
-			f.Flush()
-		}
-	}
-}
 
 // writeStreamReset writes a stream_reset SSE event to signal the client
 // that the connection was lost and the response will be replayed from scratch.
@@ -81,13 +26,12 @@ func writeStreamReset(w io.Writer) {
 
 // Proxy is the OpenAI-compatible HTTP proxy backed by a subnet session.
 type Proxy struct {
-	session  *user.Session
-	sm       *state.StateMachine
-	escrowID string
-	model    string
-	registry *streamRegistry
-	engine   *SpeculativeEngine
-	perf     *PerfTracker
+	session    *user.Session
+	sm         *state.StateMachine
+	escrowID   string
+	model      string
+	redundancy *Redundancy
+	perf       *PerfTracker
 }
 
 type chatRequest struct {
@@ -206,16 +150,6 @@ func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// hasMsgFinish returns true if mempool contains MsgFinishInference for the given nonce.
-func hasMsgFinish(txs []*types.SubnetTx, nonce uint64) bool {
-	for _, tx := range txs {
-		if fi := tx.GetFinishInference(); fi != nil && fi.InferenceId == nonce {
-			return true
-		}
-	}
-	return false
-}
-
 // deferredWriter delays WriteHeader(200) until the first Write call.
 // If runInference errors before any streaming data arrives, the proxy
 // can still return a proper HTTP error status.
@@ -244,7 +178,7 @@ func (d *deferredWriter) Flush() {
 func (p *Proxy) handleStreaming(w http.ResponseWriter, r *http.Request, params user.InferenceParams) {
 	dw := &deferredWriter{w: w}
 
-	err := p.engine.RunInference(r.Context(), params, dw)
+	err := p.redundancy.RunInference(r.Context(), params, dw)
 	if err != nil {
 		logRequestStage(r.Context(), "proxy_stream_failed", "escrow", p.escrowID, "error", err)
 		statusCode := gatewayStatusCodeForError(err)
@@ -268,7 +202,7 @@ func (p *Proxy) handleStreaming(w http.ResponseWriter, r *http.Request, params u
 func (p *Proxy) handleNonStreaming(w http.ResponseWriter, r *http.Request, params user.InferenceParams) {
 	var buf bytes.Buffer
 
-	err := p.engine.RunInference(r.Context(), params, &buf)
+	err := p.redundancy.RunInference(r.Context(), params, &buf)
 	if err != nil {
 		logRequestStage(r.Context(), "proxy_request_failed", "escrow", p.escrowID, "error", err)
 		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), gatewayStatusCodeForError(err))

@@ -22,18 +22,18 @@ import (
 )
 
 type httpTestEnv struct {
-	session      *user.Session
-	hosts        []*host.Host
-	servers      []*transport.Server
-	httpServers  []*httptest.Server
-	clients      []*transport.HTTPClient // user-authenticated clients
-	hostClients  []*transport.HTTPClient // host-authenticated clients (for gossip)
-	signers      []*signing.Secp256k1Signer
-	userSigner   *signing.Secp256k1Signer
-	group        []types.SlotAssignment
-	config       types.SessionConfig
-	stores       []*storage.Memory
-	gossips      []*gossip.Gossip
+	session     *user.Session
+	hosts       []*host.Host
+	servers     []*transport.Server
+	httpServers []*httptest.Server
+	clients     []*transport.HTTPClient // user-authenticated clients
+	hostClients []*transport.HTTPClient // host-authenticated clients (for gossip)
+	signers     []*signing.Secp256k1Signer
+	userSigner  *signing.Secp256k1Signer
+	group       []types.SlotAssignment
+	config      types.SessionConfig
+	stores      []*storage.Memory
+	gossips     []*gossip.Gossip
 }
 
 // setupHTTPEnv creates a full HTTP test environment with storage, gossip,
@@ -197,7 +197,7 @@ func TestHTTP_Auth_Rejected(t *testing.T) {
 			MaxTokens:   50,
 			StartedAt:   1000,
 		},
-	})
+	}, nil, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "403")
 }
@@ -218,7 +218,7 @@ func TestHTTP_GossipPropagation(t *testing.T) {
 			MaxTokens:   50,
 			StartedAt:   1000,
 		},
-	})
+	}, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 
@@ -247,7 +247,7 @@ func TestHTTP_EquivocationDetection(t *testing.T) {
 			MaxTokens:   50,
 			StartedAt:   1000,
 		},
-	})
+	}, nil, nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.StateHash)
 
@@ -541,7 +541,7 @@ func TestHTTP_GossipAmplification(t *testing.T) {
 			MaxTokens:   50,
 			StartedAt:   1000,
 		},
-	})
+	}, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, resp.StateSig)
 	require.NotEmpty(t, resp.StateHash)
@@ -706,7 +706,7 @@ func TestHTTP_GossipIntegration(t *testing.T) {
 			MaxTokens:   50,
 			StartedAt:   1000,
 		},
-	})
+	}, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, resp.StateSig)
 	require.NotEmpty(t, resp.StateHash)
@@ -732,7 +732,7 @@ func TestHTTP_EquivocationViaGossipHTTP(t *testing.T) {
 			MaxTokens:   50,
 			StartedAt:   1000,
 		},
-	})
+	}, nil, nil)
 	require.NoError(t, err)
 
 	// First gossip with real hash+sig.
@@ -762,7 +762,7 @@ func TestHTTP_LazyTxGossipHTTP(t *testing.T) {
 			MaxTokens:   50,
 			StartedAt:   1000,
 		},
-	})
+	}, nil, nil)
 	require.NoError(t, err)
 
 	// Host 1 is executor, so it has mempool txs (finish msg).
@@ -881,7 +881,7 @@ func TestAttack_GossipUnverifiedNonce(t *testing.T) {
 			MaxTokens:   50,
 			StartedAt:   1000,
 		},
-	})
+	}, nil, nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.StateHash)
 
@@ -913,7 +913,7 @@ func TestAttack_GossipEmptySigBypass(t *testing.T) {
 			MaxTokens:   50,
 			StartedAt:   1000,
 		},
-	})
+	}, nil, nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.StateHash)
 
@@ -932,4 +932,3 @@ func TestAttack_GossipEmptySigBypass(t *testing.T) {
 	err = hostClient1.GossipNonce(ctx, 1, resp.StateHash, resp.StateSig, 0)
 	require.NoError(t, err, "real gossip must succeed after rejected bypass attempts")
 }
-

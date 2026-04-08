@@ -65,7 +65,7 @@ func TestHTTPClient_Send_RoundTrip(t *testing.T) {
 			MaxTokens:   50,
 			StartedAt:   1000,
 		},
-	})
+	}, nil, nil)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), resp.Nonce)
 	require.NotNil(t, resp.StateSig)
@@ -98,7 +98,7 @@ func TestHTTPClient_GetDiffs(t *testing.T) {
 			MaxTokens:   50,
 			StartedAt:   1000,
 		},
-	})
+	}, nil, nil)
 	require.NoError(t, err)
 
 	// Fetch diffs.
@@ -124,7 +124,7 @@ func TestHTTPClient_GetMempool(t *testing.T) {
 			MaxTokens:   50,
 			StartedAt:   1000,
 		},
-	})
+	}, nil, nil)
 	require.NoError(t, err)
 
 	// Fetch mempool.
@@ -142,7 +142,7 @@ func TestParseSSE_PartialResult(t *testing.T) {
 	// Use a reader that returns the data then an error (simulating connection drop).
 	r := &truncatedReader{data: []byte(sseData)}
 
-	result, err := client.parseSSEResponse(r, 1)
+	result, err := client.parseSSEResponse(r, nil, nil)
 	require.Error(t, err, "should return error from broken stream")
 	require.NotNil(t, result, "should return partial result")
 	require.Equal(t, uint64(1), result.Nonce)
@@ -174,11 +174,10 @@ func TestHTTPClient_Send_SSE(t *testing.T) {
 	client, _, userSigner, _ := setupClientTestEnv(t)
 	ctx := context.Background()
 
-	// Configure a stream callback to collect data lines.
 	var streamLines []string
-	client.config.StreamCallback = func(nonce uint64, line string) {
+	streamSink := lineCollector(func(line string) {
 		streamLines = append(streamLines, line)
-	}
+	})
 
 	diff := testutil.SignDiff(t, userSigner, "escrow-1", 1, []*types.SubnetTx{testutil.StartTx(1)})
 	resp, err := client.Send(ctx, host.HostRequest{
@@ -191,7 +190,7 @@ func TestHTTPClient_Send_SSE(t *testing.T) {
 			MaxTokens:   50,
 			StartedAt:   1000,
 		},
-	})
+	}, streamSink, nil)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), resp.Nonce)
 	require.NotNil(t, resp.StateSig)
@@ -244,7 +243,7 @@ func TestHTTPClient_Send_UsesAdmissionController(t *testing.T) {
 			MaxTokens:   50,
 			StartedAt:   1000,
 		},
-	})
+	}, nil, nil)
 	require.ErrorContains(t, err, "participant request budget exhausted")
 	require.Len(t, admission.calls, 1)
 	require.Contains(t, admission.calls[0], "shared-host")
@@ -278,7 +277,7 @@ func TestHTTPClient_Send_ObservesUpstream503(t *testing.T) {
 			MaxTokens:   50,
 			StartedAt:   1000,
 		},
-	})
+	}, nil, nil)
 	require.Error(t, err)
 	var upstreamErr *UpstreamStatusError
 	require.ErrorAs(t, err, &upstreamErr)
@@ -286,4 +285,11 @@ func TestHTTPClient_Send_ObservesUpstream503(t *testing.T) {
 	require.Len(t, admission.observed, 1)
 	require.Contains(t, admission.observed[0], "shared-host")
 	require.Contains(t, admission.observed[0], ":503")
+}
+
+type lineCollector func(line string)
+
+func (c lineCollector) Write(p []byte) (int, error) {
+	c(string(p))
+	return len(p), nil
 }

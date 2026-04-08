@@ -19,9 +19,7 @@ type HTTPSessionConfig struct {
 	PrivateKeyHex    string
 	EscrowID         string
 	Bridge           bridge.MainnetBridge
-	StoragePath      string                          // optional: path to SQLite DB for session persistence
-	StreamCallback   func(nonce uint64, line string) // optional: receives raw SSE data lines during inference
-	ReceiptCallback  func(nonce uint64)              // optional: called when subnet_receipt SSE event arrives
+	StoragePath      string // optional: path to SQLite DB for session persistence
 	RequestAdmission transport.RequestAdmissionController
 }
 
@@ -65,14 +63,7 @@ func NewHTTPSession(cfg HTTPSessionConfig) (*Session, *state.StateMachine, error
 			return nil, nil, fmt.Errorf("get host info for %s: %w", slot.ValidatorAddress, err)
 		}
 		var clientCfgs []transport.ClientConfig
-		if cfg.StreamCallback != nil || cfg.ReceiptCallback != nil {
-			cc := transport.DefaultClientConfig()
-			cc.StreamCallback = cfg.StreamCallback
-			cc.ReceiptCallback = cfg.ReceiptCallback
-			cc.ParticipantKey = participantRequestKey(slot.ValidatorAddress, info.URL)
-			cc.Admission = cfg.RequestAdmission
-			clientCfgs = append(clientCfgs, cc)
-		} else if cfg.RequestAdmission != nil {
+		if cfg.RequestAdmission != nil {
 			cc := transport.DefaultClientConfig()
 			cc.ParticipantKey = participantRequestKey(slot.ValidatorAddress, info.URL)
 			cc.Admission = cfg.RequestAdmission

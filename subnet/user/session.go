@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"sort"
 	"sync"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -18,15 +20,40 @@ import (
 	"subnet/types"
 )
 
+// TimeoutBuffer is added to protocol deadlines so verifiers have
+// passed their own deadline before the proxy fires the timeout.
+var TimeoutBuffer = 5 * time.Second
+
+// nonceOutcome tracks protocol-relevant facts observed for a single inference nonce.
+type nonceOutcome struct {
+	confirmedAt int64
+	finished    bool
+}
+
+// TimeoutResult reports what happened during timeout handling.
+type TimeoutResult struct {
+	Reason string // "execution", "refused", or "" if deadline not reached
+}
+
+// HasMsgFinish returns true if mempool contains MsgFinishInference for the given nonce.
+func HasMsgFinish(txs []*types.SubnetTx, nonce uint64) bool {
+	for _, tx := range txs {
+		if fi := tx.GetFinishInference(); fi != nil && fi.InferenceId == nonce {
+			return true
+		}
+	}
+	return false
+}
+
 type HostClient interface {
-	Send(ctx context.Context, req host.HostRequest) (*host.HostResponse, error)
+	Send(ctx context.Context, req host.HostRequest, stream io.Writer, receiptHandler func()) (*host.HostResponse, error)
 }
 
 type InProcessClient struct {
 	Host *host.Host
 }
 
-func (c *InProcessClient) Send(ctx context.Context, req host.HostRequest) (*host.HostResponse, error) {
+func (c *InProcessClient) Send(ctx context.Context, req host.HostRequest, _ io.Writer, _ func()) (*host.HostResponse, error) {
 	resp, err := c.Host.HandleRequest(ctx, req)
 	if err != nil {
 		return nil, err
@@ -70,6 +97,7 @@ type Session struct {
 	pendingTxKeys   map[string]struct{}          // dedup set keyed by tx_type:id
 	signatures      map[uint64]map[uint32][]byte // nonce -> slotID -> sig
 	store           storage.Storage              // optional persistent storage
+	nonceStates     map[uint64]*nonceOutcome     // nonce -> protocol outcome
 }
 
 // SessionOption configures optional Session behavior.
@@ -114,6 +142,7 @@ func NewSession(
 		hostSyncNonce:   make(map[int]uint64),
 		pendingTxKeys:   make(map[string]struct{}),
 		signatures:      make(map[uint64]map[uint32][]byte),
+		nonceStates:     make(map[uint64]*nonceOutcome),
 	}
 	for i, slot := range group {
 		sess.participantKeys[i] = slot.ValidatorAddress
@@ -239,6 +268,16 @@ func (s *Session) processResponse(hostIdx int, resp *host.HostResponse, inferenc
 		s.addPendingTx(tx)
 	}
 
+	// Track protocol outcome for this nonce (only for prepared inferences).
+	if outcome, ok := s.nonceStates[inferenceNonce]; ok {
+		if resp.ConfirmedAt > 0 {
+			outcome.confirmedAt = resp.ConfirmedAt
+		}
+		if HasMsgFinish(resp.Mempool, inferenceNonce) {
+			outcome.finished = true
+		}
+	}
+
 	return nil
 }
 
@@ -330,6 +369,8 @@ func (s *Session) PrepareInference(params InferenceParams) (*PreparedInference, 
 		return nil, err
 	}
 
+	s.nonceStates[nonce] = &nonceOutcome{}
+
 	catchUp := s.diffsForHost(hostIdx)
 	return &PreparedInference{
 		diff:    diff,
@@ -348,7 +389,7 @@ func (p *PreparedInference) HostIdx() int { return p.hostIdx }
 // SendOnly sends a prepared inference to the host and returns the raw response
 // without processing it. Use ProcessResponse separately to apply the response
 // to session state. This split allows parallel network I/O with ordered processing.
-func (s *Session) SendOnly(ctx context.Context, p *PreparedInference) (*host.HostResponse, error) {
+func (s *Session) SendOnly(ctx context.Context, p *PreparedInference, stream io.Writer, receiptHandler func()) (*host.HostResponse, error) {
 	return s.clients[p.hostIdx].Send(ctx, host.HostRequest{
 		Diffs: p.catchUp,
 		Nonce: p.diff.Nonce,
@@ -359,7 +400,7 @@ func (s *Session) SendOnly(ctx context.Context, p *PreparedInference) (*host.Hos
 			MaxTokens:   p.params.MaxTokens,
 			StartedAt:   p.params.StartedAt,
 		},
-	})
+	}, stream, receiptHandler)
 }
 
 // SendInference composes diff, sends to correct host, processes response.
@@ -368,7 +409,7 @@ func (s *Session) SendInference(ctx context.Context, params InferenceParams) (*h
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.SendOnly(ctx, p)
+	resp, err := s.SendOnly(ctx, p, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("send to host %d: %w", p.hostIdx, err)
 	}
@@ -392,7 +433,7 @@ func (s *Session) sendDiffRound(ctx context.Context, extraTxs []*types.SubnetTx)
 	catchUp := s.diffsForHost(hostIdx)
 	s.mu.Unlock()
 
-	resp, err := s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUp, Nonce: diff.Nonce})
+	resp, err := s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUp, Nonce: diff.Nonce}, nil, nil)
 	if err != nil {
 		return nil // dead host, not fatal
 	}
@@ -410,7 +451,7 @@ func (s *Session) sendCatchUp(ctx context.Context, hostIdx int) error {
 	catchUp := s.diffsForHost(hostIdx)
 	s.mu.Unlock()
 
-	resp, err := s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUp, Nonce: nonce})
+	resp, err := s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUp, Nonce: nonce}, nil, nil)
 	if err != nil {
 		return nil // dead host
 	}
@@ -594,7 +635,7 @@ func (s *Session) SendPendingDiff(ctx context.Context) error {
 	catchUp := s.diffsForHost(hostIdx)
 	s.mu.Unlock()
 
-	resp, err := s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUp, Nonce: diff.Nonce})
+	resp, err := s.clients[hostIdx].Send(ctx, host.HostRequest{Diffs: catchUp, Nonce: diff.Nonce}, nil, nil)
 	if err != nil {
 		return fmt.Errorf("send timeout diff to host %d: %w", hostIdx, err)
 	}
@@ -652,6 +693,120 @@ func (s *Session) ParticipantKeys() []string {
 		keys = append(keys, key)
 	}
 	return keys
+}
+
+// IsNonceFinished returns true if ProcessResponse observed MsgFinishInference
+// for the given nonce. Must be called after ProcessResponse.
+func (s *Session) IsNonceFinished(nonce uint64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if o, ok := s.nonceStates[nonce]; ok {
+		return o.finished
+	}
+	return false
+}
+
+// HandleTimeout handles the full protocol timeout for a failed inference nonce:
+// waits for the protocol deadline, collects timeout votes, and submits
+// MsgTimeoutInference if sufficient votes are gathered.
+// sendTime is when the nonce's network call started.
+func (s *Session) HandleTimeout(ctx context.Context, nonce uint64, sendTime time.Time, payload *host.InferencePayload) (TimeoutResult, error) {
+	s.mu.Lock()
+	cfg := s.sm.SnapshotState().Config
+	confirmedAt := int64(0)
+	if o, ok := s.nonceStates[nonce]; ok {
+		confirmedAt = o.confirmedAt
+	}
+	hostIdx := int(nonce % uint64(len(s.group)))
+	hostID := shortAddress(s.group[hostIdx].ValidatorAddress)
+	s.mu.Unlock()
+
+	logFields := func(extra ...any) []any {
+		base := []any{"escrow", s.escrowID, "nonce", nonce, "host", hostID}
+		return append(base, extra...)
+	}
+
+	var reason types.TimeoutReason
+	var deadline time.Time
+	if confirmedAt > 0 {
+		deadline = time.Unix(confirmedAt, 0).Add(
+			time.Duration(cfg.ExecutionTimeout)*time.Second + TimeoutBuffer)
+		if !sleepUntilDeadlineWithHeartbeat(ctx, deadline, func() {
+			logging.Stage(ctx, "timeout_waiting", logFields("reason", "execution", "remaining_ms", time.Until(deadline).Milliseconds())...)
+		}) {
+			return TimeoutResult{}, ctx.Err()
+		}
+		reason = types.TimeoutReason_TIMEOUT_REASON_EXECUTION
+	} else {
+		deadline = sendTime.Add(
+			time.Duration(cfg.RefusalTimeout)*time.Second + TimeoutBuffer)
+		if !sleepUntilDeadlineWithHeartbeat(ctx, deadline, func() {
+			logging.Stage(ctx, "timeout_waiting", logFields("reason", "refused", "remaining_ms", time.Until(deadline).Milliseconds())...)
+		}) {
+			return TimeoutResult{}, ctx.Err()
+		}
+		reason = types.TimeoutReason_TIMEOUT_REASON_REFUSED
+	}
+
+	result := TimeoutResult{Reason: timeoutReasonLogLabel(reason)}
+
+	logging.Stage(ctx, "timeout_started", logFields("reason", result.Reason)...)
+
+	verifiers := s.TimeoutVerifiers()
+	storedDiffs := s.Diffs()
+
+	votes, err := s.CollectTimeoutVotes(ctx, nonce, reason, payload, verifiers, storedDiffs)
+	if err != nil {
+		return result, fmt.Errorf("collect timeout votes: %w", err)
+	}
+
+	if s.HasSufficientTimeoutVotes(votes) {
+		s.AddPendingTimeoutTx(nonce, reason, votes)
+		if err := s.SendPendingDiff(ctx); err != nil {
+			logging.Stage(ctx, "timeout_diff_send_failed", logFields("reason", result.Reason, "error", err)...)
+			return result, fmt.Errorf("send timeout diff: %w", err)
+		}
+		logging.Stage(ctx, "timeout_completed", logFields("reason", result.Reason)...)
+		return result, fmt.Errorf("inference %d timed out: %s", nonce, reason)
+	}
+
+	logging.Stage(ctx, "timeout_insufficient_votes", logFields("reason", result.Reason)...)
+	return result, fmt.Errorf("inference %d timed out but insufficient votes", nonce)
+}
+
+// TimeoutHeartbeatInterval controls how often timeout_waiting logs are emitted.
+var TimeoutHeartbeatInterval = time.Minute
+
+func sleepUntilDeadlineWithHeartbeat(ctx context.Context, deadline time.Time, heartbeat func()) bool {
+	d := time.Until(deadline)
+	if d <= 0 {
+		return true
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	var heartbeatC <-chan time.Time
+	var ticker *time.Ticker
+	if heartbeat != nil && TimeoutHeartbeatInterval > 0 {
+		ticker = time.NewTicker(TimeoutHeartbeatInterval)
+		defer ticker.Stop()
+		heartbeatC = ticker.C
+	}
+	select {
+	case <-timer.C:
+		return true
+	case <-heartbeatC:
+		heartbeat()
+		return sleepUntilDeadlineWithHeartbeat(ctx, deadline, heartbeat)
+	case <-ctx.Done():
+		return false
+	}
+}
+
+func shortAddress(addr string) string {
+	if len(addr) <= 8 {
+		return addr
+	}
+	return addr[len(addr)-8:]
 }
 
 // Close releases the underlying storage, if any. Safe to call multiple times.

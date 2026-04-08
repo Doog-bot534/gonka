@@ -100,13 +100,11 @@ func buildRuntime(cfg RuntimeConfig, chainREST, defaultModel string) (*subnetRun
 		return nil, fmt.Errorf("runtime %s: create storage dir: %w", cfg.ID, err)
 	}
 
-	registry := newStreamRegistry()
 	perfStore, err := NewPerfStore(cfg.StoragePath)
 	if err != nil {
 		return nil, fmt.Errorf("runtime %s: open perf store: %w", cfg.ID, err)
 	}
 	perf := NewPerfTracker(perfStore)
-	receiptCB := func(nonce uint64) { registry.recordReceipt(nonce) }
 
 	br := bridge.NewRESTBridge(chainREST)
 	session, sm, err := user.NewHTTPSession(user.HTTPSessionConfig{
@@ -114,8 +112,6 @@ func buildRuntime(cfg RuntimeConfig, chainREST, defaultModel string) (*subnetRun
 		EscrowID:         cfg.ID,
 		Bridge:           br,
 		StoragePath:      cfg.StoragePath,
-		StreamCallback:   registry.callback,
-		ReceiptCallback:  receiptCB,
 		RequestAdmission: sharedParticipantRequestLimiter,
 	})
 	if err != nil {
@@ -123,15 +119,14 @@ func buildRuntime(cfg RuntimeConfig, chainREST, defaultModel string) (*subnetRun
 		return nil, fmt.Errorf("runtime %s: create session: %w", cfg.ID, err)
 	}
 
-	engine := NewSpeculativeEngine(session, sm, perf, registry, len(session.Clients()))
+	redundancy := NewRedundancy(session, perf, len(session.Clients()))
 	proxy := &Proxy{
-		session:  session,
-		sm:       sm,
-		escrowID: cfg.ID,
-		model:    model,
-		registry: registry,
-		engine:   engine,
-		perf:     perf,
+		session:    session,
+		sm:         sm,
+		escrowID:   cfg.ID,
+		model:      model,
+		redundancy: redundancy,
+		perf:       perf,
 	}
 
 	rt := &subnetRuntime{
@@ -949,11 +944,11 @@ func (g *Gateway) sortRuntimeOrderLocked() {
 }
 
 func (g *Gateway) attachMetrics(rt *subnetRuntime) {
-	if g == nil || g.metrics == nil || rt == nil || rt.proxy == nil || rt.proxy.engine == nil {
+	if g == nil || g.metrics == nil || rt == nil || rt.proxy == nil || rt.proxy.redundancy == nil {
 		return
 	}
-	rt.proxy.engine.metrics = g.metrics
-	rt.proxy.engine.subnetID = rt.id
+	rt.proxy.redundancy.metrics = g.metrics
+	rt.proxy.redundancy.subnetID = rt.id
 }
 
 func removeSubnetStorage(storagePath, baseStorageDir string) error {

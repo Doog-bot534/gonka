@@ -10,12 +10,9 @@ import (
 	"time"
 
 	"subnet/host"
-	"subnet/state"
-	"subnet/types"
+	"subnet/logging"
 	"subnet/user"
 )
-
-var timeoutBuffer = 5 * time.Second
 
 // Tuning knobs — exported so they can be adjusted without code changes.
 var (
@@ -39,28 +36,26 @@ type Decision struct {
 	Reason       string
 }
 
-// SpeculativeEngine runs inferences with optional parallel speculation.
-type SpeculativeEngine struct {
+// Redundancy runs one request reliably, using extra attempts when needed.
+// It sits between Proxy and Session: Proxy delegates request execution here,
+// and Redundancy decides whether to use just one nonce or several.
+type Redundancy struct {
 	session   *user.Session
-	sm        *state.StateMachine
 	perf      *PerfTracker
-	registry  *streamRegistry
 	groupSize int
 	subnetID  string
 	metrics   *SubnetMetrics
 }
 
-func NewSpeculativeEngine(session *user.Session, sm *state.StateMachine, perf *PerfTracker, registry *streamRegistry, groupSize int) *SpeculativeEngine {
-	return &SpeculativeEngine{
+func NewRedundancy(session *user.Session, perf *PerfTracker, groupSize int) *Redundancy {
+	return &Redundancy{
 		session:   session,
-		sm:        sm,
 		perf:      perf,
-		registry:  registry,
 		groupSize: groupSize,
 	}
 }
 
-func (e *SpeculativeEngine) Decide(primaryHostIdx int, inputTokens uint64) Decision {
+func (e *Redundancy) Decide(primaryHostIdx int, inputTokens uint64) Decision {
 	secondaryHostIdx := (primaryHostIdx + 1) % e.groupSize
 
 	// Rule 1: primary is known unresponsive → immediate parallel
@@ -81,11 +76,11 @@ func (e *SpeculativeEngine) Decide(primaryHostIdx int, inputTokens uint64) Decis
 
 // inflight tracks one in-flight inference and its timing.
 type inflight struct {
-	prepared *user.PreparedInference
-	hostIdx  int
-	nonce    uint64
-	escrowID string
-	sendTime time.Time
+	prepared  *user.PreparedInference
+	hostIdx   int
+	nonce     uint64
+	escrowID  string
+	sendTime  time.Time
 	escalated bool
 
 	receiptOnce sync.Once
@@ -203,7 +198,7 @@ func (rw *raceWriter) Flush() {
 
 // RunInference prepares and sends an inference, optionally racing a secondary.
 // It replaces the old retry-based runInference in proxy.go.
-func (e *SpeculativeEngine) RunInference(ctx context.Context, params user.InferenceParams, w io.Writer) error {
+func (e *Redundancy) RunInference(ctx context.Context, params user.InferenceParams, w io.Writer) error {
 	ctx, _ = ensureRequestLogContext(ctx)
 	logRequestStage(ctx, "runner_started", "escrow", e.subnetID, "input_tokens", params.InputLength, "model", params.Model)
 	primary, err := e.prepareInflight(params)
@@ -234,7 +229,7 @@ func (e *SpeculativeEngine) RunInference(ctx context.Context, params user.Infere
 	return e.awaitRace(ctx, attempts, race, params, decision)
 }
 
-func (e *SpeculativeEngine) prepareInflight(params user.InferenceParams) (*inflight, error) {
+func (e *Redundancy) prepareInflight(params user.InferenceParams) (*inflight, error) {
 	prepared, err := e.session.PrepareInference(params)
 	if err != nil {
 		return nil, fmt.Errorf("prepare: %w", err)
@@ -250,36 +245,34 @@ func (e *SpeculativeEngine) prepareInflight(params user.InferenceParams) (*infli
 	}, nil
 }
 
-func (e *SpeculativeEngine) startInflight(ctx context.Context, inf *inflight, race *raceGroup) {
+func (e *Redundancy) startInflight(ctx context.Context, inf *inflight, race *raceGroup) {
 	rw := &raceWriter{group: race, nonce: inf.nonce, inf: inf}
-	logInferenceStage(ctx, inf.escrowID, inf.nonce, "prepared", "host", inf.hostIdx)
-	e.registry.register(inf.nonce, rw)
-	e.registry.registerReceiptHandler(inf.nonce, func() {
+	receiptHandler := func() {
 		inf.receiptOnce.Do(func() {
 			inf.receiptTime = time.Now()
 			logInferenceStage(ctx, inf.escrowID, inf.nonce, "receipt_received", "host", inf.hostIdx, "elapsed_ms", inf.receiptTime.Sub(inf.sendTime).Milliseconds())
 			close(inf.receiptCh)
 		})
-	})
+	}
+	logInferenceStage(ctx, inf.escrowID, inf.nonce, "prepared", "host", inf.hostIdx)
 	go e.monitorInflight(ctx, inf, race)
 
 	go func() {
 		defer close(inf.done)
 		inf.sendTime = time.Now()
 		logInferenceStage(ctx, inf.escrowID, inf.nonce, "started", "host", inf.hostIdx)
-		inf.resp, inf.err = e.session.SendOnly(ctx, inf.prepared)
+		inf.resp, inf.err = e.session.SendOnly(ctx, inf.prepared, rw, receiptHandler)
 		if inf.err != nil {
 			logInferenceStage(ctx, inf.escrowID, inf.nonce, "send_failed", "host", inf.hostIdx, "error", inf.err)
 		} else {
 			logInferenceStage(ctx, inf.escrowID, inf.nonce, "send_completed", "host", inf.hostIdx)
 		}
-		e.registry.unregister(inf.nonce)
 	}()
 }
 
 // startDelayed waits for receipt or timeout, then starts a secondary if needed.
 // Returns nil if receipt arrived before timeout (no secondary needed).
-func (e *SpeculativeEngine) startAdditionalInflight(ctx context.Context, race *raceGroup, params user.InferenceParams, stage string, trigger *inflight, reason string) *inflight {
+func (e *Redundancy) startAdditionalInflight(ctx context.Context, race *raceGroup, params user.InferenceParams, stage string, trigger *inflight, reason string) *inflight {
 	if ctx.Err() != nil {
 		return nil
 	}
@@ -375,7 +368,7 @@ type escalationTrigger struct {
 	reason   string
 }
 
-func (e *SpeculativeEngine) awaitRace(ctx context.Context, attempts []*inflight, race *raceGroup, params user.InferenceParams, decision Decision) error {
+func (e *Redundancy) awaitRace(ctx context.Context, attempts []*inflight, race *raceGroup, params user.InferenceParams, decision Decision) error {
 	doneCh := make(chan *inflight, e.maxAttempts())
 	for _, inf := range attempts {
 		e.watchInflightDone(inf, doneCh)
@@ -389,7 +382,7 @@ func (e *SpeculativeEngine) awaitRace(ctx context.Context, attempts []*inflight,
 	for {
 		winner := race.winnerNonce()
 		if graceTimer == nil && winner != 0 {
-			if winning := inflightByNonce(attempts, winner); winning != nil && inflightDone(winning) && inferenceFinished(winning) {
+			if winning := inflightByNonce(attempts, winner); winning != nil && inflightDone(winning) && inflightFinished(winning) {
 				if pending := pendingInflights(attempts); len(pending) > 0 {
 					graceTimer = time.NewTimer(SecondaryWaitAfterWinner)
 					graceC = graceTimer.C
@@ -457,7 +450,7 @@ func (e *SpeculativeEngine) awaitRace(ctx context.Context, attempts []*inflight,
 	}
 }
 
-func (e *SpeculativeEngine) watchInflightDone(inf *inflight, doneCh chan<- *inflight) {
+func (e *Redundancy) watchInflightDone(inf *inflight, doneCh chan<- *inflight) {
 	go func() {
 		<-inf.done
 		doneCh <- inf
@@ -487,7 +480,7 @@ func escalationForInflight(inf *inflight, params user.InferenceParams) (escalati
 		return escalationTrigger{}, false
 	}
 	if inflightDone(inf) {
-		if inferenceFinished(inf) {
+		if inflightFinished(inf) {
 			return escalationTrigger{}, false
 		}
 		return escalationTrigger{
@@ -542,7 +535,7 @@ func escalationDelay(stage string, inputTokens uint64) time.Duration {
 	}
 }
 
-func (e *SpeculativeEngine) monitorInflight(ctx context.Context, inf *inflight, race *raceGroup) {
+func (e *Redundancy) monitorInflight(ctx context.Context, inf *inflight, race *raceGroup) {
 	ticker := time.NewTicker(LogHeartbeatInterval)
 	defer ticker.Stop()
 
@@ -586,11 +579,9 @@ func (e *SpeculativeEngine) monitorInflight(ctx context.Context, inf *inflight, 
 	}
 }
 
-func (e *SpeculativeEngine) finishRaceWhenPendingDone(ctx context.Context, attempts []*inflight, params user.InferenceParams, decision Decision, winnerNonce uint64) {
+func (e *Redundancy) finishRaceWhenPendingDone(ctx context.Context, attempts []*inflight, params user.InferenceParams, decision Decision, winnerNonce uint64) {
 	bgCtx, _ := ensureRequestLogContext(context.Background())
-	if req, ok := requestLogFromContext(ctx); ok {
-		bgCtx = context.WithValue(bgCtx, requestLogContextKey{}, req)
-	}
+	bgCtx = logging.PropagateRequestID(bgCtx, ctx)
 	for _, inf := range pendingInflights(attempts) {
 		<-inf.done
 	}
@@ -629,6 +620,12 @@ func inflightDone(inf *inflight) bool {
 	}
 }
 
+// inflightFinished checks the raw response for MsgFinishInference.
+// Used during the race loop before ProcessResponse has been called.
+func inflightFinished(inf *inflight) bool {
+	return inf.err == nil && inf.resp != nil && user.HasMsgFinish(inf.resp.Mempool, inf.nonce)
+}
+
 func inflightByNonce(attempts []*inflight, nonce uint64) *inflight {
 	for _, inf := range attempts {
 		if inf.nonce == nonce {
@@ -638,17 +635,13 @@ func inflightByNonce(attempts []*inflight, nonce uint64) *inflight {
 	return nil
 }
 
-func inferenceFinished(inf *inflight) bool {
-	return inf.err == nil && inf.resp != nil && hasMsgFinish(inf.resp.Mempool, inf.nonce)
-}
-
-func (e *SpeculativeEngine) recordSampleOnce(inf *inflight, params user.InferenceParams) {
+func (e *Redundancy) recordSampleOnce(inf *inflight, params user.InferenceParams) {
 	inf.sampleOnce.Do(func() {
 		e.recordSample(inf, params)
 	})
 }
 
-func (e *SpeculativeEngine) processInflightOnce(inf *inflight) error {
+func (e *Redundancy) processInflightOnce(inf *inflight) error {
 	inf.processOnce.Do(func() {
 		if inf.resp == nil && inf.err != nil {
 			return
@@ -658,7 +651,7 @@ func (e *SpeculativeEngine) processInflightOnce(inf *inflight) error {
 	return inf.processErr
 }
 
-func (e *SpeculativeEngine) processResolvedInflight(inf *inflight) error {
+func (e *Redundancy) processResolvedInflight(inf *inflight) error {
 	select {
 	case <-inf.done:
 		return e.processInflightOnce(inf)
@@ -667,20 +660,24 @@ func (e *SpeculativeEngine) processResolvedInflight(inf *inflight) error {
 	}
 }
 
-func (e *SpeculativeEngine) finishRaceOutcome(ctx context.Context, attempts []*inflight, params user.InferenceParams, decision Decision, winnerNonce uint64) error {
-	var (
-		winnerIdx    int
-		involvement  []HostInvolvement
-		anySucceeded bool
-		failed       []*inflight
-	)
-	winnerNonce = resolvedWinnerNonce(attempts, winnerNonce)
+func (e *Redundancy) finishRaceOutcome(ctx context.Context, attempts []*inflight, params user.InferenceParams, decision Decision, winnerNonce uint64) error {
+	// Process all responses first so Session has complete protocol state.
+	for _, inf := range attempts {
+		if err := e.processInflightOnce(inf); err != nil {
+			logInferenceStage(ctx, inf.escrowID, inf.nonce, "process_response_failed", "host", inf.hostIdx, "error", err)
+		}
+	}
+
+	winnerNonce = e.resolvedWinnerNonce(attempts, winnerNonce)
+	var winnerIdx int
 	if len(attempts) > 0 {
 		winnerIdx = attempts[0].hostIdx
 	}
 	if winner := inflightByNonce(attempts, winnerNonce); winner != nil {
 		winnerIdx = winner.hostIdx
 	}
+
+	var involvement []HostInvolvement
 	for _, inf := range attempts {
 		e.recordSampleOnce(inf, params)
 		involvement = append(involvement, e.buildInvolvement(inf, winnerNonce))
@@ -694,14 +691,12 @@ func (e *SpeculativeEngine) finishRaceOutcome(ctx context.Context, attempts []*i
 		Hosts:         involvement,
 	})
 
+	var (
+		anySucceeded bool
+		failed       []*inflight
+	)
 	for _, inf := range attempts {
-		if err := e.processInflightOnce(inf); err != nil {
-			logInferenceStage(ctx, inf.escrowID, inf.nonce, "process_response_failed", "host", inf.hostIdx, "error", err)
-		}
-	}
-
-	for _, inf := range attempts {
-		ok := inferenceFinished(inf)
+		ok := e.session.IsNonceFinished(inf.nonce)
 		anySucceeded = anySucceeded || ok
 		logInferenceStage(ctx, inf.escrowID, inf.nonce, "race_completed",
 			"host", inf.hostIdx,
@@ -715,14 +710,23 @@ func (e *SpeculativeEngine) finishRaceOutcome(ctx context.Context, attempts []*i
 		}
 	}
 	if len(failed) > 0 {
+		payload := &host.InferencePayload{
+			Prompt:      params.Prompt,
+			Model:       params.Model,
+			InputLength: params.InputLength,
+			MaxTokens:   params.MaxTokens,
+			StartedAt:   params.StartedAt,
+		}
 		if anySucceeded {
 			go func() {
 				bgCtx, _ := ensureRequestLogContext(context.Background())
-				if req, ok := requestLogFromContext(ctx); ok {
-					bgCtx = context.WithValue(bgCtx, requestLogContextKey{}, req)
-				}
+				bgCtx = logging.PropagateRequestID(bgCtx, ctx)
 				for _, inf := range failed {
-					if err := e.handleInferenceTimeout(bgCtx, inf, params); err != nil {
+					result, err := e.session.HandleTimeout(bgCtx, inf.nonce, inf.sendTime, payload)
+					if result.Reason != "" && e.metrics != nil {
+						e.metrics.RecordInferenceTimeout(result.Reason)
+					}
+					if err != nil {
 						logInferenceStage(bgCtx, inf.escrowID, inf.nonce, "background_timeout_failed", "host", inf.hostIdx, "error", err)
 					}
 				}
@@ -730,7 +734,11 @@ func (e *SpeculativeEngine) finishRaceOutcome(ctx context.Context, attempts []*i
 			}()
 		} else {
 			for _, inf := range failed {
-				if err := e.handleInferenceTimeout(ctx, inf, params); err != nil {
+				result, err := e.session.HandleTimeout(ctx, inf.nonce, inf.sendTime, payload)
+				if result.Reason != "" && e.metrics != nil {
+					e.metrics.RecordInferenceTimeout(result.Reason)
+				}
+				if err != nil {
 					logInferenceStage(ctx, inf.escrowID, inf.nonce, "timeout_failed", "host", inf.hostIdx, "error", err)
 				}
 			}
@@ -747,7 +755,7 @@ func (e *SpeculativeEngine) finishRaceOutcome(ctx context.Context, attempts []*i
 	return nil
 }
 
-func (e *SpeculativeEngine) maxAttempts() int {
+func (e *Redundancy) maxAttempts() int {
 	if e.groupSize <= 0 {
 		return 1
 	}
@@ -757,12 +765,12 @@ func (e *SpeculativeEngine) maxAttempts() int {
 	return MaxSpeculativeAttempts
 }
 
-func resolvedWinnerNonce(attempts []*inflight, winnerNonce uint64) uint64 {
+func (e *Redundancy) resolvedWinnerNonce(attempts []*inflight, winnerNonce uint64) uint64 {
 	if winnerNonce != 0 {
 		return winnerNonce
 	}
 	for _, inf := range attempts {
-		if inferenceFinished(inf) {
+		if e.session.IsNonceFinished(inf.nonce) {
 			return inf.nonce
 		}
 	}
@@ -781,7 +789,7 @@ func stopTimer(t *time.Timer) {
 	}
 }
 
-func (e *SpeculativeEngine) logRequestSettled(ctx context.Context, winnerNonce uint64, decision Decision, outcome string) {
+func (e *Redundancy) logRequestSettled(ctx context.Context, winnerNonce uint64, decision Decision, outcome string) {
 	logRequestStage(ctx, "request_fully_settled",
 		"escrow", e.subnetID,
 		"winner_nonce", winnerNonce,
@@ -790,104 +798,13 @@ func (e *SpeculativeEngine) logRequestSettled(ctx context.Context, winnerNonce u
 	)
 }
 
-// handleInferenceTimeout waits for the appropriate deadline then collects
-// timeout votes and submits MsgTimeoutInference for a failed inference.
-func (e *SpeculativeEngine) handleInferenceTimeout(ctx context.Context, inf *inflight, params user.InferenceParams) error {
-	cfg := e.sm.SnapshotState().Config
-
-	var reason types.TimeoutReason
-	var deadline time.Time
-	if inf.resp != nil && inf.resp.ConfirmedAt > 0 {
-		deadline = time.Unix(inf.resp.ConfirmedAt, 0).Add(
-			time.Duration(cfg.ExecutionTimeout)*time.Second + timeoutBuffer)
-		if !sleepUntilWithHeartbeat(ctx, deadline, func() {
-			logInferenceStage(ctx, inf.escrowID, inf.nonce, "timeout_waiting", "host", inf.hostIdx, "reason", "execution", "remaining_ms", time.Until(deadline).Milliseconds())
-		}) {
-			return ctx.Err()
-		}
-		reason = types.TimeoutReason_TIMEOUT_REASON_EXECUTION
-	} else {
-		deadline = inf.sendTime.Add(
-			time.Duration(cfg.RefusalTimeout)*time.Second + timeoutBuffer)
-		if !sleepUntilWithHeartbeat(ctx, deadline, func() {
-			logInferenceStage(ctx, inf.escrowID, inf.nonce, "timeout_waiting", "host", inf.hostIdx, "reason", "refused", "remaining_ms", time.Until(deadline).Milliseconds())
-		}) {
-			return ctx.Err()
-		}
-		reason = types.TimeoutReason_TIMEOUT_REASON_REFUSED
-	}
-	if e.metrics != nil {
-		e.metrics.RecordInferenceTimeout(timeoutReasonLabel(reason))
-	}
-	logInferenceStage(ctx, inf.escrowID, inf.nonce, "timeout_started", "host", inf.hostIdx, "reason", timeoutReasonLabel(reason))
-
-	payload := &host.InferencePayload{
-		Prompt:      params.Prompt,
-		Model:       params.Model,
-		InputLength: params.InputLength,
-		MaxTokens:   params.MaxTokens,
-		StartedAt:   params.StartedAt,
-	}
-
-	verifiers := e.session.TimeoutVerifiers()
-	storedDiffs := e.session.Diffs()
-
-	votes, err := e.session.CollectTimeoutVotes(ctx, inf.nonce, reason, payload, verifiers, storedDiffs)
-	if err != nil {
-		logInferenceStage(ctx, inf.escrowID, inf.nonce, "timeout_vote_collection_failed", "host", inf.hostIdx, "error", err)
-		return fmt.Errorf("collect timeout votes: %w", err)
-	}
-
-	if e.session.HasSufficientTimeoutVotes(votes) {
-		e.session.AddPendingTimeoutTx(inf.nonce, reason, votes)
-		if err := e.session.SendPendingDiff(ctx); err != nil {
-			logInferenceStage(ctx, inf.escrowID, inf.nonce, "timeout_diff_send_failed", "host", inf.hostIdx, "error", err)
-			return fmt.Errorf("send timeout diff: %w", err)
-		}
-		logInferenceStage(ctx, inf.escrowID, inf.nonce, "timeout_completed", "host", inf.hostIdx, "reason", timeoutReasonLabel(reason))
-		return fmt.Errorf("inference %d timed out: %s", inf.nonce, reason)
-	}
-
-	logInferenceStage(ctx, inf.escrowID, inf.nonce, "timeout_insufficient_votes", "host", inf.hostIdx, "reason", timeoutReasonLabel(reason))
-	return fmt.Errorf("inference %d timed out but insufficient votes", inf.nonce)
-}
-
-func sleepUntil(ctx context.Context, deadline time.Time) bool {
-	return sleepUntilWithHeartbeat(ctx, deadline, nil)
-}
-
-func sleepUntilWithHeartbeat(ctx context.Context, deadline time.Time, heartbeat func()) bool {
-	d := time.Until(deadline)
-	if d <= 0 {
-		return true
-	}
-	t := time.NewTimer(d)
-	defer t.Stop()
-	var heartbeatC <-chan time.Time
-	var ticker *time.Ticker
-	if heartbeat != nil && LogHeartbeatInterval > 0 {
-		ticker = time.NewTicker(LogHeartbeatInterval)
-		defer ticker.Stop()
-		heartbeatC = ticker.C
-	}
-	select {
-	case <-t.C:
-		return true
-	case <-heartbeatC:
-		heartbeat()
-		return sleepUntilWithHeartbeat(ctx, deadline, heartbeat)
-	case <-ctx.Done():
-		return false
-	}
-}
-
-func (e *SpeculativeEngine) buildInvolvement(inf *inflight, winnerNonce uint64) HostInvolvement {
+func (e *Redundancy) buildInvolvement(inf *inflight, winnerNonce uint64) HostInvolvement {
 	hi := HostInvolvement{
 		HostIdx:      inf.hostIdx,
 		Nonce:        inf.nonce,
 		OutputChunks: inf.outputChunks.Load(),
 		Responsive:   inf.resp != nil && inf.resp.ConfirmedAt > 0,
-		Finished:     inf.err == nil && inf.resp != nil && hasMsgFinish(inf.resp.Mempool, inf.nonce),
+		Finished:     e.session.IsNonceFinished(inf.nonce),
 		Winner:       inf.nonce == winnerNonce,
 	}
 	if !inf.sendTime.IsZero() {
@@ -902,7 +819,7 @@ func (e *SpeculativeEngine) buildInvolvement(inf *inflight, winnerNonce uint64) 
 	return hi
 }
 
-func (e *SpeculativeEngine) recordSample(inf *inflight, params user.InferenceParams) {
+func (e *Redundancy) recordSample(inf *inflight, params user.InferenceParams) {
 	responsive := inf.resp != nil && inf.resp.ConfirmedAt > 0
 	sample := RequestSample{
 		HostIdx:     inf.hostIdx,
@@ -918,16 +835,5 @@ func (e *SpeculativeEngine) recordSample(inf *inflight, params user.InferencePar
 	e.perf.Record(sample)
 	if e.metrics != nil {
 		e.metrics.ObserveRequestSample(e.subnetID, sample)
-	}
-}
-
-func timeoutReasonLabel(reason types.TimeoutReason) string {
-	switch reason {
-	case types.TimeoutReason_TIMEOUT_REASON_EXECUTION:
-		return "execution"
-	case types.TimeoutReason_TIMEOUT_REASON_REFUSED:
-		return "refused"
-	default:
-		return "unknown"
 	}
 }
