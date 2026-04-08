@@ -80,7 +80,13 @@ func TestRequestThresholdSignature_RejectsStaleEpoch(t *testing.T) {
 
 func TestRequestThresholdSignature_AcceptsCurrentEpoch(t *testing.T) {
 	k, ms, sdkCtx := setupMsgServerThresholdSigning(t)
-	setCompletedEpoch(t, k, sdkCtx, 2)
+	// Signing is allowed immediately for DKG_PHASE_SIGNED. DKG_PHASE_COMPLETED without
+	// DisputingPhaseDeadlineBlock / fallback timing is rejected (see threshold_signing_test.go).
+	require.NoError(t, k.SetEpochBLSData(sdkCtx, types.EpochBLSData{
+		EpochId:        2,
+		DkgPhase:       types.DKGPhase_DKG_PHASE_SIGNED,
+		GroupPublicKey: []byte{1, 2, 3},
+	}))
 	k.SetCurrentSigningEpochID(sdkCtx, 2)
 
 	msg := &types.MsgRequestThresholdSignature{
