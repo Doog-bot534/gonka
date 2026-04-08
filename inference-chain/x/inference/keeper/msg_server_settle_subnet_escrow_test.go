@@ -51,6 +51,7 @@ func TestSettleSubnetEscrow_FeesSplitBySlotCount(t *testing.T) {
 		EpochIndex: 5,
 		Settled:    false,
 	}
+	setupEpochGroupForSubnet(ctx, k, escrow.EpochIndex)
 	_, err = k.StoreSubnetEscrow(ctx, &escrow, 1)
 	require.NoError(t, err)
 
@@ -128,6 +129,7 @@ func TestSettleSubnetEscrow_HappyPath(t *testing.T) {
 		EpochIndex: 5,
 		Settled:    false,
 	}
+	setupEpochGroupForSubnet(ctx, k, escrow.EpochIndex)
 	_, err := k.StoreSubnetEscrow(ctx, &escrow, 1)
 	require.NoError(t, err)
 
@@ -245,6 +247,7 @@ func TestSettleSubnetEscrow_ZeroCostSettlement(t *testing.T) {
 		EpochIndex: 5,
 		Settled:    false,
 	}
+	setupEpochGroupForSubnet(ctx, k, escrow.EpochIndex)
 	_, err := k.StoreSubnetEscrow(ctx, &escrow, 1)
 	require.NoError(t, err)
 
@@ -306,6 +309,7 @@ func TestSettleSubnetEscrow_UpdatesCurrentEpochStats(t *testing.T) {
 		EpochIndex: 5,
 		Settled:    false,
 	}
+	setupEpochGroupForSubnet(ctx, k, escrow.EpochIndex)
 	_, err = k.StoreSubnetEscrow(ctx, &escrow, 1)
 	require.NoError(t, err)
 	msg := buildSettlementTestData(t, escrow, keys, hostStats, 0)
@@ -373,6 +377,7 @@ func TestSettleSubnetEscrow_UpdatesSubnetHostEpochStats(t *testing.T) {
 		EpochIndex: 7,
 		Settled:    false,
 	}
+	setupEpochGroupForSubnet(ctx, k, escrow.EpochIndex)
 	_, err = k.StoreSubnetEscrow(ctx, &escrow, 1)
 	require.NoError(t, err)
 	msg := buildSettlementTestData(t, escrow, keys, hostStats, 0)

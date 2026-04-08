@@ -33,6 +33,13 @@ func (k msgServer) SettleSubnetEscrow(goCtx context.Context, msg *types.MsgSettl
 		return nil, fmt.Errorf("escrow %d has no slots", escrow.Id)
 	}
 
+	// Check if the subnet is being settled in the same epoch it was created.
+	currentEpochIndex, epochFound := k.GetEffectiveEpochIndex(goCtx)
+	if !epochFound {
+		return nil, fmt.Errorf("failed to get effective epoch index")
+	}
+	isSameEpochSettlement := escrow.EpochIndex == currentEpochIndex
+
 	totalSlots := uint64(len(escrow.Slots))
 	// How much of the total fees will be assigned to each slot
 	feePerSlot := msg.Fees / totalSlots
@@ -96,11 +103,14 @@ func (k msgServer) SettleSubnetEscrow(goCtx context.Context, msg *types.MsgSettl
 		}
 		totalPayout = nextTotalPayout
 
-		// Apply payout to participant balances (ledger-style, no bank transfer).
-		participant, found := k.GetParticipant(ctx, addr)
-		// If the subnet is settled on a different epoch, it's possible a subnet's host is no longer a participant on this epoch.
-		// In this case, we skip payment to this host
-		if found {
+		if isSameEpochSettlement {
+			// If the subnet is being settled in the same epoch it was created,
+			// we treat the payout the same as onchain inferences: we use [processParticipantPayment]
+			// to increment [participant.CurrentEpochStats.EarnedCoins], claimable at the end of the epoch.
+			participant, found := k.GetParticipant(ctx, addr)
+			if !found {
+				return nil, fmt.Errorf("participant %s not found", addr)
+			}
 			if payout > math.MaxInt64 {
 				return nil, fmt.Errorf("validator payout out of range for %s", addr)
 			}
@@ -109,6 +119,24 @@ func (k msgServer) SettleSubnetEscrow(goCtx context.Context, msg *types.MsgSettl
 			}
 			if err := k.SetParticipant(ctx, participant); err != nil {
 				return nil, fmt.Errorf("failed to update participant %s: %w", addr, err)
+			}
+		} else {
+			// If the subnet is being settled in a different epoch than it was created,
+			// we perform a direct bank transfer to the validator's account.
+			recipientAddr, err := sdk.AccAddressFromBech32(addr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid validator address %s: %w", addr, err)
+			}
+			if payout > math.MaxInt64 {
+				return nil, fmt.Errorf("validator payout out of range for %s", addr)
+			}
+			coins, err := types.GetCoins(int64(payout))
+			if err != nil {
+				return nil, fmt.Errorf("invalid payout amount: %w", err)
+			}
+			err = k.BankKeeper.SendCoinsFromModuleToAccount(goCtx, types.ModuleName, recipientAddr, coins, "subnet_escrow_payment")
+			if err != nil {
+				return nil, fmt.Errorf("failed to pay validator %s: %w", addr, err)
 			}
 		}
 	}
@@ -150,16 +178,27 @@ func (k msgServer) SettleSubnetEscrow(goCtx context.Context, msg *types.MsgSettl
 			}
 		}
 
-		// Update the participant's `CurrentEpochStats`
-		participant, found := k.GetParticipant(ctx, addr)
-		// If the subnet is settled on a different epoch, it's possible a subnet's host is no longer a participant on this epoch.
-		// In this case, we skip updating their stats.
-		if found {
-			if err := AggregateSubnetHostStatsIntoParticipantEpochStats(&participant, *hs); err != nil {
+		if isSameEpochSettlement {
+			// If the subnet is being settled in the same epoch it was created,
+			// we treat it the same as onchain inferences: we update [participant.CurrentEpochStats], which will:
+			// * be reflected in the epoch performance summary at the end of the epoch, which is used for reputation calculations.
+			// * be taken into account when calculating punishments WorkCoins/RewardCoins (see `bitcoin_rewards.go`)
+			// * be taken into account when calculating participant's inactivity status (see `status.go` -> `ComputeStatus`)
+			participant, found := k.GetParticipant(ctx, addr)
+			if !found {
+				return nil, fmt.Errorf("participant %s not found", addr)
+			}
+			if err := AggregateSubnetHostStatsIntoCurrentEpochStats(&participant, *hs); err != nil {
 				return nil, fmt.Errorf("failed to aggregate host stats into participant epoch stats: %w", err)
 			}
 			if err := k.SetParticipant(ctx, participant); err != nil {
 				return nil, fmt.Errorf("failed to update participant %s: %w", addr, err)
+			}
+		} else {
+			// If the subnet is being settled in a different epoch,
+			// we update the epoch performance summary for that epoch, which is used for reputation calculations.
+			if err := k.AggregateSubnetHostStatsIntoPreviousEpochStats(goCtx, escrow, *hs, addr); err != nil {
+				return nil, fmt.Errorf("failed to aggregate host stats into participant previous epoch stats: %w", err)
 			}
 		}
 

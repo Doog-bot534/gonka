@@ -41,8 +41,8 @@ func (k Keeper) AggregateSubnetHostStats(ctx context.Context, epochIndex uint64,
 	return k.SubnetHostEpochStatsMap.Set(ctx, key, existing)
 }
 
-// AggregateSubnetHostStatsIntoParticipantEpochStats merges subnet settlement stats into a participant's epoch stats.
-func AggregateSubnetHostStatsIntoParticipantEpochStats(participant *types.Participant, slotStats types.SubnetSettlementHostStats) error {
+// Merges subnet settlement stats into a participant's *current* epoch stats.
+func AggregateSubnetHostStatsIntoCurrentEpochStats(participant *types.Participant, slotStats types.SubnetSettlementHostStats) error {
 	// Validate input participant.
 	if participant == nil {
 		return fmt.Errorf("participant is nil")
@@ -78,6 +78,49 @@ func AggregateSubnetHostStatsIntoParticipantEpochStats(participant *types.Partic
 		return fmt.Errorf("participant validated inferences overflow for %s", participant.Address)
 	}
 	participant.CurrentEpochStats.ValidatedInferences = nextValidated
+
+	return nil
+}
+
+// Merges subnet settlement stats into a participant's *previous* epoch stats.
+func (k *Keeper) AggregateSubnetHostStatsIntoPreviousEpochStats(
+	goCtx context.Context,
+	escrow types.SubnetEscrow,
+	hs types.SubnetSettlementHostStats,
+	addr string,
+) error {
+	summary, summaryFound := k.GetEpochPerformanceSummary(goCtx, escrow.EpochIndex, addr)
+	if !summaryFound {
+		return nil
+	}
+
+	nextMissedRequests, carry := bits.Add64(summary.MissedRequests, uint64(hs.Missed), 0)
+	if carry != 0 {
+		return fmt.Errorf("epoch performance summary missed requests overflow for %s", addr)
+	}
+	summary.MissedRequests = nextMissedRequests
+
+	nextInvalidated, carry := bits.Add64(summary.InvalidatedInferences, uint64(hs.Invalid), 0)
+	if carry != 0 {
+		return fmt.Errorf("epoch performance summary invalidated inferences overflow for %s", addr)
+	}
+	summary.InvalidatedInferences = nextInvalidated
+
+	nextInferenceCount, carry := bits.Add64(summary.InferenceCount, uint64(hs.InferenceCount), 0)
+	if carry != 0 {
+		return fmt.Errorf("epoch performance summary inference count overflow for %s", addr)
+	}
+	summary.InferenceCount = nextInferenceCount
+
+	nextValidated, carry := bits.Add64(summary.ValidatedInferences, uint64(hs.Validated), 0)
+	if carry != 0 {
+		return fmt.Errorf("epoch performance summary validated inferences overflow for %s", addr)
+	}
+	summary.ValidatedInferences = nextValidated
+
+	if err := k.SetEpochPerformanceSummary(goCtx, summary); err != nil {
+		return fmt.Errorf("failed to update epoch performance summary for %s: %w", addr, err)
+	}
 
 	return nil
 }
