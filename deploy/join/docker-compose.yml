@@ -76,7 +76,6 @@ services:
     ports:
       - "9100:9100"
       - "127.0.0.1:9200:9200"
-      - "${NODE_MANAGER_GRPC_PORT:-9400}:${NODE_MANAGER_GRPC_PORT:-9400}"
     restart: always
   
   bridge:
