@@ -214,7 +214,7 @@ func main() {
 	// Worker owns flush lifecycle, commits periodically (not per-request), and handles distribution
 	batchingCfg := configManager.GetTxBatchingConfig()
 	commitInterval := time.Duration(batchingCfg.PocCommitIntervalSeconds) * time.Second
-	commitWorker := poc.NewCommitWorker(artifactStore, configManager, recorder, chainPhaseTracker, participantInfo.GetAddress(), commitInterval)
+	commitWorker := poc.NewCommitWorker(artifactStore, recorder, chainPhaseTracker, participantInfo.GetAddress(), commitInterval)
 	defer commitWorker.Close()
 
 	subnetSigner, subnetSignerErr := internalsubnet.NewSignerFromKeyring(*recorder.GetKeyring(), recorder.GetApiAccount().SignerAccount.Name)

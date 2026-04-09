@@ -182,6 +182,8 @@ data class Decimal(
         return this.toDouble() == (other as? Decimal)?.toDouble()
     }
 
+    override fun hashCode(): Int = toDouble().hashCode()
+
     companion object {
         private fun fromNumber(number: Number): Decimal {
             val strValue = number.toString().replace(".0$".toRegex(), "")

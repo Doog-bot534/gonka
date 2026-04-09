@@ -3,7 +3,6 @@ package poc
 import (
 	"bytes"
 	"context"
-	"decentralized-api/apiconfig"
 	"fmt"
 	"sort"
 	"strings"
@@ -32,7 +31,6 @@ type commitKey struct {
 
 type CommitWorker struct {
 	store              *artifacts.ManagedArtifactStore
-	configManager      *apiconfig.ConfigManager
 	recorder           cosmosclient.CosmosMessageClient
 	tracker            *chainphase.ChainPhaseTracker
 	participantAddress string
@@ -51,7 +49,6 @@ type CommitWorker struct {
 // The worker runs until Close() is called.
 func NewCommitWorker(
 	store *artifacts.ManagedArtifactStore,
-	configManager *apiconfig.ConfigManager,
 	recorder cosmosclient.CosmosMessageClient,
 	tracker *chainphase.ChainPhaseTracker,
 	participantAddress string,
@@ -59,7 +56,6 @@ func NewCommitWorker(
 ) *CommitWorker {
 	w := &CommitWorker{
 		store:              store,
-		configManager:      configManager,
 		recorder:           recorder,
 		tracker:            tracker,
 		participantAddress: participantAddress,
@@ -135,13 +131,7 @@ func (w *CommitWorker) tick() {
 	if ShouldHaveDistributedWeights(epochState) && pocHeight > 0 {
 		shouldRetry := w.lastDistributionAttempt.IsZero() ||
 			time.Since(w.lastDistributionAttempt) > distributionRetryInterval
-		pendingDistribution := w.hasPendingWeightDistribution(pocHeight)
-		logging.Debug("CommitWorker: distribution check", types.PoC,
-			"pocHeight", pocHeight,
-			"shouldRetry", shouldRetry,
-			"lastAttemptIsZero", w.lastDistributionAttempt.IsZero(),
-			"pendingDistribution", pendingDistribution)
-		if shouldRetry && pendingDistribution {
+		if shouldRetry && w.hasPendingWeightDistribution(pocHeight) {
 			w.submitWeightDistribution(pocHeight)
 		}
 	}

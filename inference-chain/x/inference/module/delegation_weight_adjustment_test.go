@@ -102,6 +102,78 @@ func TestAccumulateDelegationPenalties_DelegateTransfer(t *testing.T) {
 	require.Equal(t, int64(600), participants[1].Weight)
 }
 
+func TestAccumulateDelegationPenalties_TransferClampedByPenalty(t *testing.T) {
+	// When penalties reduce weight below the transfer delta, the recipient
+	// should only receive what remains -- not the full original-weight-based delta.
+	participants := []*types.ActiveParticipant{
+		{Index: "alice", Weight: 1000},
+		{Index: "bob", Weight: 500},
+	}
+	dwc := &DelegationWeightCalculator{
+		Delegations: map[string]map[string]string{
+			"model2": {"alice": "bob"},
+		},
+	}
+	modes := map[string]map[string]ParticipationMode{
+		"model1": {"alice": ModeRefuse, "bob": ModeDirect},
+		"model2": {"alice": ModeDelegate, "bob": ModeDirect},
+		"model3": {"alice": ModeRefuse, "bob": ModeDirect},
+		"model4": {"alice": ModeRefuse, "bob": ModeDirect},
+	}
+	params := DelegationAdjustmentParams{
+		RefusalPenalty:         mathsdk.LegacyMustNewDecFromStr("0.2"),
+		NoParticipationPenalty: mathsdk.LegacyZeroDec(),
+		DelegationShare:        mathsdk.LegacyMustNewDecFromStr("0.3"),
+	}
+
+	applyDelegationPenalties(participants, dwc, []string{"model1", "model2", "model3", "model4"}, modes, params, 1, nil)
+
+	// Penalty: 3 refusals * 0.2 = 0.6, deducts 600 from 1000 -> 400 remaining
+	// Transfer: 0.3 * 1000 = 300 desired, but only 400 available -> transfers 300
+	// Alice: 1000 - 600 - 300 = 100
+	// Bob: 500 + 300 = 800
+	require.Equal(t, int64(100), participants[0].Weight)
+	require.Equal(t, int64(800), participants[1].Weight)
+
+	// Verify weight conservation: total before = 1500, penalty destroys 600
+	// total after should be 1500 - 600 = 900
+	require.Equal(t, int64(900), participants[0].Weight+participants[1].Weight)
+}
+
+func TestAccumulateDelegationPenalties_TransferFullyClampedByPenalty(t *testing.T) {
+	// When penalties consume all weight, transfer recipient gets nothing.
+	participants := []*types.ActiveParticipant{
+		{Index: "alice", Weight: 1000},
+		{Index: "bob", Weight: 500},
+	}
+	dwc := &DelegationWeightCalculator{
+		Delegations: map[string]map[string]string{
+			"model2": {"alice": "bob"},
+		},
+	}
+	modes := map[string]map[string]ParticipationMode{
+		"model1": {"alice": ModeRefuse, "bob": ModeDirect},
+		"model2": {"alice": ModeDelegate, "bob": ModeDirect},
+		"model3": {"alice": ModeRefuse, "bob": ModeDirect},
+		"model4": {"alice": ModeRefuse, "bob": ModeDirect},
+		"model5": {"alice": ModeRefuse, "bob": ModeDirect},
+	}
+	params := DelegationAdjustmentParams{
+		RefusalPenalty:         mathsdk.LegacyMustNewDecFromStr("0.3"),
+		NoParticipationPenalty: mathsdk.LegacyZeroDec(),
+		DelegationShare:        mathsdk.LegacyMustNewDecFromStr("0.3"),
+	}
+
+	applyDelegationPenalties(participants, dwc, []string{"model1", "model2", "model3", "model4", "model5"}, modes, params, 1, nil)
+
+	// Penalty: 4 refusals * 0.3 = 1.2, capped at 1.0, deducts 1000 -> 0 remaining
+	// Transfer: 0.3 * 1000 = 300 desired, but 0 available -> transfers 0
+	// Alice: 0
+	// Bob: 500 + 0 = 500
+	require.Equal(t, int64(0), participants[0].Weight)
+	require.Equal(t, int64(500), participants[1].Weight)
+}
+
 func TestAccumulateDelegationPenalties_AdditiveAcrossGroups(t *testing.T) {
 	participants := []*types.ActiveParticipant{
 		{Index: "alice", Weight: 1000},

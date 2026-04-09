@@ -1,7 +1,8 @@
 package inference
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 
 	mathsdk "cosmossdk.io/math"
 	"github.com/productscience/inference/x/inference/types"
@@ -31,7 +32,9 @@ type pendingTransfer struct {
 //   - NONE:     fraction += no_participation_penalty per model
 //   - DELEGATE: transfers delegation_share of original weight to delegate target
 //
-// Penalties sum across models and cap at 1.0. Transfers use original weight.
+// Penalties sum across models and cap at 1.0. Transfer delta is based on
+// original weight but clamped to the sender's remaining weight to preserve
+// weight conservation.
 // When all delegation adjustment values are 0, this is a complete no-op.
 type PenaltyAccumulator struct {
 	penalties      map[string]mathsdk.LegacyDec
@@ -84,11 +87,11 @@ func (pa *PenaltyAccumulator) Apply(participants []*types.ActiveParticipant) {
 		}
 	}
 
-	sort.Slice(pa.transfers, func(i, j int) bool {
-		if pa.transfers[i].from == pa.transfers[j].from {
-			return pa.transfers[i].to < pa.transfers[j].to
-		}
-		return pa.transfers[i].from < pa.transfers[j].from
+	slices.SortFunc(pa.transfers, func(a, b pendingTransfer) int {
+		return cmp.Or(
+			cmp.Compare(a.from, b.from),
+			cmp.Compare(a.to, b.to),
+		)
 	})
 	for _, t := range pa.transfers {
 		from := weightIndex[t.from]
@@ -96,10 +99,13 @@ func (pa *PenaltyAccumulator) Apply(participants []*types.ActiveParticipant) {
 			continue
 		}
 		delta := t.rate.MulInt64(pa.originalWeight[t.from]).TruncateInt64()
-		from.Weight -= delta
-		if from.Weight < 0 {
-			from.Weight = 0
+		if delta > from.Weight {
+			delta = from.Weight
 		}
+		if delta < 0 {
+			delta = 0
+		}
+		from.Weight -= delta
 		if to := weightIndex[t.to]; to != nil {
 			to.Weight += delta
 		}

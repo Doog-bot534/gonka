@@ -19,6 +19,9 @@ func (k msgServer) SetPoCDelegation(ctx context.Context, msg *types.MsgSetPoCDel
 		// Clear delegation
 		_ = k.Keeper.DeletePoCDelegation(ctx, msg.ModelId, msg.Sender)
 	} else {
+		if _, found := k.GetParticipant(ctx, msg.DelegateTo); !found {
+			return nil, types.ErrParticipantNotFound
+		}
 		if err := k.Keeper.SetPoCDelegation(ctx, types.PoCDelegation{
 			ModelId:    msg.ModelId,
 			Delegator:  msg.Sender,

@@ -1,7 +1,9 @@
 package inference
 
 import (
+	"cmp"
 	"context"
+	"slices"
 	"sort"
 	"strconv"
 
@@ -416,17 +418,17 @@ func (am AppModule) loadFilteredDelegationSnapshotState(
 		}
 	}
 
-	sort.Slice(delegationEntries, func(i, j int) bool {
-		if delegationEntries[i].ModelId == delegationEntries[j].ModelId {
-			return delegationEntries[i].Delegator < delegationEntries[j].Delegator
-		}
-		return delegationEntries[i].ModelId < delegationEntries[j].ModelId
+	slices.SortFunc(delegationEntries, func(a, b *types.PoCDelegation) int {
+		return cmp.Or(
+			cmp.Compare(a.ModelId, b.ModelId),
+			cmp.Compare(a.Delegator, b.Delegator),
+		)
 	})
-	sort.Slice(refusalEntries, func(i, j int) bool {
-		if refusalEntries[i].ModelId == refusalEntries[j].ModelId {
-			return refusalEntries[i].Participant < refusalEntries[j].Participant
-		}
-		return refusalEntries[i].ModelId < refusalEntries[j].ModelId
+	slices.SortFunc(refusalEntries, func(a, b *types.PoCRefusal) int {
+		return cmp.Or(
+			cmp.Compare(a.ModelId, b.ModelId),
+			cmp.Compare(a.Participant, b.Participant),
+		)
 	})
 
 	return delegationEntries, refusalEntries
@@ -472,17 +474,17 @@ func (am AppModule) loadFilteredBootstrapState(
 		}
 	}
 
-	sort.Slice(delegationEntries, func(i, j int) bool {
-		if delegationEntries[i].ModelId == delegationEntries[j].ModelId {
-			return delegationEntries[i].Delegator < delegationEntries[j].Delegator
-		}
-		return delegationEntries[i].ModelId < delegationEntries[j].ModelId
+	slices.SortFunc(delegationEntries, func(a, b *types.PoCDelegation) int {
+		return cmp.Or(
+			cmp.Compare(a.ModelId, b.ModelId),
+			cmp.Compare(a.Delegator, b.Delegator),
+		)
 	})
-	sort.Slice(intentEntries, func(i, j int) bool {
-		if intentEntries[i].ModelId == intentEntries[j].ModelId {
-			return intentEntries[i].Participant < intentEntries[j].Participant
-		}
-		return intentEntries[i].ModelId < intentEntries[j].ModelId
+	slices.SortFunc(intentEntries, func(a, b *types.PoCDirectIntent) int {
+		return cmp.Or(
+			cmp.Compare(a.ModelId, b.ModelId),
+			cmp.Compare(a.Participant, b.Participant),
+		)
 	})
 
 	return delegationEntries, intentEntries, delegations, intents
@@ -690,8 +692,8 @@ func (am AppModule) computeAndSetVotingPowers(
 	for _, p := range activeParticipants {
 		vps := participantVP[p.Index]
 		if len(vps) > 0 {
-			sort.Slice(vps, func(i, j int) bool {
-				return vps[i].ModelId < vps[j].ModelId
+			slices.SortFunc(vps, func(a, b *types.ModelVotingPower) int {
+				return cmp.Compare(a.ModelId, b.ModelId)
 			})
 			p.VotingPowers = vps
 		}

@@ -138,7 +138,9 @@ func (wc *DelegationWeightCalculator) MeetsReachabilityThreshold(modelID string)
 	if wc.TotalNetworkWeight <= 0 {
 		return false
 	}
-	return wc.ProjectedReachableVotingPower(modelID)*3 > wc.TotalNetworkWeight*2
+	reachable := mathsdk.LegacyNewDec(wc.ProjectedReachableVotingPower(modelID))
+	total := mathsdk.LegacyNewDec(wc.TotalNetworkWeight)
+	return reachable.MulInt64(3).GT(total.MulInt64(2))
 }
 
 // IsGroupEligible checks post-PoC eligibility. Unlike MeetsMinHosts(), which
