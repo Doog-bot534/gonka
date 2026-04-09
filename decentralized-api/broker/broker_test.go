@@ -252,7 +252,7 @@ func TestResolvePoCModelForNode_SkipsWithoutResolvableModel(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestResolveNodeModelID_SortsConfigKeys(t *testing.T) {
+func TestResolveNodeModelID_FallsBackToFirstNodeModel(t *testing.T) {
 	modelID, ok := ResolveNodeModelID(nil, map[string]ModelArgs{
 		"z-model": {},
 		"a-model": {},

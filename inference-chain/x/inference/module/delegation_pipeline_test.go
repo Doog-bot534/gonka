@@ -58,8 +58,11 @@ func setupEpochGroupDataFromAP(k keeper.Keeper, ctx sdk.Context, ap types.Active
 // stubGroupKeeper is a minimal GroupMessageKeeper that returns all members from
 // EpochGroupData.ValidationWeights as live SDK group members. Used in unit tests
 // where the full SDK group module is not available.
+// Set excludedMembers to simulate mid-epoch removals (member in ValidationWeights
+// but absent from SDK group).
 type stubGroupKeeper struct {
-	keeper keeper.Keeper
+	keeper          keeper.Keeper
+	excludedMembers map[string]bool
 }
 
 func (s *stubGroupKeeper) GroupMembers(ctx context.Context, req *group.QueryGroupMembersRequest) (*group.QueryGroupMembersResponse, error) {
@@ -82,7 +85,7 @@ func (s *stubGroupKeeper) findMembersForGroup(ctx sdk.Context, groupId uint64) [
 		}
 		var members []*group.GroupMember
 		for _, vw := range data.ValidationWeights {
-			if vw == nil {
+			if vw == nil || s.excludedMembers[vw.MemberAddress] {
 				continue
 			}
 			members = append(members, &group.GroupMember{
@@ -983,4 +986,58 @@ func TestProjectedReachableVotingPower(t *testing.T) {
 
 	require.Equal(t, int64(100), calc.ProjectedReachableVotingPower("candidate"))
 	require.True(t, calc.MeetsReachabilityThreshold("candidate"))
+}
+
+func TestGetEffectiveValidationBaseState_ExcludesRemovedMembers(t *testing.T) {
+	k, ctx, stub := newMinimalInferenceKeeperWithStub(t)
+	am := NewAppModule(nil, k, nil, nil, nil, nil)
+
+	// Set effective epoch
+	k.SetEpochGroupData(ctx, types.EpochGroupData{
+		EpochIndex:     1,
+		ModelId:        "",
+		EpochGroupId:   1,
+		SubGroupModels: []string{"model-a"},
+		ValidationWeights: []*types.ValidationWeight{
+			{MemberAddress: "alice", Weight: 100},
+			{MemberAddress: "bob", Weight: 200},
+			{MemberAddress: "charlie", Weight: 300},
+		},
+	})
+	k.SetEpochGroupData(ctx, types.EpochGroupData{
+		EpochIndex:   1,
+		ModelId:      "model-a",
+		EpochGroupId: 2,
+		ValidationWeights: []*types.ValidationWeight{
+			{MemberAddress: "alice", Weight: 100, VotingPower: 150},
+			{MemberAddress: "bob", Weight: 200, VotingPower: 250},
+			{MemberAddress: "charlie", Weight: 300, VotingPower: 300},
+		},
+	})
+	require.NoError(t, k.SetEffectiveEpochIndex(ctx, 1))
+
+	// Simulate bob removed mid-epoch from SDK group
+	stub.excludedMembers = map[string]bool{"bob": true}
+
+	state := am.getEffectiveValidationBaseState(ctx)
+
+	// Bob should be excluded from consensus weights
+	require.Equal(t, int64(100), state.weights["alice"])
+	require.Equal(t, int64(300), state.weights["charlie"])
+	require.Equal(t, int64(0), state.weights["bob"])
+	require.Equal(t, int64(400), state.totalWeight) // 100 + 300
+
+	// Bob should be excluded from model voting powers
+	for _, mvp := range state.existingModelVotingPowers {
+		if mvp.ModelId == "model-a" {
+			vps := types.VotingPowerSliceToMap(mvp.VotingPowers)
+			require.Equal(t, int64(150), vps["alice"])
+			require.Equal(t, int64(300), vps["charlie"])
+			_, hasBob := vps["bob"]
+			require.False(t, hasBob)
+		}
+	}
+
+	// Clean up
+	stub.excludedMembers = nil
 }

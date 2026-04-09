@@ -869,6 +869,8 @@ func filterValidationNodesForModel(nodes []broker.NodeResponse, modelID string) 
 			}
 			continue
 		}
+		// No epoch assignment yet (first epoch or node just joined).
+		// Fall back to first node-supported model.
 		nodeModelID, ok := broker.ResolveNodeModelID(node.State.EpochMLNodes, node.Node.Models)
 		if ok && nodeModelID == modelID {
 			filtered = append(filtered, node)

@@ -120,7 +120,7 @@ func TestFilterValidationNodesForModel_UsesExplicitMembership(t *testing.T) {
 	}
 }
 
-func TestFilterValidationNodesForModel_UsesConfiguredFallbackWithoutEpochMembership(t *testing.T) {
+func TestFilterValidationNodesForModel_FallsBackToNodeModelsWithoutEpochData(t *testing.T) {
 	nodes := []broker.NodeResponse{
 		{
 			Node: broker.Node{
@@ -144,7 +144,7 @@ func TestFilterValidationNodesForModel_UsesConfiguredFallbackWithoutEpochMembers
 	}
 }
 
-func TestFilterValidationNodesForModel_DoesNotUseFallbackWhenExplicitMembershipExists(t *testing.T) {
+func TestFilterValidationNodesForModel_ExcludesNodeWithDifferentModel(t *testing.T) {
 	nodes := []broker.NodeResponse{
 		{
 			Node: broker.Node{

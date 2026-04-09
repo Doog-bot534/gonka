@@ -494,6 +494,7 @@ fun createSpec(epochLength: Long = 15L, epochShift: Int = 0): Spec<AppState> = s
             }
             this[InferenceParams::delegationParams] = spec<DelegationParams> {
                 this[DelegationParams::deployWindow] = 1L
+                this[DelegationParams::initialModelId] = defaultModel
             }
             // Enable PoC v2 using the phase-1 models list in poc_params
             this[InferenceParams::pocParams] = spec<PocParams> {

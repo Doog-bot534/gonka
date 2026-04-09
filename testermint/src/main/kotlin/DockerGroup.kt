@@ -538,7 +538,7 @@ fun getLocalCluster(config: ApplicationConfig): LocalCluster? {
         Logger.error("Expected exactly one genesis pair, found ${genesis.size}", "")
     }
     return genesis.singleOrNull()?.let {
-        LocalCluster(it, join)
+        LocalCluster(it, join.sortedBy { it.name })
     }
 }
 

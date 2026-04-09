@@ -43,18 +43,15 @@ Needed fix:
 
 Files:
 - `decentralized-api/broker/broker.go`
+- `decentralized-api/poc/validator.go`
 
 What happens:
-- `ResolveNodeModelID()` falls back to the first alphabetically sorted configured model when epoch assignment is ambiguous.
-- `resolvePoCModelForNode()` rejects one ambiguous case, but still falls back to the first sorted configured model when no epoch assignment exists.
+- `ResolveNodeModelID()` fell back to the first alphabetically sorted configured model when epoch assignment was missing.
+- `filterValidationNodesForModel()` used the same fallback for nodes with empty `EpochMLNodes`.
 
-Why this is wrong:
-- The runtime can silently schedule PoC for the wrong model.
-- This keeps a single-model shortcut alive in a path that is supposed to be model-aware.
-
-Needed fix:
-- Remove first-model fallback from PoC scheduling.
-- If model assignment is ambiguous, skip scheduling and surface the ambiguity explicitly.
+Fix applied:
+- `ResolveNodeModelID()` keeps its fallback to first node-supported model (needed by inference deployment, model-check, and validation paths for fresh nodes with no epoch assignment).
+- `filterValidationNodesForModel()` prefers explicit `EpochMLNodes[modelID]` when available, falls back to `ResolveNodeModelID` only when `EpochMLNodes` is empty (first epoch or freshly joined node).
 
 ## 4. [fixed, upgrade handler deferred] Upgrade cleanup and remaining single-model leftovers
 

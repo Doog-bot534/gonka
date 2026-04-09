@@ -87,7 +87,7 @@ Group membership and delegation are evaluated at the pre-eligibility cutoff and 
 
 - $r_{refusal}$ — fraction of bitcoin-style reward sent to governance when host explicitly refuses to participate in a group; must be > $r_{delegation}$ (governance parameter, e.g., 5%, per each group??)
 
-- $r_{penalty}$ — fraction of bitcoin-style reward lost when host fails to make a participation choice for any governance-approved group (governance parameter, target 100%)
+- $r_{penalty}$ — fraction of bitcoin-style reward lost when host fails to make a participation choice for any governance-approved group (governance parameter, e.g., 0.01)
 
 - $T_{grace}$ — grace window duration after governance approval before penalties apply (governance parameter, e.g., 3 epochs)
 

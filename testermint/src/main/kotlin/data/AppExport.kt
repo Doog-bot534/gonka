@@ -97,6 +97,8 @@ data class DelegationParams(
     val vMin: Long = 0,
     @SerializedName("cap_factor")
     val capFactor: Decimal = Decimal(0, 0),
+    @SerializedName("initial_model_id")
+    val initialModelId: String = "",
 )
 
 data class TokenomicsParams(

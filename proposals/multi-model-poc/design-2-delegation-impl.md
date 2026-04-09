@@ -23,7 +23,8 @@ Out of scope:
 `votingPower(group_i, p)`
 - PoC validation acceptance power in model group `group_i`
 - for a direct member:
-  `consensusWeight(p) + sum(consensusWeight(d) for delegators d -> p in group_i)`
+  `finalWeight(p) + sum(finalWeight(d) for delegators d -> p in group_i)`
+- `finalWeight` is the post-adjustment weight (after delegation penalties, collateral, and power capping), not raw `consensusWeight`
 
 These numbers must stay separate. A participant can have:
 - low `pocWeight` in a group but high `votingPower` from delegators
@@ -280,9 +281,10 @@ For a DIRECT member `m`:
 `votingPower(group_i, m) = baseWeight(m) + sum(baseWeight(d) for valid delegators d -> m)`
 
 Where `baseWeight` depends on the path:
-- regular PoC, existing model: `AP(N).voting_powers` already resolved
-- regular PoC, bootstrap model: `AP(N).weight`
-- confirmation PoC: final `AP(N+1).weight`
+- regular PoC, existing model: `AP(N).voting_powers` already resolved (these use post-adjustment weights from epoch N formation)
+- regular PoC, bootstrap model: `AP(N).weight` (post-adjustment)
+- confirmation PoC: final `AP(N+1).weight` (post-adjustment)
+- next-epoch voting powers (computed at epoch formation): `finalWeight` after delegation penalties, collateral, and power capping
 
 The acceptance rule is:
 

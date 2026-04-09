@@ -39,7 +39,8 @@ func (am AppModule) buildDelegationWeightCalculator(
 	}
 	prevState := am.getEffectiveValidationBaseState(ctx)
 	consensusWeights, totalWeight := prevState.weights, prevState.totalWeight
-	groups := buildGroupData(activeParticipants, coefficients)
+	initialModelID := params.GetDelegationParams().GetInitialModelId()
+	groups := buildGroupData(activeParticipants, coefficients, initialModelID)
 
 	return &DelegationWeightCalculator{
 		Groups:             groups,
@@ -109,9 +110,11 @@ func (am AppModule) prepareEpochParticipationState(
 
 // buildGroupData constructs GroupData from activeParticipants after model assignment.
 // Each participant's Models[] and MlNodes[] are parallel arrays.
+// initialModelID identifies the founding model exempt from the group cap.
 func buildGroupData(
 	activeParticipants []*types.ActiveParticipant,
 	coefficients map[string]mathsdk.LegacyDec,
+	initialModelID string,
 ) map[string]*GroupData {
 	groups := make(map[string]*GroupData)
 
@@ -126,6 +129,7 @@ func buildGroupData(
 				g = &GroupData{
 					MemberPocWeights: make(map[string]int64),
 					ConsensusKoeff:   coeff,
+					IsInitialGroup:   modelID == initialModelID,
 				}
 				groups[modelID] = g
 			}
@@ -134,16 +138,6 @@ func buildGroupData(
 				g.MemberPocWeights[p.Index] = SumNodeWeights(p.MlNodes[i].MlNodes)
 			}
 		}
-	}
-
-	// Mark the first group (by sorted model ID) as initial (exempt from cap)
-	if len(groups) > 0 {
-		var modelIDs []string
-		for id := range groups {
-			modelIDs = append(modelIDs, id)
-		}
-		sort.Strings(modelIDs)
-		groups[modelIDs[0]].IsInitialGroup = true
 	}
 
 	return groups

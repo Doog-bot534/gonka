@@ -109,6 +109,32 @@ func TestApplyDelegationWeightAdjustment_CompoundsAcrossGroups(t *testing.T) {
 	require.Equal(t, int64(810), participants[0].Weight)
 }
 
+func TestBootstrapPenaltyAndDelegationAdjustment_Compound(t *testing.T) {
+	participants := []*types.ActiveParticipant{
+		{Index: "alice", Weight: 1000},
+	}
+	dwc := &DelegationWeightCalculator{}
+	delegationModes := map[string]map[string]ParticipationMode{
+		"model1": {"alice": ModeNone},
+	}
+	bootstrapModes := map[string]map[string]BootstrapPenaltyMode{
+		"bootstrap1": {"alice": BootstrapPenaltyNone},
+	}
+	params := DelegationAdjustmentParams{
+		RRefusal:    mathsdk.LegacyZeroDec(),
+		RPenalty:    mathsdk.LegacyMustNewDecFromStr("0.1"),
+		RDelegation: mathsdk.LegacyZeroDec(),
+	}
+
+	// Step 1: delegation adjustment reduces 1000 by 10% -> 900
+	ApplyDelegationWeightAdjustment(participants, dwc, []string{"model1"}, delegationModes, params)
+	require.Equal(t, int64(900), participants[0].Weight)
+
+	// Step 2: bootstrap penalty reduces 900 by 10% -> 810
+	ApplyBootstrapPenaltyAdjustment(participants, bootstrapModes, nil, params)
+	require.Equal(t, int64(810), participants[0].Weight)
+}
+
 func TestResolveBootstrapPenaltyModes_PreEligibleFalse(t *testing.T) {
 	participants := []*types.ActiveParticipant{
 		{Index: "direct", Weight: 50},
