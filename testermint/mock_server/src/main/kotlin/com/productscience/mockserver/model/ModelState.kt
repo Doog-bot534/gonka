@@ -46,6 +46,14 @@ fun setPowState(host: String, state: PowState) {
     powStates[host] = state
 }
 
-val latestNonce = AtomicLong(1)
+val latestNonce = AtomicLong(1) // legacy, kept for V1 compat
+
+// Per-model nonce counters for V2 PoC. Each model gets its own counter
+// so artifacts from one model don't inflate another model's nonces,
+// which would trip the porosity check (maxNonce / count < 100).
+private val modelNonces = java.util.concurrent.ConcurrentHashMap<String, AtomicLong>()
+
+fun getModelNonce(modelId: String): AtomicLong =
+    modelNonces.computeIfAbsent(modelId) { AtomicLong(0) }
 val modelStates = mutableMapOf<String, ModelState>()
 val powStates = mutableMapOf<String, PowState>()

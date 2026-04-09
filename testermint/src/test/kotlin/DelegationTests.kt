@@ -64,8 +64,7 @@ class DelegationTests : TestermintTest() {
             host = "ml-0002.$pairName.test",
             models = mapOf(secondModel to ModelConfig(args = emptyList())),
         )
-        pair.api.setNodesTo(nodeA)
-        pair.api.addNode(nodeB)
+        pair.api.setNodesTo(listOf(nodeA, nodeB))
         pair.mock?.setPocResponse(pocWeightA, nodeA.pocHost)
         pair.mock?.setPocResponse(pocWeightB, nodeB.pocHost)
     }
@@ -529,7 +528,7 @@ class DelegationTests : TestermintTest() {
 
     @Test
     fun `delegation share starts at configured epoch for eligible model`() {
-        val penaltyStartEpoch = 5L
+        val penaltyStartEpoch = 7L
         val delegationSpec = spec<DelegationParams> {
             this[DelegationParams::deployWindow] = 1L
             this[DelegationParams::refusalPenalty] = Decimal.fromDouble(0.0)
@@ -556,6 +555,9 @@ class DelegationTests : TestermintTest() {
         val addrA = nodeA.node.getColdAddress()
         assertThat(nodeC.setPoCDelegation(secondModel, addrA).code).isEqualTo(0)
 
+        // Wait for both models to stabilize in PoC before checking pre-gate weights.
+        // Model B needs: hardware sync (up to 60s) -> chain model assignment -> PoC generation -> weight computation.
+        // This takes several epochs after setupBothModels.
         val beforeGate = genesis.waitForActiveEpoch(penaltyStartEpoch - 1)
         val beforeParticipants = beforeGate.activeParticipants.participants
         val beforeA = beforeParticipants.first { it.index == nodeA.node.getColdAddress() }
@@ -565,7 +567,7 @@ class DelegationTests : TestermintTest() {
         logSection("Before delegation_share gate: epoch=${beforeGate.activeParticipants.epochId}, A=${beforeA.weight}, B=${beforeB.weight}, C=${beforeC.weight}")
 
         // secondModel is eligible, but its delegation_share must still be gated off.
-        assertThat(beforeGate.activeParticipants.epochId).isEqualTo(4)
+        assertThat(beforeGate.activeParticipants.epochId).isEqualTo(penaltyStartEpoch - 1)
         assertThat(beforeA.weight).isEqualTo(60)
         assertThat(beforeB.weight).isEqualTo(60)
         assertThat(beforeC.weight).isEqualTo(50)
@@ -578,7 +580,7 @@ class DelegationTests : TestermintTest() {
 
         logSection("At delegation_share gate: epoch=${atGate.activeParticipants.epochId}, A=${atGateA.weight}, B=${atGateB.weight}, C=${atGateC.weight}")
 
-        assertThat(atGate.activeParticipants.epochId).isEqualTo(5)
+        assertThat(atGate.activeParticipants.epochId).isEqualTo(penaltyStartEpoch)
         assertThat(atGateA.weight).isEqualTo(70)
         assertThat(atGateB.weight).isEqualTo(60)
         assertThat(atGateC.weight).isEqualTo(40)
