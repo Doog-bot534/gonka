@@ -303,9 +303,9 @@ data class LocalInferencePair(
         )
     }
 
-    fun createSubnetEscrow(amount: Long): TxResponse {
+    fun createSubnetEscrow(amount: Long, modelId: String = defaultModel): TxResponse {
         return this.submitTransaction(
-            listOf("inference", "create-subnet-escrow", amount.toString())
+            listOf("inference", "create-subnet-escrow", amount.toString(), modelId)
         )
     }
 
@@ -813,9 +813,9 @@ data class LocalInferencePair(
             }
         }
 
-    fun createSubnetEscrow(amount: Long, from: String): TxResponse {
+    fun createSubnetEscrow(amount: Long, from: String, modelId: String = defaultModel): TxResponse {
         val txResp = node.sendTransactionDirectly(
-            listOf("inference", "create-subnet-escrow", amount.toString()),
+            listOf("inference", "create-subnet-escrow", amount.toString(), modelId),
             from
         )
         return node.waitForTxProcessed(txResp.txhash)

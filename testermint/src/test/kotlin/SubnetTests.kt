@@ -10,6 +10,7 @@ import java.time.Duration
 import java.util.concurrent.Executors
 
 class SubnetTests : TestermintTest() {
+    private val subnetEscrowModel = defaultModel
 
     private val noRestrictionsSpec = spec<AppState> {
         this[AppState::restrictions] = spec<RestrictionsState> {
@@ -37,7 +38,7 @@ class SubnetTests : TestermintTest() {
 
         logSection("Creating subnet escrow")
         val escrowAmount = 7_000_000_000L  // 7 GNK
-        val txResponse = genesis.createSubnetEscrow(escrowAmount)
+        val txResponse = genesis.createSubnetEscrow(escrowAmount, modelId = subnetEscrowModel)
         assertThat(txResponse.code).isEqualTo(0)
 
         logSection("Querying subnet escrow")
@@ -46,6 +47,7 @@ class SubnetTests : TestermintTest() {
         assertThat(escrowResponse.escrow).isNotNull()
         assertThat(escrowResponse.escrow!!.creator).isEqualTo(creator)
         assertThat(escrowResponse.escrow!!.amount).isEqualTo(escrowAmount.toString())
+        assertThat(escrowResponse.escrow!!.modelId).isEqualTo(subnetEscrowModel)
         assertThat(escrowResponse.escrow!!.slots).hasSize(16)  // SubnetGroupSize
         assertThat(escrowResponse.escrow!!.settled).isFalse()
 
@@ -79,7 +81,7 @@ class SubnetTests : TestermintTest() {
 
         logSection("Creating subnet escrow from user account")
         val escrowAmount = 7_000_000_000L
-        val txResp = genesis.createSubnetEscrow(escrowAmount, from = userKeyName)
+        val txResp = genesis.createSubnetEscrow(escrowAmount, from = userKeyName, modelId = subnetEscrowModel)
         assertThat(txResp.code).isEqualTo(0)
 
         logSection("Starting subnet proxy")
@@ -145,7 +147,7 @@ class SubnetTests : TestermintTest() {
 
         logSection("Creating subnet escrow from user account")
         val escrowAmount = 7_000_000_000L
-        val txResp = genesis.createSubnetEscrow(escrowAmount, from = userKeyName)
+        val txResp = genesis.createSubnetEscrow(escrowAmount, from = userKeyName, modelId = subnetEscrowModel)
         assertThat(txResp.code).isEqualTo(0)
 
         logSection("Starting subnet proxy")
@@ -214,7 +216,7 @@ class SubnetTests : TestermintTest() {
 
         val sessions = users.mapIndexed { i, user ->
             logSection("Creating escrow for user $i")
-            val txResp = genesis.createSubnetEscrow(escrowAmount, from = user.keyName)
+            val txResp = genesis.createSubnetEscrow(escrowAmount, from = user.keyName, modelId = subnetEscrowModel)
             assertThat(txResp.code).withFailMessage("Failed to create escrow for user $i").isEqualTo(0)
             val escrowId = txResp.getEscrowId()
             assertThat(escrowId).withFailMessage("No escrow_id in tx events for user $i").isNotNull()
@@ -287,7 +289,7 @@ class SubnetTests : TestermintTest() {
 
         logSection("Creating subnet escrow")
         val escrowAmount = 7_000_000_000L  // 7 GNK
-        val txResponse = genesis.createSubnetEscrow(escrowAmount)
+        val txResponse = genesis.createSubnetEscrow(escrowAmount, modelId = subnetEscrowModel)
         assertThat(txResponse.code).isEqualTo(0)
 
         logSection("Query subnet mempool -- triggers lazy session creation")

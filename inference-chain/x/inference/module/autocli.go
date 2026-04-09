@@ -517,9 +517,9 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 				},
 				{
 					RpcMethod:      "CreateSubnetEscrow",
-					Use:            "create-subnet-escrow [amount]",
+					Use:            "create-subnet-escrow [amount] [model-id]",
 					Short:          "Create a subnet escrow",
-					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "amount"}},
+					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "amount"}, {ProtoField: "model_id"}},
 				},
 				{
 					RpcMethod: "SettleSubnetEscrow",

@@ -12,6 +12,7 @@ Working note for `README.md`. This file stays at the design level. It covers:
 - One MLNode serves one model at a time.
 - A host serving two models uses two distinct MLNodes.
 - This document describes the protocol shape, not final proto fields or exact keeper APIs.
+- Inference validation weight semantics are out of scope here. This note is about PoC aggregation, delegation, and model-local selection rules, not about cleaning up the existing inference-validation paths.
 
 ## Problem
 Once PoC becomes per-model, the chain must answer two separate questions:
@@ -47,6 +48,7 @@ Raw PoC numbers are not directly comparable across models. A per-model coefficie
 
 ### Desired properties
 - Inference routing stays model-local.
+- Any model-aware selection flow derived from routing capacity, such as subnet escrow, should sample from the chosen model subgroup's local `weight`, not from root consensus weight or delegated voting power.
 - Consensus power is aggregated across eligible groups.
 - Governance can add or adjust coefficients without redesigning PoC.
 - The chain can value scarce or strategically important models differently.
