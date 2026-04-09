@@ -1,8 +1,6 @@
 package inference
 
 import (
-	"sort"
-
 	mathsdk "cosmossdk.io/math"
 	"github.com/productscience/inference/x/inference/types"
 )
@@ -186,7 +184,8 @@ func (wc *DelegationWeightCalculator) ResolveGroupParticipation(modelID string) 
 	}
 
 	modes := make(map[string]ParticipationMode)
-	for p, w := range wc.ConsensusWeights {
+	for _, p := range sortedKeys(wc.ConsensusWeights) {
+		w := wc.ConsensusWeights[p]
 		if w <= 0 {
 			continue
 		}
@@ -253,12 +252,11 @@ func (wc *DelegationWeightCalculator) ComputeGroupCap(modelID string) int64 {
 // EligibleGroups returns a sorted list of eligible model IDs.
 func (wc *DelegationWeightCalculator) EligibleGroups() []string {
 	var eligible []string
-	for modelID := range wc.Groups {
+	for _, modelID := range sortedKeys(wc.Groups) {
 		if wc.IsGroupEligible(modelID) {
 			eligible = append(eligible, modelID)
 		}
 	}
-	sort.Strings(eligible)
 	return eligible
 }
 
@@ -290,8 +288,8 @@ func (wc *DelegationWeightCalculator) ComputeConsensusWeights(eligibleModels []s
 		}
 
 		// Add scaled contributions to result
-		for m, contrib := range rawContributions {
-			scaled := scaleFactor.MulInt64(contrib).TruncateInt64()
+		for _, m := range sortedKeys(rawContributions) {
+			scaled := scaleFactor.MulInt64(rawContributions[m]).TruncateInt64()
 			result[m] += scaled
 		}
 	}
@@ -327,7 +325,8 @@ func (wc *DelegationWeightCalculator) ComputeGroupVotingPowers(
 
 	// Add delegated weight
 	delegations := wc.Delegations[modelID]
-	for delegator, target := range delegations {
+	for _, delegator := range sortedKeys(delegations) {
+		target := delegations[delegator]
 		if modes[delegator] != ModeDelegate {
 			continue
 		}

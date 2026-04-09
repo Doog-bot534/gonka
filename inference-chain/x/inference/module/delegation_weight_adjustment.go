@@ -72,7 +72,8 @@ func (pa *PenaltyAccumulator) Apply(participants []*types.ActiveParticipant) {
 		weightIndex[p.Index] = p
 	}
 
-	for addr, totalFrac := range pa.penalties {
+	for _, addr := range sortedKeys(pa.penalties) {
+		totalFrac := pa.penalties[addr]
 		p := weightIndex[addr]
 		if p == nil || pa.originalWeight[addr] <= 0 {
 			continue
@@ -144,7 +145,8 @@ func AccumulateDelegationPenalties(
 			continue
 		}
 
-		for addr, mode := range groupModes {
+		for _, addr := range sortedKeys(groupModes) {
+			mode := groupModes[addr]
 			if acc.originalWeight[addr] <= 0 {
 				continue
 			}

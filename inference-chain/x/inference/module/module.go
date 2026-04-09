@@ -961,7 +961,7 @@ func (am AppModule) computeStoreCommitVotingPowers(ctx context.Context, baseStat
 	// switches from intent to delegation after that snapshot, the late delegation
 	// is intentionally ignored for the current bootstrap-model validation path.
 	bootstrapModelStoreCommitKeys := make([]types.PoCParticipantModelKey, 0, len(allStoreCommits))
-	for key := range allStoreCommits {
+	for _, key := range sortedStoreCommitKeys(allStoreCommits) {
 		if _, alreadyActive := mergedValidationVotingPowers[key.ModelID]; alreadyActive {
 			continue
 		}
@@ -969,7 +969,8 @@ func (am AppModule) computeStoreCommitVotingPowers(ctx context.Context, baseStat
 	}
 
 	bootstrapModelVotingPowers := ComputeModelVotingPowers(bootstrapModelStoreCommitKeys, consensusWeights, bootstrapDelegations)
-	for modelID, vps := range bootstrapModelVotingPowers {
+	for _, modelID := range sortedKeys(bootstrapModelVotingPowers) {
+		vps := bootstrapModelVotingPowers[modelID]
 		mergedValidationVotingPowers[modelID] = vps
 	}
 	if len(allStoreCommits) > 0 && len(mergedValidationVotingPowers) == 0 {

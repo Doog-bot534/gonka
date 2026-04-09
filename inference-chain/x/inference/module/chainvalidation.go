@@ -93,7 +93,8 @@ func NewPoCWeightCalculator(
 	// for every participant in pocValidated.
 	sortedVP := make(map[string]sortedModelVP, len(modelVotingPowers))
 	if validationSlots > 0 {
-		for modelID, vp := range modelVotingPowers {
+		for _, modelID := range sortedKeys(modelVotingPowers) {
+			vp := modelVotingPowers[modelID]
 			entries, total := calculations.PrepareSortedEntries(vp)
 			sortedVP[modelID] = sortedModelVP{entries: entries, totalWeight: total}
 		}

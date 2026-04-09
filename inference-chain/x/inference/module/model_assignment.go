@@ -1,6 +1,7 @@
 package inference
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
@@ -25,6 +26,20 @@ func sortedKeys[K ~string, V any](m map[K]V) []K {
 		keys = append(keys, k)
 	}
 	slices.Sort(keys)
+	return keys
+}
+
+func sortedStoreCommitKeys[V any](m map[types.PoCParticipantModelKey]V) []types.PoCParticipantModelKey {
+	keys := make([]types.PoCParticipantModelKey, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.SortFunc(keys, func(a, b types.PoCParticipantModelKey) int {
+		return cmp.Or(
+			cmp.Compare(a.ModelID, b.ModelID),
+			cmp.Compare(a.ParticipantAddress, b.ParticipantAddress),
+		)
+	})
 	return keys
 }
 
@@ -274,7 +289,8 @@ func (e *EpochMLNodeData) GetParticipantWeight(participantAddr string) int64 {
 // Shape matches keeper.CoefficientAdjustedWeight input.
 func (e *EpochMLNodeData) GetParticipantModelNodes(participantAddr string) map[string][]*types.MLNodeInfo {
 	result := make(map[string][]*types.MLNodeInfo)
-	for modelId, modelData := range e.data {
+	for _, modelId := range sortedKeys(e.data) {
+		modelData := e.data[modelId]
 		if nodes, ok := modelData[participantAddr]; ok {
 			result[modelId] = nodes
 		}
@@ -368,7 +384,8 @@ func (ma *ModelAssigner) setModelsForParticipants(ctx context.Context, participa
 		var newMLNodeArrays []*types.ModelMLNodes
 
 		supportedModelsByNode := supportedModelsByNode(hardwareNodes, governanceModels)
-		for nodeId, supportedModels := range supportedModelsByNode {
+		for _, nodeId := range sortedKeys(supportedModelsByNode) {
+			supportedModels := supportedModelsByNode[nodeId]
 			ma.LogInfo("Supported models by node", types.Allocation, "flow_context", FlowContext, "step", "supported_models_by_node", "node_id", nodeId, "supported_models", supportedModels)
 		}
 
@@ -935,12 +952,12 @@ func calculatePerParticipantThreshold(epochData *EpochMLNodeData, participantWei
 	uniqueParticipants := make(map[string]bool)
 	for _, modelId := range sortedKeys(epochData.data) {
 		modelData := epochData.data[modelId]
-		for participantAddr := range modelData {
+		for _, participantAddr := range sortedKeys(modelData) {
 			uniqueParticipants[participantAddr] = true
 		}
 	}
 
-	for participantAddr := range uniqueParticipants {
+	for _, participantAddr := range sortedKeys(uniqueParticipants) {
 		participantWeight := epochData.GetParticipantWeight(participantAddr)
 
 		if participantWeight < participantWeightThreshold {

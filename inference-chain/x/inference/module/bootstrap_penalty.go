@@ -27,7 +27,7 @@ type bootstrapPenaltyInputs struct {
 
 func (i bootstrapPenaltyInputs) modelSet() map[string]bool {
 	result := make(map[string]bool, len(i.ReportByModel))
-	for modelID := range i.ReportByModel {
+	for _, modelID := range sortedKeys(i.ReportByModel) {
 		result[modelID] = true
 	}
 	return result
@@ -56,8 +56,9 @@ func (am AppModule) loadBootstrapDirectCommitters(
 		return nil, err
 	}
 
+	storeCommitKeys := sortedStoreCommitKeys(allStoreCommits)
 	directCommitters := make(map[string]map[string]bool)
-	for key := range allStoreCommits {
+	for _, key := range storeCommitKeys {
 		if !modelSet[key.ModelID] {
 			continue
 		}
@@ -186,7 +187,8 @@ func AccumulateBootstrapPenalties(
 			continue
 		}
 
-		for addr, mode := range modes[modelID] {
+		for _, addr := range sortedKeys(modes[modelID]) {
+			mode := modes[modelID][addr]
 			if acc.originalWeight[addr] <= 0 {
 				continue
 			}

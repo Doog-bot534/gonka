@@ -633,16 +633,18 @@ func ComputeModelVotingPowers(
 
 	modelVotingPowers := make(map[string]map[string]int64, len(directMembers))
 
-	for modelID, members := range directMembers {
+	for _, modelID := range sortedKeys(directMembers) {
+		members := directMembers[modelID]
 		vp := make(map[string]int64, len(members))
 
-		for addr := range members {
+		for _, addr := range sortedKeys(members) {
 			vp[addr] = consensusWeights[addr]
 		}
 
 		// Add delegated weight
 		modelDelegations := delegations[modelID]
-		for delegator, target := range modelDelegations {
+		for _, delegator := range sortedKeys(modelDelegations) {
+			target := modelDelegations[delegator]
 			if !members[target] {
 				continue
 			}
@@ -679,7 +681,8 @@ func (am AppModule) computeAndSetVotingPowers(
 			continue
 		}
 		vpMap := dwc.ComputeGroupVotingPowers(modelID, modes, finalWeights)
-		for addr, vp := range vpMap {
+		for _, addr := range sortedKeys(vpMap) {
+			vp := vpMap[addr]
 			if vp > 0 {
 				participantVP[addr] = append(participantVP[addr], &types.ModelVotingPower{
 					ModelId:     modelID,
