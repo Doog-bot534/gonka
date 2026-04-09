@@ -83,13 +83,13 @@ Group membership and delegation are evaluated at the pre-eligibility cutoff and 
 
 - $delegation_S(group_i, p_{from}, p_{to})$ — consensus weight delegated from host $p_{from}$ to host $p_{to}$ for validation in $group_i$ at epoch $S$. Host $p_{from} \notin members(group_i)$; host $p_{to} \in members(group_i)$. Delegation is set before epoch start; changes during an epoch take effect from the next epoch.
 
-- $r_{delegation}$ — fraction of bitcoin-style reward delegator shares with delegate (governance parameter, e.g., 1%, per each group??)
+- $delegationShare$ — fraction of value a delegator shares with the delegate for a group (governance parameter, e.g., 1%)
 
-- $r_{refusal}$ — fraction of bitcoin-style reward sent to governance when host explicitly refuses to participate in a group; must be > $r_{delegation}$ (governance parameter, e.g., 5%, per each group??)
+- $refusalPenalty$ — penalty applied when a host explicitly refuses to participate in a group; should be > $delegationShare$ (governance parameter, e.g., 5%)
 
-- $r_{penalty}$ — fraction of bitcoin-style reward lost when host fails to make a participation choice for any governance-approved group (governance parameter, e.g., 0.01)
+- $noParticipationPenalty$ — penalty applied when a host fails to make a participation choice for a governance-approved group (governance parameter, e.g., 0.01)
 
-- $T_{grace}$ — grace window duration after governance approval before penalties apply (governance parameter, e.g., 3 epochs)
+- $penaltyStartEpoch(group_i)$ — first epoch when participation penalties and delegation share apply for `group_i`
 
 - $votingPower_S(group_i, p) = consensusWeight_S(p) + \sum_{p_{from}} delegation_S(group_i, p_{from}, p)$ — total validation voting power of host $p$ in $group_i$
 
@@ -135,10 +135,10 @@ Hosts not in the group and not delegating effectively vote against approval. Del
 Every host with consensus weight must actively participate in every governance-approved group. For each group, the host chooses one of:
 
 1. Join group — deploy hardware and participate directly in the group
-2. Delegate — delegate voting power to a group member; delegator shares $r_{delegation}$ with delegate, incentivizing group members to build trust
-3. Explicit refusal — decline to delegate or join; costs $r_{refusal}$; must be renewed each epoch
+2. Delegate — delegate voting power to a group member; delegator shares $delegationShare$ with the delegate, incentivizing group members to build trust
+3. Explicit refusal — decline to delegate or join; costs $refusalPenalty$; must be renewed each epoch
 
-During the grace window ($T_{grace}$ epochs after governance approval), hosts must make a participation choice but there is no penalty for any choice. After the grace window ends, penalties apply: hosts who didn't make a choice lose $r_{penalty}$ of their bitcoin-style reward.
+Before $penaltyStartEpoch(group_i)$, hosts may make a participation choice for `group_i` without penalty. Starting at $penaltyStartEpoch(group_i)$, hosts who didn't make a valid choice pay $noParticipationPenalty$ for that group.
 
 This incentivizes >50% of total consensus weight to participate in PoC validation for every governance-approved group.
 
@@ -160,8 +160,8 @@ Purpose: build demo-case for governance proposal to show demand for the model.
 
 1. Unregistered phase — host adds model, serves inference directly to users, builds demo-case for governance proposal
 2. Governance proposal — model approved with defined $consensusKoeff_i$, group created
-3. Grace window ($T_{grace}$ epochs) — mandatory participation rules apply but without penalties; hosts make participation choices (join/delegate/refuse); PoC runs for the group
-4. After grace window — penalties apply ($r_{penalty}$, $r_{delegation}$, $r_{refusal}$); eligibility still depends on meeting conditions ($W_{threshold}$, $V_{min}$, passing PoC validation)
+3. Pre-penalty phase — the model is governance-approved and PoC may run for the group, but participation penalties stay disabled until `penaltyStartEpoch`
+4. Penalty phase — participation rules apply with `noParticipationPenalty`, `delegationShare`, and `refusalPenalty`; eligibility still depends on meeting conditions ($W_{threshold}$, $V_{min}$, passing PoC validation)
 
 A governance-approved group may or may not be eligible in any given epoch depending on whether it meets eligibility conditions.
 

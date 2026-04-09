@@ -14,9 +14,11 @@ func applyDelegationPenalties(
 	eligibleModels []string,
 	modes map[string]map[string]ParticipationMode,
 	params DelegationAdjustmentParams,
+	upcomingEpochIndex uint64,
+	penaltyStartEpochByModel map[string]uint64,
 ) {
 	acc := NewPenaltyAccumulator(participants)
-	AccumulateDelegationPenalties(acc, dwc, eligibleModels, modes, params)
+	AccumulateDelegationPenalties(acc, dwc, eligibleModels, modes, params, upcomingEpochIndex, penaltyStartEpochByModel)
 	acc.Apply(participants)
 }
 
@@ -26,12 +28,12 @@ func TestAccumulateDelegationPenalties_NoOp(t *testing.T) {
 	}
 	dwc := &DelegationWeightCalculator{}
 	params := DelegationAdjustmentParams{
-		RRefusal:    mathsdk.LegacyZeroDec(),
-		RPenalty:    mathsdk.LegacyZeroDec(),
-		RDelegation: mathsdk.LegacyZeroDec(),
+		RefusalPenalty:         mathsdk.LegacyZeroDec(),
+		NoParticipationPenalty: mathsdk.LegacyZeroDec(),
+		DelegationShare:        mathsdk.LegacyZeroDec(),
 	}
 
-	applyDelegationPenalties(participants, dwc, []string{"model1"}, nil, params)
+	applyDelegationPenalties(participants, dwc, []string{"model1"}, nil, params, 1, nil)
 	require.Equal(t, int64(1000), participants[0].Weight)
 }
 
@@ -44,12 +46,12 @@ func TestAccumulateDelegationPenalties_DirectNoPenalty(t *testing.T) {
 		"model1": {"alice": ModeDirect},
 	}
 	params := DelegationAdjustmentParams{
-		RRefusal:    mathsdk.LegacyMustNewDecFromStr("0.1"),
-		RPenalty:    mathsdk.LegacyMustNewDecFromStr("0.2"),
-		RDelegation: mathsdk.LegacyMustNewDecFromStr("0.05"),
+		RefusalPenalty:         mathsdk.LegacyMustNewDecFromStr("0.1"),
+		NoParticipationPenalty: mathsdk.LegacyMustNewDecFromStr("0.2"),
+		DelegationShare:        mathsdk.LegacyMustNewDecFromStr("0.05"),
 	}
 
-	applyDelegationPenalties(participants, dwc, []string{"model1"}, modes, params)
+	applyDelegationPenalties(participants, dwc, []string{"model1"}, modes, params, 1, nil)
 	require.Equal(t, int64(1000), participants[0].Weight)
 }
 
@@ -62,12 +64,12 @@ func TestAccumulateDelegationPenalties_RefusePenalty(t *testing.T) {
 		"model1": {"alice": ModeRefuse},
 	}
 	params := DelegationAdjustmentParams{
-		RRefusal:    mathsdk.LegacyMustNewDecFromStr("0.15"),
-		RPenalty:    mathsdk.LegacyZeroDec(),
-		RDelegation: mathsdk.LegacyZeroDec(),
+		RefusalPenalty:         mathsdk.LegacyMustNewDecFromStr("0.15"),
+		NoParticipationPenalty: mathsdk.LegacyZeroDec(),
+		DelegationShare:        mathsdk.LegacyZeroDec(),
 	}
 
-	applyDelegationPenalties(participants, dwc, []string{"model1"}, modes, params)
+	applyDelegationPenalties(participants, dwc, []string{"model1"}, modes, params, 1, nil)
 	require.Equal(t, int64(850), participants[0].Weight)
 }
 
@@ -88,12 +90,12 @@ func TestAccumulateDelegationPenalties_DelegateTransfer(t *testing.T) {
 		},
 	}
 	params := DelegationAdjustmentParams{
-		RRefusal:    mathsdk.LegacyZeroDec(),
-		RPenalty:    mathsdk.LegacyZeroDec(),
-		RDelegation: mathsdk.LegacyMustNewDecFromStr("0.1"),
+		RefusalPenalty:         mathsdk.LegacyZeroDec(),
+		NoParticipationPenalty: mathsdk.LegacyZeroDec(),
+		DelegationShare:        mathsdk.LegacyMustNewDecFromStr("0.1"),
 	}
 
-	applyDelegationPenalties(participants, dwc, []string{"model1"}, modes, params)
+	applyDelegationPenalties(participants, dwc, []string{"model1"}, modes, params, 1, nil)
 
 	// alice delegates 10% to bob
 	require.Equal(t, int64(900), participants[0].Weight)
@@ -110,12 +112,12 @@ func TestAccumulateDelegationPenalties_AdditiveAcrossGroups(t *testing.T) {
 		"model2": {"alice": ModeNone},
 	}
 	params := DelegationAdjustmentParams{
-		RRefusal:    mathsdk.LegacyZeroDec(),
-		RPenalty:    mathsdk.LegacyMustNewDecFromStr("0.1"),
-		RDelegation: mathsdk.LegacyZeroDec(),
+		RefusalPenalty:         mathsdk.LegacyZeroDec(),
+		NoParticipationPenalty: mathsdk.LegacyMustNewDecFromStr("0.1"),
+		DelegationShare:        mathsdk.LegacyZeroDec(),
 	}
 
-	applyDelegationPenalties(participants, dwc, []string{"model1", "model2"}, modes, params)
+	applyDelegationPenalties(participants, dwc, []string{"model1", "model2"}, modes, params, 1, nil)
 
 	// Additive: penalty = 0.1 + 0.1 = 0.2, result = 1000 * (1 - 0.2) = 800
 	require.Equal(t, int64(800), participants[0].Weight)
@@ -133,15 +135,15 @@ func TestUnifiedPenalties_DelegationAndBootstrap_Additive(t *testing.T) {
 		"bootstrap1": {"alice": BootstrapPenaltyNone},
 	}
 	params := DelegationAdjustmentParams{
-		RRefusal:    mathsdk.LegacyZeroDec(),
-		RPenalty:    mathsdk.LegacyMustNewDecFromStr("0.1"),
-		RDelegation: mathsdk.LegacyZeroDec(),
+		RefusalPenalty:         mathsdk.LegacyZeroDec(),
+		NoParticipationPenalty: mathsdk.LegacyMustNewDecFromStr("0.1"),
+		DelegationShare:        mathsdk.LegacyZeroDec(),
 	}
 
 	// Unified accumulator: both sources feed into one accumulator
 	acc := NewPenaltyAccumulator(participants)
-	AccumulateDelegationPenalties(acc, dwc, []string{"model1"}, delegationModes, params)
-	AccumulateBootstrapPenalties(acc, bootstrapModes, nil, params)
+	AccumulateDelegationPenalties(acc, dwc, []string{"model1"}, delegationModes, params, 1, nil)
+	AccumulateBootstrapPenalties(acc, bootstrapModes, nil, params, 1, nil)
 	acc.Apply(participants)
 
 	// Additive: 0.1 (delegation) + 0.1 (bootstrap) = 0.2, result = 1000 * 0.8 = 800
@@ -162,12 +164,12 @@ func TestAccumulatePenalties_CappedAtOne(t *testing.T) {
 		eligibleModels[i] = model
 	}
 	params := DelegationAdjustmentParams{
-		RRefusal:    mathsdk.LegacyZeroDec(),
-		RPenalty:    mathsdk.LegacyMustNewDecFromStr("0.1"),
-		RDelegation: mathsdk.LegacyZeroDec(),
+		RefusalPenalty:         mathsdk.LegacyZeroDec(),
+		NoParticipationPenalty: mathsdk.LegacyMustNewDecFromStr("0.1"),
+		DelegationShare:        mathsdk.LegacyZeroDec(),
 	}
 
-	applyDelegationPenalties(participants, dwc, eligibleModels, modes, params)
+	applyDelegationPenalties(participants, dwc, eligibleModels, modes, params, 1, nil)
 
 	// 11 * 0.1 = 1.1, capped at 1.0, weight -> 0
 	require.Equal(t, int64(0), participants[0].Weight)
@@ -243,19 +245,19 @@ func TestAccumulateBootstrapPenalties_MapsIntentMissedAndNone(t *testing.T) {
 		},
 	}
 	params := DelegationAdjustmentParams{
-		RRefusal:    mathsdk.LegacyMustNewDecFromStr("0.25"),
-		RPenalty:    mathsdk.LegacyMustNewDecFromStr("0.5"),
-		RDelegation: mathsdk.LegacyZeroDec(),
+		RefusalPenalty:         mathsdk.LegacyMustNewDecFromStr("0.25"),
+		NoParticipationPenalty: mathsdk.LegacyMustNewDecFromStr("0.5"),
+		DelegationShare:        mathsdk.LegacyZeroDec(),
 	}
 
 	acc := NewPenaltyAccumulator(participants)
-	AccumulateBootstrapPenalties(acc, modes, nil, params)
+	AccumulateBootstrapPenalties(acc, modes, nil, params, 1, nil)
 	acc.Apply(participants)
 
 	require.Equal(t, int64(100), participants[0].Weight) // Direct: no penalty
 	require.Equal(t, int64(80), participants[1].Weight)  // Delegate: no penalty
-	require.Equal(t, int64(25), participants[2].Weight)  // IntentMissed: RPenalty 50*0.5=25
-	require.Equal(t, int64(25), participants[3].Weight)  // None: RPenalty 50*0.5=25
+	require.Equal(t, int64(25), participants[2].Weight)  // IntentMissed: no_participation_penalty 50*0.5=25
+	require.Equal(t, int64(25), participants[3].Weight)  // None: no_participation_penalty 50*0.5=25
 }
 
 func TestAccumulateDelegationPenalties_MixedModesAcrossModels(t *testing.T) {
@@ -268,13 +270,71 @@ func TestAccumulateDelegationPenalties_MixedModesAcrossModels(t *testing.T) {
 		"model2": {"alice": ModeNone},
 	}
 	params := DelegationAdjustmentParams{
-		RRefusal:    mathsdk.LegacyMustNewDecFromStr("0.05"),
-		RPenalty:    mathsdk.LegacyMustNewDecFromStr("0.1"),
-		RDelegation: mathsdk.LegacyZeroDec(),
+		RefusalPenalty:         mathsdk.LegacyMustNewDecFromStr("0.05"),
+		NoParticipationPenalty: mathsdk.LegacyMustNewDecFromStr("0.1"),
+		DelegationShare:        mathsdk.LegacyZeroDec(),
 	}
 
-	applyDelegationPenalties(participants, dwc, []string{"model1", "model2"}, modes, params)
+	applyDelegationPenalties(participants, dwc, []string{"model1", "model2"}, modes, params, 1, nil)
 
 	// Additive: 0.05 (refuse) + 0.1 (none) = 0.15, result = 1000 * 0.85 = 850
 	require.Equal(t, int64(850), participants[0].Weight)
+}
+
+func TestAccumulateDelegationPenalties_SkipsUntilPenaltyStartEpoch(t *testing.T) {
+	participants := []*types.ActiveParticipant{
+		{Index: "alice", Weight: 1000},
+	}
+	dwc := &DelegationWeightCalculator{}
+	modes := map[string]map[string]ParticipationMode{
+		"model1": {"alice": ModeRefuse},
+	}
+	params := DelegationAdjustmentParams{
+		RefusalPenalty:         mathsdk.LegacyMustNewDecFromStr("0.1"),
+		NoParticipationPenalty: mathsdk.LegacyMustNewDecFromStr("0.2"),
+		DelegationShare:        mathsdk.LegacyMustNewDecFromStr("0.05"),
+	}
+
+	applyDelegationPenalties(participants, dwc, []string{"model1"}, modes, params, 4, map[string]uint64{"model1": 5})
+	require.Equal(t, int64(1000), participants[0].Weight)
+}
+
+func TestAccumulateDelegationPenalties_UsesUpcomingEpochIndexForPenaltyStart(t *testing.T) {
+	participants := []*types.ActiveParticipant{
+		{Index: "alice", Weight: 1000},
+	}
+	dwc := &DelegationWeightCalculator{}
+	modes := map[string]map[string]ParticipationMode{
+		"model1": {"alice": ModeRefuse},
+	}
+	params := DelegationAdjustmentParams{
+		RefusalPenalty:         mathsdk.LegacyMustNewDecFromStr("0.1"),
+		NoParticipationPenalty: mathsdk.LegacyZeroDec(),
+		DelegationShare:        mathsdk.LegacyZeroDec(),
+	}
+
+	applyDelegationPenalties(participants, dwc, []string{"model1"}, modes, params, 5, map[string]uint64{"model1": 5})
+	require.Equal(t, int64(900), participants[0].Weight)
+}
+
+func TestAccumulateBootstrapPenalties_SkipsUntilPenaltyStartEpoch(t *testing.T) {
+	participants := []*types.ActiveParticipant{
+		{Index: "none", Weight: 50},
+	}
+	modes := map[string]map[string]BootstrapPenaltyMode{
+		"bootstrap-model": {
+			"none": BootstrapPenaltyNone,
+		},
+	}
+	params := DelegationAdjustmentParams{
+		RefusalPenalty:         mathsdk.LegacyZeroDec(),
+		NoParticipationPenalty: mathsdk.LegacyMustNewDecFromStr("0.5"),
+		DelegationShare:        mathsdk.LegacyZeroDec(),
+	}
+
+	acc := NewPenaltyAccumulator(participants)
+	AccumulateBootstrapPenalties(acc, modes, nil, params, 4, map[string]uint64{"bootstrap-model": 5})
+	acc.Apply(participants)
+
+	require.Equal(t, int64(50), participants[0].Weight)
 }

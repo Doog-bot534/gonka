@@ -85,12 +85,12 @@ data class InferenceParams(
 data class DelegationParams(
     @SerializedName("deploy_window")
     val deployWindow: Long = 1,
-    @SerializedName("r_refusal")
-    val rRefusal: Decimal = Decimal(0, 0),
-    @SerializedName("r_penalty")
-    val rPenalty: Decimal = Decimal(0, 0),
-    @SerializedName("r_delegation")
-    val rDelegation: Decimal = Decimal(0, 0),
+    @SerializedName("refusal_penalty")
+    val refusalPenalty: Decimal = Decimal(0, 0),
+    @SerializedName("no_participation_penalty")
+    val noParticipationPenalty: Decimal = Decimal(0, 0),
+    @SerializedName("delegation_share")
+    val delegationShare: Decimal = Decimal(0, 0),
     @SerializedName("w_threshold")
     val wThreshold: Decimal = Decimal(0, 0),
     @SerializedName("v_min")
@@ -333,6 +333,8 @@ data class PoCModelConfig(
     val statTest: PoCStatTestParams? = null,
     @SerializedName("weight_scale_factor")
     val weightScaleFactor: Decimal? = null,
+    @SerializedName("penalty_start_epoch")
+    val penaltyStartEpoch: Long = 0,
 )
 
 data class PoCStatTestParams(

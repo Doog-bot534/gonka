@@ -366,9 +366,10 @@ Regular PoC validation-time voting powers are built separately at `poc_validatio
 ## Delegation Weight Adjustment
 
 Design intent:
-- `REFUSE` reduces reward or weight by `r_refusal`
-- `NONE` reduces reward or weight by `r_penalty`
-- `DELEGATE` transfers `r_delegation` value from delegator to delegate
+- `REFUSE` reduces reward or weight by `refusal_penalty`
+- `NONE` reduces reward or weight by `no_participation_penalty`
+- `DELEGATE` shares `delegation_share` value from delegator to delegate
+- each model may defer all three adjustments until its `penalty_start_epoch`
 
 Current repo status:
 - the adjustment code exists
@@ -407,4 +408,4 @@ This is the state that will feed the next snapshot cycle.
 - Should delegation adjustment apply to rewards, weights, or both?
 - Should adjustment fractions be global or per-model?
 - Does the cap need exact previous-epoch per-group contribution, instead of the current approximation?
-- How should a grace window be represented if bootstrap groups later need one?
+- Should `penalty_start_epoch` remain a punishment-only gate, or later become a broader model-activation gate?

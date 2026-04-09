@@ -71,7 +71,6 @@ func buildParticipationByModel(
 	return participationByModel
 }
 
-
 func (am AppModule) prepareEpochParticipationState(
 	ctx context.Context,
 	activeParticipants []*types.ActiveParticipant,
@@ -147,7 +146,6 @@ func buildGroupData(
 
 	return groups
 }
-
 
 func parseRegularDelegationSnapshot(snapshot types.DelegationSnapshot) (
 	delegations map[string]map[string]string,
@@ -704,15 +702,29 @@ func (am AppModule) computeAndSetVotingPowers(
 func (am AppModule) delegationAdjustmentParams(params types.Params) DelegationAdjustmentParams {
 	if params.DelegationParams == nil {
 		return DelegationAdjustmentParams{
-			RRefusal:    mathsdk.LegacyZeroDec(),
-			RPenalty:    mathsdk.LegacyZeroDec(),
-			RDelegation: mathsdk.LegacyZeroDec(),
+			RefusalPenalty:         mathsdk.LegacyZeroDec(),
+			NoParticipationPenalty: mathsdk.LegacyZeroDec(),
+			DelegationShare:        mathsdk.LegacyZeroDec(),
 		}
 	}
 	dp := params.DelegationParams
 	return DelegationAdjustmentParams{
-		RRefusal:    protoDecToLegacy(dp.RRefusal),
-		RPenalty:    protoDecToLegacy(dp.RPenalty),
-		RDelegation: protoDecToLegacy(dp.RDelegation),
+		RefusalPenalty:         protoDecToLegacy(dp.RefusalPenalty),
+		NoParticipationPenalty: protoDecToLegacy(dp.NoParticipationPenalty),
+		DelegationShare:        protoDecToLegacy(dp.DelegationShare),
 	}
+}
+
+func modelPenaltyStartEpochs(pocParams *types.PocParams) map[string]uint64 {
+	if pocParams == nil {
+		return map[string]uint64{}
+	}
+	result := make(map[string]uint64)
+	for _, modelConfig := range pocParams.GetModelConfigs() {
+		if modelConfig == nil || modelConfig.ModelId == "" {
+			continue
+		}
+		result[modelConfig.ModelId] = modelConfig.PenaltyStartEpoch
+	}
+	return result
 }

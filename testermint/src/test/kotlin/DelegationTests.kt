@@ -254,7 +254,7 @@ class DelegationTests : TestermintTest() {
         }
 
         // A, D serve both models -> consensusWeight = 50 + 10 = 60, no penalty.
-        // B declared intent for secondModel but doesn't serve it -> RPenalty on consensusWeight.
+        // B declared intent for secondModel but doesn't serve it -> no_participation_penalty on consensusWeight.
         // C delegated for secondModel -> no penalty.
         assertThat(pA.weight).isEqualTo(60)
         assertThat(pB.weight).isEqualTo(25) // 50 - floor(50*0.5) = 25
@@ -446,7 +446,7 @@ class DelegationTests : TestermintTest() {
         // Model B ineligible -> no consensus contribution from model B
         // Both get weight only from model A: pocWeightA * coeffA = 50
         // Bootstrap penalty: model B is governance-approved but non-eligible,
-        // both participants have BootstrapPenaltyNone -> RPenalty=0.5
+        // both participants have BootstrapPenaltyNone -> no_participation_penalty=0.5
         assertThat(pA.weight).isEqualTo(25) // 50 - floor(50*0.5) = 25
         assertThat(pB.weight).isEqualTo(25)
 

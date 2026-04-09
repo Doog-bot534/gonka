@@ -160,6 +160,8 @@ func AccumulateBootstrapPenalties(
 	modes map[string]map[string]BootstrapPenaltyMode,
 	eligibleModels []string,
 	params DelegationAdjustmentParams,
+	upcomingEpochIndex uint64,
+	penaltyStartEpochByModel map[string]uint64,
 ) {
 	if params.IsNoOp() || len(modes) == 0 {
 		return
@@ -180,6 +182,9 @@ func AccumulateBootstrapPenalties(
 		if eligibleSet[modelID] {
 			continue
 		}
+		if !penaltyStartReached(modelID, upcomingEpochIndex, penaltyStartEpochByModel) {
+			continue
+		}
 
 		for addr, mode := range modes[modelID] {
 			if acc.originalWeight[addr] <= 0 {
@@ -188,8 +193,8 @@ func AccumulateBootstrapPenalties(
 
 			switch mode {
 			case BootstrapPenaltyIntentMissed, BootstrapPenaltyNone:
-				if !params.RPenalty.IsZero() {
-					acc.AddPenalty(addr, params.RPenalty)
+				if !params.NoParticipationPenalty.IsZero() {
+					acc.AddPenalty(addr, params.NoParticipationPenalty)
 				}
 			}
 		}

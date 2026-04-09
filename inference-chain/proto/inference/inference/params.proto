@@ -137,6 +137,7 @@ message PoCModelConfig {
   int64 seq_len = 2;
   PoCStatTestParams stat_test = 3;
   Decimal weight_scale_factor = 4;
+  uint64 penalty_start_epoch = 5;
 }
 
 message PocParams {
@@ -341,14 +342,14 @@ message TransferAgentAccessParams {
 // DelegationParams defines parameters for PoC delegation in the multi-model system.
 message DelegationParams {
   option (gogoproto.equal) = true;
-  int64   deploy_window    = 1;  // blocks before start_poc for delegation snapshot
-  Decimal r_refusal        = 2;  // REFUSE penalty fraction
-  Decimal r_penalty        = 3;  // NONE penalty fraction
-  Decimal r_delegation     = 4;  // DELEGATE transfer fraction
-  Decimal w_threshold      = 5;  // min fraction of total weight from members for eligibility
-  int64   v_min            = 6;  // min hosts with non-zero consensus weight
-  Decimal cap_factor       = 7;  // max group weight as multiple of members' weight in other groups
-  string  initial_model_id = 8;  // model exempt from group cap; set during migration to the founding model
+  int64   deploy_window             = 1;  // blocks before start_poc for delegation snapshot
+  Decimal refusal_penalty          = 2;  // REFUSE penalty applied per model after penalty_start_epoch
+  Decimal no_participation_penalty = 3;  // NONE penalty applied per model after penalty_start_epoch
+  Decimal delegation_share         = 4;  // DELEGATE share transferred per model after penalty_start_epoch
+  Decimal w_threshold              = 5;  // min fraction of total weight from members for eligibility
+  int64   v_min                    = 6;  // min hosts with non-zero consensus weight
+  Decimal cap_factor               = 7;  // max group weight as multiple of members' weight in other groups
+  string  initial_model_id         = 8;  // model exempt from group cap; set during migration to the founding model
 }
 
 // SubnetEscrowParams defines governance-controlled parameters for subnet escrow creation and settlement.

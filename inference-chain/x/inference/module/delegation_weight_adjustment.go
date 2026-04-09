@@ -8,13 +8,13 @@ import (
 )
 
 type DelegationAdjustmentParams struct {
-	RRefusal    mathsdk.LegacyDec
-	RPenalty    mathsdk.LegacyDec
-	RDelegation mathsdk.LegacyDec
+	RefusalPenalty         mathsdk.LegacyDec
+	NoParticipationPenalty mathsdk.LegacyDec
+	DelegationShare        mathsdk.LegacyDec
 }
 
 func (p DelegationAdjustmentParams) IsNoOp() bool {
-	return p.RRefusal.IsZero() && p.RPenalty.IsZero() && p.RDelegation.IsZero()
+	return p.RefusalPenalty.IsZero() && p.NoParticipationPenalty.IsZero() && p.DelegationShare.IsZero()
 }
 
 type pendingTransfer struct {
@@ -27,12 +27,12 @@ type pendingTransfer struct {
 // bootstrap) and applies them as a single additive deduction capped at 1.0.
 //
 // DIRECT participants are never penalized. For non-DIRECT participants:
-//   - REFUSE:   fraction += r_refusal per model
-//   - NONE:     fraction += r_penalty per model
-//   - DELEGATE: transfers r_delegation of original weight to delegate target
+//   - REFUSE:   fraction += refusal_penalty per model
+//   - NONE:     fraction += no_participation_penalty per model
+//   - DELEGATE: transfers delegation_share of original weight to delegate target
 //
 // Penalties sum across models and cap at 1.0. Transfers use original weight.
-// When all r_* values are 0, this is a complete no-op.
+// When all delegation adjustment values are 0, this is a complete no-op.
 type PenaltyAccumulator struct {
 	penalties      map[string]mathsdk.LegacyDec
 	transfers      []pendingTransfer
@@ -106,6 +106,14 @@ func (pa *PenaltyAccumulator) Apply(participants []*types.ActiveParticipant) {
 	}
 }
 
+func penaltyStartReached(modelID string, upcomingEpochIndex uint64, penaltyStartEpochByModel map[string]uint64) bool {
+	startEpoch, found := penaltyStartEpochByModel[modelID]
+	if !found {
+		return true
+	}
+	return upcomingEpochIndex >= startEpoch
+}
+
 // AccumulateDelegationPenalties adds penalty fractions for each participant's
 // non-DIRECT modes across all eligible model groups.
 func AccumulateDelegationPenalties(
@@ -114,12 +122,17 @@ func AccumulateDelegationPenalties(
 	eligibleModels []string,
 	modes map[string]map[string]ParticipationMode,
 	params DelegationAdjustmentParams,
+	upcomingEpochIndex uint64,
+	penaltyStartEpochByModel map[string]uint64,
 ) {
 	if params.IsNoOp() {
 		return
 	}
 
 	for _, modelID := range eligibleModels {
+		if !penaltyStartReached(modelID, upcomingEpochIndex, penaltyStartEpochByModel) {
+			continue
+		}
 		groupModes := modes[modelID]
 		if groupModes == nil {
 			continue
@@ -134,18 +147,18 @@ func AccumulateDelegationPenalties(
 			case ModeDirect:
 				continue
 			case ModeRefuse:
-				if !params.RRefusal.IsZero() {
-					acc.AddPenalty(addr, params.RRefusal)
+				if !params.RefusalPenalty.IsZero() {
+					acc.AddPenalty(addr, params.RefusalPenalty)
 				}
 			case ModeNone:
-				if !params.RPenalty.IsZero() {
-					acc.AddPenalty(addr, params.RPenalty)
+				if !params.NoParticipationPenalty.IsZero() {
+					acc.AddPenalty(addr, params.NoParticipationPenalty)
 				}
 			case ModeDelegate:
-				if !params.RDelegation.IsZero() {
+				if !params.DelegationShare.IsZero() {
 					if modelDelegations, ok := dwc.Delegations[modelID]; ok {
 						if delegateTo, ok := modelDelegations[addr]; ok {
-							acc.AddTransfer(addr, delegateTo, params.RDelegation)
+							acc.AddTransfer(addr, delegateTo, params.DelegationShare)
 						}
 					}
 				}

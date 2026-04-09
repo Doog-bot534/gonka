@@ -626,6 +626,7 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 	// Delegation and bootstrap penalties are accumulated additively across all
 	// models and applied once, capped at 1.0.
 	adjParams := am.delegationAdjustmentParams(params)
+	penaltyStartEpochByModel := modelPenaltyStartEpochs(params.PocParams)
 	acc := NewPenaltyAccumulator(activeParticipants)
 	AccumulateDelegationPenalties(
 		acc,
@@ -633,8 +634,17 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 		participationState.eligibleModels,
 		participationState.participationByModel,
 		adjParams,
+		upcomingEpoch.Index,
+		penaltyStartEpochByModel,
 	)
-	AccumulateBootstrapPenalties(acc, participationState.bootstrapPenaltyByModel, participationState.eligibleModels, adjParams)
+	AccumulateBootstrapPenalties(
+		acc,
+		participationState.bootstrapPenaltyByModel,
+		participationState.eligibleModels,
+		adjParams,
+		upcomingEpoch.Index,
+		penaltyStartEpochByModel,
+	)
 	acc.Apply(activeParticipants)
 
 	// Adjust weights based on collateral after the grace period. This modifies the weights in-place.
