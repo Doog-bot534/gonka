@@ -41,7 +41,9 @@ class DelegationTests : TestermintTest() {
                     this[PocParams::validationSlots] = 32L
                     this[PocParams::pocNormalizationEnabled] = false
                 }
-                this[InferenceParams::delegationParams] = delegationParams
+                this[InferenceParams::delegationParams] = delegationParams.merge(spec<DelegationParams> {
+                    this[DelegationParams::initialModelId] = defaultModel
+                })
             }
             this[InferenceState::genesisOnlyParams] = spec<GenesisOnlyParams> {
                 this[GenesisOnlyParams::maxIndividualPowerPercentage] = Decimal.fromDouble(0.0)
@@ -528,7 +530,7 @@ class DelegationTests : TestermintTest() {
 
     @Test
     fun `delegation share starts at configured epoch for eligible model`() {
-        val penaltyStartEpoch = 7L
+        val penaltyStartEpoch = 5L
         val delegationSpec = spec<DelegationParams> {
             this[DelegationParams::deployWindow] = 1L
             this[DelegationParams::refusalPenalty] = Decimal.fromDouble(0.0)

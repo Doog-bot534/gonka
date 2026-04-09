@@ -141,9 +141,13 @@ func (wc *DelegationWeightCalculator) MeetsReachabilityThreshold(modelID string)
 	return reachable.MulInt64(3).GT(total.MulInt64(2))
 }
 
-// IsGroupEligible checks post-PoC eligibility. Unlike MeetsMinHosts(), which
-// uses prior consensus-weight-bearing members, this check requires at least
-// V_min members with positive pocWeight in the current PoC results.
+// IsGroupEligible checks post-PoC eligibility. VMin counts only established
+// members: those who committed this epoch (pocWeight > 0) AND had consensus
+// weight in the previous epoch (ConsensusWeights > 0).
+//
+// For the initial model at genesis, VMin is not enforced until the model has
+// previously had >= VMin members with consensus weight. Once reached, VMin is
+// enforced permanently. Non-initial models always enforce VMin.
 func (wc *DelegationWeightCalculator) IsGroupEligible(modelID string) bool {
 	if !wc.IsGovernanceApproved(modelID) {
 		return false
@@ -153,17 +157,36 @@ func (wc *DelegationWeightCalculator) IsGroupEligible(modelID string) bool {
 	}
 	g := wc.Groups[modelID]
 	if wc.Params.VMin > 0 {
+		// Count established members: committed this epoch AND had weight in N-1.
 		count := int64(0)
 		for _, m := range g.Members {
-			if g.MemberPocWeights[m] > 0 {
+			if g.MemberPocWeights[m] > 0 && wc.ConsensusWeights[m] > 0 {
 				count++
 			}
 		}
-		if count < wc.Params.VMin {
-			return false
+		if count >= wc.Params.VMin {
+			return true
 		}
+		// VMin not met. Initial model only: skip enforcement during genesis growth.
+		if g.IsInitialGroup && wc.isGenesisBootstrap() {
+			return true
+		}
+		return false
 	}
 	return true
+}
+
+// isGenesisBootstrap returns true if the total chain has fewer than VMin
+// participants with previous consensus weight. At genesis nobody has N-1
+// weight, so VMin cannot be enforced until the network has grown enough.
+func (wc *DelegationWeightCalculator) isGenesisBootstrap() bool {
+	prevWithWeight := int64(0)
+	for _, w := range wc.ConsensusWeights {
+		if w > 0 {
+			prevWithWeight++
+		}
+	}
+	return prevWithWeight < wc.Params.VMin
 }
 
 // ResolveGroupParticipation returns participation mode for each participant

@@ -574,7 +574,8 @@ func TestComputeConsensusWeights_InitialGroupExempt(t *testing.T) {
 
 // --- IsGroupEligible tests ---
 
-func TestIsGroupEligible_Passes_VMinMembersWithPocWeight(t *testing.T) {
+func TestIsGroupEligible_Passes_VMinEstablishedMembers(t *testing.T) {
+	// Both members have current pocWeight > 0 AND N-1 consensus weight > 0
 	wc := &DelegationWeightCalculator{
 		Groups: map[string]*GroupData{
 			"model-a": {
@@ -590,7 +591,25 @@ func TestIsGroupEligible_Passes_VMinMembersWithPocWeight(t *testing.T) {
 	require.True(t, wc.IsGroupEligible("model-a"))
 }
 
-func TestIsGroupEligible_Fails_TooFewMembers(t *testing.T) {
+func TestIsGroupEligible_Fails_TooFewEstablishedMembers(t *testing.T) {
+	// bob has pocWeight but no N-1 consensus weight -> not established
+	wc := &DelegationWeightCalculator{
+		Groups: map[string]*GroupData{
+			"model-a": {
+				Members:          []string{"alice", "bob"},
+				MemberPocWeights: map[string]int64{"alice": 100, "bob": 50},
+				ConsensusKoeff:   mathsdk.LegacyOneDec(),
+			},
+		},
+		ConsensusWeights:   map[string]int64{"alice": 100},
+		TotalNetworkWeight: 100,
+		Params:             WeightParams{VMin: 2, WThreshold: mathsdk.LegacyZeroDec(), CapFactor: mathsdk.LegacyZeroDec()},
+	}
+	require.False(t, wc.IsGroupEligible("model-a"))
+}
+
+func TestIsGroupEligible_Fails_NoPocWeight(t *testing.T) {
+	// bob has N-1 weight but no current pocWeight -> not established
 	wc := &DelegationWeightCalculator{
 		Groups: map[string]*GroupData{
 			"model-a": {
@@ -604,6 +623,61 @@ func TestIsGroupEligible_Fails_TooFewMembers(t *testing.T) {
 		Params:             WeightParams{VMin: 2, WThreshold: mathsdk.LegacyZeroDec(), CapFactor: mathsdk.LegacyZeroDec()},
 	}
 	require.False(t, wc.IsGroupEligible("model-a"))
+}
+
+func TestIsGroupEligible_InitialModel_BypassesVMin_DuringGenesis(t *testing.T) {
+	// Initial model, nobody has N-1 weight yet (genesis). VMin not enforced.
+	wc := &DelegationWeightCalculator{
+		Groups: map[string]*GroupData{
+			"model-a": {
+				Members:          []string{"alice"},
+				MemberPocWeights: map[string]int64{"alice": 100},
+				ConsensusKoeff:   mathsdk.LegacyOneDec(),
+				IsInitialGroup:   true,
+			},
+		},
+		ConsensusWeights:   map[string]int64{},
+		TotalNetworkWeight: 0,
+		Params:             WeightParams{VMin: 2, WThreshold: mathsdk.LegacyZeroDec(), CapFactor: mathsdk.LegacyZeroDec()},
+	}
+	require.True(t, wc.IsGroupEligible("model-a"))
+}
+
+func TestIsGroupEligible_InitialModel_EnforcesVMin_AfterChainReachesThreshold(t *testing.T) {
+	// Initial model, chain has >= VMin participants with N-1 weight. VMin enforced.
+	// Only 1 has current poc -> ineligible.
+	wc := &DelegationWeightCalculator{
+		Groups: map[string]*GroupData{
+			"model-a": {
+				Members:          []string{"alice", "bob"},
+				MemberPocWeights: map[string]int64{"alice": 100, "bob": 0},
+				ConsensusKoeff:   mathsdk.LegacyOneDec(),
+				IsInitialGroup:   true,
+			},
+		},
+		ConsensusWeights:   map[string]int64{"alice": 80, "bob": 70},
+		TotalNetworkWeight: 150,
+		Params:             WeightParams{VMin: 2, WThreshold: mathsdk.LegacyZeroDec(), CapFactor: mathsdk.LegacyZeroDec()},
+	}
+	require.False(t, wc.IsGroupEligible("model-a"))
+}
+
+func TestIsGroupEligible_NonInitialModel_NoBypass(t *testing.T) {
+	// Non-initial model, < VMin members have N-1 weight. No bypass.
+	wc := &DelegationWeightCalculator{
+		Groups: map[string]*GroupData{
+			"model-b": {
+				Members:          []string{"alice"},
+				MemberPocWeights: map[string]int64{"alice": 100},
+				ConsensusKoeff:   mathsdk.LegacyOneDec(),
+				IsInitialGroup:   false,
+			},
+		},
+		ConsensusWeights:   map[string]int64{},
+		TotalNetworkWeight: 0,
+		Params:             WeightParams{VMin: 2, WThreshold: mathsdk.LegacyZeroDec(), CapFactor: mathsdk.LegacyZeroDec()},
+	}
+	require.False(t, wc.IsGroupEligible("model-b"))
 }
 
 // --- Voting power edge cases ---
