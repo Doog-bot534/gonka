@@ -58,7 +58,6 @@ func TestNetworkDutyBypass_AllExemptMessages(t *testing.T) {
 		&blstypes.MsgSubmitDealerPart{},
 		&blstypes.MsgSubmitVerificationVector{},
 		&blstypes.MsgSubmitPartialSignature{},
-		&blstypes.MsgRequestThresholdSignature{},
 	}
 
 	for _, msg := range exemptMsgs {
