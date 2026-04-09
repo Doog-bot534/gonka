@@ -36,12 +36,13 @@ type WeightParams struct {
 // cross-group concerns: eligibility, caps, consensus weight, delegation modes,
 // and per-group voting power.
 type DelegationWeightCalculator struct {
-	Groups             map[string]*GroupData        // model_id -> group data
-	ConsensusWeights   map[string]int64             // participant -> ActiveParticipant.Weight from N-1
-	TotalNetworkWeight int64                        // sum(ConsensusWeights)
-	Delegations        map[string]map[string]string // model_id -> (delegator -> delegate_to)
-	Refusals           map[string]map[string]bool   // model_id -> (participant -> true)
-	Params             WeightParams
+	Groups               map[string]*GroupData          // model_id -> group data
+	ConsensusWeights     map[string]int64               // participant -> ActiveParticipant.Weight from N-1
+	TotalNetworkWeight   int64                          // sum(ConsensusWeights)
+	Delegations          map[string]map[string]string   // model_id -> (delegator -> delegate_to)
+	Refusals             map[string]map[string]bool     // model_id -> (participant -> true)
+	Params               WeightParams
+	PrevMemberPocWeights map[string]map[string]int64    // model_id -> member -> N-1 raw pocWeight (for cap calculation)
 }
 
 func buildWeightParams(params types.Params) WeightParams {
@@ -223,12 +224,18 @@ func (wc *DelegationWeightCalculator) ComputeGroupCap(modelID string) int64 {
 		return -1 // uncapped
 	}
 	// cap = CapFactor * sum(member's consensus weight from other eligible groups)
-	// We approximate "from other groups" as total N-1 consensus weight minus
-	// this group's N-1 contribution (koeff * pocWeight).
+	// "from other groups" = N-1 consensus weight minus this group's N-1 contribution.
+	// Uses PrevMemberPocWeights (N-1 per-model pocWeight) to keep the calculation
+	// purely in N-1 space. Uses 0 when N-1 data is not available.
 	otherGroupWeight := int64(0)
+	prevWeights := wc.PrevMemberPocWeights[modelID]
 	for _, m := range g.Members {
 		totalWeight := wc.ConsensusWeights[m]
-		thisGroupContrib := g.ConsensusKoeff.MulInt64(g.MemberPocWeights[m]).TruncateInt64()
+		prevPocWeight := int64(0)
+		if prevWeights != nil {
+			prevPocWeight = prevWeights[m]
+		}
+		thisGroupContrib := g.ConsensusKoeff.MulInt64(prevPocWeight).TruncateInt64()
 		other := totalWeight - thisGroupContrib
 		if other > 0 {
 			otherGroupWeight += other

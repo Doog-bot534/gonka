@@ -565,6 +565,28 @@ func (p Params) Validate() error {
 		if err := validateDecimalFraction(p.DelegationParams.WThreshold, "delegation w_threshold"); err != nil {
 			return err
 		}
+		if p.DelegationParams.CapFactor != nil {
+			dec, err := p.DelegationParams.CapFactor.ToLegacyDec()
+			if err != nil {
+				return fmt.Errorf("delegation cap_factor: invalid decimal: %w", err)
+			}
+			if dec.IsNegative() {
+				return fmt.Errorf("delegation cap_factor must be non-negative, got %s", dec.String())
+			}
+		}
+	}
+
+	if p.DelegationParams != nil && p.DelegationParams.InitialModelId != "" && p.PocParams != nil {
+		found := false
+		for _, model := range p.PocParams.GetModelConfigs() {
+			if model != nil && model.ModelId == p.DelegationParams.InitialModelId {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("delegation initial_model_id %q not found in poc_params models", p.DelegationParams.InitialModelId)
+		}
 	}
 
 	return nil
@@ -574,9 +596,16 @@ func (p *PocParams) Validate() error {
 	if p == nil {
 		return nil
 	}
+	seen := make(map[string]bool)
 	for _, model := range p.GetModelConfigs() {
 		if model == nil {
 			return fmt.Errorf("poc_params.models cannot contain nil entries")
+		}
+		if model.ModelId != "" {
+			if seen[model.ModelId] {
+				return fmt.Errorf("poc_params.models contains duplicate model_id %q", model.ModelId)
+			}
+			seen[model.ModelId] = true
 		}
 		if model.SeqLen < 0 {
 			return fmt.Errorf("poc_params.models.seq_len cannot be negative")

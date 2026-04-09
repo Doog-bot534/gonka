@@ -335,7 +335,6 @@ func (ma *ModelAssigner) setModelsForParticipants(ctx context.Context, participa
 					}
 				}
 			}
-			p.Weight = RecalculateWeight(p)
 			continue
 		}
 
@@ -410,7 +409,6 @@ func (ma *ModelAssigner) setModelsForParticipants(ctx context.Context, participa
 
 		p.MlNodes = newMLNodeArrays
 		p.Models = supportedModels
-		p.Weight = RecalculateWeight(p)
 		ma.LogInfo("Participant models and ML nodes updated", types.Allocation, "flow_context", FlowContext, "step", "participant_updated", "participant_index", p.Index, "supported_models", p.Models, "ml_nodes", p.MlNodes)
 	}
 	ma.LogInfo("Finished model assignment for all participants", types.Allocation, "flow_context", FlowContext, "step", "model_assignment_complete")

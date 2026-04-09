@@ -623,17 +623,19 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 		p.Weight = consensusWeights[p.Index]
 	}
 
-	// Delegation adjustment applies to ALL eligible models (including bootstrap
-	// models that became eligible). Bootstrap intent penalty is separate.
+	// Delegation and bootstrap penalties are accumulated additively across all
+	// models and applied once, capped at 1.0.
 	adjParams := am.delegationAdjustmentParams(params)
-	ApplyDelegationWeightAdjustment(
-		activeParticipants,
+	acc := NewPenaltyAccumulator(activeParticipants)
+	AccumulateDelegationPenalties(
+		acc,
 		participationState.calculator,
 		participationState.eligibleModels,
 		participationState.participationByModel,
 		adjParams,
 	)
-	ApplyBootstrapPenaltyAdjustment(activeParticipants, participationState.bootstrapPenaltyByModel, participationState.eligibleModels, adjParams)
+	AccumulateBootstrapPenalties(acc, participationState.bootstrapPenaltyByModel, participationState.eligibleModels, adjParams)
+	acc.Apply(activeParticipants)
 
 	// Adjust weights based on collateral after the grace period. This modifies the weights in-place.
 	if err := am.keeper.AdjustWeightsByCollateral(ctx, activeParticipants); err != nil {
@@ -799,6 +801,7 @@ type effectiveValidationBaseState struct {
 	weights                   map[string]int64
 	totalWeight               int64
 	existingModelVotingPowers []*types.ModelVotingPowers
+	perModelPocWeights        map[string]map[string]int64 // model_id -> member -> raw pocWeight from N-1
 }
 
 // getEffectiveValidationBaseState reads consensus weights and per-model voting
@@ -854,6 +857,7 @@ func (am AppModule) getEffectiveValidationBaseState(ctx context.Context) effecti
 	}
 
 	modelVPMap := make(map[string]map[string]int64)
+	perModelPocWeights := make(map[string]map[string]int64)
 	for _, modelID := range rootGroupData.SubGroupModels {
 		subGroup, err := currentGroup.GetSubGroup(ctx, modelID)
 		if err != nil || subGroup == nil {
@@ -868,13 +872,21 @@ func (am AppModule) getEffectiveValidationBaseState(ctx context.Context) effecti
 			liveSubSet[m.Member.Address] = true
 		}
 		for _, vw := range subGroup.GroupData.ValidationWeights {
-			if vw == nil || !liveSubSet[vw.MemberAddress] || vw.VotingPower <= 0 {
+			if vw == nil || !liveSubSet[vw.MemberAddress] {
 				continue
 			}
-			if modelVPMap[modelID] == nil {
-				modelVPMap[modelID] = make(map[string]int64)
+			if vw.VotingPower > 0 {
+				if modelVPMap[modelID] == nil {
+					modelVPMap[modelID] = make(map[string]int64)
+				}
+				modelVPMap[modelID][vw.MemberAddress] = vw.VotingPower
 			}
-			modelVPMap[modelID][vw.MemberAddress] = vw.VotingPower
+			if vw.Weight > 0 {
+				if perModelPocWeights[modelID] == nil {
+					perModelPocWeights[modelID] = make(map[string]int64)
+				}
+				perModelPocWeights[modelID][vw.MemberAddress] = vw.Weight
+			}
 		}
 	}
 
@@ -883,6 +895,7 @@ func (am AppModule) getEffectiveValidationBaseState(ctx context.Context) effecti
 		weights:                   consensusWeights,
 		totalWeight:               totalWeight,
 		existingModelVotingPowers: modelVPMapToSlice(modelVPMap),
+		perModelPocWeights:        perModelPocWeights,
 	}
 }
 

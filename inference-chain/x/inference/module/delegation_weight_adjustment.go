@@ -1,35 +1,115 @@
 package inference
 
 import (
+	"sort"
+
 	mathsdk "cosmossdk.io/math"
 	"github.com/productscience/inference/x/inference/types"
 )
 
-// DelegationAdjustmentParams holds the penalty/transfer fractions for delegation weight adjustment.
 type DelegationAdjustmentParams struct {
-	RRefusal    mathsdk.LegacyDec // REFUSE penalty fraction
-	RPenalty    mathsdk.LegacyDec // NONE penalty fraction
-	RDelegation mathsdk.LegacyDec // DELEGATE transfer fraction
+	RRefusal    mathsdk.LegacyDec
+	RPenalty    mathsdk.LegacyDec
+	RDelegation mathsdk.LegacyDec
 }
 
-// IsNoOp returns true if all adjustment fractions are zero.
 func (p DelegationAdjustmentParams) IsNoOp() bool {
 	return p.RRefusal.IsZero() && p.RPenalty.IsZero() && p.RDelegation.IsZero()
 }
 
-// ApplyDelegationWeightAdjustment modifies consensus weights in-place based on
-// resolved participation modes per model group.
+type pendingTransfer struct {
+	from string
+	to   string
+	rate mathsdk.LegacyDec
+}
+
+// PenaltyAccumulator collects penalty fractions from all sources (delegation +
+// bootstrap) and applies them as a single additive deduction capped at 1.0.
 //
-// DIRECT participants are never penalized. For non-DIRECT participants in each
-// eligible group:
-//   - REFUSE:   weight -= weight * r_refusal
-//   - NONE:     weight -= weight * r_penalty
-//   - DELEGATE: delta = weight * r_delegation; weight -= delta; delegate.weight += delta
+// DIRECT participants are never penalized. For non-DIRECT participants:
+//   - REFUSE:   fraction += r_refusal per model
+//   - NONE:     fraction += r_penalty per model
+//   - DELEGATE: transfers r_delegation of original weight to delegate target
 //
-// Reductions compound across groups (applied to already-reduced weight).
+// Penalties sum across models and cap at 1.0. Transfers use original weight.
 // When all r_* values are 0, this is a complete no-op.
-func ApplyDelegationWeightAdjustment(
-	participants []*types.ActiveParticipant,
+type PenaltyAccumulator struct {
+	penalties      map[string]mathsdk.LegacyDec
+	transfers      []pendingTransfer
+	originalWeight map[string]int64
+}
+
+func NewPenaltyAccumulator(participants []*types.ActiveParticipant) *PenaltyAccumulator {
+	original := make(map[string]int64, len(participants))
+	for _, p := range participants {
+		original[p.Index] = p.Weight
+	}
+	return &PenaltyAccumulator{
+		penalties:      make(map[string]mathsdk.LegacyDec),
+		originalWeight: original,
+	}
+}
+
+func (pa *PenaltyAccumulator) AddPenalty(addr string, fraction mathsdk.LegacyDec) {
+	if existing, ok := pa.penalties[addr]; ok {
+		pa.penalties[addr] = existing.Add(fraction)
+	} else {
+		pa.penalties[addr] = fraction
+	}
+}
+
+func (pa *PenaltyAccumulator) AddTransfer(from, to string, rate mathsdk.LegacyDec) {
+	pa.transfers = append(pa.transfers, pendingTransfer{from: from, to: to, rate: rate})
+}
+
+func (pa *PenaltyAccumulator) Apply(participants []*types.ActiveParticipant) {
+	one := mathsdk.LegacyOneDec()
+	weightIndex := make(map[string]*types.ActiveParticipant, len(participants))
+	for _, p := range participants {
+		weightIndex[p.Index] = p
+	}
+
+	for addr, totalFrac := range pa.penalties {
+		p := weightIndex[addr]
+		if p == nil || pa.originalWeight[addr] <= 0 {
+			continue
+		}
+		if totalFrac.GT(one) {
+			totalFrac = one
+		}
+		penalty := totalFrac.MulInt64(pa.originalWeight[addr]).TruncateInt64()
+		p.Weight -= penalty
+		if p.Weight < 0 {
+			p.Weight = 0
+		}
+	}
+
+	sort.Slice(pa.transfers, func(i, j int) bool {
+		if pa.transfers[i].from == pa.transfers[j].from {
+			return pa.transfers[i].to < pa.transfers[j].to
+		}
+		return pa.transfers[i].from < pa.transfers[j].from
+	})
+	for _, t := range pa.transfers {
+		from := weightIndex[t.from]
+		if from == nil {
+			continue
+		}
+		delta := t.rate.MulInt64(pa.originalWeight[t.from]).TruncateInt64()
+		from.Weight -= delta
+		if from.Weight < 0 {
+			from.Weight = 0
+		}
+		if to := weightIndex[t.to]; to != nil {
+			to.Weight += delta
+		}
+	}
+}
+
+// AccumulateDelegationPenalties adds penalty fractions for each participant's
+// non-DIRECT modes across all eligible model groups.
+func AccumulateDelegationPenalties(
+	acc *PenaltyAccumulator,
 	dwc *DelegationWeightCalculator,
 	eligibleModels []string,
 	modes map[string]map[string]ParticipationMode,
@@ -39,13 +119,6 @@ func ApplyDelegationWeightAdjustment(
 		return
 	}
 
-	// Build weight index for fast lookup
-	weightIndex := make(map[string]*types.ActiveParticipant, len(participants))
-	for _, p := range participants {
-		weightIndex[p.Index] = p
-	}
-
-	// Process models in deterministic order (eligibleModels is sorted)
 	for _, modelID := range eligibleModels {
 		groupModes := modes[modelID]
 		if groupModes == nil {
@@ -53,41 +126,29 @@ func ApplyDelegationWeightAdjustment(
 		}
 
 		for addr, mode := range groupModes {
-			p, ok := weightIndex[addr]
-			if !ok || p.Weight <= 0 {
+			if acc.originalWeight[addr] <= 0 {
 				continue
 			}
 
 			switch mode {
 			case ModeDirect:
-				// No adjustment
 				continue
 			case ModeRefuse:
 				if !params.RRefusal.IsZero() {
-					penalty := params.RRefusal.MulInt64(p.Weight).TruncateInt64()
-					p.Weight -= penalty
+					acc.AddPenalty(addr, params.RRefusal)
 				}
 			case ModeNone:
 				if !params.RPenalty.IsZero() {
-					penalty := params.RPenalty.MulInt64(p.Weight).TruncateInt64()
-					p.Weight -= penalty
+					acc.AddPenalty(addr, params.RPenalty)
 				}
 			case ModeDelegate:
 				if !params.RDelegation.IsZero() {
 					if modelDelegations, ok := dwc.Delegations[modelID]; ok {
 						if delegateTo, ok := modelDelegations[addr]; ok {
-							delta := params.RDelegation.MulInt64(p.Weight).TruncateInt64()
-							p.Weight -= delta
-							if target, ok := weightIndex[delegateTo]; ok {
-								target.Weight += delta
-							}
+							acc.AddTransfer(addr, delegateTo, params.RDelegation)
 						}
 					}
 				}
-			}
-
-			if p.Weight < 0 {
-				p.Weight = 0
 			}
 		}
 	}

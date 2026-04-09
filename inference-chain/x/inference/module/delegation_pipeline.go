@@ -40,15 +40,16 @@ func (am AppModule) buildDelegationWeightCalculator(
 	prevState := am.getEffectiveValidationBaseState(ctx)
 	consensusWeights, totalWeight := prevState.weights, prevState.totalWeight
 	initialModelID := params.GetDelegationParams().GetInitialModelId()
-	groups := buildGroupData(activeParticipants, coefficients, initialModelID)
+	groups := buildGroupData(activeParticipants, coefficients, initialModelID, am)
 
 	return &DelegationWeightCalculator{
-		Groups:             groups,
-		ConsensusWeights:   consensusWeights,
-		TotalNetworkWeight: totalWeight,
-		Delegations:        nextEpochDelegations,
-		Refusals:           nextEpochRefusals,
-		Params:             buildWeightParams(params),
+		Groups:               groups,
+		ConsensusWeights:     consensusWeights,
+		TotalNetworkWeight:   totalWeight,
+		Delegations:          nextEpochDelegations,
+		Refusals:             nextEpochRefusals,
+		Params:               buildWeightParams(params),
+		PrevMemberPocWeights: prevState.perModelPocWeights,
 	}
 }
 
@@ -115,6 +116,7 @@ func buildGroupData(
 	activeParticipants []*types.ActiveParticipant,
 	coefficients map[string]mathsdk.LegacyDec,
 	initialModelID string,
+	logger types.InferenceLogger,
 ) map[string]*GroupData {
 	groups := make(map[string]*GroupData)
 
@@ -136,6 +138,9 @@ func buildGroupData(
 			g.Members = append(g.Members, p.Index)
 			if i < len(p.MlNodes) && p.MlNodes[i] != nil {
 				g.MemberPocWeights[p.Index] = SumNodeWeights(p.MlNodes[i].MlNodes)
+			} else if logger != nil {
+				logger.LogWarn("buildGroupData: Models/MlNodes parallel array mismatch", types.PoC,
+					"participant", p.Index, "modelIndex", i, "modelsLen", len(p.Models), "mlNodesLen", len(p.MlNodes))
 			}
 		}
 	}

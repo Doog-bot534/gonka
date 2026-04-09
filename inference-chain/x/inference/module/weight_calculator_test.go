@@ -444,8 +444,9 @@ func TestComputeGroupCap_TwoGroups_CapLimitsNonInitial(t *testing.T) {
 				IsInitialGroup:   false,
 			},
 		},
-		ConsensusWeights: map[string]int64{"alice": 150},
-		Params:           WeightParams{CapFactor: mathsdk.LegacyMustNewDecFromStr("2.0")},
+		ConsensusWeights:     map[string]int64{"alice": 150},
+		Params:               WeightParams{CapFactor: mathsdk.LegacyMustNewDecFromStr("2.0")},
+		PrevMemberPocWeights: map[string]map[string]int64{"model-b": {"alice": 50}},
 	}
 
 	// model-a: uncapped (initial)
@@ -483,8 +484,9 @@ func TestComputeGroupCap_MemberOnlyInCappedGroup_ZeroCap(t *testing.T) {
 		},
 		// N-1 consensus weight = 100, all from model-a (koeff*poc = 1*100 = 100)
 		// other = 100 - 100 = 0
-		ConsensusWeights: map[string]int64{"alice": 100},
-		Params:           WeightParams{CapFactor: mathsdk.LegacyMustNewDecFromStr("2.0")},
+		ConsensusWeights:     map[string]int64{"alice": 100},
+		Params:               WeightParams{CapFactor: mathsdk.LegacyMustNewDecFromStr("2.0")},
+		PrevMemberPocWeights: map[string]map[string]int64{"model-a": {"alice": 100}},
 	}
 	require.Equal(t, int64(0), wc.ComputeGroupCap("model-a"))
 }
@@ -511,8 +513,9 @@ func TestComputeConsensusWeights_GroupExceedsCap_ProportionalScaling(t *testing.
 		// model-b's "other" per member: alice = 200-1000=-800 clamped to 0, bob = 200-500=-300 clamped to 0
 		// total other = 0, cap = 0
 		// All model-b contributions capped to 0
-		ConsensusWeights: map[string]int64{"alice": 200, "bob": 200},
-		Params:           WeightParams{CapFactor: mathsdk.LegacyMustNewDecFromStr("2.0")},
+		ConsensusWeights:     map[string]int64{"alice": 200, "bob": 200},
+		Params:               WeightParams{CapFactor: mathsdk.LegacyMustNewDecFromStr("2.0")},
+		PrevMemberPocWeights: map[string]map[string]int64{"model-b": {"alice": 1000, "bob": 500}},
 	}
 
 	result := wc.ComputeConsensusWeights([]string{"model-a", "model-b"})
@@ -540,8 +543,9 @@ func TestComputeConsensusWeights_GroupUnderCap_NoScaling(t *testing.T) {
 		},
 		// N-1: alice had 110. model-b other = 110 - 10 = 100. cap = 2*100 = 200
 		// model-b raw = 10, well under cap 200
-		ConsensusWeights: map[string]int64{"alice": 110},
-		Params:           WeightParams{CapFactor: mathsdk.LegacyMustNewDecFromStr("2.0")},
+		ConsensusWeights:     map[string]int64{"alice": 110},
+		Params:               WeightParams{CapFactor: mathsdk.LegacyMustNewDecFromStr("2.0")},
+		PrevMemberPocWeights: map[string]map[string]int64{"model-b": {"alice": 10}},
 	}
 
 	result := wc.ComputeConsensusWeights([]string{"model-a", "model-b"})
