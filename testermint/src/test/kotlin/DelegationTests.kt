@@ -479,7 +479,7 @@ class DelegationTests : TestermintTest() {
 
     @Test
     fun `bootstrap no participation penalty starts at configured epoch`() {
-        val penaltyStartEpoch = 5L
+        val penaltyStartEpoch = 8L
         val delegationSpec = spec<DelegationParams> {
             this[DelegationParams::deployWindow] = 1L
             this[DelegationParams::refusalPenalty] = Decimal.fromDouble(0.25)
@@ -501,6 +501,8 @@ class DelegationTests : TestermintTest() {
         setupBothModels(nodeA)
         setupModelAOnly(nodeB)
 
+        genesis.waitForStage(EpochStage.SET_NEW_VALIDATORS, 3)
+
         val beforeGate = genesis.waitForActiveEpoch(penaltyStartEpoch - 1)
         val beforeParticipants = beforeGate.activeParticipants.participants
         val beforeA = beforeParticipants.first { it.index == nodeA.node.getColdAddress() }
@@ -509,8 +511,8 @@ class DelegationTests : TestermintTest() {
         logSection("Before penalty_start_epoch: epoch=${beforeGate.activeParticipants.epochId}, A=${beforeA.weight}, B=${beforeB.weight}")
 
         // secondModel is known to the chain but its bootstrap missing-choice penalty
-        // must stay disabled until the active set for epoch 5 is formed.
-        assertThat(beforeGate.activeParticipants.epochId).isEqualTo(4)
+        // must stay disabled until penaltyStartEpoch.
+        assertThat(beforeGate.activeParticipants.epochId).isEqualTo(penaltyStartEpoch - 1)
         assertThat(beforeA.weight).isEqualTo(50)
         assertThat(beforeB.weight).isEqualTo(50)
 
@@ -522,15 +524,15 @@ class DelegationTests : TestermintTest() {
         logSection("At penalty_start_epoch: epoch=${atGate.activeParticipants.epochId}, A=${atGateA.weight}, B=${atGateB.weight}")
 
         // The runtime compares against the upcoming epoch being formed, so the
-        // active set for epoch 5 is the first one where the penalty applies.
-        assertThat(atGate.activeParticipants.epochId).isEqualTo(5)
+        // active set for penaltyStartEpoch is the first one where the penalty applies.
+        assertThat(atGate.activeParticipants.epochId).isEqualTo(penaltyStartEpoch)
         assertThat(atGateA.weight).isEqualTo(25)
         assertThat(atGateB.weight).isEqualTo(25)
     }
 
     @Test
     fun `delegation share starts at configured epoch for eligible model`() {
-        val penaltyStartEpoch = 5L
+        val penaltyStartEpoch = 7L
         val delegationSpec = spec<DelegationParams> {
             this[DelegationParams::deployWindow] = 1L
             this[DelegationParams::refusalPenalty] = Decimal.fromDouble(0.0)
@@ -557,9 +559,10 @@ class DelegationTests : TestermintTest() {
         val addrA = nodeA.node.getColdAddress()
         assertThat(nodeC.setPoCDelegation(secondModel, addrA).code).isEqualTo(0)
 
-        // Wait for both models to stabilize in PoC before checking pre-gate weights.
-        // Model B needs: hardware sync (up to 60s) -> chain model assignment -> PoC generation -> weight computation.
-        // This takes several epochs after setupBothModels.
+        // Model B participates in PoC on the very next cycle after node registration.
+        // Wait 3 cycles as a safety margin for the penalty gate assertions below.
+        genesis.waitForStage(EpochStage.SET_NEW_VALIDATORS, 3)
+
         val beforeGate = genesis.waitForActiveEpoch(penaltyStartEpoch - 1)
         val beforeParticipants = beforeGate.activeParticipants.participants
         val beforeA = beforeParticipants.first { it.index == nodeA.node.getColdAddress() }
