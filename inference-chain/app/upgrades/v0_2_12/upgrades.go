@@ -6,6 +6,7 @@ import (
 
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
+	distrkeeper "github.com/cosmos/cosmos-sdk/x/distribution/keeper"
 	"github.com/productscience/inference/x/inference/keeper"
 	"github.com/productscience/inference/x/inference/types"
 )
@@ -14,6 +15,7 @@ func CreateUpgradeHandler(
 	mm *module.Manager,
 	configurator module.Configurator,
 	k keeper.Keeper,
+	distrKeeper distrkeeper.Keeper,
 ) upgradetypes.UpgradeHandler {
 	return func(ctx context.Context, plan upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
 		k.LogInfo("starting upgrade", types.Upgrades, "version", UpgradeName)
@@ -25,6 +27,11 @@ func CreateUpgradeHandler(
 		}
 
 		err := removeTopMiner(ctx, k)
+		if err != nil {
+			return nil, err
+		}
+
+		err = clearTrainingState(ctx, k)
 		if err != nil {
 			return nil, err
 		}
@@ -50,6 +57,12 @@ func adjustParameters(ctx context.Context, k keeper.Keeper) error {
 		return err
 	}
 	params.XXX_DiscardUnknown()
+
+	if params.ValidationParams == nil {
+		params.ValidationParams = types.DefaultValidationParams()
+	}
+	params.ValidationParams.LogprobsMode = types.DefaultLogprobsMode
+
 	err = k.SetParams(ctx, params)
 	if err != nil {
 		return err
@@ -82,4 +95,8 @@ func removeTopMiner(ctx context.Context, k keeper.Keeper) error {
 		return err
 	}
 	return nil
+}
+
+func clearTrainingState(ctx context.Context, k keeper.Keeper) error {
+	return k.ClearTrainingState(ctx)
 }

@@ -302,9 +302,6 @@ func TestMaxTokens(t *testing.T) {
 }
 
 func TestModifyRequestBody_PreservesMultipartContent(t *testing.T) {
-	// TODO(vision-costs): This test currently verifies multipart preservation only.
-	// Future fix should add assertions that non-text parts (e.g. image_url) are
-	// reflected in prompt token accounting to avoid underfunded transactions.
 	r, err := ModifyRequestBody([]byte(jsonBodyMultipartContent), 7)
 	require.NoError(t, err)
 
@@ -317,10 +314,10 @@ func TestModifyRequestBody_PreservesMultipartContent(t *testing.T) {
 	require.True(t, isArray)
 }
 
-func TestModifyRequestBody_AcceptsNullMessageContent(t *testing.T) {
-	r, err := ModifyRequestBody([]byte(jsonBodyNullContent), 7)
-	require.NoError(t, err, "content:null is valid for tool-calling assistant messages")
-	require.NotNil(t, r)
+func TestModifyRequestBody_RejectsNullMessageContentForUser(t *testing.T) {
+	_, err := ModifyRequestBody([]byte(jsonBodyNullContent), 7)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "is required")
 }
 
 func TestModifyRequestBody_AcceptsToolCallingPayload(t *testing.T) {
@@ -340,4 +337,56 @@ func TestModifyRequestBody_AcceptsToolCallingPayload(t *testing.T) {
 func TestModifyRequestBody_RejectsTextPartWithoutTextField(t *testing.T) {
 	_, err := ModifyRequestBody([]byte(jsonBodyMultipartTextPartMissingText), 7)
 	require.Error(t, err, "text content part without text field should be rejected")
+}
+
+func TestModifyRequestBodyWithLogprobsMode_Processed(t *testing.T) {
+	r, err := ModifyRequestBodyWithLogprobsMode([]byte(jsonBody), 7, "processed_logprobs")
+	require.NoError(t, err)
+
+	var m map[string]interface{}
+	require.NoError(t, json.Unmarshal(r.NewBody, &m))
+	require.Equal(t, "processed_logprobs", m["logprobs_mode"])
+}
+
+func TestModifyRequestBodyWithLogprobsMode_Raw(t *testing.T) {
+	r, err := ModifyRequestBodyWithLogprobsMode([]byte(jsonBody), 7, "raw_logprobs")
+	require.NoError(t, err)
+
+	var m map[string]interface{}
+	require.NoError(t, json.Unmarshal(r.NewBody, &m))
+	require.Equal(t, "raw_logprobs", m["logprobs_mode"])
+}
+
+func TestModifyRequestBodyWithLogprobsMode_EmptyNoKey(t *testing.T) {
+	r, err := ModifyRequestBodyWithLogprobsMode([]byte(jsonBody), 7, "")
+	require.NoError(t, err)
+
+	var m map[string]interface{}
+	require.NoError(t, json.Unmarshal(r.NewBody, &m))
+	_, exists := m["logprobs_mode"]
+	require.False(t, exists, "logprobs_mode should not be present when empty string is passed")
+}
+
+func TestModifyRequestBodyWithLogprobsMode_OverwritesClientValue(t *testing.T) {
+	body := []byte(`{"model":"x","messages":[{"role":"user","content":"hi"}],"logprobs_mode":"raw_logprobs"}`)
+
+	r, err := ModifyRequestBodyWithLogprobsMode(body, 7, "processed_logprobs")
+	require.NoError(t, err)
+
+	var m map[string]interface{}
+	require.NoError(t, json.Unmarshal(r.NewBody, &m))
+	require.Equal(t, "processed_logprobs", m["logprobs_mode"])
+}
+
+func TestModifyRequestBodyWithLogprobsMode_PromptHashConsistency(t *testing.T) {
+	body := []byte(jsonBody)
+	mode := "processed_logprobs"
+
+	r1, err := ModifyRequestBodyWithLogprobsMode(body, 42, mode)
+	require.NoError(t, err)
+
+	r2, err := ModifyRequestBodyWithLogprobsMode(body, 42, mode)
+	require.NoError(t, err)
+
+	require.Equal(t, r1.NewBody, r2.NewBody, "identical inputs must produce identical outputs for hash consistency")
 }
