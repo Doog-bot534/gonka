@@ -163,7 +163,6 @@ func TestNetworkDutyBypass_GasCapEnforced(t *testing.T) {
 func TestIsExemptMessageType(t *testing.T) {
 	// Exempt
 	require.True(t, isExemptMessageType(&inferencetypes.MsgSubmitPocBatch{}))
-	require.True(t, isExemptMessageType(&inferencetypes.MsgSubmitPocValidation{}))
 	require.True(t, isExemptMessageType(&inferencetypes.MsgSubmitPocValidationsV2{}))
 	require.True(t, isExemptMessageType(&inferencetypes.MsgValidation{}))
 	require.True(t, isExemptMessageType(&inferencetypes.MsgStartInference{}))

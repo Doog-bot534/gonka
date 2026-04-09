@@ -110,7 +110,6 @@ func isExemptMessageType(msg sdk.Msg) bool {
 	switch msg.(type) {
 	// PoC duty messages (throttled by PocPeriodValidationDecorator window checks)
 	case *inferencetypes.MsgSubmitPocBatch,
-		*inferencetypes.MsgSubmitPocValidation,
 		*inferencetypes.MsgSubmitPocValidationsV2,
 		*inferencetypes.MsgMLNodeWeightDistribution:
 		return true
