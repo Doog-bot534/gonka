@@ -37,8 +37,8 @@ func (s *proofQueryServer) GranteesByMessageType(context.Context, *types.QueryGr
 	return &types.QueryGranteesByMessageTypeResponse{}, nil
 }
 
-func (s *proofQueryServer) InferenceParticipant(context.Context, *types.QueryInferenceParticipantRequest) (*types.QueryInferenceParticipantResponse, error) {
-	return &types.QueryInferenceParticipantResponse{Pubkey: s.pubkeyB64}, nil
+func (s *proofQueryServer) AccountByAddress(_ context.Context, req *types.QueryAccountByAddressRequest) (*types.QueryAccountByAddressResponse, error) {
+	return &types.QueryAccountByAddressResponse{Pubkey: s.pubkeyB64}, nil
 }
 
 func newProofQueryClient(t *testing.T, server *proofQueryServer) (types.QueryClient, func()) {

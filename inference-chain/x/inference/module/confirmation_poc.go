@@ -381,22 +381,7 @@ func (am AppModule) updateConfirmationWeights(ctx context.Context, event *types.
 		return fmt.Errorf("failed to get params: %w", err)
 	}
 
-	migrationState := GetMigrationStateFromParams(params.PocParams)
-
-	useV2, dryRun := false, false
-	switch migrationState {
-	case ModeFullV2:
-		useV2 = true
-		// Grace period: dry-run for the epoch when V2 was enabled
-		if graceEpoch, ok := am.keeper.GetPocV2EnabledEpoch(ctx); ok && event.EpochIndex == graceEpoch {
-			dryRun = true
-		}
-	case ModeMigration:
-		if event.EventSequence == 0 {
-			useV2, dryRun = true, true
-		}
-	}
-	am.evaluateConfirmation(ctx, event, &epochGroupData, currentValidatorWeights, params.PocParams, useV2, dryRun)
+	am.evaluateConfirmation(ctx, event, &epochGroupData, currentValidatorWeights, params.PocParams)
 
 	return nil
 }
@@ -407,21 +392,12 @@ func (am AppModule) evaluateConfirmation(
 	epochGroupData *types.EpochGroupData,
 	currentValidatorWeights map[string]int64,
 	pocParams *types.PocParams,
-	useV2 bool,
-	dryRun bool,
 ) {
 	coefficients := ModelCoefficients(pocParams)
-
-	var confirmationParticipants []*types.ActiveParticipant
-	if useV2 {
-		confirmationParticipants = am.updateConfirmationWeightsV2(ctx, event)
-		// Apply model coefficients (same aggregation as main PoC path)
-		for _, p := range confirmationParticipants {
-			p.Weight = AggregateConsensusWeight(ExtractModelWeights(p), coefficients)
-		}
-	} else {
-		weightScaleFactor := pocParams.GetWeightScaleFactorDec()
-		confirmationParticipants = am.UpdateConfirmationWeightsV1(ctx, event, currentValidatorWeights, weightScaleFactor)
+	confirmationParticipants := am.updateConfirmationWeightsV2(ctx, event)
+	// Apply model coefficients (same aggregation as main PoC path)
+	for _, p := range confirmationParticipants {
+		p.Weight = AggregateConsensusWeight(ExtractModelWeights(p), coefficients)
 	}
 
 	confirmationWeights := make(map[string]int64)
@@ -430,11 +406,7 @@ func (am AppModule) evaluateConfirmation(
 	}
 
 	am.LogInfo("evaluateConfirmation: Confirmation weights", types.PoC,
-		"useV2", useV2, "dryRun", dryRun, "confirmationWeights", confirmationWeights)
-
-	if dryRun {
-		return
-	}
+		"confirmationWeights", confirmationWeights)
 
 	notPreservedWeights, err := am.GetNotPreservedTotalWeightByParticipant(ctx, event.EpochIndex, coefficients)
 	if err != nil {

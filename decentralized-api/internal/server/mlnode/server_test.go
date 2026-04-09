@@ -64,7 +64,7 @@ func (s stubBrokerChainBridge) GetParams() (*types.QueryParamsResponse, error) {
 func newMLNodeTestBroker(t *testing.T, phase types.EpochPhase, modelIDs ...string) *broker.Broker {
 	t.Helper()
 
-	tracker := chainphase.NewChainPhaseTracker()
+	tracker := &chainphase.ChainPhaseTracker{}
 	tracker.Update(
 		chainphase.BlockInfo{Height: 110, Hash: "test-hash"},
 		&types.Epoch{Index: 1, PocStartBlockHeight: 100},
@@ -79,8 +79,6 @@ func newMLNodeTestBroker(t *testing.T, phase types.EpochPhase, modelIDs ...strin
 		true,
 		nil,
 	)
-	tracker.UpdatePocV2Enabled(true)
-
 	testBroker := broker.NewBroker(
 		stubBrokerChainBridge{models: modelIDs},
 		tracker,

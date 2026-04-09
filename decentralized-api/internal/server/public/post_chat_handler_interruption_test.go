@@ -174,14 +174,6 @@ func (m *mockInterruptionQueryClient) EpochGroupData(ctx context.Context, in *ty
 	return args.Get(0).(*types.QueryGetEpochGroupDataResponse), args.Error(1)
 }
 
-func (m *mockInterruptionQueryClient) InferenceParticipant(ctx context.Context, in *types.QueryInferenceParticipantRequest, opts ...grpc.CallOption) (*types.QueryInferenceParticipantResponse, error) {
-	args := m.Called(ctx, in)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*types.QueryInferenceParticipantResponse), args.Error(1)
-}
-
 func (m *mockInterruptionQueryClient) Params(ctx context.Context, in *types.QueryParamsRequest, opts ...grpc.CallOption) (*types.QueryParamsResponse, error) {
 	args := m.Called(ctx, in)
 	if args.Get(0) == nil {
@@ -204,6 +196,14 @@ func (m *mockInterruptionQueryClient) GranteesByMessageType(ctx context.Context,
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*types.QueryGranteesByMessageTypeResponse), args.Error(1)
+}
+
+func (m *mockInterruptionQueryClient) AccountByAddress(ctx context.Context, in *types.QueryAccountByAddressRequest, opts ...grpc.CallOption) (*types.QueryAccountByAddressResponse, error) {
+	args := m.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.QueryAccountByAddressResponse), args.Error(1)
 }
 
 func (m *mockInterruptionQueryClient) GetModelPerTokenPrice(ctx context.Context, in *types.QueryGetModelPerTokenPriceRequest, opts ...grpc.CallOption) (*types.QueryGetModelPerTokenPriceResponse, error) {
@@ -384,12 +384,6 @@ func setupInterruptionTestWithMLServer(t *testing.T, mlBehavior *mockMLNodeBehav
 		Params: types.Params{},
 	}, nil)
 
-	// Return the dev's pubkey for signature validation
-	suite.mockQueryClient.On("InferenceParticipant", mock.Anything, mock.Anything).Return(&types.QueryInferenceParticipantResponse{
-		Balance: 1000000,
-		Pubkey:  suite.devKey.GetPubKeyBase64(),
-	}, nil)
-
 	// Create a real in-memory keyring with a test key
 	testKeyring, testExecutorAddress := createTestKeyring(t)
 	suite.executorAddress = testExecutorAddress
@@ -409,6 +403,11 @@ func setupInterruptionTestWithMLServer(t *testing.T, mlBehavior *mockMLNodeBehav
 				PubKey:  suite.taKey.GetPubKeyBase64(),
 			},
 		},
+	}, nil)
+
+	// Return account pubkey for authz cache
+	suite.mockQueryClient.On("AccountByAddress", mock.Anything, mock.Anything).Return(&types.QueryAccountByAddressResponse{
+		Pubkey: suite.devKey.GetPubKeyBase64(),
 	}, nil)
 
 	suite.mockQueryClient.On("GetModelPerTokenPrice", mock.Anything, mock.Anything).Return(&types.QueryGetModelPerTokenPriceResponse{
@@ -468,7 +467,7 @@ func setupInterruptionTestWithMLServer(t *testing.T, mlBehavior *mockMLNodeBehav
 	}, nil)
 
 	// 4. Create phase tracker
-	suite.phaseTracker = chainphase.NewChainPhaseTracker()
+	suite.phaseTracker = &chainphase.ChainPhaseTracker{}
 	suite.phaseTracker.Update(
 		chainphase.BlockInfo{Height: 150, Hash: "hash-150"},
 		&types.Epoch{Index: 100, PocStartBlockHeight: 100},
@@ -541,7 +540,6 @@ func setupInterruptionTestWithMLServer(t *testing.T, mlBehavior *mockMLNodeBehav
 		suite.nodeBroker,
 		suite.configManager,
 		suite.mockRecorder,
-		nil,
 		nil,
 		suite.phaseTracker,
 		payloadStorage,

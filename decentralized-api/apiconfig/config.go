@@ -27,6 +27,7 @@ type Config struct {
 	BandwidthParams          BandwidthParamsCache     `koanf:"bandwidth_params" json:"bandwidth_params"`
 	PoCParams                PoCParamsCache           `koanf:"poc_params" json:"poc_params"`
 	TransferAgentAccessCache TransferAgentAccessCache `koanf:"-" json:"-"` // not persisted, synced from chain
+	SubnetVersionsCache      SubnetVersionsCache      `koanf:"-" json:"-"` // not persisted, synced from chain
 }
 
 type NatsServerConfig struct {
@@ -59,15 +60,17 @@ type SeedInfo struct {
 }
 
 type ApiConfig struct {
-	Port                  int    `koanf:"port" json:"port"`
-	PoCCallbackUrl        string `koanf:"poc_callback_url" json:"poc_callback_url"`
-	MlGrpcCallbackAddress string `koanf:"ml_grpc_callback_address" json:"ml_grpc_callback_address"`
-	PublicUrl             string `koanf:"public_url" json:"public_url"`
-	PublicServerPort      int    `koanf:"public_server_port" json:"public_server_port"`
-	MLServerPort          int    `koanf:"ml_server_port" json:"ml_server_port"`
-	AdminServerPort       int    `koanf:"admin_server_port" json:"admin_server_port"`
-	MlGrpcServerPort      int    `koanf:"ml_grpc_server_port" json:"ml_grpc_server_port"`
-	TestMode              bool   `koanf:"test_mode" json:"test_mode"`
+	Port                      int    `koanf:"port" json:"port"`
+	PoCCallbackUrl            string `koanf:"poc_callback_url" json:"poc_callback_url"`
+	MlGrpcCallbackAddress     string `koanf:"ml_grpc_callback_address" json:"ml_grpc_callback_address"`
+	PublicUrl                 string `koanf:"public_url" json:"public_url"`
+	PublicServerPort          int    `koanf:"public_server_port" json:"public_server_port"`
+	MLServerPort              int    `koanf:"ml_server_port" json:"ml_server_port"`
+	AdminServerPort           int    `koanf:"admin_server_port" json:"admin_server_port"`
+	MlGrpcServerPort          int    `koanf:"ml_grpc_server_port" json:"ml_grpc_server_port"`
+	TestMode                  bool   `koanf:"test_mode" json:"test_mode"`
+	NodeManagerGrpcPort       int    `koanf:"node_manager_grpc_port" json:"node_manager_grpc_port"`
+	NodeManagerLockTTLSeconds int    `koanf:"node_manager_lock_ttl_seconds" json:"node_manager_lock_ttl_seconds"`
 }
 
 type ChainNodeConfig struct {
@@ -215,6 +218,18 @@ func (p PoCParamsCache) GetModelConfig(modelID string) (PoCModelConfigCache, boo
 		}
 	}
 	return PoCModelConfigCache{}, false
+}
+
+// SubnetVersionsCache holds approved subnet versions synced from chain params.
+type SubnetVersionsCache struct {
+	Versions []SubnetVersion `json:"versions"`
+}
+
+// SubnetVersion describes a single approved subnet binary.
+type SubnetVersion struct {
+	Name   string `json:"name"`
+	Binary string `json:"binary"`
+	SHA256 string `json:"sha256"`
 }
 
 // TransferAgentAccessCache caches the allowed TA addresses for O(1) lookups.

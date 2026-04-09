@@ -123,6 +123,13 @@ type Broker struct {
 	lastEpochPhase       types.EpochPhase
 	statusQueryTrigger   chan statusQuerySignal
 	configManager        *apiconfig.ConfigManager
+	lockMap              map[string]lockEntry
+	lockMapMu            sync.Mutex
+}
+
+type lockEntry struct {
+	nodeID    string
+	createdAt time.Time
 }
 
 // GetParticipantAddress returns the current participant's address if available.
@@ -133,56 +140,10 @@ func (b *Broker) GetParticipantAddress() string {
 	return b.participantInfo.GetAddress()
 }
 
-// IsPoCv2Enabled returns whether PoC V2 (off-chain artifacts) is enabled.
-// Returns true by default if phaseTracker is not available.
-func (b *Broker) IsPoCv2Enabled() bool {
-	if b == nil || b.phaseTracker == nil {
-		return true // default V2
-	}
-	return b.phaseTracker.IsPoCv2Enabled()
-}
-
-// IsV2EndpointsEnabled returns whether V2 endpoints should be enabled.
-// True when poc_v2_enabled=true OR confirmation_poc_v2_enabled=true (migration mode).
-func (b *Broker) IsV2EndpointsEnabled() bool {
-	if b == nil || b.phaseTracker == nil {
-		return true
-	}
-	return b.phaseTracker.IsPoCv2Enabled() || b.phaseTracker.IsConfirmationPoCv2Enabled()
-}
-
-// IsMigrationMode returns whether we're in migration mode.
-// Migration mode: poc_v2_enabled=false, confirmation_poc_v2_enabled=true.
-func (b *Broker) IsMigrationMode() bool {
-	if b == nil || b.phaseTracker == nil {
-		return false
-	}
-	return !b.phaseTracker.IsPoCv2Enabled() && b.phaseTracker.IsConfirmationPoCv2Enabled()
-}
-
-// shouldUseV2ForPoC determines if V2 should be used for PoC based on mode and event.
-// - Full V2 mode: always V2
-// - Migration mode + confirmation PoC event_sequence == 0: V2
-// - Otherwise: V1
-func (b *Broker) shouldUseV2ForPoC(confirmationEvent *types.ConfirmationPoCEvent) bool {
-	if b.IsPoCv2Enabled() {
-		return true
-	}
-	if b.IsMigrationMode() && confirmationEvent != nil && confirmationEvent.EventSequence == 0 {
-		return true
-	}
-	return false
-}
-
 const PoCBatchesBasePathV2 = "/v2/poc-batches"
-const PoCBatchesBasePathV1 = "/v1/poc-batches"
 
 func GetPoCCallbackBaseURLV2(callbackUrl string) string {
 	return fmt.Sprintf("%s%s", callbackUrl, PoCBatchesBasePathV2)
-}
-
-func GetPoCCallbackBaseURLV1(callbackUrl string) string {
-	return fmt.Sprintf("%s%s", callbackUrl, PoCBatchesBasePathV1)
 }
 
 type ModelArgs struct {
@@ -244,8 +205,6 @@ type NodeState struct {
 	PocIntendedStatus PocStatus `json:"poc_intended_status"`
 	PocCurrentStatus  PocStatus `json:"poc_current_status"`
 
-	TrainingTask *TrainingTaskPayload `json:"training_task,omitempty"`
-
 	LockCount       int        `json:"lock_count"`
 	FailureReason   string     `json:"failure_reason"`
 	StatusTimestamp time.Time  `json:"status_timestamp"`
@@ -271,17 +230,9 @@ func (s NodeState) MarshalJSON() ([]byte, error) {
 	})
 }
 
-type TrainingTaskPayload struct {
-	Id             uint64         `json:"id"`
-	MasterNodeAddr string         `json:"master_node_addr"`
-	NodeRanks      map[string]int `json:"node_ranks"`
-	WorldSize      int            `json:"world_size"`
-}
-
 type ReconcileInfo struct {
-	Status         types.HardwareNodeStatus `json:"status"`
-	PocStatus      PocStatus                `json:"poc_status"`
-	TrainingTaskId uint64                   `json:"training_task_id"`
+	Status    types.HardwareNodeStatus `json:"status"`
+	PocStatus PocStatus                `json:"poc_status"`
 }
 
 func (s *NodeState) UpdateStatusAt(time time.Time, status types.HardwareNodeStatus) {
@@ -364,6 +315,7 @@ func NewBroker(chainBridge BrokerChainBridge, phaseTracker *chainphase.ChainPhas
 		reconcileTrigger:     make(chan struct{}, 1),
 		statusQueryTrigger:   make(chan statusQuerySignal, 1),
 		configManager:        configManager,
+		lockMap:              make(map[string]lockEntry),
 	}
 
 	// Initialize NodeWorkGroup
@@ -456,10 +408,6 @@ func (b *Broker) executeCommand(command Command) {
 		command.Execute(b)
 	case SyncNodesCommand:
 		b.syncNodes()
-	case LockNodesForTrainingCommand:
-		b.lockNodesForTraining(command)
-	case StartTrainingCommand:
-		command.Execute(b)
 	case SetNodesActualStatusCommand:
 		command.Execute(b)
 	case SetNodeAdminStateCommand:
@@ -492,7 +440,7 @@ func (b *Broker) QueueMessage(command Command) error {
 	}
 
 	switch command.(type) {
-	case StartPocCommand, InitValidateCommand, InferenceUpAllCommand, UpdateNodeResultCommand, SetNodesActualStatusCommand, SetNodeAdminStateCommand, RegisterNode, RemoveNode, StartTrainingCommand, LockNodesForTrainingCommand, SyncNodesCommand:
+	case StartPocCommand, InitValidateCommand, InferenceUpAllCommand, UpdateNodeResultCommand, SetNodesActualStatusCommand, SetNodeAdminStateCommand, RegisterNode, RemoveNode, SyncNodesCommand:
 		b.highPriorityCommands <- command
 	default:
 		b.lowPriorityCommands <- command
@@ -740,13 +688,6 @@ func (b *Broker) calculateNodesDiff(chainNodesMap map[string]*types.HardwareNode
 	return diff
 }
 
-func (b *Broker) lockNodesForTraining(command LockNodesForTrainingCommand) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	// PRTODO: implement
-	command.Response <- true
-}
-
 // convertInferenceNodeToHardwareNode converts a local InferenceNode into a HardwareNode.
 func convertInferenceNodeToHardwareNode(in *NodeWithState) *types.HardwareNode {
 	node := in.Node
@@ -877,6 +818,7 @@ func (b *Broker) reconcilerLoop() {
 			b.reconcileIfSynced("Reconciliation triggered by timer")
 			// Check for version changes and refresh clients if needed
 			b.checkAndRefreshClientsIfNeeded()
+			b.evictExpiredLocks()
 		}
 	}
 }
@@ -1249,63 +1191,25 @@ func (b *Broker) getCommandForState(
 					logging.Warn("Skipping PoC scheduling without resolvable model", types.PoC, "node_id", nodeId)
 					return nil
 				}
-				// Dispatch V1 or V2 based on governance parameter and migration mode
-				if b.shouldUseV2ForPoC(confirmationEvent) {
-					return StartPoCNodeCommandV2{
-						BlockHeight: pocGenParams.startPoCBlockHeight,
-						BlockHash:   pocGenParams.startPoCBlockHash,
-						PubKey:      b.participantInfo.GetPubKey(),
-						CallbackUrl: GetPoCCallbackBaseURLV2(b.callbackUrl),
-						TotalNodes:  totalNodes,
-						Model:       modelConfig.ModelId,
-						SeqLen:      modelConfig.SeqLen,
-					}
-				}
-				return StartPoCNodeCommandV1{
+				return StartPoCNodeCommandV2{
 					BlockHeight: pocGenParams.startPoCBlockHeight,
 					BlockHash:   pocGenParams.startPoCBlockHash,
 					PubKey:      b.participantInfo.GetPubKey(),
-					CallbackUrl: GetPoCCallbackBaseURLV1(b.callbackUrl),
+					CallbackUrl: GetPoCCallbackBaseURLV2(b.callbackUrl),
 					TotalNodes:  totalNodes,
-					ModelParams: nil, // V1 uses chain-stored model params
+					Model:       modelConfig.ModelId,
+					SeqLen:      modelConfig.SeqLen,
 				}
 			}
 			logging.Error("Cannot create StartPoCNodeCommand: missing PoC parameters", types.Nodes, "error", pocGenErr)
 			return nil
 		case PocStatusValidating:
-			if pocGenParams != nil && pocGenParams.startPoCBlockHeight > 0 {
-				// Dispatch V1 or V2 based on governance parameter and migration mode
-				if b.shouldUseV2ForPoC(confirmationEvent) {
-					return TransitionPoCToValidatingCommandV2{}
-				}
-				return InitValidateNodeCommandV1{
-					BlockHeight: pocGenParams.startPoCBlockHeight,
-					BlockHash:   pocGenParams.startPoCBlockHash,
-					PubKey:      b.participantInfo.GetPubKey(),
-					CallbackUrl: GetPoCCallbackBaseURLV1(b.callbackUrl),
-					TotalNodes:  totalNodes,
-					ModelParams: nil, // V1 uses chain-stored model params
-				}
-			}
-			logging.Error("Cannot create InitValidateNodeCommand: missing PoC parameters", types.Nodes, "error", pocGenErr)
-			return nil
+			return TransitionPoCToValidatingCommandV2{}
 		default:
 			return nil // No action for other phases if status is POC
 		}
 	case types.HardwareNodeStatus_STOPPED:
 		return StopNodeCommand{}
-	case types.HardwareNodeStatus_TRAINING:
-		if nodeState.TrainingTask == nil {
-			logging.Error("Training task ID is nil, cannot create StartTrainingCommand", types.Nodes)
-			return nil
-		}
-		return StartTrainingNodeCommand{
-			TaskId:         nodeState.TrainingTask.Id,
-			Participant:    b.participantInfo.GetAddress(),
-			MasterNodeAddr: nodeState.TrainingTask.MasterNodeAddr,
-			NodeRanks:      nodeState.TrainingTask.NodeRanks,
-			WorldSize:      nodeState.TrainingTask.WorldSize,
-		}
 	default:
 		logging.Info("Reconciliation for state not yet implemented", types.Nodes,
 			"intended_state", nodeState.IntendedStatus.String())
@@ -1487,8 +1391,6 @@ func toStatus(response mlnodeclient.StateResponse) types.HardwareNodeStatus {
 		return types.HardwareNodeStatus_POC
 	case mlnodeclient.MlNodeState_INFERENCE:
 		return types.HardwareNodeStatus_INFERENCE
-	case mlnodeclient.MlNodeState_TRAIN:
-		return types.HardwareNodeStatus_TRAINING
 	case mlnodeclient.MlNodeState_STOPPED:
 		return types.HardwareNodeStatus_STOPPED
 	default:

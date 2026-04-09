@@ -102,10 +102,6 @@ func (w *CommitWorker) tick() {
 		return
 	}
 
-	if !ShouldUseV2FromEpochState(epochState) {
-		return
-	}
-
 	w.mu.Lock()
 	defer w.mu.Unlock()
 

@@ -1,8 +1,10 @@
 package inference
 
 import (
+	"bytes"
 	"cmp"
 	"context"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -171,7 +173,7 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 
 // ConsensusVersion is a sequence number for state-breaking change of the module.
 // It should be incremented on each consensus-breaking change introduced by the module.
-func (AppModule) ConsensusVersion() uint64 { return 13 }
+func (AppModule) ConsensusVersion() uint64 { return 14 }
 
 // BeginBlock contains the logic that is automatically triggered at the beginning of each block.
 func (am AppModule) BeginBlock(ctx context.Context) error {
@@ -413,7 +415,11 @@ func (am AppModule) EndBlock(ctx context.Context) error {
 	// 2. IsSetNewValidatorsStage: Switch validators and activate epoch (onSetNewValidatorsStage)
 	// This separation ensures clean boundaries between epoch preparation and validator switching
 	// and allow time for api nodes to load models on ml nodes.
-
+	//
+	// NOTE: Validator activation is intentionally delayed by two blocks: the new validator
+	// set becomes active at H+2, not H+1. This provides a buffer for nodes to
+	// prepare before the validator set rotates.
+	
 	if epochContext.IsEndOfPoCValidationStage(blockHeight) {
 		am.LogInfo("StartStage:onEndOfPoCValidationStage", types.Stages, "blockHeight", blockHeight)
 		am.onEndOfPoCValidationStage(ctx, blockHeight, blockTime)
@@ -425,6 +431,11 @@ func (am AppModule) EndBlock(ctx context.Context) error {
 		if err := am.keeper.SetEffectiveEpochIndex(ctx, getNextEpochIndex(*currentEpoch)); err != nil {
 			return err
 		}
+		am.LogInfo("Epoch index flipped; new validator set activates at H+2",
+			types.Stages,
+			"blockHeight", blockHeight,
+			"expectedActivation", blockHeight+2,
+		)
 	}
 
 	if epochContext.IsStartOfPocStage(blockHeight) {
@@ -455,6 +466,7 @@ func (am AppModule) EndBlock(ctx context.Context) error {
 		am.captureGenerationStartTimestamp(ctx, blockTime, upcomingEpoch.PocStartBlockHeight)
 	}
 
+
 	// Capture the pre-eligibility snapshot at start_poc - deploy_window.
 	if params.DelegationParams != nil &&
 		epochContext.IsDelegationSnapshotHeight(blockHeight, params.DelegationParams.DeployWindow) {
@@ -472,6 +484,8 @@ func (am AppModule) EndBlock(ctx context.Context) error {
 		}
 	}
 
+	// Intentionally operates on the previous epoch's group here; the new group
+	// triggers SetComputeValidators on the next block. See activation note above.
 	if currentEpochGroup.IsChanged(ctx) {
 		am.LogInfo("EpochGroupChanged", types.EpochGroup, "blockHeight", blockHeight)
 		computeResult, err := currentEpochGroup.GetComputeResults(ctx)
@@ -586,18 +600,7 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 		return
 	}
 
-	// Dispatch to V1 or V2 weight calculation based on poc_v2_enabled flag
-	params, err := am.keeper.GetParams(ctx)
-	if err != nil {
-		am.LogError("onEndOfPoCValidationStage: Unable to get params", types.PoC, "error", err.Error())
-		return
-	}
-	var activeParticipants []*types.ActiveParticipant
-	if params.PocParams.PocV2Enabled {
-		activeParticipants = am.ComputeNewWeights(ctx, *upcomingEpoch)
-	} else {
-		activeParticipants = am.ComputeNewWeightsV1(ctx, *upcomingEpoch)
-	}
+	activeParticipants := am.ComputeNewWeights(ctx, *upcomingEpoch)
 	if activeParticipants == nil {
 		am.LogError("onEndOfPoCValidationStage: computeResult == nil && activeParticipants == nil", types.PoC)
 		return
@@ -605,6 +608,12 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 
 	modelAssigner := NewModelAssigner(am.keeper, am.keeper)
 	modelAssigner.setModelsForParticipants(ctx, activeParticipants, *upcomingEpoch)
+
+	params, err := am.keeper.GetParams(ctx)
+	if err != nil {
+		am.LogError("onEndOfPoCValidationStage: Unable to get params", types.PoC, "error", err)
+		return
+	}
 
 	participationState, err := am.prepareEpochParticipationState(
 		ctx,
@@ -668,12 +677,6 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 	modelAssigner.AllocateMLNodesForPoC(ctx, *upcomingEpoch, activeParticipants)
 	am.LogInfo("Finished PoC allocation for all participants", types.EpochGroup, "step", "poc_allocation_complete")
 
-	err = am.RegisterTopMiners(ctx, activeParticipants, blockTime)
-	if err != nil {
-		am.LogError("onEndOfPoCValidationStage: Unable to register top miners", types.Tokenomics, "error", err.Error())
-		return
-	}
-
 	am.LogInfo("onEndOfPoCValidationStage: computed new weights", types.Stages,
 		"upcomingEpoch.Index", upcomingEpoch.Index,
 		"PocStartBlockHeight", upcomingEpoch.PocStartBlockHeight,
@@ -731,6 +734,7 @@ func (am AppModule) onEndOfPoCValidationStage(ctx context.Context, blockHeight i
 // all epoch formation logic has completed in onEndOfPoCValidationStage.
 // The stage focuses solely on validator switching, with all epoch preparation
 // handled by the previous stage for clean separation of concerns.
+// The new validator set becomes active at H+2.
 func (am AppModule) onSetNewValidatorsStage(ctx context.Context, blockHeight int64, blockTime int64) {
 	am.LogInfo("onSetNewValidatorsStage start", types.Stages, "blockHeight", blockHeight)
 
@@ -1451,6 +1455,7 @@ func (am AppModule) InitiateBLSKeyGeneration(ctx context.Context, epochID uint64
 			am.LogError("Participant secp256k1 public key bytes are empty for BLS", types.EpochGroup, "participantAddress", ap.Index, "epochID", epochID)
 			continue
 		}
+		additionalPubKeys := am.collectAdditionalBLSParticipantPubKeys(ctx, ap.Index, pubKeyBytes)
 
 		// Determine percentage weight: use adjusted reservation if present, else raw share
 		var percentage math.LegacyDec
@@ -1466,9 +1471,10 @@ func (am AppModule) InitiateBLSKeyGeneration(ctx context.Context, epochID uint64
 		}
 
 		blsParticipant := blstypes.ParticipantWithWeightAndKey{
-			Address:            ap.Index,
-			PercentageWeight:   percentage,
-			Secp256k1PublicKey: pubKeyBytes,
+			Address:                    ap.Index,
+			PercentageWeight:           percentage,
+			Secp256k1PublicKey:         pubKeyBytes,
+			AllowedSecp256k1PublicKeys: additionalPubKeys,
 		}
 		finalizedParticipants = append(finalizedParticipants, blsParticipant)
 
@@ -1477,7 +1483,8 @@ func (am AppModule) InitiateBLSKeyGeneration(ctx context.Context, epochID uint64
 			"weight", ap.Weight,
 			"percentage", percentage.String(),
 			"epochID", epochID,
-			"keyLength", len(pubKeyBytes))
+			"keyLength", len(pubKeyBytes),
+			"additionalKeyCount", len(additionalPubKeys))
 	}
 
 	if len(finalizedParticipants) == 0 {
@@ -1495,4 +1502,68 @@ func (am AppModule) InitiateBLSKeyGeneration(ctx context.Context, epochID uint64
 	am.LogInfo("Successfully initiated BLS key generation", types.EpochGroup,
 		"epochID", epochID,
 		"participantCount", len(finalizedParticipants))
+}
+
+func (am AppModule) collectAdditionalBLSParticipantPubKeys(ctx context.Context, participantAddress string, primaryPubKey []byte) [][]byte {
+	const blsDealerPartMsgTypeURL = "/inference.bls.MsgSubmitDealerPart"
+
+	resp, err := am.keeper.GranteesByMessageType(ctx, &types.QueryGranteesByMessageTypeRequest{
+		GranterAddress: participantAddress,
+		MessageTypeUrl: blsDealerPartMsgTypeURL,
+	})
+	if err != nil {
+		am.LogWarn("Failed to query BLS grantee keys, falling back to primary key only", types.EpochGroup,
+			"participant", participantAddress,
+			"messageType", blsDealerPartMsgTypeURL,
+			"error", err)
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(resp.Grantees))
+	additionalPubKeys := make([][]byte, 0, len(resp.Grantees))
+	for _, grantee := range resp.Grantees {
+		if grantee == nil || grantee.PubKey == "" {
+			continue
+		}
+
+		pubKeyBytes, err := base64.StdEncoding.DecodeString(grantee.PubKey)
+		if err != nil {
+			am.LogWarn("Skipping invalid grantee public key encoding for BLS snapshot", types.EpochGroup,
+				"participant", participantAddress,
+				"grantee", grantee.Address,
+				"error", err)
+			continue
+		}
+		if len(pubKeyBytes) != 33 {
+			am.LogWarn("Skipping invalid grantee secp256k1 public key length for BLS snapshot", types.EpochGroup,
+				"participant", participantAddress,
+				"grantee", grantee.Address,
+				"length", len(pubKeyBytes))
+			continue
+		}
+		if pubKeyBytes[0] != 0x02 && pubKeyBytes[0] != 0x03 {
+			am.LogWarn("Skipping invalid grantee secp256k1 public key prefix for BLS snapshot", types.EpochGroup,
+				"participant", participantAddress,
+				"grantee", grantee.Address,
+				"prefix", fmt.Sprintf("0x%x", pubKeyBytes[0]))
+			continue
+		}
+		if bytes.Equal(pubKeyBytes, primaryPubKey) {
+			continue
+		}
+
+		keyID := string(pubKeyBytes)
+		if _, exists := seen[keyID]; exists {
+			continue
+		}
+		seen[keyID] = struct{}{}
+		additionalPubKeys = append(additionalPubKeys, append([]byte(nil), pubKeyBytes...))
+	}
+
+	// Keep deterministic key ordering so ciphertext index mapping stays aligned across chain and DAPI
+	slices.SortFunc(additionalPubKeys, func(a, b []byte) int {
+		return bytes.Compare(a, b)
+	})
+
+	return additionalPubKeys
 }

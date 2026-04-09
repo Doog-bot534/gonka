@@ -208,18 +208,11 @@ type CosmosMessageClient interface {
 	FinishInference(transaction *inferenceapi.MsgFinishInference) error
 	ReportValidation(transaction *inferenceapi.MsgValidation) error
 	SubmitNewUnfundedParticipant(transaction *inferenceapi.MsgSubmitNewUnfundedParticipant) error
-	// PoC V1 methods (on-chain batches, used when poc_v2_enabled=false)
-	SubmitPocBatch(transaction *inferenceapi.MsgSubmitPocBatch) error
-	SubmitPoCValidation(transaction *inferenceapi.MsgSubmitPocValidation) error
-	// PoC V2 methods (off-chain commits, used when poc_v2_enabled=true)
 	SubmitPocValidationsV2(transaction *inferencetypes.MsgSubmitPocValidationsV2) error
 	SubmitPoCV2StoreCommit(transaction *inferencetypes.MsgPoCV2StoreCommit) error
 	SubmitMLNodeWeightDistribution(transaction *inferencetypes.MsgMLNodeWeightDistribution) error
 	SubmitSeed(transaction *inferenceapi.MsgSubmitSeed) error
 	ClaimRewards(transaction *inferenceapi.MsgClaimRewards) error
-	CreateTrainingTask(transaction *inferenceapi.MsgCreateTrainingTask) (*inferenceapi.MsgCreateTrainingTaskResponse, error)
-	ClaimTrainingTaskForAssignment(transaction *inferenceapi.MsgClaimTrainingTaskForAssignment) (*inferenceapi.MsgClaimTrainingTaskForAssignmentResponse, error)
-	AssignTrainingTask(transaction *inferenceapi.MsgAssignTrainingTask) (*inferenceapi.MsgAssignTrainingTaskResponse, error)
 	SubmitUnitOfComputePriceProposal(transaction *inferenceapi.MsgSubmitUnitOfComputePriceProposal) error
 	BridgeExchange(transaction *inferencetypes.MsgBridgeExchange) error
 	GetBridgeAddresses(ctx context.Context, chainId string) ([]inferencetypes.BridgeContractAddress, error)
@@ -235,8 +228,10 @@ type CosmosMessageClient interface {
 	GetClientContext() sdkclient.Context
 	GetAccountAddress() string
 	GetAccountPubKey() cryptotypes.PubKey
+	GetSignerPubKey() cryptotypes.PubKey
 	GetSignerAddress() string
 	SubmitDealerPart(transaction *blstypes.MsgSubmitDealerPart) error
+	RespondDealerComplaints(transaction *blstypes.MsgRespondDealerComplaints) error
 	SubmitVerificationVector(transaction *blstypes.MsgSubmitVerificationVector) (*sdk.TxResponse, error)
 	SubmitGroupKeyValidationSignature(transaction *blstypes.MsgSubmitGroupKeyValidationSignature) error
 	SubmitPartialSignature(requestId []byte, slotIndices []uint32, partialSignature []byte) error
@@ -281,6 +276,20 @@ func (icc *InferenceCosmosClient) GetAccountAddress() string {
 
 func (icc *InferenceCosmosClient) GetAccountPubKey() cryptotypes.PubKey {
 	return icc.apiAccount.AccountKey
+}
+
+func (icc *InferenceCosmosClient) GetSignerPubKey() cryptotypes.PubKey {
+	if icc.apiAccount == nil || icc.apiAccount.SignerAccount == nil || icc.apiAccount.SignerAccount.Record == nil {
+		logging.Error("Signer account is not configured", inferencetypes.Messages)
+		return nil
+	}
+
+	pubKey, err := icc.apiAccount.SignerAccount.Record.GetPubKey()
+	if err != nil {
+		logging.Error("Failed to get signer public key", inferencetypes.Messages, "error", err)
+		return nil
+	}
+	return pubKey
 }
 
 func (icc *InferenceCosmosClient) GetSignerAddress() string {
@@ -400,42 +409,6 @@ func (icc *InferenceCosmosClient) SubmitUnitOfComputePriceProposal(transaction *
 	return err
 }
 
-func (icc *InferenceCosmosClient) CreateTrainingTask(transaction *inferenceapi.MsgCreateTrainingTask) (*inferenceapi.MsgCreateTrainingTaskResponse, error) {
-	transaction.Creator = icc.Address
-	msg := &inferenceapi.MsgCreateTrainingTaskResponse{}
-
-	if err := icc.SendTransactionSyncNoRetry(transaction, msg); err != nil {
-		return nil, err
-	}
-	return msg, nil
-}
-
-func (icc *InferenceCosmosClient) ClaimTrainingTaskForAssignment(transaction *inferenceapi.MsgClaimTrainingTaskForAssignment) (*inferenceapi.MsgClaimTrainingTaskForAssignmentResponse, error) {
-	transaction.Creator = icc.Address
-	msg := &inferenceapi.MsgClaimTrainingTaskForAssignmentResponse{}
-	if err := icc.SendTransactionSyncNoRetry(transaction, msg); err != nil {
-		return nil, err
-	}
-	return msg, nil
-}
-
-func (icc *InferenceCosmosClient) AssignTrainingTask(transaction *inferenceapi.MsgAssignTrainingTask) (*inferenceapi.MsgAssignTrainingTaskResponse, error) {
-	transaction.Creator = icc.Address
-	result, err := icc.manager.SendTransactionSyncNoRetry(transaction)
-	if err != nil {
-		logging.Error("Failed to send transaction", inferencetypes.Messages, "error", err, "result", result)
-		return nil, err
-	}
-
-	msg := &inferenceapi.MsgAssignTrainingTaskResponse{}
-	err = tx_manager.ParseMsgResponse(result.TxResult.Data, 0, msg)
-	if err != nil {
-		logging.Error("Failed to parse message response", inferencetypes.Messages, "error", err)
-		return nil, err
-	}
-	return msg, err
-}
-
 func (icc *InferenceCosmosClient) BridgeExchange(transaction *inferencetypes.MsgBridgeExchange) error {
 	transaction.Validator = icc.Address
 	_, err := icc.manager.SendTransactionAsyncNoRetry(transaction)
@@ -517,6 +490,12 @@ func (icc *InferenceCosmosClient) SendTransactionSyncNoRetry(transaction proto.M
 }
 
 func (icc *InferenceCosmosClient) SubmitDealerPart(transaction *blstypes.MsgSubmitDealerPart) error {
+	transaction.Creator = icc.Address
+	_, err := icc.manager.SendTransactionAsyncWithRetry(transaction)
+	return err
+}
+
+func (icc *InferenceCosmosClient) RespondDealerComplaints(transaction *blstypes.MsgRespondDealerComplaints) error {
 	transaction.Creator = icc.Address
 	_, err := icc.manager.SendTransactionAsyncWithRetry(transaction)
 	return err

@@ -68,6 +68,11 @@ func (m *MockCosmosMessageClient) GetAccountPubKey() cryptotypes.PubKey {
 	return args.Get(0).(cryptotypes.PubKey)
 }
 
+func (m *MockCosmosMessageClient) GetSignerPubKey() cryptotypes.PubKey {
+	args := m.Called()
+	return args.Get(0).(cryptotypes.PubKey)
+}
+
 func (m *MockCosmosMessageClient) GetSignerAddress() string {
 	args := m.Called()
 	return args.String(0)
@@ -118,20 +123,6 @@ func (m *MockCosmosMessageClient) BankBalances(ctx context.Context, address stri
 	return args.Get(0).([]sdk.Coin), args.Error(1)
 }
 
-// PoC v1 mock methods
-
-func (m *MockCosmosMessageClient) SubmitPocBatch(transaction *inferenceapi.MsgSubmitPocBatch) error {
-	args := m.Called(transaction)
-	return args.Error(0)
-}
-
-func (m *MockCosmosMessageClient) SubmitPoCValidation(transaction *inferenceapi.MsgSubmitPocValidation) error {
-	args := m.Called(transaction)
-	return args.Error(0)
-}
-
-// PoC v2 mock methods
-
 func (m *MockCosmosMessageClient) SubmitPocValidationsV2(transaction *inferencetypes.MsgSubmitPocValidationsV2) error {
 	args := m.Called(transaction)
 	return args.Error(0)
@@ -155,21 +146,6 @@ func (m *MockCosmosMessageClient) SubmitSeed(transaction *inferenceapi.MsgSubmit
 func (m *MockCosmosMessageClient) SubmitUnitOfComputePriceProposal(transaction *inferenceapi.MsgSubmitUnitOfComputePriceProposal) error {
 	args := m.Called(transaction)
 	return args.Error(0)
-}
-
-func (m *MockCosmosMessageClient) CreateTrainingTask(transaction *inferenceapi.MsgCreateTrainingTask) (*inferenceapi.MsgCreateTrainingTaskResponse, error) {
-	args := m.Called(transaction)
-	return args.Get(0).(*inferenceapi.MsgCreateTrainingTaskResponse), args.Error(1)
-}
-
-func (m *MockCosmosMessageClient) ClaimTrainingTaskForAssignment(transaction *inferenceapi.MsgClaimTrainingTaskForAssignment) (*inferenceapi.MsgClaimTrainingTaskForAssignmentResponse, error) {
-	args := m.Called(transaction)
-	return args.Get(0).(*inferenceapi.MsgClaimTrainingTaskForAssignmentResponse), args.Error(1)
-}
-
-func (m *MockCosmosMessageClient) AssignTrainingTask(transaction *inferenceapi.MsgAssignTrainingTask) (*inferenceapi.MsgAssignTrainingTaskResponse, error) {
-	args := m.Called(transaction)
-	return args.Get(0).(*inferenceapi.MsgAssignTrainingTaskResponse), args.Error(1)
 }
 
 func (m *MockCosmosMessageClient) BridgeExchange(transaction *inferencetypes.MsgBridgeExchange) error {
@@ -223,6 +199,11 @@ func (m *MockCosmosMessageClient) SendTransactionSyncNoRetry(transaction proto.M
 }
 
 func (m *MockCosmosMessageClient) SubmitDealerPart(transaction *blstypes.MsgSubmitDealerPart) error {
+	args := m.Called(transaction)
+	return args.Error(0)
+}
+
+func (m *MockCosmosMessageClient) RespondDealerComplaints(transaction *blstypes.MsgRespondDealerComplaints) error {
 	args := m.Called(transaction)
 	return args.Error(0)
 }

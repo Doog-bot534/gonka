@@ -1,4 +1,4 @@
-.PHONY: all install build build-docker init clean-state mock-expected-keepers docker-push release build-all package deploy
+.PHONY: all install build build-docker init clean-state mock-expected-keepers docker-push release build-all package deploy test generate
 
 BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 COMMIT := $(shell git log -1 --format='%H')
@@ -17,17 +17,26 @@ BUILD_FLAGS ?= -ldflags '$(ldflags)'
 
 WASMVM_STATIC_LINUX_X64_URL := https://github.com/CosmWasm/wasmvm/releases/download/v2.2.4/libwasmvm_muslc.x86_64.a
 
+USE_REGISTRY_CACHE ?= 0
+ifeq ($(USE_REGISTRY_CACHE),1)
+DOCKER_CACHE_ARGS := --cache-from type=registry,ref=ghcr.io/gonka-ai/api:buildcache --cache-to type=registry,ref=ghcr.io/gonka-ai/api:buildcache,mode=min
+DOCKER_CACHE_ARGS_UPGRADE := --cache-from type=registry,ref=ghcr.io/gonka-ai/api:buildcache-upgrade --cache-to type=registry,ref=ghcr.io/gonka-ai/api:buildcache-upgrade,mode=min
+DOCKER_BUILD_PREFIX := docker buildx build --load $(DOCKER_CACHE_ARGS)
+DOCKER_BUILD_UPGRADE_PREFIX := docker buildx build $(DOCKER_CACHE_ARGS_UPGRADE)
+else
+DOCKER_CACHE_ARGS :=
+DOCKER_CACHE_ARGS_UPGRADE :=
+DOCKER_BUILD_PREFIX := DOCKER_BUILDKIT=1 docker build
+DOCKER_BUILD_UPGRADE_PREFIX := DOCKER_BUILDKIT=1 docker build
+endif
+
 define DOCKER_BUILD
 	@echo "--> building decentralized-api docker image"
 	@echo "    	platform: $(PLATFORM)"
-	@echo "    	BUILD_FLAGS: $(BUILD_FLAGS)"
 	@echo "    	GOOS: $(GOOS)"
 	@echo "    	GOARCH: $(GOARCH)"
-	@DOCKER_BUILDKIT=1 \
-	docker build \
-		--load \
+	@$(DOCKER_BUILD_PREFIX) \
 		--platform $(PLATFORM) \
-		--build-arg BUILD_FLAGS="$(BUILD_FLAGS)" \
 		--build-arg GOOS=$(GOOS) \
 		--build-arg GOARCH=$(GOARCH) \
 		--build-arg BLST_PORTABLE=$(BLST_PORTABLE) \
@@ -39,12 +48,10 @@ endef
 define DOCKER_BUILD_UPGRADE
 	@echo "--> building decentralized-api docker image"
 	@echo "    	platform: $(PLATFORM)"
-	@echo "    	BUILD_FLAGS: $(BUILD_FLAGS)"
 	@echo "    	GOOS: $(GOOS)"
 	@echo "    	GOARCH: $(GOARCH)"
-	@docker build \
+	@$(DOCKER_BUILD_UPGRADE_PREFIX) \
 		--platform $(PLATFORM) \
-		--build-arg BUILD_FLAGS="$(BUILD_FLAGS)" \
 		--build-arg GOOS=$(GOOS) \
 		--build-arg GOARCH=$(GOARCH) \
 		--target binary-exporter \
@@ -132,6 +139,13 @@ download-linux-deps:
 	@ln -sf libwasmvm_muslc.x86_64.a build/deps/libwasmvm_muslc.a
 	@echo "API dependencies downloaded to ./build/deps/"
 
+generate:
+	@echo "--> running go generate"
+	@go generate ./...
+
+test:
+	@echo "--> running tests"
+	@go test ./... -timeout 120s
 #################################################
 # CROSS-COMPILATION SECTION
 #################################################
