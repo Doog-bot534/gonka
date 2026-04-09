@@ -17,7 +17,10 @@ class DelegationTests : TestermintTest() {
 
     // --- Spec builders ---
 
-    private fun baseMultiModelSpec(delegationParams: Spec<DelegationParams>) = spec {
+    private fun baseMultiModelSpec(
+        delegationParams: Spec<DelegationParams>,
+        secondModelPenaltyStartEpoch: Long = 0L,
+    ) = spec {
         this[AppState::inference] = spec<InferenceState> {
             this[InferenceState::params] = spec<InferenceParams> {
                 this[InferenceParams::pocParams] = spec<PocParams> {
@@ -31,6 +34,7 @@ class DelegationTests : TestermintTest() {
                             modelId = secondModel,
                             seqLen = 256L,
                             weightScaleFactor = Decimal.fromDouble(coeffB),
+                            penaltyStartEpoch = secondModelPenaltyStartEpoch,
                         ),
                     )
                     this[PocParams::pocV2Enabled] = true
@@ -92,15 +96,24 @@ class DelegationTests : TestermintTest() {
     private fun LocalInferencePair.queryPoCDelegation(): PoCDelegationResponse =
         node.execAndParse(listOf("query", "inference", "poc-delegation", node.getColdAddress()))
 
+    private fun LocalInferencePair.waitForActiveEpoch(targetEpoch: Long, maxBlocks: Int = 300): ActiveParticipantsResponse {
+        var latest: ActiveParticipantsResponse? = null
+        waitForBlock(maxBlocks) {
+            latest = it.api.getActiveParticipants()
+            latest!!.activeParticipants.epochId == targetEpoch
+        }
+        return latest!!
+    }
+
     // --- Tests ---
 
     @Test
     fun `all direct with non-zero delegation params produces unchanged weights and voting powers`() {
         val delegationSpec = spec<DelegationParams> {
             this[DelegationParams::deployWindow] = 1L
-            this[DelegationParams::rRefusal] = Decimal.fromDouble(0.25)
-            this[DelegationParams::rPenalty] = Decimal.fromDouble(0.5)
-            this[DelegationParams::rDelegation] = Decimal.fromDouble(0.2)
+            this[DelegationParams::refusalPenalty] = Decimal.fromDouble(0.25)
+            this[DelegationParams::noParticipationPenalty] = Decimal.fromDouble(0.5)
+            this[DelegationParams::delegationShare] = Decimal.fromDouble(0.2)
             this[DelegationParams::vMin] = 1L
         }
         val (cluster, genesis) = initCluster(1, reboot = true, mergeSpec = baseMultiModelSpec(delegationSpec))
@@ -142,9 +155,9 @@ class DelegationTests : TestermintTest() {
     fun `non pre-eligible bootstrap model contributes no weight and penalizes missing choice`() {
         val delegationSpec = spec<DelegationParams> {
             this[DelegationParams::deployWindow] = 1L
-            this[DelegationParams::rRefusal] = Decimal.fromDouble(0.25)
-            this[DelegationParams::rPenalty] = Decimal.fromDouble(0.5)
-            this[DelegationParams::rDelegation] = Decimal.fromDouble(0.0)
+            this[DelegationParams::refusalPenalty] = Decimal.fromDouble(0.25)
+            this[DelegationParams::noParticipationPenalty] = Decimal.fromDouble(0.5)
+            this[DelegationParams::delegationShare] = Decimal.fromDouble(0.0)
             this[DelegationParams::vMin] = 1L
         }
         val (cluster, genesis) = initCluster(2, reboot = true, mergeSpec = baseMultiModelSpec(delegationSpec))
@@ -214,9 +227,9 @@ class DelegationTests : TestermintTest() {
     fun `pre eligible bootstrap intent without commit is punished like refusal`() {
         val delegationSpec = spec<DelegationParams> {
             this[DelegationParams::deployWindow] = 1L
-            this[DelegationParams::rRefusal] = Decimal.fromDouble(0.25)
-            this[DelegationParams::rPenalty] = Decimal.fromDouble(0.5)
-            this[DelegationParams::rDelegation] = Decimal.fromDouble(0.0)
+            this[DelegationParams::refusalPenalty] = Decimal.fromDouble(0.25)
+            this[DelegationParams::noParticipationPenalty] = Decimal.fromDouble(0.5)
+            this[DelegationParams::delegationShare] = Decimal.fromDouble(0.0)
             this[DelegationParams::vMin] = 1L
         }
         val (cluster, genesis) = initCluster(3, reboot = true, mergeSpec = baseMultiModelSpec(delegationSpec))
@@ -282,9 +295,9 @@ class DelegationTests : TestermintTest() {
     fun `delegation transfers weight and voting power to delegate target`() {
         val delegationSpec = spec<DelegationParams> {
             this[DelegationParams::deployWindow] = 1L
-            this[DelegationParams::rRefusal] = Decimal.fromDouble(0.0)
-            this[DelegationParams::rPenalty] = Decimal.fromDouble(0.0)
-            this[DelegationParams::rDelegation] = Decimal.fromDouble(0.2)
+            this[DelegationParams::refusalPenalty] = Decimal.fromDouble(0.0)
+            this[DelegationParams::noParticipationPenalty] = Decimal.fromDouble(0.0)
+            this[DelegationParams::delegationShare] = Decimal.fromDouble(0.2)
             this[DelegationParams::vMin] = 1L
         }
         val (cluster, genesis) = initCluster(2, reboot = true, mergeSpec = baseMultiModelSpec(delegationSpec))
@@ -415,9 +428,9 @@ class DelegationTests : TestermintTest() {
     fun `v_min prevents ineligible group from contributing weight`() {
         val delegationSpec = spec<DelegationParams> {
             this[DelegationParams::deployWindow] = 1L
-            this[DelegationParams::rRefusal] = Decimal.fromDouble(0.25)
-            this[DelegationParams::rPenalty] = Decimal.fromDouble(0.5)
-            this[DelegationParams::rDelegation] = Decimal.fromDouble(0.2)
+            this[DelegationParams::refusalPenalty] = Decimal.fromDouble(0.25)
+            this[DelegationParams::noParticipationPenalty] = Decimal.fromDouble(0.5)
+            this[DelegationParams::delegationShare] = Decimal.fromDouble(0.2)
             this[DelegationParams::vMin] = 2L  // Requires 2 members with pocWeight > 0
         }
         val (cluster, genesis) = initCluster(1, reboot = true, mergeSpec = baseMultiModelSpec(delegationSpec))
@@ -461,5 +474,113 @@ class DelegationTests : TestermintTest() {
 
         assertThat(vpA[defaultModel]!!.votingPower).isEqualTo(25)
         assertThat(vpB[defaultModel]!!.votingPower).isEqualTo(25)
+    }
+
+    @Test
+    fun `bootstrap no participation penalty starts at configured epoch`() {
+        val penaltyStartEpoch = 5L
+        val delegationSpec = spec<DelegationParams> {
+            this[DelegationParams::deployWindow] = 1L
+            this[DelegationParams::refusalPenalty] = Decimal.fromDouble(0.25)
+            this[DelegationParams::noParticipationPenalty] = Decimal.fromDouble(0.5)
+            this[DelegationParams::delegationShare] = Decimal.fromDouble(0.2)
+            this[DelegationParams::vMin] = 2L  // secondModel stays ineligible with one direct member
+        }
+        val (cluster, genesis) = initCluster(
+            1,
+            reboot = true,
+            mergeSpec = baseMultiModelSpec(delegationSpec, secondModelPenaltyStartEpoch = penaltyStartEpoch),
+        )
+
+        genesis.waitForStage(EpochStage.SET_NEW_VALIDATORS)
+
+        val nodeA = genesis
+        val nodeB = cluster.joinPairs[0]
+
+        setupBothModels(nodeA)
+        setupModelAOnly(nodeB)
+
+        val beforeGate = genesis.waitForActiveEpoch(penaltyStartEpoch - 1)
+        val beforeParticipants = beforeGate.activeParticipants.participants
+        val beforeA = beforeParticipants.first { it.index == nodeA.node.getColdAddress() }
+        val beforeB = beforeParticipants.first { it.index == nodeB.node.getColdAddress() }
+
+        logSection("Before penalty_start_epoch: epoch=${beforeGate.activeParticipants.epochId}, A=${beforeA.weight}, B=${beforeB.weight}")
+
+        // secondModel is known to the chain but its bootstrap missing-choice penalty
+        // must stay disabled until the active set for epoch 5 is formed.
+        assertThat(beforeGate.activeParticipants.epochId).isEqualTo(4)
+        assertThat(beforeA.weight).isEqualTo(50)
+        assertThat(beforeB.weight).isEqualTo(50)
+
+        val atGate = genesis.waitForActiveEpoch(penaltyStartEpoch)
+        val atGateParticipants = atGate.activeParticipants.participants
+        val atGateA = atGateParticipants.first { it.index == nodeA.node.getColdAddress() }
+        val atGateB = atGateParticipants.first { it.index == nodeB.node.getColdAddress() }
+
+        logSection("At penalty_start_epoch: epoch=${atGate.activeParticipants.epochId}, A=${atGateA.weight}, B=${atGateB.weight}")
+
+        // The runtime compares against the upcoming epoch being formed, so the
+        // active set for epoch 5 is the first one where the penalty applies.
+        assertThat(atGate.activeParticipants.epochId).isEqualTo(5)
+        assertThat(atGateA.weight).isEqualTo(25)
+        assertThat(atGateB.weight).isEqualTo(25)
+    }
+
+    @Test
+    fun `delegation share starts at configured epoch for eligible model`() {
+        val penaltyStartEpoch = 5L
+        val delegationSpec = spec<DelegationParams> {
+            this[DelegationParams::deployWindow] = 1L
+            this[DelegationParams::refusalPenalty] = Decimal.fromDouble(0.0)
+            this[DelegationParams::noParticipationPenalty] = Decimal.fromDouble(0.0)
+            this[DelegationParams::delegationShare] = Decimal.fromDouble(0.2)
+            this[DelegationParams::vMin] = 1L
+        }
+        val (cluster, genesis) = initCluster(
+            2,
+            reboot = true,
+            mergeSpec = baseMultiModelSpec(delegationSpec, secondModelPenaltyStartEpoch = penaltyStartEpoch),
+        )
+
+        genesis.waitForStage(EpochStage.SET_NEW_VALIDATORS)
+
+        val nodeA = genesis
+        val nodeB = cluster.joinPairs[0]
+        val nodeC = cluster.joinPairs[1]
+
+        setupBothModels(nodeA)
+        setupBothModels(nodeB)
+        setupModelAOnly(nodeC)
+
+        val addrA = nodeA.node.getColdAddress()
+        assertThat(nodeC.setPoCDelegation(secondModel, addrA).code).isEqualTo(0)
+
+        val beforeGate = genesis.waitForActiveEpoch(penaltyStartEpoch - 1)
+        val beforeParticipants = beforeGate.activeParticipants.participants
+        val beforeA = beforeParticipants.first { it.index == nodeA.node.getColdAddress() }
+        val beforeB = beforeParticipants.first { it.index == nodeB.node.getColdAddress() }
+        val beforeC = beforeParticipants.first { it.index == nodeC.node.getColdAddress() }
+
+        logSection("Before delegation_share gate: epoch=${beforeGate.activeParticipants.epochId}, A=${beforeA.weight}, B=${beforeB.weight}, C=${beforeC.weight}")
+
+        // secondModel is eligible, but its delegation_share must still be gated off.
+        assertThat(beforeGate.activeParticipants.epochId).isEqualTo(4)
+        assertThat(beforeA.weight).isEqualTo(60)
+        assertThat(beforeB.weight).isEqualTo(60)
+        assertThat(beforeC.weight).isEqualTo(50)
+
+        val atGate = genesis.waitForActiveEpoch(penaltyStartEpoch)
+        val atGateParticipants = atGate.activeParticipants.participants
+        val atGateA = atGateParticipants.first { it.index == nodeA.node.getColdAddress() }
+        val atGateB = atGateParticipants.first { it.index == nodeB.node.getColdAddress() }
+        val atGateC = atGateParticipants.first { it.index == nodeC.node.getColdAddress() }
+
+        logSection("At delegation_share gate: epoch=${atGate.activeParticipants.epochId}, A=${atGateA.weight}, B=${atGateB.weight}, C=${atGateC.weight}")
+
+        assertThat(atGate.activeParticipants.epochId).isEqualTo(5)
+        assertThat(atGateA.weight).isEqualTo(70)
+        assertThat(atGateB.weight).isEqualTo(60)
+        assertThat(atGateC.weight).isEqualTo(40)
     }
 }
