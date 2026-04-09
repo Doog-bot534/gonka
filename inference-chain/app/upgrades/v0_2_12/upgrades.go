@@ -36,11 +36,6 @@ func CreateUpgradeHandler(
 			return nil, err
 		}
 
-		err = setLogprobsMode(ctx, k)
-		if err != nil {
-			return nil, err
-		}
-
 		err = adjustParameters(ctx, k)
 		if err != nil {
 			return nil, err
@@ -62,6 +57,12 @@ func adjustParameters(ctx context.Context, k keeper.Keeper) error {
 		return err
 	}
 	params.XXX_DiscardUnknown()
+
+	if params.ValidationParams == nil {
+		params.ValidationParams = types.DefaultValidationParams()
+	}
+	params.ValidationParams.LogprobsMode = types.DefaultLogprobsMode
+
 	err = k.SetParams(ctx, params)
 	if err != nil {
 		return err
@@ -98,24 +99,4 @@ func removeTopMiner(ctx context.Context, k keeper.Keeper) error {
 
 func clearTrainingState(ctx context.Context, k keeper.Keeper) error {
 	return k.ClearTrainingState(ctx)
-}
-
-func setLogprobsMode(ctx context.Context, k keeper.Keeper) error {
-	params, err := k.GetParams(ctx)
-	if err != nil {
-		return err
-	}
-
-	if params.ValidationParams == nil {
-		params.ValidationParams = types.DefaultValidationParams()
-	}
-
-	params.ValidationParams.LogprobsMode = types.DefaultLogprobsMode
-
-	if err := k.SetParams(ctx, params); err != nil {
-		return err
-	}
-
-	k.LogInfo("set logprobs_mode", types.Upgrades, "logprobs_mode", params.ValidationParams.LogprobsMode)
-	return nil
 }
