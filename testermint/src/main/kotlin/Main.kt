@@ -399,6 +399,7 @@ fun GsonBuilder.registerCosmosTypes(): GsonBuilder {
         .registerTypeAdapter(java.lang.Float::class.java, FloatSerializer())
         .registerTypeAdapter(ConfirmationPoCPhase::class.java, ConfirmationPoCPhaseDeserializer())
         .registerTypeAdapter(InferenceStatus::class.java, InferenceStatusDeserializer())
+        .registerTypeAdapter(SubnetInferenceStatus::class.java, SubnetInferenceStatusDeserializer())
         .registerTypeAdapter(ProposalStatus::class.java, ProposalStatusDeserializer())
 }
 
@@ -539,7 +540,7 @@ fun createSpec(epochLength: Long = 15L, epochShift: Int = 0): Spec<AppState> = s
 data class ChatMessage(
     val role: String,
     val content: String,
-    val toolCalls: List<Any> = emptyList()
+    val toolCalls: List<Any>? = null
 )
 
 data class InferenceRequestPayload(

@@ -252,6 +252,12 @@ data class TransferAgentAccessParams(
     val allowedTransferAddresses: List<String> = emptyList(),
 )
 
+data class SubnetApprovedVersion(
+    val name: String,
+    val binary: String,
+    val sha256: String,
+)
+
 data class SubnetEscrowParams(
     @SerializedName("min_amount")
     val minAmount: Long,
@@ -262,9 +268,11 @@ data class SubnetEscrowParams(
     @SerializedName("group_size")
     val groupSize: Long,
     @SerializedName("allowed_creator_addresses")
-    val allowedCreatorAddresses: List<String> = emptyList(),
+    val allowedCreatorAddresses: List<String>? = emptyList(),
     @SerializedName("token_price")
     val tokenPrice: Long,
+    @SerializedName("approved_versions")
+    val approvedVersions: List<SubnetApprovedVersion>? = emptyList(),
 )
 
 data class PocParams(
