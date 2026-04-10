@@ -61,10 +61,12 @@ var (
 	LiquidityPoolPrefix                    = collections.NewPrefix(34)
 	LiquidityPoolApprovedTokensPrefix      = collections.NewPrefix(35)
 	ParticipantAllowListPrefix             = collections.NewPrefix(36)
-	PoCValidationV2Prefix                  = collections.NewPrefix(38)
-	PoCV2StoreCommitPrefix                 = collections.NewPrefix(39)
-	MLNodeWeightDistributionPrefix         = collections.NewPrefix(40)
-	PocV2EnabledEpochPrefix                = collections.NewPrefix(41)
+	// Legacy PoC v2 prefixes -- key codec changed in v0.2.12 (added model_id).
+	// Cleared by the v0.2.12 upgrade handler. Never used by new code.
+	LegacyPoCValidationV2Prefix          = collections.NewPrefix(38)
+	LegacyPoCV2StoreCommitPrefix         = collections.NewPrefix(39)
+	LegacyMLNodeWeightDistributionPrefix = collections.NewPrefix(40)
+	PocV2EnabledEpochPrefix              = collections.NewPrefix(41)
 	PoCValidationSnapshotPrefix            = collections.NewPrefix(42)
 	PunishmentGraceEpochsPrefix            = collections.NewPrefix(43)
 	ActiveParticipantsCachePrefix          = collections.NewPrefix(44)
@@ -81,7 +83,13 @@ var (
 	PoCDirectIntentPrefix                  = collections.NewPrefix(55)
 	DelegationSnapshotPrefix               = collections.NewPrefix(56)
 	BootstrapDelegationSnapshotPrefix      = collections.NewPrefix(57)
-	ParamsKey                              = []byte("p_inference")
+	// Replacement PoC v2 prefixes with model-aware key codecs.
+	// Introduced in v0.2.12; see Legacy* prefixes 38/39/40 above for the
+	// cleared predecessors.
+	PoCValidationV2Prefix          = collections.NewPrefix(58)
+	PoCV2StoreCommitPrefix         = collections.NewPrefix(59)
+	MLNodeWeightDistributionPrefix = collections.NewPrefix(60)
+	ParamsKey                      = []byte("p_inference")
 )
 
 func KeyPrefix(p string) []byte {
