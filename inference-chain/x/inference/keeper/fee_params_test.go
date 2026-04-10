@@ -12,46 +12,50 @@ func TestFeeParams_NilAtGenesis(t *testing.T) {
 	k, ctx := testkeeper.InferenceKeeper(t)
 
 	// FeeParams are not set at genesis (enabled via upgrade handler).
-	// GetFeeParams returns zero values, meaning no fee enforcement.
-	fp := k.GetFeeParams(ctx)
-	require.NotNil(t, fp)
-	require.Equal(t, uint64(0), fp.MinGasPriceNgonka)
-	require.Equal(t, uint64(0), fp.BaseValidationGas)
-	require.Equal(t, uint64(0), fp.GasPerPocCount)
+	params, err := k.GetParams(ctx)
+	require.NoError(t, err)
+	require.Nil(t, params.FeeParams)
 }
 
 func TestFeeParams_SetAndGet(t *testing.T) {
 	k, ctx := testkeeper.InferenceKeeper(t)
 
-	custom := &types.FeeParams{
+	params, err := k.GetParams(ctx)
+	require.NoError(t, err)
+
+	params.FeeParams = &types.FeeParams{
 		MinGasPriceNgonka: 42,
 		BaseValidationGas: 1_000_000,
 		GasPerPocCount:    200,
 	}
-	require.NoError(t, k.SetFeeParams(ctx, custom))
+	require.NoError(t, k.SetParams(ctx, params))
 
-	fp := k.GetFeeParams(ctx)
-	require.Equal(t, custom.MinGasPriceNgonka, fp.MinGasPriceNgonka)
-	require.Equal(t, custom.BaseValidationGas, fp.BaseValidationGas)
-	require.Equal(t, custom.GasPerPocCount, fp.GasPerPocCount)
+	updated, err := k.GetParams(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, updated.FeeParams)
+	require.Equal(t, uint64(42), updated.FeeParams.MinGasPriceNgonka)
+	require.Equal(t, uint64(1_000_000), updated.FeeParams.BaseValidationGas)
+	require.Equal(t, uint64(200), updated.FeeParams.GasPerPocCount)
 }
 
 func TestFeeParams_ZeroDisablesFees(t *testing.T) {
 	k, ctx := testkeeper.InferenceKeeper(t)
 
-	// First enable fees
-	require.NoError(t, k.SetFeeParams(ctx, types.DefaultFeeParams()))
-	fp := k.GetFeeParams(ctx)
-	require.Equal(t, uint64(10), fp.MinGasPriceNgonka)
+	// Enable fees
+	params, err := k.GetParams(ctx)
+	require.NoError(t, err)
+	params.FeeParams = types.DefaultFeeParams()
+	require.NoError(t, k.SetParams(ctx, params))
 
-	// Then disable by setting to zero
-	zero := &types.FeeParams{
-		MinGasPriceNgonka: 0,
-		BaseValidationGas: 0,
-		GasPerPocCount:    0,
-	}
-	require.NoError(t, k.SetFeeParams(ctx, zero))
+	updated, err := k.GetParams(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(10), updated.FeeParams.MinGasPriceNgonka)
 
-	fp = k.GetFeeParams(ctx)
-	require.Equal(t, uint64(0), fp.MinGasPriceNgonka)
+	// Disable by setting to zero
+	params.FeeParams = &types.FeeParams{}
+	require.NoError(t, k.SetParams(ctx, params))
+
+	updated, err = k.GetParams(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), updated.FeeParams.MinGasPriceNgonka)
 }

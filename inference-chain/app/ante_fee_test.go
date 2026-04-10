@@ -41,40 +41,41 @@ func (t testFeeTx) FeeGranter() []byte                     { return nil }
 // --- NetworkDutyFeeBypassDecorator tests ---
 
 func TestNetworkDutyBypass_AllExemptMessages(t *testing.T) {
-	decorator := NetworkDutyFeeBypassDecorator{
-		InferenceKeeper: nil,
-		GasCap:          10_000_000,
-		Priority:        500_000,
+	exemptMsgs := map[string]sdk.Msg{
+		"MsgSubmitPocBatch":                    &inferencetypes.MsgSubmitPocBatch{},
+		"MsgValidation":                        &inferencetypes.MsgValidation{},
+		"MsgStartInference":                    &inferencetypes.MsgStartInference{},
+		"MsgFinishInference":                   &inferencetypes.MsgFinishInference{},
+		"MsgInvalidateInference":               &inferencetypes.MsgInvalidateInference{},
+		"MsgRevalidateInference":               &inferencetypes.MsgRevalidateInference{},
+		"MsgMLNodeWeightDistribution":          &inferencetypes.MsgMLNodeWeightDistribution{},
+		"MsgSubmitPocValidationsV2":            &inferencetypes.MsgSubmitPocValidationsV2{},
+		"MsgSubmitDealerPart":                  &blstypes.MsgSubmitDealerPart{},
+		"MsgSubmitVerificationVector":          &blstypes.MsgSubmitVerificationVector{},
+		"MsgSubmitGroupKeyValidationSignature": &blstypes.MsgSubmitGroupKeyValidationSignature{},
+		"MsgSubmitPartialSignature":            &blstypes.MsgSubmitPartialSignature{},
 	}
 
-	exemptMsgs := []sdk.Msg{
-		&inferencetypes.MsgSubmitPocBatch{},
-		&inferencetypes.MsgValidation{},
-		&inferencetypes.MsgStartInference{},
-		&inferencetypes.MsgFinishInference{},
-		&inferencetypes.MsgInvalidateInference{},
-		&inferencetypes.MsgRevalidateInference{},
-		&inferencetypes.MsgMLNodeWeightDistribution{},
-		&blstypes.MsgSubmitDealerPart{},
-		&blstypes.MsgSubmitVerificationVector{},
-		&blstypes.MsgSubmitPartialSignature{},
-	}
+	for name, msg := range exemptMsgs {
+		t.Run(name, func(t *testing.T) {
+			decorator := NetworkDutyFeeBypassDecorator{
+				InferenceKeeper: nil,
+				GasCap:          10_000_000,
+				Priority:        500_000,
+			}
+			tx := testFeeTx{msgs: []sdk.Msg{msg}, gas: 100_000}
+			ctx := newTestContext().WithMinGasPrices(sdk.DecCoins{sdk.NewDecCoin("ngonka", math.NewInt(10))})
 
-	for _, msg := range exemptMsgs {
-		tx := testFeeTx{msgs: []sdk.Msg{msg}, gas: 100_000}
-		ctx := newTestContext().WithMinGasPrices(sdk.DecCoins{sdk.NewDecCoin("ngonka", math.NewInt(10))})
-
-		nextCalled := false
-		_, err := decorator.AnteHandle(ctx, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
-			nextCalled = true
-			// Verify bypass flag was set
-			require.True(t, IsNetworkDutyBypassed(ctx), "bypass flag should be set for %T", msg)
-			// Verify min gas prices were cleared
-			require.Empty(t, ctx.MinGasPrices(), "min gas prices should be cleared for %T", msg)
-			return ctx, nil
+			nextCalled := false
+			_, err := decorator.AnteHandle(ctx, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+				nextCalled = true
+				require.True(t, IsNetworkDutyBypassed(ctx), "bypass flag should be set")
+				require.Empty(t, ctx.MinGasPrices(), "min gas prices should be cleared")
+				return ctx, nil
+			})
+			require.NoError(t, err)
+			require.True(t, nextCalled, "next handler should be called")
 		})
-		require.NoError(t, err, "exempt message %T should not error", msg)
-		require.True(t, nextCalled, "next handler should be called for %T", msg)
 	}
 }
 

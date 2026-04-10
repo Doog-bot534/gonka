@@ -107,8 +107,13 @@ func clearTrainingState(ctx context.Context, k keeper.Keeper) error {
 }
 
 func setFeeParams(ctx context.Context, k keeper.Keeper) error {
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		return err
+	}
 	fp := types.DefaultFeeParams()
-	if err := k.SetFeeParams(ctx, fp); err != nil {
+	params.FeeParams = fp
+	if err := k.SetParams(ctx, params); err != nil {
 		k.LogError("failed to set fee params during upgrade", types.Upgrades, "error", err)
 		return err
 	}

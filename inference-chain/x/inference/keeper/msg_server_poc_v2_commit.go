@@ -101,21 +101,24 @@ func (k msgServer) PoCV2StoreCommit(goCtx context.Context, msg *types.MsgPoCV2St
 	// Consume extra gas for sybil resistance (two-component fee).
 	// Base validation gas: charged once per participant per epoch (covers GPU validation cost).
 	// Count gas: charged on delta (so total equals final_count * gas_per_poc_count).
-	feeParams := k.Keeper.GetFeeParams(ctx)
-	if isFirstCommit {
-		ctx.GasMeter().ConsumeGas(storetypes.Gas(feeParams.BaseValidationGas), "poc_validation_base")
-		countGas, overflow := checkedMul(uint64(msg.Count), feeParams.GasPerPocCount)
-		if overflow {
-			return nil, sdkerrors.Wrap(types.ErrIllegalState, "count * gas_per_poc_count overflow")
+	params, paramsErr := k.Keeper.GetParams(ctx)
+	if paramsErr == nil && params.FeeParams != nil {
+		fp := params.FeeParams
+		if isFirstCommit {
+			ctx.GasMeter().ConsumeGas(storetypes.Gas(fp.BaseValidationGas), "poc_validation_base")
+			countGas, overflow := checkedMul(uint64(msg.Count), fp.GasPerPocCount)
+			if overflow {
+				return nil, sdkerrors.Wrap(types.ErrIllegalState, "count * gas_per_poc_count overflow")
+			}
+			ctx.GasMeter().ConsumeGas(storetypes.Gas(countGas), "poc_commit_count")
+		} else {
+			delta := uint64(msg.Count - existing.Count)
+			deltaGas, overflow := checkedMul(delta, fp.GasPerPocCount)
+			if overflow {
+				return nil, sdkerrors.Wrap(types.ErrIllegalState, "delta * gas_per_poc_count overflow")
+			}
+			ctx.GasMeter().ConsumeGas(storetypes.Gas(deltaGas), "poc_commit_count_delta")
 		}
-		ctx.GasMeter().ConsumeGas(storetypes.Gas(countGas), "poc_commit_count")
-	} else {
-		delta := uint64(msg.Count - existing.Count)
-		deltaGas, overflow := checkedMul(delta, feeParams.GasPerPocCount)
-		if overflow {
-			return nil, sdkerrors.Wrap(types.ErrIllegalState, "delta * gas_per_poc_count overflow")
-		}
-		ctx.GasMeter().ConsumeGas(storetypes.Gas(deltaGas), "poc_commit_count_delta")
 	}
 
 	// Store commit with block height

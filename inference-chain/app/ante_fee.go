@@ -169,8 +169,10 @@ func GonkaFeeChecker(inferenceKeeper *inferencemodulekeeper.Keeper) ante.TxFeeCh
 		// Read consensus-level minimum gas price from chain state.
 		var minGasPriceNgonka uint64
 		if inferenceKeeper != nil {
-			fp := inferenceKeeper.GetFeeParams(ctx)
-			minGasPriceNgonka = fp.MinGasPriceNgonka
+			params, err := inferenceKeeper.GetParams(ctx)
+			if err == nil && params.FeeParams != nil {
+				minGasPriceNgonka = params.FeeParams.MinGasPriceNgonka
+			}
 		}
 
 		// If min gas price is 0 (e.g., during genesis or if governance sets it to 0),
