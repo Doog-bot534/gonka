@@ -277,6 +277,63 @@ func TestBackfillVotingPower_EdgeCases(t *testing.T) {
 	}
 }
 
+func TestBackfillVotingPower_SafeSkips(t *testing.T) {
+	// Each sub-case represents a pre-upgrade state where backfill should
+	// silently skip rather than fail the upgrade.
+	t.Run("no effective epoch", func(t *testing.T) {
+		k, ctx, _ := keepertest.InferenceKeeperReturningMocks(t)
+		require.NoError(t, backfillVotingPower(ctx, k))
+	})
+
+	t.Run("empty models list", func(t *testing.T) {
+		k, ctx, _ := keepertest.InferenceKeeperReturningMocks(t)
+		params, err := k.GetParams(ctx)
+		require.NoError(t, err)
+		params.PocParams.Models = nil
+		require.NoError(t, k.SetParams(ctx, params))
+		require.NoError(t, k.SetEffectiveEpochIndex(ctx, 1))
+		require.NoError(t, backfillVotingPower(ctx, k))
+	})
+
+	t.Run("empty primary model id", func(t *testing.T) {
+		k, ctx, _ := keepertest.InferenceKeeperReturningMocks(t)
+		params, err := k.GetParams(ctx)
+		require.NoError(t, err)
+		params.PocParams.Models = []*inferencetypes.PoCModelConfig{{ModelId: ""}}
+		require.NoError(t, k.SetParams(ctx, params))
+		require.NoError(t, k.SetEffectiveEpochIndex(ctx, 1))
+		require.NoError(t, backfillVotingPower(ctx, k))
+	})
+
+	t.Run("no active participants for epoch", func(t *testing.T) {
+		k, ctx, _ := keepertest.InferenceKeeperReturningMocks(t)
+		params, err := k.GetParams(ctx)
+		require.NoError(t, err)
+		params.PocParams.Models = []*inferencetypes.PoCModelConfig{{ModelId: "m1"}}
+		require.NoError(t, k.SetParams(ctx, params))
+		require.NoError(t, k.SetEffectiveEpochIndex(ctx, 1))
+		// No SetActiveParticipants and no SetEpochGroupData.
+		require.NoError(t, backfillVotingPower(ctx, k))
+	})
+
+	t.Run("no subgroup epoch group data", func(t *testing.T) {
+		k, ctx, _ := keepertest.InferenceKeeperReturningMocks(t)
+		params, err := k.GetParams(ctx)
+		require.NoError(t, err)
+		params.PocParams.Models = []*inferencetypes.PoCModelConfig{{ModelId: "m1"}}
+		require.NoError(t, k.SetParams(ctx, params))
+		require.NoError(t, k.SetEffectiveEpochIndex(ctx, 1))
+		// AP exists but the (epoch=1, model="m1") subgroup does not.
+		require.NoError(t, k.SetActiveParticipants(ctx, inferencetypes.ActiveParticipants{
+			EpochId: 1,
+			Participants: []*inferencetypes.ActiveParticipant{
+				{Index: sample.AccAddress(), Weight: 100},
+			},
+		}))
+		require.NoError(t, backfillVotingPower(ctx, k))
+	})
+}
+
 func TestInitNewPruningState(t *testing.T) {
 	k, ctx, _ := keepertest.InferenceKeeperReturningMocks(t)
 
