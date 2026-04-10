@@ -6,7 +6,6 @@ import io.ktor.client.request.*
 import io.ktor.http.*
 import kotlinx.coroutines.*
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.productscience.mockserver.model.getModelNonce
 import com.productscience.mockserver.model.latestNonce
 import org.slf4j.LoggerFactory
 
@@ -180,14 +179,12 @@ class WebhookService(private val responseService: ResponseService) {
                 // Get the weight from the ResponseService, default to 10 if not set
                 val weight = responseService.getPocResponseWeight(hostName) ?: 10L
 
-                // Per-model nonce counter. Each model gets its own counter so
-                // artifacts from one model don't inflate another model's porosity
-                // (validator checks maxNonce / count < 100).
-                val modelId = url.substringAfter("/v2/poc-batches/").let {
-                    java.net.URLDecoder.decode(it, "UTF-8")
-                }
-                val nonceCtr = getModelNonce(modelId)
-                val base = nonceCtr.getAndAdd(weight)
+                // Sequential nonce assignment via atomic counter.
+                // In prod, nodes use a strided pattern (nonce % nodeCount == nodeId),
+                // but since mock nodes arrive as separate HTTP calls with advancing counters,
+                // simple sequential nonces are sufficient — the validator only checks
+                // uniqueness and porosity (maxNonce / count < 100), not the stride pattern.
+                val base = latestNonce.getAndAdd(weight)
                 val artifacts = (0 until weight.toInt()).map { i ->
                     val nonce = base + i
                     // Generate valid FP16 vectors (24 bytes = 12 FP16 values)
