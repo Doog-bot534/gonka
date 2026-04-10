@@ -103,12 +103,32 @@ func updateKeyringIfNeeded(client *cosmosclient.Client, keyringDir string, confi
 	return nil
 }
 
+// queryChainMinGasPrice queries the inference module params for
+// FeeParams.MinGasPriceNgonka. Returns 0 if the chain has no FeeParams set
+// (pre-upgrade chain) or if the query fails. Callers should fall back to
+// a safe default (0 or the config value) on failure.
+func queryChainMinGasPrice(ctx context.Context, cc *cosmosclient.Client) int64 {
+	queryClient := types.NewQueryClient(cc.Context())
+	resp, err := queryClient.Params(ctx, &types.QueryParamsRequest{})
+	if err != nil {
+		log.Printf("Could not query chain FeeParams, defaulting to 0: %s", err)
+		return 0
+	}
+	if resp == nil || resp.Params.FeeParams == nil {
+		return 0
+	}
+	return int64(resp.Params.FeeParams.MinGasPriceNgonka)
+}
+
 func NewInferenceCosmosClient(ctx context.Context, addressPrefix string, config *apiconfig.ConfigManager) (*InferenceCosmosClient, error) {
 	nodeConfig := config.GetChainNodeConfig()
 	keyringDir, err := expandPath(nodeConfig.KeyringDir)
 	if err != nil {
 		return nil, err
 	}
+
+	// Start with config value; we'll refine this from chain state below.
+	effectiveGasPrice := nodeConfig.GetMinGasPriceNgonka()
 
 	log.Printf("Initializing cosmos Client."+
 		"NodeUrl = %s. KeyringBackend = %s. KeyringDir = %s", nodeConfig.Url, nodeConfig.KeyringBackend, keyringDir)
@@ -118,13 +138,46 @@ func NewInferenceCosmosClient(ctx context.Context, addressPrefix string, config 
 		cosmosclient.WithKeyringServiceName("inferenced"),
 		cosmosclient.WithNodeAddress(nodeConfig.Url),
 		cosmosclient.WithKeyringDir(keyringDir),
-		cosmosclient.WithGasPrices(fmt.Sprintf("%dngonka", nodeConfig.GetMinGasPriceNgonka())),
+		cosmosclient.WithGasPrices(fmt.Sprintf("%dngonka", effectiveGasPrice)),
 		cosmosclient.WithGas("auto"),
 		cosmosclient.WithGasAdjustment(5),
 	)
 	if err != nil {
 		log.Printf("Error creating cosmos client: %s", err)
 		return nil, err
+	}
+
+	// Query the chain for its current FeeParams and use that as the effective
+	// gas price. This makes the DAPI self-configuring: hosts don't need to
+	// manually update their config.env after the v0.2.12 upgrade — the DAPI
+	// picks up the on-chain default automatically.
+	//
+	// Behavior:
+	//   * If the config explicitly sets min_gas_price_ngonka, honor it (allows
+	//     hosts to pay more than the minimum if they want faster inclusion).
+	//   * Otherwise use the on-chain FeeParams.MinGasPriceNgonka.
+	//   * If FeeParams is nil (pre-upgrade chain), default to 0.
+	if nodeConfig.GetMinGasPriceNgonka() == 0 {
+		chainGasPrice := queryChainMinGasPrice(ctx, &cosmoclient)
+		if chainGasPrice > 0 {
+			effectiveGasPrice = chainGasPrice
+			log.Printf("Using on-chain FeeParams.MinGasPriceNgonka = %d (config value was 0)", effectiveGasPrice)
+			// Re-create the cosmoclient with the correct gas price for the
+			// TxFactory to produce valid transactions.
+			cosmoclient, err = cosmosclient.New(
+				ctx,
+				cosmosclient.WithAddressPrefix(addressPrefix),
+				cosmosclient.WithKeyringServiceName("inferenced"),
+				cosmosclient.WithNodeAddress(nodeConfig.Url),
+				cosmosclient.WithKeyringDir(keyringDir),
+				cosmosclient.WithGasPrices(fmt.Sprintf("%dngonka", effectiveGasPrice)),
+				cosmosclient.WithGas("auto"),
+				cosmosclient.WithGasAdjustment(5),
+			)
+			if err != nil {
+				return nil, fmt.Errorf("error recreating cosmos client with chain gas price: %w", err)
+			}
+		}
 	}
 	err = updateKeyringIfNeeded(&cosmoclient, keyringDir, config)
 	if err != nil {
@@ -158,7 +211,7 @@ func NewInferenceCosmosClient(ctx context.Context, addressPrefix string, config 
 		}
 	}()
 
-	mn, err := tx_manager.StartTxManager(ctx, &cosmoclient, apiAccount, time.Second*60, natsConn, accAddress, nodeConfig.GetMinGasPriceNgonka(), config.GetHeight)
+	mn, err := tx_manager.StartTxManager(ctx, &cosmoclient, apiAccount, time.Second*60, natsConn, accAddress, effectiveGasPrice, config.GetHeight)
 	if err != nil {
 		return nil, err
 	}

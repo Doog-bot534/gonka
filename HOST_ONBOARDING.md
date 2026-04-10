@@ -4,12 +4,19 @@
 > activates consensus-level transaction fees, **and** existing hosts upgrading
 > from v0.2.11 → v0.2.12.
 >
-> **TL;DR:** A single command — `inferenced tx inference grant-ml-ops-permissions`
-> — sets up authz **and** a feegrant allowance from your cold key to your warm
-> key, so the DAPI's automated transactions are paid by the cold account
-> without needing to fund the warm key. The DAPI defaults to the correct gas
-> price out of the box, so existing hosts who do nothing else other than
-> re-running this command after the upgrade will continue to operate normally.
+> **TL;DR for existing hosts:** After the v0.2.12 upgrade, re-run
+> `inferenced tx inference grant-ml-ops-permissions` from your local machine.
+> This single transaction issues both the authz grants **and** a feegrant
+> allowance from cold → warm, so the DAPI's automated transactions are paid
+> by the cold account without needing to fund the warm key.
+>
+> **That's it.** The DAPI auto-discovers the on-chain minimum gas price at
+> startup and configures itself accordingly — no `config.env` changes
+> required.
+>
+> **For new hosts:** follow the standard quickstart. The existing
+> `grant-ml-ops-permissions` step now sets up the feegrant automatically, and
+> the DAPI auto-configures its gas price from the chain.
 
 This document walks through the **complete onboarding process for a new host**
 and the **upgrade procedure for existing hosts** in a network where consensus
@@ -80,6 +87,28 @@ You **never need to fund the warm key**.
 
 You **do** need to ensure the cold account has enough balance to cover its
 expected fees over the lifetime of the feegrant allowance (default: 10 GNK).
+
+### 1.5 The DAPI auto-discovers the on-chain gas price
+
+The DAPI is **self-configuring**: at startup it queries the chain for the
+current `FeeParams.MinGasPriceNgonka` and uses that value automatically.
+
+Behavior:
+
+| Scenario | DAPI gas price |
+|---|---|
+| `DAPI_CHAIN_NODE__MIN_GAS_PRICE_NGONKA` set explicitly in `config.env` | Uses the config value (override) |
+| Chain has `FeeParams` set (post-upgrade) | Auto-uses on-chain `MinGasPriceNgonka` |
+| Chain has `FeeParams` nil (pre-upgrade) | Uses `0` (no fees attached) |
+
+This means **no `config.env` change is required** when upgrading from v0.2.11
+to v0.2.12. Cosmovisor restarts the DAPI with the new binary, and the new
+binary picks up the on-chain gas price on its own.
+
+The override is only needed if a host wants to pay more than the network
+minimum (e.g., to ensure faster inclusion under load). Setting it to a value
+**lower** than the chain's minimum is allowed but the chain will reject those
+transactions, so don't do that.
 
 ---
 
@@ -289,11 +318,11 @@ local machine where the cold key lives:
 This re-grants the authz permissions **and** issues the new `MsgGrantAllowance`
 that the post-upgrade DAPI requires.
 
-### 4.4 Restart the DAPI
+### 4.4 Restart the DAPI (if cosmovisor did not already)
 
-If your DAPI was running through the upgrade, restart it once so it picks up
-the new default `min_gas_price_ngonka` setting and starts setting the
-feegrant payer on its transactions:
+Cosmovisor normally restarts the DAPI automatically at the upgrade block.
+If for any reason it did not, restart manually so the new binary picks up
+the on-chain FeeParams at startup:
 
 ```bash
 cd ~/gonka/deploy/join
@@ -337,16 +366,19 @@ You can pass a higher value if a future governance proposal raises
 
 ## 6. DAPI fee defaults & overrides
 
-The DAPI reads `min_gas_price_ngonka` from its config (env var
-`DAPI_CHAIN_NODE__MIN_GAS_PRICE_NGONKA` in the standard
-`deploy/join/config.env.template`). The default is **10 ngonka per gas**,
-matching the on-chain default.
+The DAPI **auto-discovers** the correct gas price from the chain at startup.
+On a pre-upgrade chain (`FeeParams` nil) it sends zero-fee transactions.
+On a post-upgrade chain it reads `FeeParams.MinGasPriceNgonka` and pays at
+least that much per gas unit.
 
-If you ever need to override (e.g., the network raises the min gas price),
-update the env var and restart the DAPI:
+No manual config action is required. If you want to pay more than the
+minimum (e.g., for faster inclusion under load), you can set
+`DAPI_CHAIN_NODE__MIN_GAS_PRICE_NGONKA` in `config.env` to override the
+auto-discovered value. Any non-zero value in config takes precedence over
+the chain query.
 
 ```bash
-# in config.env
+# in config.env (optional — only if you want to pay more than the minimum)
 export DAPI_CHAIN_NODE__MIN_GAS_PRICE_NGONKA=15
 ```
 
