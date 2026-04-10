@@ -80,18 +80,25 @@ type ChainNodeConfig struct {
 	KeyringDir       string `koanf:"keyring_dir" json:"keyring_dir"`
 	KeyringPassword  string `json:"-"`
 	// MinGasPriceNgonka is the gas price in ngonka used for transaction fee calculation.
-	// Must be >= the on-chain FeeParams.MinGasPriceNgonka. Defaults to 10 if unset.
+	// Must be >= the on-chain FeeParams.MinGasPriceNgonka after the v0.2.12 upgrade.
+	// Defaults to DefaultMinGasPriceNgonka if unset (0).
 	MinGasPriceNgonka int64 `koanf:"min_gas_price_ngonka" json:"min_gas_price_ngonka"`
 }
 
 // DefaultMinGasPriceNgonka is the gas price used when not configured.
-// Zero means no fees are added to transactions (matching pre-fee-enforcement behavior).
-// Production deployments should set min_gas_price_ngonka in config after the
-// v0.2.12 upgrade enables on-chain fee enforcement.
-const DefaultMinGasPriceNgonka int64 = 0
+// Set to match the on-chain default in FeeParams (10 ngonka per gas) so that
+// existing hosts upgrading from pre-v0.2.12 do not need to update their config
+// to keep paying enough fees for their automated DAPI transactions.
+const DefaultMinGasPriceNgonka int64 = 10
 
-// GetMinGasPriceNgonka returns the configured gas price.
+// GetMinGasPriceNgonka returns the configured gas price, falling back to the
+// default (10 ngonka) if unset (zero). This ensures that hosts upgrading to
+// v0.2.12 without updating their config continue submitting valid fee-paying
+// transactions automatically.
 func (c ChainNodeConfig) GetMinGasPriceNgonka() int64 {
+	if c.MinGasPriceNgonka <= 0 {
+		return DefaultMinGasPriceNgonka
+	}
 	return c.MinGasPriceNgonka
 }
 

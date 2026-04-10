@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	sdkmath "cosmossdk.io/math"
+	"cosmossdk.io/x/feegrant"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/tx"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -14,6 +16,13 @@ import (
 	"github.com/productscience/inference/x/inference/types"
 	// this line is used by starport scaffolding # 1
 )
+
+// DefaultMLOpsFeeAllowance is the spend limit on the feegrant allowance from
+// cold to warm key when granting ML ops permissions. At ~10 ngonka per gas
+// and typical transaction sizes, this covers many months of routine DAPI
+// operation (claim rewards, hardware diff updates, seeds). Hosts can re-grant
+// when the allowance is depleted.
+var DefaultMLOpsFeeAllowance = sdk.NewCoins(sdk.NewCoin("ngonka", sdkmath.NewInt(10_000_000_000))) // 10 GNK
 
 var InferenceOperationKeyPerms = []sdk.Msg{
 	&types.MsgStartInference{},
@@ -85,6 +94,24 @@ func GrantMLOperationalKeyPermissionsToAccount(
 		}
 		grantMsgs = append(grantMsgs, grantMsg)
 	}
+
+	// Also grant a fee allowance from cold to warm so the warm key can pay
+	// transaction fees on behalf of the cold account. The DAPI sets the cold
+	// account as the fee_granter on every tx; without this allowance, the
+	// chain rejects the tx because the warm key has no balance.
+	allowance := &feegrant.BasicAllowance{
+		SpendLimit: DefaultMLOpsFeeAllowance,
+		Expiration: &expirationTime,
+	}
+	feeGrantMsg, err := feegrant.NewMsgGrantAllowance(
+		allowance,
+		operatorAddress,
+		aiOperationalAddress,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create MsgGrantAllowance: %w", err)
+	}
+	grantMsgs = append(grantMsgs, feeGrantMsg)
 
 	txb, err := txFactory.BuildUnsignedTx(grantMsgs...)
 	if err != nil {

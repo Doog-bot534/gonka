@@ -82,18 +82,18 @@ type blockTimeTracker struct {
 }
 
 type manager struct {
-	ctx                context.Context
-	client             *cosmosclient.Client
-	apiAccount         *apiconfig.ApiAccount
-	txFactory          *tx.Factory
-	accountRetriever   client.AccountRetriever
-	address            string
-	defaultTimeout     time.Duration
-	natsConnection     *nats.Conn
-	natsJetStream      nats.JetStreamContext
-	blockTimeTracker   *blockTimeTracker
-	getHeightFunc      func() int64
-	minGasPriceNgonka  int64
+	ctx               context.Context
+	client            *cosmosclient.Client
+	apiAccount        *apiconfig.ApiAccount
+	txFactory         *tx.Factory
+	accountRetriever  client.AccountRetriever
+	address           string
+	defaultTimeout    time.Duration
+	natsConnection    *nats.Conn
+	natsJetStream     nats.JetStreamContext
+	blockTimeTracker  *blockTimeTracker
+	getHeightFunc     func() int64
+	minGasPriceNgonka int64
 }
 
 func StartTxManager(
@@ -835,10 +835,49 @@ func (m *manager) BroadcastMessages(id string, msgs ...sdk.Msg) (*sdk.TxResponse
 	}
 	if resp.Code != 0 {
 		logging.Error("Batch broadcast failed", types.Messages, "code", resp.Code, "rawLog", resp.RawLog, "tx_id", id, "msgCount", len(msgs))
+		logFeeRelatedHint(resp.RawLog)
 	} else {
 		logging.Debug("Batch broadcast successful", types.Messages, "tx_id", id, "msgCount", len(msgs))
 	}
 	return resp, timestamp, nil
+}
+
+// logFeeRelatedHint inspects a tx broadcast error message and logs an
+// actionable hint when the failure is fee-related. Helps hosts understand
+// when they need to re-run grant-ml-ops-permissions post-upgrade to get a
+// feegrant allowance.
+func logFeeRelatedHint(rawLog string) {
+	if rawLog == "" {
+		return
+	}
+	if containsAny(rawLog, "fee-grant not found", "fee allowance", "feegrant: not found") {
+		logging.Error(
+			"Fee-grant from cold to warm key is missing or expired. Run "+
+				"'inferenced tx inference grant-ml-ops-permissions <cold-key> <warm-address> --from <cold-key>' "+
+				"to refresh the authz grants AND the feegrant allowance in one transaction. "+
+				"See HOST_ONBOARDING.md for details.",
+			types.Messages,
+			"rawLog", rawLog,
+		)
+	}
+	if containsAny(rawLog, "insufficient fee", "insufficient fees") {
+		logging.Error(
+			"Transaction fees are below the chain minimum. Set min_gas_price_ngonka in "+
+				"the DAPI config to at least the value of FeeParams.min_gas_price_ngonka on chain. "+
+				"See HOST_ONBOARDING.md for details.",
+			types.Messages,
+			"rawLog", rawLog,
+		)
+	}
+}
+
+func containsAny(s string, substrs ...string) bool {
+	for _, sub := range substrs {
+		if strings.Contains(s, sub) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *manager) broadcastMessage(id string, rawTx sdk.Msg) (*sdk.TxResponse, time.Time, error) {
@@ -957,6 +996,19 @@ func (m *manager) getSignedBytes(id string, unsignedTx client.TxBuilder, factory
 	} else {
 		unsignedTx.SetFeeAmount(sdk.Coins{})
 	}
+
+	// When the warm key signs on behalf of the cold account (authz mode),
+	// set the cold account as the fee granter so fees are deducted from the
+	// cold account's balance instead of the warm key (which is unfunded).
+	// This requires the host to have set up a feegrant allowance from cold
+	// to warm during onboarding (see HOST_ONBOARDING.md).
+	if !m.apiAccount.IsSignerTheMainAccount() {
+		coldAddr, err := m.apiAccount.AccountAddress()
+		if err == nil {
+			unsignedTx.SetFeeGranter(coldAddr)
+		}
+	}
+
 	unsignedTx.SetUnordered(true)
 	unsignedTx.SetTimeoutTimestamp(timestamp)
 	name := m.apiAccount.SignerAccount.Name
