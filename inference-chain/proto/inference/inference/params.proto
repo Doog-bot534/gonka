@@ -344,14 +344,14 @@ message TransferAgentAccessParams {
 // DelegationParams defines parameters for PoC delegation in the multi-model system.
 message DelegationParams {
   option (gogoproto.equal) = true;
-  int64   deploy_window             = 1;  // blocks before start_poc for delegation snapshot
-  Decimal refusal_penalty          = 2;  // REFUSE penalty applied per model after penalty_start_epoch
-  Decimal no_participation_penalty = 3;  // NONE penalty applied per model after penalty_start_epoch
-  Decimal delegation_share         = 4;  // DELEGATE share transferred per model after penalty_start_epoch
-  Decimal w_threshold              = 5;  // min fraction of total weight from members for eligibility
-  int64   v_min                    = 6;  // min hosts with non-zero consensus weight
-  Decimal cap_factor               = 7;  // max group weight as multiple of members' weight in other groups
-  string  initial_model_id         = 8;  // model exempt from group cap; set during migration to the founding model
+  int64 deploy_window = 1; // blocks before start_poc for delegation snapshot
+  Decimal refusal_penalty = 2; // REFUSE penalty applied per model after penalty_start_epoch
+  Decimal no_participation_penalty = 3; // NONE penalty applied per model after penalty_start_epoch
+  Decimal delegation_share = 4; // DELEGATE share transferred per model after penalty_start_epoch
+  Decimal w_threshold = 5; // min fraction of total weight from members for eligibility
+  int64 v_min = 6; // min hosts with non-zero consensus weight
+  Decimal cap_factor = 7; // max group weight as multiple of members' weight in other groups
+  string initial_model_id = 8; // model exempt from group cap; set during migration to the founding model
 }
 
 // SubnetApprovedVersion describes a single approved subnet binary.
