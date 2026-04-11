@@ -68,15 +68,32 @@ func (e *EpochMLNodeData) Append(modelId, participantAddr string, node *types.ML
 	e.data[modelId][participantAddr] = append(e.data[modelId][participantAddr], node)
 }
 
+// GetForModel returns a copy of the participant->nodes map for the given
+// model. The outer map and the inner slice headers are fresh, but the
+// *MLNodeInfo pointers are shared with the source so callers that mutate
+// fields on a node (e.g. TimeslotAllocation) still see the change in any
+// future call. Callers cannot accidentally mutate the source by appending
+// to or reassigning the returned slices.
 func (e *EpochMLNodeData) GetForModel(modelId string) map[string][]*types.MLNodeInfo {
-	return e.data[modelId]
+	src := e.data[modelId]
+	if src == nil {
+		return nil
+	}
+	out := make(map[string][]*types.MLNodeInfo, len(src))
+	for addr, nodes := range src {
+		out[addr] = slices.Clone(nodes)
+	}
+	return out
 }
 
+// GetForParticipant returns a sorted copy of the node slice for a given
+// (model, participant). The clone is sorted in-place; the source slice is
+// untouched. Pointer identity per *MLNodeInfo is preserved.
 func (e *EpochMLNodeData) GetForParticipant(modelId, participantAddr string) []*types.MLNodeInfo {
 	if e.data[modelId] == nil {
 		return nil
 	}
-	nodes := e.data[modelId][participantAddr]
+	nodes := slices.Clone(e.data[modelId][participantAddr])
 	sortMLNodesByNodeId(nodes)
 	return nodes
 }
@@ -85,12 +102,19 @@ func (e *EpochMLNodeData) Models() []string {
 	return sortedKeys(e.data)
 }
 
-// ForModel returns a single-model view of the data.
+// ForModel returns a single-model copy of the data.
 // Threshold calculations use this to avoid comparing weights across models.
+// The returned EpochMLNodeData has its own outer/inner maps and slice
+// headers; *MLNodeInfo pointers are shared with the source so node-field
+// mutations remain visible.
 func (e *EpochMLNodeData) ForModel(modelId string) *EpochMLNodeData {
 	view := NewEpochMLNodeData()
 	if modelData, ok := e.data[modelId]; ok {
-		view.data[modelId] = modelData
+		modelDataCopy := make(map[string][]*types.MLNodeInfo, len(modelData))
+		for addr, nodes := range modelData {
+			modelDataCopy[addr] = slices.Clone(nodes)
+		}
+		view.data[modelId] = modelDataCopy
 	}
 	return view
 }
