@@ -91,17 +91,23 @@ func TestBuildPocProofsSignPayload(t *testing.T) {
 	// Verify payload is 64 bytes (hex-encoded SHA256 hash)
 	assert.Len(t, payload, 64)
 
-	// Manually construct expected payload to verify format
+	// Manually construct expected payload to verify format.
+	// Variable-length string fields are length-prefixed (LE32) so distinct
+	// semantic tuples cannot collide.
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, int64(12345))
+	binary.Write(buf, binary.LittleEndian, uint32(len("model-a")))
 	buf.WriteString("model-a")
 	buf.Write(rootHash)
 	binary.Write(buf, binary.LittleEndian, uint32(50000))
+	binary.Write(buf, binary.LittleEndian, uint32(3)) // num_leaf_indices
 	binary.Write(buf, binary.LittleEndian, uint32(0))
 	binary.Write(buf, binary.LittleEndian, uint32(42))
 	binary.Write(buf, binary.LittleEndian, uint32(999))
 	binary.Write(buf, binary.LittleEndian, int64(1700000000000000000))
+	binary.Write(buf, binary.LittleEndian, uint32(len("gonka1validator")))
 	buf.WriteString("gonka1validator")
+	binary.Write(buf, binary.LittleEndian, uint32(len("gonka1signer")))
 	buf.WriteString("gonka1signer")
 
 	expectedHash := sha256.Sum256(buf.Bytes())
@@ -213,17 +219,22 @@ func TestBuildPocProofsSignPayload_KotlinCompatibility(t *testing.T) {
 	// Verify it's 64 bytes (hex string)
 	assert.Len(t, payload, 64, "Payload should be 64 bytes (hex string)")
 
-	// Verify the binary structure is correct by rebuilding manually
+	// Verify the binary structure is correct by rebuilding manually with
+	// length-prefixed variable fields. Must mirror the Kotlin signer.
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, int64(45))
+	binary.Write(buf, binary.LittleEndian, uint32(len("model-a")))
 	buf.WriteString("model-a")
 	buf.Write(rootHash)
 	binary.Write(buf, binary.LittleEndian, uint32(100))
+	binary.Write(buf, binary.LittleEndian, uint32(3)) // num_leaf_indices
 	binary.Write(buf, binary.LittleEndian, uint32(0))
 	binary.Write(buf, binary.LittleEndian, uint32(1))
 	binary.Write(buf, binary.LittleEndian, uint32(2))
 	binary.Write(buf, binary.LittleEndian, int64(1768556941222626000))
+	binary.Write(buf, binary.LittleEndian, uint32(len("gonka1test")))
 	buf.WriteString("gonka1test")
+	binary.Write(buf, binary.LittleEndian, uint32(len("gonka1test")))
 	buf.WriteString("gonka1test")
 
 	expectedHash := sha256.Sum256(buf.Bytes())

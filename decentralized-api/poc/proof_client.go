@@ -274,9 +274,22 @@ func validateLeafCoverage(requested []uint32, proofs []ProofItem) error {
 }
 
 // buildProofSignPayload builds the binary payload for signature.
-// Format: hex(SHA256(poc_stage_start_block_height(LE64) || root_hash(32) || count(LE32) ||
+// Format: hex(SHA256(
 //
-//	leaf_indices(LE32 each) || timestamp(LE64) || validator_address || validator_signer_address))
+//	poc_stage_start_block_height (LE64) ||
+//	len(model_id) (LE32) || model_id ||
+//	root_hash (32 bytes) ||
+//	count (LE32) ||
+//	num_leaf_indices (LE32) || leaf_indices (LE32 each) ||
+//	timestamp (LE64) ||
+//	len(validator_address) (LE32) || validator_address ||
+//	len(signer_address) (LE32) || signer_address
+//
+// ))
+//
+// Every variable-length field is length-prefixed so distinct semantic
+// tuples cannot map to identical bytes. This must stay in lockstep with
+// buildPocProofsSignPayload on the server side.
 func buildProofSignPayload(
 	pocStageStartBlockHeight int64,
 	modelID string,
@@ -290,19 +303,27 @@ func buildProofSignPayload(
 	buf := new(bytes.Buffer)
 
 	binary.Write(buf, binary.LittleEndian, pocStageStartBlockHeight)
-	buf.WriteString(modelID)
+	writeLengthPrefixedString(buf, modelID)
 	buf.Write(rootHash)
 	binary.Write(buf, binary.LittleEndian, count)
+	binary.Write(buf, binary.LittleEndian, uint32(len(leafIndices)))
 	for _, idx := range leafIndices {
 		binary.Write(buf, binary.LittleEndian, idx)
 	}
 	binary.Write(buf, binary.LittleEndian, timestamp)
-	buf.WriteString(validatorAddress)
-	buf.WriteString(signerAddress)
+	writeLengthPrefixedString(buf, validatorAddress)
+	writeLengthPrefixedString(buf, signerAddress)
 
 	hash := sha256.Sum256(buf.Bytes())
 	// Return hex-encoded string as bytes (what the server expects to verify)
 	return []byte(hex.EncodeToString(hash[:]))
+}
+
+// writeLengthPrefixedString writes len(s) as a LE uint32 followed by the
+// raw string bytes. Mirrors the helper in poc_handler.go on the server.
+func writeLengthPrefixedString(buf *bytes.Buffer, s string) {
+	binary.Write(buf, binary.LittleEndian, uint32(len(s)))
+	buf.WriteString(s)
 }
 
 // buildLeafData builds the leaf data format used in MMR.

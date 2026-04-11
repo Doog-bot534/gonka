@@ -232,8 +232,20 @@ class PoCOffChainTests : TestermintTest() {
     companion object {
         /**
          * Builds the binary payload for PoC proofs signature verification.
-         * Format: SHA256(poc_stage_start_block_height(LE64) || root_hash(32) || count(LE32) ||
-         *         leaf_indices(LE32 each) || timestamp(LE64) || validator_address || validator_signer_address)
+         * Format: SHA256(
+         *   poc_stage_start_block_height (LE64) ||
+         *   len(model_id) (LE32) || model_id ||
+         *   root_hash (32 bytes) ||
+         *   count (LE32) ||
+         *   num_leaf_indices (LE32) || leaf_indices (LE32 each) ||
+         *   timestamp (LE64) ||
+         *   len(validator_address) (LE32) || validator_address ||
+         *   len(validator_signer_address) (LE32) || validator_signer_address
+         * )
+         *
+         * Variable-length string fields are length-prefixed so distinct
+         * semantic tuples cannot collide. Must stay in lockstep with the
+         * Go server-side buildPocProofsSignPayload in poc_handler.go.
          */
         fun buildPocProofsSignPayload(
             pocStageStartBlockHeight: Long,
@@ -245,21 +257,35 @@ class PoCOffChainTests : TestermintTest() {
             validatorAddress: String,
             validatorSignerAddress: String
         ): ByteArray {
-            // Calculate buffer size
-            val size = 8 + modelId.toByteArray().size + 32 + 4 + (leafIndices.size * 4) + 8 +
-                    validatorAddress.toByteArray().size + validatorSignerAddress.toByteArray().size
+            val modelIdBytes = modelId.toByteArray()
+            val validatorAddressBytes = validatorAddress.toByteArray()
+            val validatorSignerAddressBytes = validatorSignerAddress.toByteArray()
+
+            // Calculate buffer size: fixed fields + length prefixes + variable data
+            val size = 8 +                                           // pocStageStartBlockHeight
+                    4 + modelIdBytes.size +                          // len + model_id
+                    32 +                                             // root_hash
+                    4 +                                              // count
+                    4 + (leafIndices.size * 4) +                     // num_leaf_indices + leaf_indices
+                    8 +                                              // timestamp
+                    4 + validatorAddressBytes.size +                 // len + validator_address
+                    4 + validatorSignerAddressBytes.size             // len + validator_signer_address
 
             val buffer = ByteBuffer.allocate(size)
             buffer.order(ByteOrder.LITTLE_ENDIAN)
 
             buffer.putLong(pocStageStartBlockHeight)
-            buffer.put(modelId.toByteArray())
+            buffer.putInt(modelIdBytes.size)
+            buffer.put(modelIdBytes)
             buffer.put(rootHash)
             buffer.putInt(count.toInt())
+            buffer.putInt(leafIndices.size)
             leafIndices.forEach { buffer.putInt(it.toInt()) }
             buffer.putLong(timestamp)
-            buffer.put(validatorAddress.toByteArray())
-            buffer.put(validatorSignerAddress.toByteArray())
+            buffer.putInt(validatorAddressBytes.size)
+            buffer.put(validatorAddressBytes)
+            buffer.putInt(validatorSignerAddressBytes.size)
+            buffer.put(validatorSignerAddressBytes)
 
             // SHA256 hash
             val digest = MessageDigest.getInstance("SHA-256")
