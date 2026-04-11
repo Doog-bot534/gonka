@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBuildPayloadRequestURL_SubnetPath(t *testing.T) {
-	// Test with subnet session-specific path
-	url, err := BuildPayloadRequestURL("https://executor.example.com", "v1/subnet/sessions/escrow-123/payloads", "456")
+func TestBuildPayloadRequestURL_DevshardPath(t *testing.T) {
+	// Test with devshard session-specific path
+	url, err := BuildPayloadRequestURL("https://executor.example.com", "v1/devshard/sessions/escrow-123/payloads", "456")
 	require.NoError(t, err)
-	assert.Contains(t, url, "v1/subnet/sessions/escrow-123/payloads")
+	assert.Contains(t, url, "v1/devshard/sessions/escrow-123/payloads")
 	assert.Contains(t, url, "inference_id=456")
 }
 

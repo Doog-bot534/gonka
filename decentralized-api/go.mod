@@ -6,6 +6,7 @@ require (
 	cosmossdk.io/errors v1.0.2
 	cosmossdk.io/store v1.1.2
 	cosmossdk.io/x/upgrade v0.1.4
+	devshard v0.0.0-00010101000000-000000000000
 	github.com/cometbft/cometbft v0.38.21
 	github.com/consensys/gnark-crypto v0.18.1
 	github.com/cosmos/btcutil v1.0.5
@@ -41,7 +42,6 @@ require (
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.3.0
 	google.golang.org/protobuf v1.36.11
 	modernc.org/sqlite v1.46.1
-	subnet v0.0.0-00010101000000-000000000000
 )
 
 require (
@@ -305,8 +305,8 @@ require (
 )
 
 replace (
+	devshard => ../devshard
 	github.com/cosmos/cosmos-sdk => github.com/gonka-ai/cosmos-sdk v0.53.3-ps15
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
 	github.com/productscience/inference => ../inference-chain
-	subnet => ../subnet
 )

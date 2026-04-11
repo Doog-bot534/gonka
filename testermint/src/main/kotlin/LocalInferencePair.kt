@@ -306,9 +306,9 @@ data class LocalInferencePair(
         )
     }
 
-    fun createSubnetEscrow(amount: Long): TxResponse {
+    fun createDevshardEscrow(amount: Long): TxResponse {
         return this.submitTransaction(
-            listOf("inference", "create-subnet-escrow", amount.toString())
+            listOf("inference", "create-devshard-escrow", amount.toString())
         )
     }
 
@@ -731,20 +731,20 @@ data class LocalInferencePair(
         }
     }
 
-    data class SubnetProxyHandle(val escrowId: Long, val port: Int, val proxyUrl: String)
+    data class DevshardProxyHandle(val escrowId: Long, val port: Int, val proxyUrl: String)
 
-    fun startSubnetProxy(escrowId: Long, keyName: String? = null, port: Int = 18080 + escrowId.toInt()): SubnetProxyHandle =
-        wrapLog("startSubnetProxy", true) {
+    fun startDevshardProxy(escrowId: Long, keyName: String? = null, port: Int = 18080 + escrowId.toInt()): DevshardProxyHandle =
+        wrapLog("startDevshardProxy", true) {
             val privateKey = (if (keyName != null) node.getPrivateKey(keyName) else node.getColdPrivateKey()).trim()
-            val stderrFile = "/tmp/subnetctl-proxy-${escrowId}.log"
+            val stderrFile = "/tmp/devshardctl-proxy-${escrowId}.log"
             val startCommand = listOf(
                 "sh", "-c",
-                "SUBNET_PRIVATE_KEY='$privateKey'" +
-                    " SUBNET_ESCROW_ID=$escrowId" +
-                    " SUBNET_CHAIN_REST=http://\$NODE_HOST:1317" +
-                    " SUBNET_PORT=$port" +
-                    " SUBNET_STORAGE_PATH=/tmp/subnetctl-proxy-${escrowId}.db" +
-                    " nohup subnetctl >$stderrFile 2>&1 &" +
+                "DEVSHARD_PRIVATE_KEY='$privateKey'" +
+                    " DEVSHARD_ESCROW_ID=$escrowId" +
+                    " DEVSHARD_CHAIN_REST=http://\$NODE_HOST:1317" +
+                    " DEVSHARD_PORT=$port" +
+                    " DEVSHARD_STORAGE_PATH=/tmp/devshardctl-proxy-${escrowId}.db" +
+                    " nohup devshardctl >$stderrFile 2>&1 &" +
                     " echo \$!"
             )
             api.executor.exec(startCommand, null)
@@ -765,18 +765,18 @@ data class LocalInferencePair(
                 val logs = try {
                     api.executor.exec(listOf("cat", stderrFile), null).joinToString("")
                 } catch (_: Exception) { "no logs" }
-                error("subnetctl did not start within 15s. Logs:\n$logs")
+                error("devshardctl did not start within 15s. Logs:\n$logs")
             }
-            SubnetProxyHandle(escrowId, port, proxyUrl)
+            DevshardProxyHandle(escrowId, port, proxyUrl)
         }
 
-    fun stopSubnetProxy(escrowId: Long) {
+    fun stopDevshardProxy(escrowId: Long) {
         try {
-            api.executor.exec(listOf("sh", "-c", "pkill -f 'SUBNET_ESCROW_ID=$escrowId.*subnetctl' || true"), null)
+            api.executor.exec(listOf("sh", "-c", "pkill -f 'DEVSHARD_ESCROW_ID=$escrowId.*devshardctl' || true"), null)
         } catch (_: Exception) { /* ignore */ }
     }
 
-    fun getSubnetInferenceState(proxyUrl: String, inferenceId: Long): String {
+    fun getDevshardInferenceState(proxyUrl: String, inferenceId: Long): String {
         val result = api.executor.exec(listOf(
             "sh", "-c",
             "curl -sf $proxyUrl/v1/inference -H 'X-Inference-Id: $inferenceId'"
@@ -793,7 +793,7 @@ data class LocalInferencePair(
         return result.joinToString("")
     }
 
-    fun getSubnetProxyStatus(proxyUrl: String): SubnetProxyStatus {
+    fun getDevshardProxyStatus(proxyUrl: String): DevshardProxyStatus {
         val raw = api.executor.exec(listOf(
             "sh", "-c",
             "curl --silent --show-error --fail $proxyUrl/v1/status"
@@ -804,10 +804,10 @@ data class LocalInferencePair(
             error("status returned no JSON object. raw:\n$raw")
         }
         val json = raw.substring(start, end + 1)
-        return Gson().fromJson(json, SubnetProxyStatus::class.java)
+        return Gson().fromJson(json, DevshardProxyStatus::class.java)
     }
 
-    fun finalizeSubnetProxy(proxyUrl: String): SubnetctlResult {
+    fun finalizeDevshardProxy(proxyUrl: String): DevshardctlResult {
         val raw = api.executor.exec(listOf(
             "sh", "-c",
             "curl -sf -X POST $proxyUrl/v1/finalize"
@@ -818,29 +818,29 @@ data class LocalInferencePair(
             error("finalize returned no JSON object. raw:\n$raw")
         }
         val json = raw.substring(start, end + 1)
-        val parsed = Gson().fromJson(json, SubnetSettlementData::class.java)
-        return SubnetctlResult(parsed = parsed, rawJson = json, stderr = "")
+        val parsed = Gson().fromJson(json, DevshardSettlementData::class.java)
+        return DevshardctlResult(parsed = parsed, rawJson = json, stderr = "")
     }
 
-    data class SubnetctlResult(val parsed: SubnetSettlementData, val rawJson: String, val stderr: String)
+    data class DevshardctlResult(val parsed: DevshardSettlementData, val rawJson: String, val stderr: String)
 
-    fun settleSubnetEscrow(settlementJson: String, from: String? = null): TxResponse =
-        wrapLog("settleSubnetEscrow", true) {
+    fun settleDevshardEscrow(settlementJson: String, from: String? = null): TxResponse =
+        wrapLog("settleDevshardEscrow", true) {
             node.writeFileToContainer(settlementJson, "settlement.json")
             if (from != null) {
                 val txResp = node.sendTransactionDirectly(
-                    listOf("inference", "settle-subnet-escrow", "settlement.json"),
+                    listOf("inference", "settle-devshard-escrow", "settlement.json"),
                     from
                 )
                 node.waitForTxProcessed(txResp.txhash)
             } else {
-                submitTransaction(listOf("inference", "settle-subnet-escrow", "settlement.json"))
+                submitTransaction(listOf("inference", "settle-devshard-escrow", "settlement.json"))
             }
         }
 
-    fun createSubnetEscrow(amount: Long, from: String): TxResponse {
+    fun createDevshardEscrow(amount: Long, from: String): TxResponse {
         val txResp = node.sendTransactionDirectly(
-            listOf("inference", "create-subnet-escrow", amount.toString()),
+            listOf("inference", "create-devshard-escrow", amount.toString()),
             from
         )
         return node.waitForTxProcessed(txResp.txhash)

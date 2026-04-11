@@ -397,8 +397,8 @@ data class ApplicationCLI(
         execAndParse(listOf("query", "bls", "signing-status", requestId))
     }
 
-    fun querySubnetEscrow(id: Long): SubnetEscrowResponse = wrapLog("querySubnetEscrow", false) {
-        execAndParse(listOf("query", "inference", "show-subnet-escrow", id.toString()))
+    fun queryDevshardEscrow(id: Long): DevshardEscrowResponse = wrapLog("queryDevshardEscrow", false) {
+        execAndParse(listOf("query", "inference", "show-devshard-escrow", id.toString()))
     }
 
     // Reified type parameter to abstract out exec and then json to a particular type

@@ -231,7 +231,7 @@ func TestReconcile_OverrideStartsChild(t *testing.T) {
 	cfg := config.Config{
 		BinDir:     binDir,
 		DataDir:    dataDir,
-		BinaryName: "subnet",
+		BinaryName: "devshard",
 		BasePort:   5000,
 		Overrides:  map[string]string{"v1": overrideBin},
 	}
@@ -254,7 +254,7 @@ func TestReconcile_OverrideStartsChild(t *testing.T) {
 	}
 
 	// Verify the binary was copied (not symlinked).
-	binPath := filepath.Join(binDir, "v1", "subnet")
+	binPath := filepath.Join(binDir, "v1", "devshard")
 	got, err := os.ReadFile(binPath)
 	if err != nil {
 		t.Fatal(err)
@@ -281,7 +281,7 @@ func TestReconcile_ForceVersionsInjectIntoDesired(t *testing.T) {
 	cfg := config.Config{
 		BinDir:        binDir,
 		DataDir:       dataDir,
-		BinaryName:    "subnet",
+		BinaryName:    "devshard",
 		BasePort:      5000,
 		Overrides:     map[string]string{"forced1": overrideBin},
 		ForceVersions: []string{"forced1"},
@@ -313,7 +313,7 @@ func TestReconcile_ForceWithoutOverrideSkipped(t *testing.T) {
 	cfg := config.Config{
 		BinDir:        filepath.Join(dir, "bin"),
 		DataDir:       filepath.Join(dir, "data"),
-		BinaryName:    "subnet",
+		BinaryName:    "devshard",
 		BasePort:      5000,
 		Overrides:     map[string]string{},
 		ForceVersions: []string{"nooverride"},
@@ -377,7 +377,7 @@ func TestReconcile_StopsRemovedVersions(t *testing.T) {
 	cfg := config.Config{
 		BinDir:     filepath.Join(dir, "bin"),
 		DataDir:    filepath.Join(dir, "data"),
-		BinaryName: "subnet",
+		BinaryName: "devshard",
 		BasePort:   5000,
 		Overrides:  map[string]string{},
 	}

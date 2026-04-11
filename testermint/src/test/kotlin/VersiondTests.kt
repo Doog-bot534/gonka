@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit
  * Full-circle E2E tests for versiond:
  *   1. Local chain + versiond container
  *   2. Verify empty approved_versions on startup
- *   3. Governance proposal adds a subnet binary version
+ *   3. Governance proposal adds a devshard binary version
  *   4. versiond downloads the binary and proxies traffic
  *   5. Second proposal adds another version, both route correctly
  *
@@ -61,7 +61,7 @@ class VersiondTests : TestermintTest() {
     fun `approved versions empty on startup`() {
         logSection("Verifying chain params have no approved versions")
         val params = genesis.getParams()
-        val approvedVersions = params.subnetEscrowParams?.approvedVersions ?: emptyList()
+        val approvedVersions = params.devshardEscrowParams?.approvedVersions ?: emptyList()
         assertThat(approvedVersions)
             .withFailMessage("Expected no approved versions in initial chain params")
             .isEmpty()
@@ -88,7 +88,7 @@ class VersiondTests : TestermintTest() {
         val params = genesis.getParams()
         val updatedParams = params.withApprovedVersions(
             listOf(
-                SubnetApprovedVersion(
+                DevshardApprovedVersion(
                     name = versionName,
                     binary = testappBinaryDockerUrl,
                     sha256 = testappSha256,
@@ -99,7 +99,7 @@ class VersiondTests : TestermintTest() {
 
         logSection("Verifying chain params updated")
         val newParams = genesis.getParams()
-        val versions = newParams.subnetEscrowParams?.approvedVersions ?: emptyList()
+        val versions = newParams.devshardEscrowParams?.approvedVersions ?: emptyList()
         assertThat(versions).hasSize(1)
         assertThat(versions[0].name).isEqualTo(versionName)
         assertThat(versions[0].sha256).isEqualTo(testappSha256)
@@ -134,12 +134,12 @@ class VersiondTests : TestermintTest() {
         val params = genesis.getParams()
         val updatedParams = params.withApprovedVersions(
             listOf(
-                SubnetApprovedVersion(
+                DevshardApprovedVersion(
                     name = v1,
                     binary = testappBinaryDockerUrl,
                     sha256 = testappSha256,
                 ),
-                SubnetApprovedVersion(
+                DevshardApprovedVersion(
                     name = v2,
                     binary = testappBinaryDockerUrl,
                     sha256 = testappSha256,
@@ -150,7 +150,7 @@ class VersiondTests : TestermintTest() {
 
         logSection("Verifying chain params have both versions")
         val newParams = genesis.getParams()
-        val versions = newParams.subnetEscrowParams?.approvedVersions ?: emptyList()
+        val versions = newParams.devshardEscrowParams?.approvedVersions ?: emptyList()
         assertThat(versions).hasSize(2)
         assertThat(versions.map { it.name }).containsExactlyInAnyOrder(v1, v2)
 
@@ -176,9 +176,9 @@ class VersiondTests : TestermintTest() {
     // ---------------------------------------------------------------------------
 
     private fun InferenceParams.withApprovedVersions(
-        versions: List<SubnetApprovedVersion>
+        versions: List<DevshardApprovedVersion>
     ): InferenceParams {
-        val escrow = this.subnetEscrowParams ?: SubnetEscrowParams(
+        val escrow = this.devshardEscrowParams ?: DevshardEscrowParams(
             minAmount = 5_000_000_000,
             maxAmount = 10_000_000_000,
             maxEscrowsPerEpoch = 100,
@@ -186,7 +186,7 @@ class VersiondTests : TestermintTest() {
             tokenPrice = 1,
         )
         return this.copy(
-            subnetEscrowParams = escrow.copy(approvedVersions = versions)
+            devshardEscrowParams = escrow.copy(approvedVersions = versions)
         )
     }
 

@@ -466,7 +466,7 @@ func (m *Manager) runChild(ctx context.Context, c *child) {
 			"--data-dir", dataDir,
 			"--port", fmt.Sprintf("%d", c.port),
 		)
-		cmd.Env = append(os.Environ(), fmt.Sprintf("SUBNET_LOG_PREFIX=%s", c.version.Name))
+		cmd.Env = append(os.Environ(), fmt.Sprintf("DEVSHARD_LOG_PREFIX=%s", c.version.Name))
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

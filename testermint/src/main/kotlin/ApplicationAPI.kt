@@ -487,11 +487,11 @@ data class ApplicationAPI(
         get<ApiConfig>(url, "admin/v1/config")
     }
 
-    fun getSubnetMempool(escrowId: Long): SubnetMempoolResponse = wrapLog("GetSubnetMempool", false) {
+    fun getDevshardMempool(escrowId: Long): DevshardMempoolResponse = wrapLog("GetDevshardMempool", false) {
         val url = urlFor(SERVER_TYPE_PUBLIC)
-        val resp = Fuel.get("$url/v1/subnet/sessions/$escrowId/mempool")
+        val resp = Fuel.get("$url/v1/devshard/sessions/$escrowId/mempool")
             .timeoutRead(1000 * 30)
-            .responseObject<SubnetMempoolResponse>(gsonDeserializer(cosmosJson))
+            .responseObject<DevshardMempoolResponse>(gsonDeserializer(cosmosJson))
         logResponse(resp)
         resp.third.get()
     }

@@ -15,7 +15,7 @@ func main() {
 	dataDir := flag.String("data-dir", "", "data directory")
 	flag.Parse()
 
-	prefix := os.Getenv("SUBNET_LOG_PREFIX")
+	prefix := os.Getenv("DEVSHARD_LOG_PREFIX")
 	log.Printf("[%s] starting testapp on port %d, data-dir=%s", prefix, *port, *dataDir)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

@@ -26,7 +26,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
-	internalsubnet "decentralized-api/internal/subnet"
+	internaldevshard "decentralized-api/internal/devshard"
 	"decentralized-api/internal/validation"
 	"decentralized-api/logging"
 	"decentralized-api/participant"
@@ -37,7 +37,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	subnetstorage "subnet/storage"
+	devshardstorage "devshard/storage"
 	"time"
 
 	"github.com/productscience/inference/x/inference/types"
@@ -215,9 +215,9 @@ func main() {
 	commitWorker := poc.NewCommitWorker(artifactStore, recorder, chainPhaseTracker, participantInfo.GetAddress(), commitInterval)
 	defer commitWorker.Close()
 
-	subnetSigner, subnetSignerErr := internalsubnet.NewSignerFromKeyring(*recorder.GetKeyring(), recorder.GetApiAccount().SignerAccount.Name)
-	if subnetSignerErr != nil {
-		logging.Error("subnet signer init failed", types.System, "error", subnetSignerErr)
+	devshardSigner, devshardSignerErr := internaldevshard.NewSignerFromKeyring(*recorder.GetKeyring(), recorder.GetApiAccount().SignerAccount.Name)
+	if devshardSignerErr != nil {
+		logging.Error("devshard signer init failed", types.System, "error", devshardSignerErr)
 	}
 
 	publicServer := pserver.NewServer(
@@ -231,22 +231,22 @@ func main() {
 		pserver.WithStatsStorage(statsStore),
 	)
 
-	if subnetSigner != nil {
-		subnetBridge := internalsubnet.NewChainBridge(recorder)
+	if devshardSigner != nil {
+		devshardBridge := internaldevshard.NewChainBridge(recorder)
 		httpClient := pserver.NewNoRedirectClient(5 * time.Minute)
-		subnetEngine := internalsubnet.NewEngineAdapter(nodeBroker, config.GetCurrentNodeVersion(), payloadStore, chainPhaseTracker, httpClient)
-		subnetValidator := internalsubnet.NewValidationAdapter(nodeBroker, config.GetCurrentNodeVersion(), chainPhaseTracker, httpClient, subnetBridge, recorder)
-		// TODO: move to SubnetConfig when config consolidation happens.
-		subnetStore, storeErr := subnetstorage.NewSQLite("/root/.dapi/data/subnet.db")
+		devshardEngine := internaldevshard.NewEngineAdapter(nodeBroker, config.GetCurrentNodeVersion(), payloadStore, chainPhaseTracker, httpClient)
+		devshardValidator := internaldevshard.NewValidationAdapter(nodeBroker, config.GetCurrentNodeVersion(), chainPhaseTracker, httpClient, devshardBridge, recorder)
+		// TODO: move to DevshardConfig when config consolidation happens.
+		devshardStore, storeErr := devshardstorage.NewSQLite("/root/.dapi/data/devshard.db")
 		if storeErr != nil {
-			logging.Error("subnet storage init failed", types.System, "error", storeErr)
+			logging.Error("devshard storage init failed", types.System, "error", storeErr)
 		} else {
-			defer subnetStore.Close()
-			hostManager := internalsubnet.NewHostManager(subnetStore, subnetSigner, subnetEngine, subnetValidator, subnetBridge, payloadStore, recorder)
+			defer devshardStore.Close()
+			hostManager := internaldevshard.NewHostManager(devshardStore, devshardSigner, devshardEngine, devshardValidator, devshardBridge, payloadStore, recorder)
 			if err := hostManager.RecoverSessions(); err != nil {
-				logging.Error("subnet recovery failed", types.System, "error", err)
+				logging.Error("devshard recovery failed", types.System, "error", err)
 			}
-			hostManager.Register(publicServer.SubnetGroup())
+			hostManager.Register(publicServer.DevshardGroup())
 		}
 	}
 	publicServer.Start(addr)
