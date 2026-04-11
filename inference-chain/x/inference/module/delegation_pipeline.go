@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"slices"
-	"sort"
 	"strconv"
 
 	mathsdk "cosmossdk.io/math"
@@ -372,7 +371,7 @@ func bootstrapCandidateModelIDs(
 		candidates = append(candidates, modelConfig.ModelId)
 	}
 
-	sort.Strings(candidates)
+	slices.Sort(candidates)
 	return candidates
 }
 
@@ -389,7 +388,7 @@ func approvedModelIDs(pocParams *types.PocParams) []string {
 		models = append(models, modelConfig.ModelId)
 	}
 
-	sort.Strings(models)
+	slices.Sort(models)
 	return models
 }
 
@@ -521,7 +520,7 @@ func buildBootstrapPreEligibilityCalculator(
 		for participant := range memberSet {
 			members = append(members, participant)
 		}
-		sort.Strings(members)
+		slices.Sort(members)
 
 		coeff, ok := coefficients[modelID]
 		if !ok {

@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -290,7 +291,7 @@ func (m *ManagedArtifactStore) listModelIDsForStage(pocStageStartHeight int64) (
 	for modelID := range modelSet {
 		modelIDs = append(modelIDs, modelID)
 	}
-	sort.Strings(modelIDs)
+	slices.Sort(modelIDs)
 	return modelIDs, nil
 }
 

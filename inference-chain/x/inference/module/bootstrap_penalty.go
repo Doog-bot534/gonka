@@ -2,7 +2,7 @@ package inference
 
 import (
 	"context"
-	"sort"
+	"slices"
 
 	"github.com/productscience/inference/x/inference/types"
 )
@@ -105,7 +105,7 @@ func ResolveBootstrapPenaltyModes(
 	for modelID := range reportByModel {
 		modelIDs = append(modelIDs, modelID)
 	}
-	sort.Strings(modelIDs)
+	slices.Sort(modelIDs)
 
 	modes := make(map[string]map[string]BootstrapPenaltyMode, len(modelIDs))
 	for _, modelID := range modelIDs {
@@ -177,7 +177,7 @@ func AccumulateBootstrapPenalties(
 	for modelID := range modes {
 		modelIDs = append(modelIDs, modelID)
 	}
-	sort.Strings(modelIDs)
+	slices.Sort(modelIDs)
 
 	for _, modelID := range modelIDs {
 		if eligibleSet[modelID] {

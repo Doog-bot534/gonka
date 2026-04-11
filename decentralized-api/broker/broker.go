@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1138,7 +1139,7 @@ func (b *Broker) resolvePoCModelForNode(
 	for modelID := range nodeModels {
 		modelIDs = append(modelIDs, modelID)
 	}
-	sort.Strings(modelIDs)
+	slices.Sort(modelIDs)
 	for _, modelID := range modelIDs {
 		modelConfig, ok := params.models[modelID]
 		if ok {
@@ -1163,7 +1164,7 @@ func ResolveNodeModelID(epochMLNodes map[string]types.MLNodeInfo, nodeModels map
 	for modelID := range nodeModels {
 		modelIDs = append(modelIDs, modelID)
 	}
-	sort.Strings(modelIDs)
+	slices.Sort(modelIDs)
 	if len(modelIDs) == 0 {
 		return "", false
 	}

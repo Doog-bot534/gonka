@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 	"strconv"
 
@@ -149,7 +150,7 @@ func (wc *PoCWeightCalculator) Calculate() []*types.ActiveParticipant {
 	for participantAddress := range activeParticipantsMap {
 		participantAddresses = append(participantAddresses, participantAddress)
 	}
-	sort.Strings(participantAddresses)
+	slices.Sort(participantAddresses)
 
 	activeParticipants := make([]*types.ActiveParticipant, 0, len(participantAddresses))
 	for _, participantAddress := range participantAddresses {
@@ -159,17 +160,7 @@ func (wc *PoCWeightCalculator) Calculate() []*types.ActiveParticipant {
 }
 
 func (wc *PoCWeightCalculator) getSortedParticipantModelKeys() []types.PoCParticipantModelKey {
-	var sortedKeys []types.PoCParticipantModelKey
-	for key := range wc.StoreCommits {
-		sortedKeys = append(sortedKeys, key)
-	}
-	sort.Slice(sortedKeys, func(i, j int) bool {
-		if sortedKeys[i].ParticipantAddress == sortedKeys[j].ParticipantAddress {
-			return sortedKeys[i].ModelID < sortedKeys[j].ModelID
-		}
-		return sortedKeys[i].ParticipantAddress < sortedKeys[j].ParticipantAddress
-	})
-	return sortedKeys
+	return sortedStoreCommitKeys(wc.StoreCommits)
 }
 
 func (wc *PoCWeightCalculator) validatedParticipant(key types.PoCParticipantModelKey) *types.ActiveParticipant {
@@ -585,7 +576,7 @@ func (am AppModule) GetPreviousEpochMLNodesWithInferenceAllocation(ctx context.C
 		for modelId := range modelBuckets {
 			sortedModelIds = append(sortedModelIds, modelId)
 		}
-		sort.Strings(sortedModelIds)
+		slices.Sort(sortedModelIds)
 
 		for _, modelId := range sortedModelIds {
 			nodes := modelBuckets[modelId]
@@ -741,7 +732,7 @@ func mergeByModel(
 	for modelId := range modelNodes {
 		sortedModels = append(sortedModels, modelId)
 	}
-	sort.Strings(sortedModels)
+	slices.Sort(sortedModels)
 
 	result := make([]*types.ModelMLNodes, 0, len(sortedModels))
 	for _, modelId := range sortedModels {
@@ -888,16 +879,7 @@ func (am AppModule) ComputeNewWeights(ctx context.Context, upcomingEpoch types.E
 	allowedCommits := make(map[types.PoCParticipantModelKey]types.PoCV2StoreCommit)
 	allowedDistributions := make(map[types.PoCParticipantModelKey]types.MLNodeWeightDistribution)
 
-	var sortedCommitKeys []types.PoCParticipantModelKey
-	for key := range storeCommits {
-		sortedCommitKeys = append(sortedCommitKeys, key)
-	}
-	sort.Slice(sortedCommitKeys, func(i, j int) bool {
-		if sortedCommitKeys[i].ParticipantAddress == sortedCommitKeys[j].ParticipantAddress {
-			return sortedCommitKeys[i].ModelID < sortedCommitKeys[j].ModelID
-		}
-		return sortedCommitKeys[i].ParticipantAddress < sortedCommitKeys[j].ParticipantAddress
-	})
+	sortedCommitKeys := sortedStoreCommitKeys(storeCommits)
 
 	for _, commitKey := range sortedCommitKeys {
 		participantAddress := commitKey.ParticipantAddress
