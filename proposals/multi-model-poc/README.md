@@ -10,7 +10,7 @@ POC phases:
 > Validation and inference theoretically can be done in parallel.
 
 
-Current security model required >50% of **total network consensus weight** to vote "valid". Without delegation, an attacker needs >50% of total network weight to corrupt any (and all) host's validation.
+Current security model required >2/3 of **total network consensus weight** to vote "valid". Without delegation, an attacker needs >2/3 of total network weight to corrupt any (and all) host's validation.
 
 The bitcoin-style part of reward distributed proportionally to this weight. On early phase it's main motivation as inference is much cheaper. 
 
@@ -40,7 +40,7 @@ This proposal sets the goal to maintain same style of POC validation - every hos
 
 To define the process of adding new models to the chain, this proposal allows serving models which are not approved by governance, without inference validation and without gaining consensus power from serving such models. It also defines the process how a model approved by governance becomes eligible for consensus weight.  
 
-> **Warning**: This proposal assumes the O(N^2) validation model (>50% weight threshold). Slot-based validation is out of scope. Most probably slot-based approach will work the same way, with independent slot assigning in each group. But it must be double-checked whether to use $votingPower$ or $consensusWeight$ for hosts in group.
+> Slot-based validation works the same way: for each model group, only the proportion of total slots that the group's voting power covers is sampled from that group's members. The remaining slots are not reassigned and count as abstention. Acceptance still requires >2/3 of the full global slot count. Slot assignment uses $votingPower$ (delegation-resolved), not raw $consensusWeight$.
 
 
 ### Terms
@@ -52,7 +52,7 @@ Group membership and delegation are evaluated at the pre-eligibility cutoff and 
 
 - $pocWeight_S(group_i, p)$ — weight of host $p$ in $group_i$ at epoch $S$. Equals the number of nonces computed by $p$ in PoC procedure for this group and successfully validated. Local weight within the group.
 
-- $consensusKoeff_i$ — coefficient converting $pocWeight$ in $group_i$ to consensus weight. Defined by governance per model.
+- $consensusKoeff_i$ — coefficient converting $pocWeight$ in $group_i$ to consensus weight. Defined by governance per model. In proto this field is named `weight_scale_factor` (see `PocParams.models[]`); the Go runtime struct field is named `ConsensusKoeff`.
 
 - $consensusWeight_S(p) = \sum_{i: group_i \in E_S} consensusKoeff_i \times pocWeight_S(group_i, p)$ — (see Appendix A for cap protection)
 
@@ -95,8 +95,6 @@ Group membership and delegation are evaluated at the pre-eligibility cutoff and 
 
   Delegation constraints: $delegation_S(group_i, p_{from}, p_{to}) \ge 0$ and, for each $(group_i, p_{from})$, $\sum_{p_{to}} delegation_S(group_i, p_{from}, p_{to}) \le consensusWeight_S(p_{from})$.
 
-**Q1: Can a host split delegation across multiple hosts in the same group?**
-
 ### Eligible Groups
 
 Weight computed in PoC procedure for eligible model groups contributes to total consensus weight via governance-defined coefficient. Consensus weight determines:
@@ -128,19 +126,21 @@ Hosts not in the group and not delegating effectively vote against approval. Del
 
 **Trust model**: Delegator trusts the delegate to vote correctly.
 
-**TODO**: Mechanism to revoke delegation mid-epoch if delegate votes maliciously.
+### Participation Modes
 
-### Mandatory Group Participation & Incentive
+Every host with consensus weight resolves to one of five participation modes per governance-approved group at epoch formation:
 
-Every host with consensus weight must actively participate in every governance-approved group. For each group, the host chooses one of:
+1. DIRECT — host deploys hardware and submits a PoC store commit for the group. DIRECT is derived from commit presence, not from a separate transaction.
+2. DELEGATE — host stores a `MsgSetPoCDelegation` record targeting a group member. `delegationShare` of the delegator's weight transfers to the delegate.
+3. REFUSE — host stores a `MsgRefusePoCDelegation` record and pays `refusalPenalty`.
+4. INTENT — host stores a `MsgDeclarePoCIntent` record. Effective only for bootstrap models not yet active in the current epoch; ignored for active models. Its purpose is to surface bootstrap pre-eligibility before hosts commit hardware.
+5. NONE — host did none of the above. Pays `noParticipationPenalty`.
 
-1. Join group — deploy hardware and participate directly in the group
-2. Delegate — delegate voting power to a group member; delegator shares $delegationShare$ with the delegate, incentivizing group members to build trust
-3. Explicit refusal — decline to delegate or join; costs $refusalPenalty$; must be renewed each epoch
+The three tx-driven records (DELEGATE, REFUSE, INTENT) are mutually exclusive per `(model_id, participant)` with last-write-wins: sending any one of them clears the other two. DIRECT takes precedence over any stored tx record — if a host delegates and also submits PoC, it resolves as DIRECT.
 
-Before $penaltyStartEpoch(group_i)$, hosts may make a participation choice for `group_i` without penalty. Starting at $penaltyStartEpoch(group_i)$, hosts who didn't make a valid choice pay $noParticipationPenalty$ for that group.
+Participation is not enforced at the tx layer. Hosts that submit no commit and store no tx record resolve as NONE. Before $penaltyStartEpoch(group_i)$, all penalties for that group are skipped, giving hosts time to prepare. Starting at $penaltyStartEpoch(group_i)$, REFUSE, NONE, and bootstrap penalties apply.
 
-This incentivizes >50% of total consensus weight to participate in PoC validation for every governance-approved group.
+This incentivizes >2/3 of total consensus weight to participate in PoC validation for every governance-approved group.
 
 ### Unregistered Models
 
@@ -158,20 +158,161 @@ Purpose: build demo-case for governance proposal to show demand for the model.
 
 ### Model Lifecycle
 
-1. Unregistered phase — host adds model, serves inference directly to users, builds demo-case for governance proposal
-2. Governance proposal — model approved with defined $consensusKoeff_i$, group created
-3. Pre-penalty phase — the model is governance-approved and PoC may run for the group, but participation penalties stay disabled until `penaltyStartEpoch`
-4. Penalty phase — participation rules apply with `noParticipationPenalty`, `delegationShare`, and `refusalPenalty`; eligibility still depends on meeting conditions ($W_{threshold}$, $V_{min}$, passing PoC validation)
+1. Unregistered phase — host adds model, serves inference directly to users, builds demo-case for governance proposal. Not yet implemented (see TODO).
+2. Governance proposal — model approved with defined $consensusKoeff_i$, group created.
+3. Bootstrap period — for models not yet active, the chain runs a bootstrap flow before PoC starts. At `start_poc - deploy_window`, the chain snapshots INTENT and DELEGATE state for bootstrap candidates, evaluates advisory pre-eligibility (governance approval, $W_{threshold}$, $V_{min}$, $>2/3$ reachability from direct intent + delegations), and emits events so operators see viability before committing hardware. Hosts with INTENT deploy their hardware during the `deploy_window`. At validation start, DIRECT membership is determined by who actually submitted a store commit, not by who declared intent.
+4. Pre-penalty phase — PoC runs for the group but participation penalties stay disabled until `penaltyStartEpoch`.
+5. Penalty phase — participation rules apply with `noParticipationPenalty`, `delegationShare`, and `refusalPenalty`; eligibility still depends on meeting conditions ($W_{threshold}$, $V_{min}$, passing PoC validation).
 
-A governance-approved group may or may not be eligible in any given epoch depending on whether it meets eligibility conditions.
+A governance-approved group may or may not be eligible in any given epoch depending on whether it meets eligibility conditions. Pre-eligibility is advisory; a group that fails pre-eligibility can still become eligible if enough hosts independently participate in PoC for it.
 
 ## Implementation
 
-[To be defined]
+### Two separate weights
+
+`pocWeight(group_i, p)` is model-local: the number of nonces host `p` computed and got validated in group `i`. It drives inference routing inside the group.
+
+`consensusWeight(p) = sum(weight_scale_factor_i * pocWeight(group_i, p))` is the aggregated chain-wide weight that determines block signing power, governance voting power, PoC validation power, and bitcoin-style reward distribution. Stored as `ActiveParticipant.Weight`.
+
+### Eligibility
+
+A group is eligible for consensus weight when:
+
+1. Governance-approved with a positive coefficient.
+2. Members' consensus weight from the prior epoch's root `EpochGroupData` sums to at least `W_threshold` fraction of total prior-epoch network weight. Mid-epoch member removal is reflected: weight of a participant removed from the SDK group during epoch N-1 does not count toward N's eligibility.
+3. At least `V_min` members with positive prior-epoch consensus weight (same source) pass PoC.
+
+### Group cap
+
+An additional layer of protection in case validation within a group is compromised. Consensus weight from any non-initial group is capped at `cap_factor * sum(members' prior-epoch consensus weight from other eligible groups)`. If the raw total exceeds the cap, all member contributions in that group are scaled down proportionally. With `cap_factor = 1`, a group can contribute at most as much weight as its members already proved in other groups, which prevents any single non-initial group from exceeding ~50% of total network weight. The initial group is exempt via `DelegationParams.initial_model_id`. Delegation affects voting power but not the cap.
+
+### Validation rule
+
+Host `p`'s PoC result in group `i` is accepted when `sum(votingPower of approvers) / totalNetworkWeight > 2/3`. If neither valid nor invalid votes reach 2/3, the guardian tiebreak rule from pre-multi-model PoC applies: the decision passes only if every voting guardian agrees unanimously. Hosts not in the group and not delegating effectively abstain, which counts against acceptance.
+
+### ActiveParticipant and EpochGroupData
+
+`ActiveParticipant` stores per-model delegation-resolved voting powers in a `repeated ModelVotingPower voting_powers` field. `ActiveParticipants` is written once at epoch formation and stays immutable for the duration of that epoch. Because it cannot reflect mid-epoch changes, the same data is also propagated to `EpochGroupData`, which does reflect mid-epoch changes like member removal.
+
+`EpochGroupData` is the mutable per-epoch state. A root group (`model_id = ""`) stores all members with their consensus weight. Each model subgroup (`model_id = "llama3"`) stores only members serving that model, with model-local fields:
+
+- `ValidationWeight.weight` = sum of raw `PocWeight` for that model (no coefficient).
+- `ValidationWeight.ml_nodes` = that model's node info.
+- `ValidationWeight.voting_power` = delegation-resolved voting power for that model.
+
+Root group entries have `voting_power = 0` and `ml_nodes = nil`.
+
+Both stores exist because they serve different purposes. `ActiveParticipants` is the permanent historical record of each epoch's active set. `EpochGroupData` reflects the live state: when a host is invalidated mid-epoch, it is removed from the group, and `GetGroupMembers` excludes it from voting power snapshots and consensus weight calculations.
+
+### New on-chain collections and upgrade
+
+PoC commits, weight distributions, and validations gained `model_id` in their storage key. Adding a key component changes the codec, so the old KV prefixes (38, 39, 40) cannot be decoded with the new layout. New collections live under prefixes 58, 59, 60; no post-upgrade reader touches 38/39/40.
+
+The three top-level PoC v2 messages batch all of a host's per-model state into a single transaction per PoC stage. `MsgPoCV2StoreCommit.entries[]` carries one `PoCV2CommitEntry{model_id, count, root_hash}` per model. `MsgMLNodeWeightDistribution.entries[]` carries one `MLNodeDistributionEntry{model_id, weights[]}` per model. `MsgSubmitPocValidationsV2.validations[]` carries one `PoCValidationEntryV2{participant, weight, model_id}` per (validated participant, model).
+
+The `v0.2.12` upgrade handler:
+
+1. Clears all entries under legacy prefixes 38/39/40 with raw store iteration.
+2. Migrates singular `PocParams` fields (`model_id`, `seq_len`, `stat_test`, `weight_scale_factor`) into `PocParams.models[]` and sets `penalty_start_epoch = 0` on the resulting entry.
+3. Initializes `DelegationParams` with zero-valued defaults (`w_threshold`, `v_min`, `cap_factor`, and all three penalty fractions are 0) and sets `initial_model_id` to the founding model.
+4. Backfills `ActiveParticipant.VotingPowers` and subgroup `ValidationWeight.voting_power` for the current epoch (required because pre-upgrade data has these fields at zero).
+5. Seeds new pruning state markers so the pruner does not walk empty historical ranges.
+
+### DAPI artifact storage
+
+DAPI stores PoC artifacts in local MMR-backed stores, one per `(stage, model_id)`. The directory layout is `<base>/<stage>/<url-encoded model_id>/`. Multiple model stores under the same stage are accessed concurrently during generation. Proof requests, proof signatures, callback routes (`/v2/poc-batches/:model_id/generated`, `/v2/poc-batches/:model_id/validated`), and artifact-state queries all include `model_id`.
+
+### Delegation snapshots
+
+Two separate snapshots, captured at different times, for different purposes.
+
+`BootstrapDelegationSnapshot` is captured at `start_poc - deploy_window`. It stores delegations and intents for approved models that are not yet active. The chain uses it to evaluate advisory pre-eligibility and, later at validation start, to build voting powers for bootstrap models. It is captured early so operators see pre-eligibility events before committing hardware. The `deploy_window` is the runway for hosts that declared INTENT to provision MLNodes for the new model (on new hardware or on existing hardware) in time for PoC start.
+
+`DelegationSnapshot` is captured at `poc_validation_start`. It stores delegations and refusals (no intents) for all approved models. The chain uses it at epoch formation to resolve participation modes (DIRECT/DELEGATE/REFUSE/NONE) and compute next-epoch voting powers.
+
+For existing active models, validation-time voting powers come from `EpochGroupData` subgroups (already delegation-resolved at previous epoch formation). For bootstrap models, voting powers are computed fresh from consensus weights + bootstrap snapshot + actual store commits.
+
+### Model resolution
+
+Broker resolves which model a node generates PoC for via `resolvePoCModelForNode`:
+
+1. If `EpochMLNodes` has exactly one entry, use that model.
+2. If `EpochMLNodes` has multiple entries, skip (ambiguous).
+3. If `EpochMLNodes` is empty (fresh node, no epoch assignment yet), pick the first governance-approved model from the node's configured models, alphabetically sorted. Sort is only for determinism; the rest of the pipeline still assumes one configured model per node, so this path is meaningful only in the single-model case.
+
+### Slot sampling
+
+In slot mode, the system computes how many of the global `validation_slots` belong to a model: `floor(modelVotingPower / totalNetworkWeight * validation_slots)`. The remaining global slots stay empty and behave as abstention. Approval still requires `>2/3` of the full global slot count. Slot assignment uses `votingPower` (delegation-resolved). When slot mode is disabled, approval uses model-local delegated voting power against total network weight.
+
+### Weight formation
+
+Two calculators handle different concerns. `PoCWeightCalculator` validates individual PoC results (>2/3 acceptance threshold, slot sampling, guardian tiebreak) and produces raw per-model `pocWeight`. It has no knowledge of cross-model aggregation, delegation economics, or eligibility. `DelegationWeightCalculator` operates after model assignment: it determines eligible groups, applies group caps, computes aggregated `consensusWeight`, resolves participation modes, and computes per-model voting powers. This separation keeps PoC validation independent from the multi-model policy layer.
+
+The epoch formation pipeline in `onEndOfPoCValidationStage`:
+
+```
+1. ComputeNewWeights
+   PoCWeightCalculator validates PoC results per (participant, model).
+   Preserved nodes keep their previous model bucket.
+   Merge preserved + fresh PoC nodes per model.
+   Output: activeParticipants with per-model MlNodes and raw pocWeight.
+
+2. setModelsForParticipants
+   Assigns each ML node to exactly one governance model.
+
+3. DelegationWeightCalculator
+   - EligibleGroups: filter by governance approval + W_threshold + V_min
+   - ResolveGroupParticipation: DIRECT/DELEGATE/REFUSE/NONE per model
+   - ComputeConsensusWeights: aggregate with coefficients, apply group caps
+
+4. Delegation + bootstrap penalty accumulation
+   Penalties from REFUSE, NONE, and bootstrap modes sum across models,
+   capped at 1.0. DELEGATE transfers delegation_share to the target.
+   Applied directly to participant weight.
+
+5. AdjustWeightsByCollateral
+
+6. ApplyEpochPowerCapping
+
+7. computeAndSetVotingPowers
+   Uses final post-adjustment weights + DelegationSnapshot + DIRECT membership.
+   Writes to ActiveParticipant.VotingPowers.
+
+8. AllocateMLNodesForPoC
+   Per model, selects a fraction of nodes and sets POC_SLOT=true.
+   These nodes continue serving inference during PoC.
+
+9. SetActiveParticipants (immutable from this point)
+
+10. addEpochMembers
+    Propagates to EpochGroupData root group and model subgroups.
+    addToModelGroups writes subgroup weight = sum of raw PocWeight (no coefficient).
+    Subgroup ValidationWeight.voting_power = model-local delegation-resolved power.
+
+11. Cleanup: delete consumed PoCRefusal and PoCDirectIntent entries.
+```
+
+The initial model is exempt from the group cap through `initial_model_id`. Confirmation PoC reuses the same model-aware validation snapshot and weight-calculation path.
+
+`design-1.md` covers the model-aware PoC state, storage keys, and runtime flow in more depth. `design-2.md` covers delegation, voting-power resolution, snapshots, and the `DelegationWeightCalculator` in more depth.
+
+## Open Questions
+
+- **Q1**: Can a host split delegation across multiple hosts in the same group? Current design: no, one target per `(model_id, delegator)`.
+- **Q5**: What should the group-cap factor $f$ be? Governance parameter `cap_factor`; current default is zero (cap disabled), concrete value must be set before release.
+- Should delegation penalties and `delegation_share` affect only bitcoin-style rewards instead of consensus weight? Current implementation applies both directly to participant consensus weight.
+- Should `IsGroupEligible` add the same explicit `>2/3` reachability check currently used only by bootstrap pre-eligibility?
+- Mechanism to revoke delegation mid-epoch if delegate votes maliciously.
+
+## TODO
+
+- The unregistered-model phase from the Model Lifecycle section is not implemented. All PoC paths require the model to be governance-approved. If the unregistered-model flow is still required, it needs a separate implementation.
+- The upgrade handler leaves `DelegationParams` and every `penalty_start_epoch` at zero. Before release, set concrete values for `w_threshold`, `v_min`, `cap_factor`, the three penalty fractions, and per-model `penalty_start_epoch`.
+- When a node declares support for multiple models, the fresh-node fallback in `resolvePoCModelForNode` needs a cleaner resolution path. Current code assumes one configured model per node.
 
 ## Appendix A: Delegation-based Attack and Protection
 
-**Attack:** Host accumulates >50% $votingPower$ via delegation, validates fake participant claiming large weight, gains consensus control.
+**Attack:** Host accumulates >2/3 $votingPower$ via delegation, validates fake participant claiming large weight, gains consensus control.
 
 **Protection option:** Cap weight from each group by members' proven weight elsewhere.
 
@@ -185,6 +326,4 @@ For clarity: "other eligible groups" refers to consensus weight already earned f
 - $f$ is a governance parameter
 - Delegation affects $votingPower$ but not the cap (cap is PoC-weight-based)
 
-This bounds the damage from fake participants: even if they pass validation, their weight contribution is limited by real members' stake in other groups. The cap is a secondary defense; validation (>50% of network weight) remains the primary one.
-
-**Q5: What should $f$ be?**
+This bounds the damage from fake participants: even if they pass validation, their weight contribution is limited by real members' stake in other groups. The cap is a secondary defense; validation (>2/3 of network weight) remains the primary one.
