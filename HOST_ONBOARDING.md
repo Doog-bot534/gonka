@@ -4,19 +4,17 @@
 > activates consensus-level transaction fees, **and** existing hosts upgrading
 > from v0.2.11 → v0.2.12.
 >
-> **TL;DR for existing hosts:** After the v0.2.12 upgrade, re-run
-> `inferenced tx inference grant-ml-ops-permissions` from your local machine.
-> This single transaction issues both the authz grants **and** a feegrant
-> allowance from cold → warm, so the DAPI's automated transactions are paid
-> by the cold account without needing to fund the warm key.
->
-> **That's it.** The DAPI auto-discovers the on-chain minimum gas price at
-> startup and configures itself accordingly — no `config.env` changes
-> required.
+> **TL;DR for existing hosts:** Nothing to do. The v0.2.12 upgrade handler
+> automatically creates a feegrant allowance from your cold key to your warm
+> key for every existing ML ops authz grant on chain (default: 100 GNK
+> spend limit, 1-year expiration). The DAPI auto-discovers the on-chain
+> minimum gas price at startup. As long as your cold account has enough
+> balance to cover its expected fees, the upgrade is fully transparent.
 >
 > **For new hosts:** follow the standard quickstart. The existing
-> `grant-ml-ops-permissions` step now sets up the feegrant automatically, and
-> the DAPI auto-configures its gas price from the chain.
+> `grant-ml-ops-permissions` step sets up both the authz grants and the
+> feegrant allowance automatically, and the DAPI auto-configures its gas
+> price from the chain.
 
 This document walks through the **complete onboarding process for a new host**
 and the **upgrade procedure for existing hosts** in a network where consensus
@@ -278,18 +276,23 @@ the remaining 80% requires backing collateral). See
 
 ## 4. Existing host upgrade procedure (v0.2.11 → v0.2.12)
 
-This is the **mandatory action** for any host already running on v0.2.11 when
-the v0.2.12 upgrade activates.
+The upgrade is **fully automatic**. Cosmovisor swaps the binary at the
+upgrade block, and the v0.2.12 upgrade handler does three things:
+
+1. Sets `FeeParams` to the chain default (10 ngonka per gas).
+2. Iterates every existing cold→warm authz grant and **automatically creates
+   a `BasicAllowance` from cold→warm** (default: 100 GNK spend limit,
+   1-year expiration). This means the warm key can immediately start paying
+   fees from the cold account's balance via `x/feegrant` after the upgrade.
+3. The new DAPI binary, on its first start under cosmovisor, queries the
+   chain and self-configures its gas price from the on-chain `FeeParams`.
 
 ### 4.1 Before the upgrade activates
 
-Nothing required. The chain upgrade happens automatically through cosmovisor,
-and the v0.2.12 upgrade handler sets `FeeParams` to the default values.
-
-### 4.2 Top up the cold account
-
-Make sure the cold account has at least **20 GNK** of balance. This covers
-the default feegrant allowance and the cost of the re-grant transaction.
+**The only thing you need to do** is make sure your cold account has enough
+balance to cover the expected fee burden over the lifetime of the auto-granted
+allowance. Recommended: **at least 100 GNK** (matches the default allowance
+spend limit). Hosts who claim significant reward volume may want more.
 
 ```bash
 ./inferenced query bank balances <cold-address> --node ...
@@ -297,39 +300,7 @@ the default feegrant allowance and the cost of the re-grant transaction.
 
 If short, top up from any external wallet.
 
-### 4.3 Re-run grant-ml-ops-permissions
-
-This is the **only required command** after the upgrade. Run it from your
-local machine where the cold key lives:
-
-```bash
-./inferenced tx inference grant-ml-ops-permissions \
-    gonka-account-key \
-    <warm-key-address> \
-    --from gonka-account-key \
-    --gas-prices 10ngonka \
-    --node http://node2.gonka.ai:8000/chain-rpc/
-```
-
-> The warm key address is the same one you used at original onboarding. You
-> can find it on the server with `docker compose exec api inferenced keys
-> list --keyring-backend file`.
-
-This re-grants the authz permissions **and** issues the new `MsgGrantAllowance`
-that the post-upgrade DAPI requires.
-
-### 4.4 Restart the DAPI (if cosmovisor did not already)
-
-Cosmovisor normally restarts the DAPI automatically at the upgrade block.
-If for any reason it did not, restart manually so the new binary picks up
-the on-chain FeeParams at startup:
-
-```bash
-cd ~/gonka/deploy/join
-docker compose restart api
-```
-
-### 4.5 Verify
+### 4.2 Verify after the upgrade
 
 Watch the DAPI logs for a successful claim cycle (next epoch end):
 
@@ -337,8 +308,43 @@ Watch the DAPI logs for a successful claim cycle (next epoch end):
 docker compose logs api -f | grep -E "ClaimRewards|reward"
 ```
 
-If you see `Fee-grant from cold to warm key is missing or expired` in the
-logs, you skipped step 4.3. Run it now.
+You should see `Using on-chain FeeParams.MinGasPriceNgonka = 10` in the
+DAPI startup logs and successful reward claims at each epoch boundary.
+
+### 4.3 If something goes wrong: revoke and re-grant manually
+
+In the unlikely event the auto-migration missed your account (e.g., your
+authz grants were structured differently from the standard
+`grant-ml-ops-permissions` output), you can manually re-create everything.
+
+If a feegrant allowance already exists from your cold to your warm key but
+you want to refresh it, first revoke the existing one:
+
+```bash
+./inferenced tx feegrant revoke <warm-address> \
+    --from gonka-account-key \
+    --gas-prices 10ngonka \
+    --node http://node2.gonka.ai:8000/chain-rpc/
+```
+
+Then re-run the standard ML ops grant which will recreate both the authz
+grants and the feegrant allowance:
+
+```bash
+./inferenced tx inference grant-ml-ops-permissions \
+    gonka-account-key \
+    <warm-address> \
+    --from gonka-account-key \
+    --gas-prices 10ngonka \
+    --node http://node2.gonka.ai:8000/chain-rpc/
+```
+
+You can verify the allowance with:
+
+```bash
+./inferenced query feegrant grant <cold-address> <warm-address> \
+    --node http://node2.gonka.ai:8000/chain-rpc/
+```
 
 ---
 
