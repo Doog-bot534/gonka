@@ -61,7 +61,8 @@ const (
 )
 
 type StateResponse struct {
-	State MLNodeState `json:"state"`
+	State   MLNodeState `json:"state"`
+	Version string      `json:"version"`
 }
 
 func (api *Client) NodeState(ctx context.Context) (*StateResponse, error) {
@@ -162,7 +163,7 @@ func (api *Client) InferenceUp(ctx context.Context, model string, args []string)
 
 	dto := inferenceUpDto{
 		Model: model,
-		Dtype: "float16",
+		Dtype: "auto",
 		Args:  args,
 	}
 

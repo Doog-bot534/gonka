@@ -14,6 +14,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/authz"
 	authzkeeper "github.com/cosmos/cosmos-sdk/x/authz/keeper"
 	distrkeeper "github.com/cosmos/cosmos-sdk/x/distribution/keeper"
+	blskeeper "github.com/productscience/inference/x/bls/keeper"
+	blstypes "github.com/productscience/inference/x/bls/types"
 	"github.com/productscience/inference/x/inference/keeper"
 	"github.com/productscience/inference/x/inference/types"
 )
@@ -32,6 +34,7 @@ func CreateUpgradeHandler(
 	configurator module.Configurator,
 	k keeper.Keeper,
 	_ distrkeeper.Keeper,
+	blsKeeper blskeeper.Keeper,
 	authzKeeper authzkeeper.Keeper,
 	feegrantKeeper feegrantkeeper.Keeper,
 ) upgradetypes.UpgradeHandler {
@@ -55,6 +58,11 @@ func CreateUpgradeHandler(
 		}
 
 		err = adjustParameters(ctx, k)
+		if err != nil {
+			return nil, err
+		}
+
+		err = adjustBLSParameters(ctx, blsKeeper)
 		if err != nil {
 			return nil, err
 		}
@@ -185,6 +193,26 @@ func adjustParameters(ctx context.Context, k keeper.Keeper) error {
 		return err
 	}
 	return nil
+}
+
+func adjustBLSParameters(ctx context.Context, blsKeeper blskeeper.Keeper) error {
+	params, err := blsKeeper.GetParams(ctx)
+	if err != nil {
+		return err
+	}
+
+	defaults := blstypes.DefaultParams()
+	if params.ITotalSlots == 0 {
+		params = defaults
+	}
+	if params.DisputePhaseDurationBlocks <= 0 {
+		params.DisputePhaseDurationBlocks = defaults.DisputePhaseDurationBlocks
+	}
+	if params.MaxSigningAttempts == 0 {
+		params.MaxSigningAttempts = defaults.MaxSigningAttempts
+	}
+
+	return blsKeeper.SetParams(ctx, params)
 }
 
 func removeTopMiner(ctx context.Context, k keeper.Keeper) error {
