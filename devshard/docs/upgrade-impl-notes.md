@@ -1,68 +1,61 @@
 # Devshard Upgrade -- Implementation Notes
 
-Working notes. Not intended for the repo long-term.
-
+Scope: the first versioned release, where the devshard binary is built out of `decentralized-api/` as a temporary shortcut. The long-term rewrite into the `devshard/` module is not covered here.
 
 ## Version binding
 
-The devshard binary has its version hardcoded at build time. Devshard state stores the version on creation. Hosts compare the two -- mismatch is a consensus error.
+`MsgCreateDevshardEscrow` and `DevshardEscrow` unchanged -- no version field.
 
-Each version ships its own devshardctl.
+The binary embeds its version via ldflags `-X`. On first interaction with an escrow, the host writes that version to `EscrowState.boundVersion`. Every `ApplyLocal` asserts the binary's version matches state; mismatch means the host refuses to sign. `boundVersion` contributes to the state hash, so 2/3+ signatures implicitly attest to it.
 
+Each version ships its own `devshardctl`.
 
 ## Settlement rejection
 
-Chain must reject settlement tx for a version no longer in the approved set.
+`MsgSettleDevshardEscrow` gets a `version` field. At settle, the chain rejects if `version` is empty or not in the current `approved_versions`. Because `boundVersion` is part of `state_root` and state_root is signed by 2/3+ hosts, any attempt to mis-declare the version at settle time fails signature verification.
 
+Rollout: land the field as optional with a warning first, then flip to hard-reject in the upgrade handler of the same release so old clients get one window to upgrade.
 
 ## Proxy
 
-New `/devshard/` location in nginx pointing to versiond upstream.
+Add a `/devshard/` location in `proxy/nginx.unified.conf.template` pointing at a `versiond_backend` upstream. Clone streaming config from `/api/`. Location ordering must keep `/v1/devshard/` matching dapi directly, not versiond.
 
+## Devshardd binary
 
-## Self-sufficient devshard binary
+`devshard/` is a separate Go module and cannot import `decentralized-api/internal/...`. To reuse dapi's adapters without a rewrite, the binary lives at `decentralized-api/cmd/devshardd/`.
 
-The devshard binary must run independently from decentralized-api. The following interfaces are defined in `devshard/` but currently only implemented in `decentralized-api/internal/devshard/`:
+Wiring:
+- `cosmosclient` -- chain reads and writes
+- `internaldevshard.NewChainBridge(recorder)` for the bridge (or `devshard/bridge.NewRESTBridge`, equivalent; both stub the action methods)
+- `internaldevshard.NewSignerFromKeyring(keyring, uid)`
+- `devshard/storage.NewSQLite(path)` -- tentative, see Storage below
+- `internaldevshard.NewEngineAdapter(...)` and `NewValidationAdapter(...)`
+- `internaldevshard.NewHostManager(...)` with `RecoverSessions()` on startup and `Register(echoGroup)` for routes
+- echo server on `--port`
 
-### InferenceEngine (engine.go)
-- `Execute(ctx, ExecuteRequest) (*ExecuteResult, error)`
-- Dapi impl: `EngineAdapter` in `decentralized-api/internal/devshard/engine.go` -- wraps broker + completionapi
-- Standalone impl: get mlnode URL via gRPC to dapi, then call `/chat/completions` directly on mlnode. Depends on https://github.com/gonka-ai/gonka/pull/945
+Dropped from dapi's `main()`: admin server, model manager, PoC commit worker, event dispatcher, block queue, config sync, node manager gRPC server.
 
-### ValidationEngine (engine.go)
-- `Validate(ctx, ValidateRequest) (*ValidateResult, error)`
-- Dapi impl: `ValidationAdapter` in `decentralized-api/internal/devshard/validation.go` -- re-executes inference, compares logits
+Build:
+```
+go build -ldflags "-X decentralized-api/cmd/devshardd.Version=$VERSION" \
+  -o build/devshardd ./cmd/devshardd
+```
 
-### MainnetBridge (bridge/interface.go)
-- `OnEscrowCreated()`, `OnSettlementProposed()`, `OnSettlementFinalized()`, `GetEscrow()`, `GetHostInfo()`, `VerifyWarmKey()`, `SubmitDisputeState()`
-- Dapi impl: `ChainBridge` in `decentralized-api/internal/devshard/bridge.go` -- uses CosmosMessageClient (gRPC)
+Validate before shipping that `devshardd`'s `main()` does not transitively pull in dapi's init-time side effects (dispatcher, modelmanager, adminserver). Expected binary size 60-100 MB.
 
-### Signer (signing/interface.go)
-- `Sign(message) ([]byte, error)`, `Address() string`
-- Dapi impl: `NewSignerFromKeyring()` in `decentralized-api/internal/devshard/signer.go`
+## Storage
 
-### Storage (storage/interface.go)
-- `CreateSession()`, `MarkSettled()`, `ListActiveSessions()`, `AppendDiff()`, `GetDiffs()`, `AddSignature()`, `GetSignatures()`, `GetSessionMeta()`, `MarkFinalized()`, `LastFinalized()`, `Close()`
-- Standalone impl: postgres as default. Need a fallback for environments without remote postgres (sqlite or local file)
+Decide whether sqlite stays available at all. Multiple devshardd instances cannot share a sqlite file, and sqlite does not scale horizontally, so postgres is the only viable backend for real host deployments.
 
+A postgres adapter is required. Implements the existing `storage.Storage` interface at `devshard/storage/interface.go` -- no new interface surface.
 
-## HTTP server
+Pruning is required and does not exist today. Settled sessions accumulate diffs, signatures, and meta rows forever. Add a retention mechanism that drops rows for `status=settled` sessions past a window, run from a background goroutine. Retention policy (window size, guarantees) is a separate decision.
 
-The standalone binary needs its own HTTP server replacing `HostManager.Register()` from `decentralized-api/internal/devshard/manager.go`. Same routes:
+## Other required changes
 
-Authenticated (POST, require X-Devshard-Signature + X-Devshard-Timestamp):
-- `/sessions/:id/chat/completions`
-- `/sessions/:id/verify-timeout`
-- `/sessions/:id/challenge-receipt`
-- `/sessions/:id/gossip/nonce`
-- `/sessions/:id/gossip/txs`
+Not skipped by the shortcut:
 
-Unauthenticated (GET):
-- `/sessions/:id/diffs`
-- `/sessions/:id/mempool`
-- `/sessions/:id/signatures`
-- `/sessions/:id/payloads`
-
-Auth is already in `devshard/transport/` (server.go, auth.go). The HostManager glue (session lifecycle, lazy creation, singleflight, recovery) must be reimplemented in the devshard binary.
-
-Security: unauthenticated GET endpoints must have rate limiting. No public endpoint without auth should be exposed without limits.
+- `MsgSettleDevshardEscrow.version` plus approved-versions check at settle (see Settlement rejection).
+- `EscrowState.boundVersion` plus first-interaction record, per-apply assertion, and state-hash inclusion (see Version binding).
+- nginx `/devshard/` location (see Proxy).
+- Rate limiting on transport GET endpoints. `HostManager.Register` at `decentralized-api/internal/devshard/manager.go:243` currently does not pass `transport.WithRateLimit(...)`, so the unauthenticated GETs (`/diffs`, `/mempool`, `/signatures`, `/payloads`) are unthrottled. This is a live bug in the dapi path today, not only a gap for the new binary.

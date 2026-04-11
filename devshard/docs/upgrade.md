@@ -1,49 +1,68 @@
 # Devshard Upgrades
 
-Devshard versioning is fully decoupled from mainnet. Devshard binaries upgrade independently and much more frequently.
+Devshard binaries version independently of mainnet. No cosmovisor, no coordinated upgrades.
 
-## Version Lifecycle
-
-```
-governance proposal -> approved_versions in chain params -> dapi serves GET /versions -> versiond polls and deploys
-```
-
-Mainnet maintains the set of approved devshard versions in `DevshardEscrowParams.approved_versions`. Each version has a name, download URL, and sha256 hash. Changes require a governance proposal via `MsgUpdateParams`.
-
-Every host must run ALL approved versions simultaneously. versiond handles download, verification, process management, and routing.
-
-## Version Binding
-
-A devshard binds to exactly one version. The version is determined by the path the user hits on first interaction. Once bound, it cannot change. Hosts treat version mismatch as a consensus error.
-
-There is no migration between versions. Devshards are short-lived; operators settle the old devshard and create a new one on the newer version.
-
-## Request Routing
-
-Two paths coexist:
+## Flow
 
 ```
-/v1/devshard/*        -> decentralized-api (current, unchanged)
-/devshard/*             -> versiond -> standalone devshard binary (v2+)
+governance proposal -> params.approved_versions -> dapi GET /versions -> versiond polls, downloads, runs
 ```
 
-v1 continues to run through dapi as it does today. New versions (v2+) route through versiond to the standalone devshard binary. Both paths are live simultaneously.
+`DevshardEscrowParams.approved_versions` is a governance-controlled list. Each entry has a name, a binary URL, and a sha256. Updates go through `MsgUpdateParams`.
 
-The user's client library controls which version to use by choosing the URL path.
+sha256 is the sole identity for a binary -- the URL is a download hint only. Two governance proposals that point at different mirrors but carry the same hash cause zero restarts. A proposal that reuses a name but changes the hash replaces the binary with a zero-downtime swap: versiond downloads the new binary first, then stops the old process.
+
+Cached binaries are re-hashed on every versiond startup, so a tampered file on disk is detected before routing traffic to it.
+
+## Multiple versions per host
+
+Every host runs every approved version concurrently. If `approved_versions = [v1, v2, v3]`, each host has three devshard child processes running side by side under versiond, reachable via three different URL prefixes. Hosts do not pick and choose -- it is all approved versions or nothing.
+
+## Version binding
+
+Escrow creation is version-agnostic. `MsgCreateDevshardEscrow` takes no version.
+
+The user picks a version by choosing the URL path at session start:
+
+```
+/v1/devshard/*          -> dapi, in-process (pre-versiond, unchanged)
+/devshard/<version>/*   -> versiond -> devshard binary for <version>
+```
+
+The first request routes to one version's binary. That host writes its build-time version into off-chain state. Every subsequent diff asserts the same version -- a host whose binary version does not match state refuses to sign. A session that tries to drift across versions cannot collect 2/3+ signatures and cannot settle.
+
+`/v1/devshard/*` is the legacy path served directly by dapi and is not managed by versiond. From v2 onward, all versioned traffic goes through `/devshard/<version>/*`.
 
 ## Deprecation
 
-Removing a version from the approved set is a governance vote. The process:
+Governance removes a version from `approved_versions`.
 
-1. Governance proposal changes approved set from [v1, v2, v3] to [v2, v3]
-2. During the voting period, hosts are incentivized to settle all v1 devshards
-3. After the proposal passes, settlement on v1 is no longer possible
-4. versiond automatically stops the v1 binary
+Settlement is user-driven: `MsgSettleDevshardEscrow` is submitted by the user, who has the active stake in recovering unused escrow. Hosts can settle only if the user has disappeared past a timeout. So during the voting period, users are the ones expected to close out in-flight sessions on the version being removed.
 
-Hosts bear the risk of unsettled devshards on deprecated versions. No grace period exists beyond the governance voting window.
+Once the proposal passes, the chain rejects `MsgSettleDevshardEscrow` for that version, and versiond stops the binary on its next poll. Any session still open at that point loses the escrow. The chain cannot block new sessions on a deprecated version at create time because creation carries no version -- enforcement is at settle, and nowhere earlier.
 
-In the future, the chain may block new devshard creation on deprecated versions before finalization, giving hosts more time.
+## Operator overrides
 
-## What Gets Versioned
+Host operators can override individual versions without waiting on governance:
 
-Only the devshard binary. The decentralized-api is never touched by versiond. The devshard binary is a separate artifact from dapi for all versions going forward.
+- `VERSIOND_OVERRIDE_<name>=/path/to/binary` -- replace the downloaded binary for `<name>` with a local file. versiond still checks sha256 and still restarts on changes; it just uses the local file instead of the URL. Useful for hotfixes and local debugging.
+- `VERSIOND_FORCE=v4-rc1` -- run a version not in `approved_versions`. Requires a matching `VERSIOND_OVERRIDE_...`. Useful for testing a release candidate before governance votes it in.
+
+Neither mechanism affects consensus. A forced or overridden version that is not in `approved_versions` cannot settle to mainnet, so any session that uses it is off-chain only.
+
+## What versiond manages
+
+Only the devshard binary. dapi is untouched by versiond. `devshardctl` is a user-side CLI, shipped per release for client compatibility, not managed by versiond.
+
+## WARN: temporary build arrangement
+
+Target end-state: a devshard binary in the `devshard/` Go module with zero dapi dependency. The first versioned release does not ship that.
+
+Instead, the first release builds the devshard binary out of `decentralized-api/`, reusing dapi's ML engine, validation, bridge, signer, and host manager directly. Rewriting these into `devshard/` is follow-up work.
+
+Operator impact:
+- Large binary (full dapi dependency closure).
+- Runs as its own process under versiond, independent from dapi at runtime.
+- Governance flow, versiond, routing, settlement protocol: unchanged.
+
+The later migration to a self-contained `devshard/` binary is transparent to clients, governance, and versiond.
