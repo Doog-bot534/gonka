@@ -11,6 +11,7 @@ import (
 
 type GatewaySettings struct {
 	ChainREST               string `json:"chain_rest"`
+	PublicAPI               string `json:"public_api"`
 	DefaultModel            string `json:"default_model"`
 	DefaultRequestMaxTokens uint64 `json:"default_request_max_tokens"`
 	MaxConcurrentRequests   int64  `json:"max_concurrent_requests"`
@@ -42,6 +43,7 @@ func NewGatewayStore(path string) (*GatewayStore, error) {
 		`CREATE TABLE IF NOT EXISTS gateway_settings (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			chain_rest TEXT NOT NULL,
+			public_api TEXT NOT NULL DEFAULT '',
 			default_model TEXT NOT NULL,
 			default_request_max_tokens INTEGER NOT NULL,
 			max_concurrent_requests INTEGER NOT NULL,
@@ -65,6 +67,20 @@ func NewGatewayStore(path string) (*GatewayStore, error) {
 			return nil, fmt.Errorf("init gateway store: %w", err)
 		}
 	}
+	if err := ensureGatewaySettingsColumn(db, "public_api", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate gateway store: %w", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS participant_throttle_state (
+		participant_key TEXT PRIMARY KEY,
+		tokens REAL NOT NULL DEFAULT 0,
+		last_refill_at TEXT NOT NULL,
+		last_throttle_status INTEGER NOT NULL DEFAULT 0
+	)`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("init participant throttle table: %w", err)
+	}
+
 	return &GatewayStore{db: db}, nil
 }
 
@@ -78,12 +94,13 @@ func (s *GatewayStore) Close() error {
 func (s *GatewayStore) LoadState() (GatewayState, bool, error) {
 	var state GatewayState
 	row := s.db.QueryRow(`
-		SELECT chain_rest, default_model, default_request_max_tokens,
+		SELECT chain_rest, public_api, default_model, default_request_max_tokens,
 		       max_concurrent_requests, max_input_tokens_in_flight
 		FROM gateway_settings
 		WHERE id = 1`)
 	err := row.Scan(
 		&state.Settings.ChainREST,
+		&state.Settings.PublicAPI,
 		&state.Settings.DefaultModel,
 		&state.Settings.DefaultRequestMaxTokens,
 		&state.Settings.MaxConcurrentRequests,
@@ -146,10 +163,11 @@ func (s *GatewayStore) Initialize(settings GatewaySettings, subnets []GatewaySub
 
 	if _, err := tx.Exec(`
 		INSERT INTO gateway_settings (
-			id, chain_rest, default_model, default_request_max_tokens,
+			id, chain_rest, public_api, default_model, default_request_max_tokens,
 			max_concurrent_requests, max_input_tokens_in_flight, updated_at
-		) VALUES (1, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (1, ?, ?, ?, ?, ?, ?, ?)`,
 		strings.TrimSpace(settings.ChainREST),
+		strings.TrimSpace(settings.PublicAPI),
 		strings.TrimSpace(settings.DefaultModel),
 		settings.DefaultRequestMaxTokens,
 		settings.MaxConcurrentRequests,
@@ -171,6 +189,7 @@ func (s *GatewayStore) UpdateSettings(settings GatewaySettings) error {
 	res, err := s.db.Exec(`
 		UPDATE gateway_settings
 		SET chain_rest = ?,
+		    public_api = ?,
 		    default_model = ?,
 		    default_request_max_tokens = ?,
 		    max_concurrent_requests = ?,
@@ -178,6 +197,7 @@ func (s *GatewayStore) UpdateSettings(settings GatewaySettings) error {
 		    updated_at = ?
 		WHERE id = 1`,
 		strings.TrimSpace(settings.ChainREST),
+		strings.TrimSpace(settings.PublicAPI),
 		strings.TrimSpace(settings.DefaultModel),
 		settings.DefaultRequestMaxTokens,
 		settings.MaxConcurrentRequests,
@@ -268,9 +288,100 @@ func (s *GatewayStore) DeleteSubnet(id string) error {
 	return nil
 }
 
+// ParticipantThrottleRow represents a persisted reactive throttle state for one host.
+type ParticipantThrottleRow struct {
+	Key          string
+	Tokens       float64
+	LastRefillAt time.Time
+	Status       int
+}
+
+func (s *GatewayStore) SaveParticipantThrottle(key string, tokens float64, lastRefillAt time.Time, status int) error {
+	if s == nil || s.db == nil {
+		return nil
+	}
+	_, err := s.db.Exec(`
+		INSERT OR REPLACE INTO participant_throttle_state
+			(participant_key, tokens, last_refill_at, last_throttle_status)
+		VALUES (?, ?, ?, ?)`,
+		key, tokens, lastRefillAt.UTC().Format(time.RFC3339Nano), status)
+	if err != nil {
+		return fmt.Errorf("save participant throttle %s: %w", key, err)
+	}
+	return nil
+}
+
+func (s *GatewayStore) DeleteParticipantThrottle(key string) error {
+	if s == nil || s.db == nil {
+		return nil
+	}
+	_, err := s.db.Exec(`DELETE FROM participant_throttle_state WHERE participant_key = ?`, key)
+	if err != nil {
+		return fmt.Errorf("delete participant throttle %s: %w", key, err)
+	}
+	return nil
+}
+
+func (s *GatewayStore) LoadParticipantThrottles() ([]ParticipantThrottleRow, error) {
+	if s == nil || s.db == nil {
+		return nil, nil
+	}
+	rows, err := s.db.Query(`
+		SELECT participant_key, tokens, last_refill_at, last_throttle_status
+		FROM participant_throttle_state`)
+	if err != nil {
+		return nil, fmt.Errorf("load participant throttles: %w", err)
+	}
+	defer rows.Close()
+
+	var result []ParticipantThrottleRow
+	for rows.Next() {
+		var row ParticipantThrottleRow
+		var lastRefillStr string
+		if err := rows.Scan(&row.Key, &row.Tokens, &lastRefillStr, &row.Status); err != nil {
+			return nil, fmt.Errorf("scan participant throttle: %w", err)
+		}
+		row.LastRefillAt, err = time.Parse(time.RFC3339Nano, lastRefillStr)
+		if err != nil {
+			return nil, fmt.Errorf("parse last_refill_at for %s: %w", row.Key, err)
+		}
+		result = append(result, row)
+	}
+	return result, rows.Err()
+}
+
 func gatewayBoolToInt(v bool) int {
 	if v {
 		return 1
 	}
 	return 0
+}
+
+func ensureGatewaySettingsColumn(db *sql.DB, columnName, columnDDL string) error {
+	rows, err := db.Query(`PRAGMA table_info(gateway_settings)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name string
+		var dataType string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		if name == columnName {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	_, err = db.Exec(fmt.Sprintf(`ALTER TABLE gateway_settings ADD COLUMN %s %s`, columnName, columnDDL))
+	return err
 }

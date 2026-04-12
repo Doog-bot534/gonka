@@ -26,8 +26,17 @@ var (
 	NonStreamResponseFloor     = 20 * time.Second
 	PerInputTokenResponseLag   = 20 * time.Millisecond
 	SecondaryWaitAfterWinner   = time.Minute
-	MaxSpeculativeAttempts     = 0 // 0 = allow all hosts in the group
 )
+
+var maxSpeculativeAttempts atomic.Int64
+
+func SetMaxSpeculativeAttempts(v int) {
+	maxSpeculativeAttempts.Store(int64(v))
+}
+
+func CurrentMaxSpeculativeAttempts() int {
+	return int(maxSpeculativeAttempts.Load())
+}
 
 // Decision describes whether and when to start a parallel secondary inference.
 type Decision struct {
@@ -78,6 +87,7 @@ func (e *Redundancy) Decide(primaryHostIdx int, inputTokens uint64) Decision {
 type inflight struct {
 	prepared  *user.PreparedInference
 	hostIdx   int
+	hostID    string
 	nonce     uint64
 	escrowID  string
 	sendTime  time.Time
@@ -105,16 +115,17 @@ type inflight struct {
 
 // raceGroup arbitrates which inflight's stream is forwarded to the client.
 type raceGroup struct {
-	mu      sync.Mutex
-	winner  uint64 // 0 = undecided
-	w       io.Writer
-	decided atomic.Bool
-	ctx     context.Context
-	escrow  string
+	mu       sync.Mutex
+	winner   uint64 // 0 = undecided
+	w        io.Writer
+	decided  atomic.Bool
+	logCtx   context.Context
+	writeCtx context.Context
+	escrow   string
 }
 
-func newRaceGroup(ctx context.Context, escrow string, w io.Writer) *raceGroup {
-	return &raceGroup{ctx: ctx, escrow: escrow, w: w}
+func newRaceGroup(logCtx, writeCtx context.Context, escrow string, w io.Writer) *raceGroup {
+	return &raceGroup{logCtx: logCtx, writeCtx: writeCtx, escrow: escrow, w: w}
 }
 
 func (rg *raceGroup) setWinner(nonce uint64) {
@@ -123,7 +134,7 @@ func (rg *raceGroup) setWinner(nonce uint64) {
 	if rg.winner == 0 {
 		rg.winner = nonce
 		rg.decided.Store(true)
-		logInferenceStage(rg.ctx, rg.escrow, nonce, "winner_selected")
+		logInferenceStage(rg.logCtx, rg.escrow, nonce, "winner_selected")
 	}
 }
 
@@ -144,7 +155,17 @@ type raceWriter struct {
 	inf   *inflight
 }
 
+func (rw *raceWriter) ctxErr() error {
+	if rw.group == nil || rw.group.writeCtx == nil {
+		return nil
+	}
+	return rw.group.writeCtx.Err()
+}
+
 func (rw *raceWriter) Write(p []byte) (int, error) {
+	if err := rw.ctxErr(); err != nil {
+		return 0, err
+	}
 	now := time.Now()
 	rw.inf.tokenOnce.Do(func() {
 		rw.inf.firstToken = now
@@ -166,16 +187,16 @@ func (rw *raceWriter) Write(p []byte) (int, error) {
 		if isWinner {
 			route = "winner"
 		}
-		logInferenceStage(rw.group.ctx, rw.inf.escrowID, rw.nonce, "first_token", "host", rw.inf.hostIdx, "route", route, "winner_nonce", winnerNonce)
+		logInferenceStage(rw.group.logCtx, rw.inf.escrowID, rw.nonce, "first_token", "host", rw.inf.hostID, "route", route, "winner_nonce", winnerNonce)
 	}
 
 	if isWinner {
 		rw.inf.forwardedLog.Do(func() {
-			logInferenceStage(rw.group.ctx, rw.inf.escrowID, rw.nonce, "stream_forwarding_started", "host", rw.inf.hostIdx)
+			logInferenceStage(rw.group.logCtx, rw.inf.escrowID, rw.nonce, "stream_forwarding_started", "host", rw.inf.hostID)
 		})
 	} else {
 		rw.inf.suppressedLog.Do(func() {
-			logInferenceStage(rw.group.ctx, rw.inf.escrowID, rw.nonce, "stream_suppressed", "host", rw.inf.hostIdx, "winner_nonce", winnerNonce)
+			logInferenceStage(rw.group.logCtx, rw.inf.escrowID, rw.nonce, "stream_suppressed", "host", rw.inf.hostID, "winner_nonce", winnerNonce)
 		})
 	}
 
@@ -186,6 +207,9 @@ func (rw *raceWriter) Write(p []byte) (int, error) {
 }
 
 func (rw *raceWriter) Flush() {
+	if rw.ctxErr() != nil {
+		return
+	}
 	rw.group.mu.Lock()
 	isWinner := rw.group.winner == rw.nonce
 	rw.group.mu.Unlock()
@@ -200,6 +224,8 @@ func (rw *raceWriter) Flush() {
 // It replaces the old retry-based runInference in proxy.go.
 func (e *Redundancy) RunInference(ctx context.Context, params user.InferenceParams, w io.Writer) error {
 	ctx, _ = ensureRequestLogContext(ctx)
+	settleCtx, _ := ensureRequestLogContext(context.Background())
+	settleCtx = logging.PropagateRequestID(settleCtx, ctx)
 	logRequestStage(ctx, "runner_started", "escrow", e.subnetID, "input_tokens", params.InputLength, "model", params.Model)
 	primary, err := e.prepareInflight(params)
 	if err != nil {
@@ -211,22 +237,22 @@ func (e *Redundancy) RunInference(ctx context.Context, params user.InferencePara
 	if e.metrics != nil {
 		e.metrics.RecordSpeculativeDecision(decision.Reason)
 	}
-	logInferenceStage(ctx, primary.escrowID, primary.nonce, "decision_made", "host", primary.hostIdx, "decision", decision.Reason, "delay_ms", decision.Delay.Milliseconds())
-	race := newRaceGroup(ctx, e.subnetID, w)
+	logInferenceStage(ctx, primary.escrowID, primary.nonce, "decision_made", "host", primary.hostID, "decision", decision.Reason, "delay_ms", decision.Delay.Milliseconds())
+	race := newRaceGroup(settleCtx, ctx, e.subnetID, w)
 	attempts := []*inflight{primary}
 
 	// Always start the primary.
-	e.startInflight(ctx, primary, race)
+	e.startInflight(settleCtx, primary, race)
 
 	if decision.RunSecondary && decision.Delay == 0 && len(attempts) < e.maxAttempts() {
 		logRequestStage(ctx, "secondary_immediate_start", "escrow", e.subnetID, "decision", decision.Reason)
 		primary.escalated = true
-		if secondary := e.startAdditionalInflight(ctx, race, params, "secondary_immediate_start", primary, decision.Reason); secondary != nil {
+		if secondary := e.startAdditionalInflight(ctx, settleCtx, race, params, "secondary_immediate_start", primary, decision.Reason); secondary != nil {
 			attempts = append(attempts, secondary)
 		}
 	}
 
-	return e.awaitRace(ctx, attempts, race, params, decision)
+	return e.awaitRace(ctx, settleCtx, attempts, race, params, decision)
 }
 
 func (e *Redundancy) prepareInflight(params user.InferenceParams) (*inflight, error) {
@@ -237,6 +263,7 @@ func (e *Redundancy) prepareInflight(params user.InferenceParams) (*inflight, er
 	return &inflight{
 		prepared:     prepared,
 		hostIdx:      prepared.HostIdx(),
+		hostID:       e.session.HostLabel(prepared.HostIdx()),
 		nonce:        prepared.Nonce(),
 		escrowID:     e.subnetID,
 		done:         make(chan struct{}),
@@ -250,49 +277,49 @@ func (e *Redundancy) startInflight(ctx context.Context, inf *inflight, race *rac
 	receiptHandler := func() {
 		inf.receiptOnce.Do(func() {
 			inf.receiptTime = time.Now()
-			logInferenceStage(ctx, inf.escrowID, inf.nonce, "receipt_received", "host", inf.hostIdx, "elapsed_ms", inf.receiptTime.Sub(inf.sendTime).Milliseconds())
+			logInferenceStage(ctx, inf.escrowID, inf.nonce, "receipt_received", "host", inf.hostID, "elapsed_ms", inf.receiptTime.Sub(inf.sendTime).Milliseconds())
 			close(inf.receiptCh)
 		})
 	}
-	logInferenceStage(ctx, inf.escrowID, inf.nonce, "prepared", "host", inf.hostIdx)
+	logInferenceStage(ctx, inf.escrowID, inf.nonce, "prepared", "host", inf.hostID)
 	go e.monitorInflight(ctx, inf, race)
 
 	go func() {
 		defer close(inf.done)
 		inf.sendTime = time.Now()
-		logInferenceStage(ctx, inf.escrowID, inf.nonce, "started", "host", inf.hostIdx)
+		logInferenceStage(ctx, inf.escrowID, inf.nonce, "started", "host", inf.hostID)
 		inf.resp, inf.err = e.session.SendOnly(ctx, inf.prepared, rw, receiptHandler)
 		if inf.err != nil {
-			logInferenceStage(ctx, inf.escrowID, inf.nonce, "send_failed", "host", inf.hostIdx, "error", inf.err)
+			logInferenceStage(ctx, inf.escrowID, inf.nonce, "send_failed", "host", inf.hostID, "error", inf.err)
 		} else {
-			logInferenceStage(ctx, inf.escrowID, inf.nonce, "send_completed", "host", inf.hostIdx)
+			logInferenceStage(ctx, inf.escrowID, inf.nonce, "send_completed", "host", inf.hostID)
 		}
 	}()
 }
 
 // startDelayed waits for receipt or timeout, then starts a secondary if needed.
 // Returns nil if receipt arrived before timeout (no secondary needed).
-func (e *Redundancy) startAdditionalInflight(ctx context.Context, race *raceGroup, params user.InferenceParams, stage string, trigger *inflight, reason string) *inflight {
-	if ctx.Err() != nil {
+func (e *Redundancy) startAdditionalInflight(streamCtx, settleCtx context.Context, race *raceGroup, params user.InferenceParams, stage string, trigger *inflight, reason string) *inflight {
+	if streamCtx.Err() != nil {
 		return nil
 	}
 	if race.hasDecided() {
 		return nil
 	}
-	fields := []any{"host", trigger.hostIdx}
+	fields := []any{"host", trigger.hostID}
 	if delay := escalationDelay(stage, params.InputLength); delay > 0 {
 		fields = append(fields, "delay_ms", delay.Milliseconds())
 	}
-	logInferenceStage(ctx, trigger.escrowID, trigger.nonce, stage, fields...)
+	logInferenceStage(settleCtx, trigger.escrowID, trigger.nonce, stage, fields...)
 	next, err := e.prepareInflight(params)
 	if err != nil {
-		logRequestStage(ctx, "secondary_prepare_failed", "escrow", e.subnetID, "decision", reason, "error", err)
+		logRequestStage(settleCtx, "secondary_prepare_failed", "escrow", e.subnetID, "decision", reason, "error", err)
 		return nil
 	}
 	if e.metrics != nil {
 		e.metrics.RecordSpeculativeAttemptStart(reason)
 	}
-	e.startInflight(ctx, next, race)
+	e.startInflight(settleCtx, next, race)
 	return next
 }
 
@@ -368,7 +395,7 @@ type escalationTrigger struct {
 	reason   string
 }
 
-func (e *Redundancy) awaitRace(ctx context.Context, attempts []*inflight, race *raceGroup, params user.InferenceParams, decision Decision) error {
+func (e *Redundancy) awaitRace(streamCtx, settleCtx context.Context, attempts []*inflight, race *raceGroup, params user.InferenceParams, decision Decision) error {
 	doneCh := make(chan *inflight, e.maxAttempts())
 	for _, inf := range attempts {
 		e.watchInflightDone(inf, doneCh)
@@ -405,7 +432,7 @@ func (e *Redundancy) awaitRace(ctx context.Context, attempts []*inflight, race *
 			if graceTimer != nil {
 				graceTimer.Stop()
 			}
-			return e.finishRaceOutcome(ctx, attempts, params, decision, winner)
+			return e.finishRaceOutcome(settleCtx, attempts, params, decision, winner)
 		}
 
 		select {
@@ -413,7 +440,7 @@ func (e *Redundancy) awaitRace(ctx context.Context, attempts []*inflight, race *
 		case <-escalationC:
 			trigger.inf.escalated = true
 			if len(attempts) < e.maxAttempts() {
-				if next := e.startAdditionalInflight(ctx, race, params, trigger.stage, trigger.inf, trigger.reason); next != nil {
+				if next := e.startAdditionalInflight(streamCtx, settleCtx, race, params, trigger.stage, trigger.inf, trigger.reason); next != nil {
 					attempts = append(attempts, next)
 					e.watchInflightDone(next, doneCh)
 				}
@@ -426,22 +453,25 @@ func (e *Redundancy) awaitRace(ctx context.Context, attempts []*inflight, race *
 			}
 			for _, inf := range attempts {
 				if err := e.processResolvedInflight(inf); err != nil {
-					logInferenceStage(ctx, inf.escrowID, inf.nonce, "process_response_failed", "host", inf.hostIdx, "error", err)
+					logInferenceStage(settleCtx, inf.escrowID, inf.nonce, "process_response_failed", "host", inf.hostID, "error", err)
 				}
 			}
 			pending := pendingInflights(attempts)
-			logRequestStage(ctx, "speculative_wait_abandoned", "escrow", e.subnetID, "winner_nonce", winner, "pending", len(pending), "wait_ms", SecondaryWaitAfterWinner.Milliseconds())
-			go e.finishRaceWhenPendingDone(ctx, attempts, params, decision, winner)
-			logRequestStage(ctx, "request_returned_while_speculation_pending", "escrow", e.subnetID, "winner_nonce", winner, "decision", decision.Reason)
+			logRequestStage(settleCtx, "speculative_wait_abandoned", "escrow", e.subnetID, "winner_nonce", winner, "pending", len(pending), "wait_ms", SecondaryWaitAfterWinner.Milliseconds())
+			go e.finishRaceWhenPendingDone(settleCtx, attempts, params, decision, winner)
+			logRequestStage(settleCtx, "request_returned_while_speculation_pending", "escrow", e.subnetID, "winner_nonce", winner, "decision", decision.Reason)
 			return nil
-		case <-ctx.Done():
+		case <-streamCtx.Done():
 			if escalationTimer != nil {
 				stopTimer(escalationTimer)
 			}
 			if graceTimer != nil {
 				stopTimer(graceTimer)
 			}
-			return ctx.Err()
+			pending := pendingInflights(attempts)
+			logRequestStage(settleCtx, "request_stream_canceled", "escrow", e.subnetID, "winner_nonce", winner, "pending", len(pending), "decision", decision.Reason, "error", streamCtx.Err())
+			go e.finishRaceWhenPendingDone(settleCtx, attempts, params, decision, winner)
+			return streamCtx.Err()
 		}
 
 		if escalationTimer != nil {
@@ -549,7 +579,7 @@ func (e *Redundancy) monitorInflight(ctx context.Context, inf *inflight, race *r
 			}
 			stage := "waiting_for_receipt"
 			fields := []any{
-				"host", inf.hostIdx,
+				"host", inf.hostID,
 				"elapsed_ms", time.Since(inf.sendTime).Milliseconds(),
 				"output_chunks", inf.outputChunks.Load(),
 			}
@@ -643,7 +673,7 @@ func (e *Redundancy) recordSampleOnce(inf *inflight, params user.InferenceParams
 
 func (e *Redundancy) processInflightOnce(inf *inflight) error {
 	inf.processOnce.Do(func() {
-		if inf.resp == nil && inf.err != nil {
+		if inf.resp == nil {
 			return
 		}
 		inf.processErr = e.session.ProcessResponse(inf.hostIdx, inf.resp, inf.nonce)
@@ -664,7 +694,7 @@ func (e *Redundancy) finishRaceOutcome(ctx context.Context, attempts []*inflight
 	// Process all responses first so Session has complete protocol state.
 	for _, inf := range attempts {
 		if err := e.processInflightOnce(inf); err != nil {
-			logInferenceStage(ctx, inf.escrowID, inf.nonce, "process_response_failed", "host", inf.hostIdx, "error", err)
+			logInferenceStage(ctx, inf.escrowID, inf.nonce, "process_response_failed", "host", inf.hostID, "error", err)
 		}
 	}
 
@@ -699,7 +729,7 @@ func (e *Redundancy) finishRaceOutcome(ctx context.Context, attempts []*inflight
 		ok := e.session.IsNonceFinished(inf.nonce)
 		anySucceeded = anySucceeded || ok
 		logInferenceStage(ctx, inf.escrowID, inf.nonce, "race_completed",
-			"host", inf.hostIdx,
+			"host", inf.hostID,
 			"winner", inf.nonce == winnerNonce,
 			"finished", ok,
 			"responsive", inf.resp != nil && inf.resp.ConfirmedAt > 0,
@@ -727,7 +757,7 @@ func (e *Redundancy) finishRaceOutcome(ctx context.Context, attempts []*inflight
 						e.metrics.RecordInferenceTimeout(result.Reason)
 					}
 					if err != nil {
-						logInferenceStage(bgCtx, inf.escrowID, inf.nonce, "background_timeout_failed", "host", inf.hostIdx, "error", err)
+						logInferenceStage(bgCtx, inf.escrowID, inf.nonce, "background_timeout_failed", "host", inf.hostID, "error", err)
 					}
 				}
 				e.logRequestSettled(bgCtx, winnerNonce, decision, "success")
@@ -739,7 +769,7 @@ func (e *Redundancy) finishRaceOutcome(ctx context.Context, attempts []*inflight
 					e.metrics.RecordInferenceTimeout(result.Reason)
 				}
 				if err != nil {
-					logInferenceStage(ctx, inf.escrowID, inf.nonce, "timeout_failed", "host", inf.hostIdx, "error", err)
+					logInferenceStage(ctx, inf.escrowID, inf.nonce, "timeout_failed", "host", inf.hostID, "error", err)
 				}
 			}
 			logRequestStage(ctx, "request_failed", "escrow", e.subnetID, "error", "inference: no speculative attempt finished")
@@ -759,10 +789,11 @@ func (e *Redundancy) maxAttempts() int {
 	if e.groupSize <= 0 {
 		return 1
 	}
-	if MaxSpeculativeAttempts <= 0 || MaxSpeculativeAttempts > e.groupSize {
+	maxSpeculativeAttempts := CurrentMaxSpeculativeAttempts()
+	if maxSpeculativeAttempts <= 0 || maxSpeculativeAttempts > e.groupSize {
 		return e.groupSize
 	}
-	return MaxSpeculativeAttempts
+	return maxSpeculativeAttempts
 }
 
 func (e *Redundancy) resolvedWinnerNonce(attempts []*inflight, winnerNonce uint64) uint64 {

@@ -258,6 +258,7 @@ type gatewayMetricsCollector struct {
 	runtimeRequestsDesc           *prometheus.Desc
 	runtimeReservedDesc           *prometheus.Desc
 	participantExhaustedDesc      *prometheus.Desc
+	participantTrackedDesc        *prometheus.Desc
 	escrowParticipantLimitedDesc  *prometheus.Desc
 	escrowBlockedParticipantsDesc *prometheus.Desc
 	hostOpenDesc                  *prometheus.Desc
@@ -308,7 +309,13 @@ func newGatewayMetricsCollectorWithHostConnections(gateway *Gateway, hostConnect
 		),
 		participantExhaustedDesc: prometheus.NewDesc(
 			"subnet_gateway_participants_exhausted",
-			"Current number of participant budgets that are exhausted.",
+			"Current number of reactively tracked participants that are currently blocked (tokens < 1).",
+			nil,
+			nil,
+		),
+		participantTrackedDesc: prometheus.NewDesc(
+			"subnet_gateway_participants_tracked",
+			"Current number of participants in reactive throttle tracking (entered after first 429/503).",
 			nil,
 			nil,
 		),
@@ -346,6 +353,7 @@ func (c *gatewayMetricsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.runtimeRequestsDesc
 	ch <- c.runtimeReservedDesc
 	ch <- c.participantExhaustedDesc
+	ch <- c.participantTrackedDesc
 	ch <- c.escrowParticipantLimitedDesc
 	ch <- c.escrowBlockedParticipantsDesc
 	ch <- c.hostOpenDesc
@@ -367,6 +375,11 @@ func (c *gatewayMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 			c.participantExhaustedDesc,
 			prometheus.GaugeValue,
 			float64(c.gateway.participantLimiter.ExhaustedCount()),
+		)
+		ch <- prometheus.MustNewConstMetric(
+			c.participantTrackedDesc,
+			prometheus.GaugeValue,
+			float64(c.gateway.participantLimiter.TrackedCount()),
 		)
 	}
 

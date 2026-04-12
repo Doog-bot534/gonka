@@ -19,6 +19,7 @@ import (
 
 const (
 	defaultChainRESTURL = "http://localhost:1317"
+	defaultPublicAPIURL = "http://localhost:9000"
 	defaultModelName    = "Qwen/Qwen2.5-7B-Instruct"
 	defaultListenPort   = "8080"
 )
@@ -49,6 +50,7 @@ type SlotSignatureJSON struct {
 type cliFlags struct {
 	escrowID    string
 	chainREST   string
+	publicAPI   string
 	model       string
 	port        string
 	privateKey  string
@@ -67,6 +69,7 @@ type bootstrapOptions struct {
 	escrowID          string
 	privateKeyHex     string
 	chainREST         string
+	publicAPI         string
 	defaultModel      string
 	storagePath       string
 	baseStorageDir    string
@@ -96,6 +99,8 @@ func main() {
 		gatewayState = mustReloadGatewayState(gatewayStore)
 	}
 
+	mustLoadParticipantThrottleState(gatewayStore)
+
 	gateway := mustBuildGateway(gatewayStore, gatewayState, runtimeOpts.baseStorageDir)
 	defer gateway.Close()
 
@@ -122,6 +127,7 @@ func mustLoadBootstrapOptions(flags cliFlags, baseStorageDir string) bootstrapOp
 		escrowID:       firstNonEmpty(flags.escrowID, os.Getenv("SUBNET_ESCROW_ID")),
 		privateKeyHex:  firstNonEmpty(flags.privateKey, os.Getenv("SUBNET_PRIVATE_KEY")),
 		chainREST:      envOverride(flags.chainREST, os.Getenv("SUBNET_CHAIN_REST"), defaultChainRESTURL),
+		publicAPI:      envOverride(flags.publicAPI, os.Getenv("SUBNET_PUBLIC_API"), defaultPublicAPIURL),
 		defaultModel:   envOverride(flags.model, os.Getenv("SUBNET_MODEL"), defaultModelName),
 		storagePath:    firstNonEmpty(flags.storagePath, os.Getenv("SUBNET_STORAGE_PATH")),
 		baseStorageDir: baseStorageDir,
@@ -135,6 +141,7 @@ func mustLoadBootstrapOptions(flags cliFlags, baseStorageDir string) bootstrapOp
 	}
 	opts.bootstrapSettings = GatewaySettings{
 		ChainREST:               opts.chainREST,
+		PublicAPI:               opts.publicAPI,
 		DefaultModel:            opts.defaultModel,
 		DefaultRequestMaxTokens: uint64(readInt64Env("GATEWAY_DEFAULT_MAX_TOKENS", int64(DefaultRequestMaxTokens))),
 		MaxConcurrentRequests:   readInt64Env("GATEWAY_MAX_CONCURRENT_REQUESTS", 0),
@@ -147,6 +154,7 @@ func parseCLIFlags() cliFlags {
 	fs := flag.NewFlagSet("subnetctl", flag.ExitOnError)
 	escrowID := fs.String("escrow-id", "", "escrow ID (required, or SUBNET_ESCROW_ID env)")
 	chainREST := fs.String("chain-rest", defaultChainRESTURL, "chain REST API URL")
+	publicAPI := fs.String("public-api", defaultPublicAPIURL, "public API URL used for epoch/PoC phase checks")
 	model := fs.String("model", defaultModelName, "default model name")
 	port := fs.String("port", defaultListenPort, "listen port")
 	privateKey := fs.String("private-key", "", "private key hex (alternative to SUBNET_PRIVATE_KEY env)")
@@ -158,6 +166,7 @@ func parseCLIFlags() cliFlags {
 	return cliFlags{
 		escrowID:    *escrowID,
 		chainREST:   *chainREST,
+		publicAPI:   *publicAPI,
 		model:       *model,
 		port:        *port,
 		privateKey:  *privateKey,
@@ -180,6 +189,21 @@ func resolveBaseStorageDir(flagStorageDir, storagePath string) string {
 		}
 	}
 	return baseStorageDir
+}
+
+func mustLoadParticipantThrottleState(store *GatewayStore) {
+	sharedParticipantRequestLimiter.SetStore(store)
+	throttles, err := store.LoadParticipantThrottles()
+	if err != nil {
+		log.Printf("load participant throttle state: %v", err)
+		return
+	}
+	for _, t := range throttles {
+		sharedParticipantRequestLimiter.LoadState(t.Key, t.Tokens, t.LastRefillAt)
+	}
+	if len(throttles) > 0 {
+		log.Printf("loaded %d persisted participant throttle state(s)", len(throttles))
+	}
 }
 
 func mustOpenGatewayStore(baseStorageDir string) *GatewayStore {

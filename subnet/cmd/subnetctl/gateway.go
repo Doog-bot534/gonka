@@ -34,6 +34,7 @@ type Gateway struct {
 	runtimeOrder       []*subnetRuntime
 	limiter            *GatewayLimiter
 	participantLimiter *ParticipantRequestLimiter
+	phaseGate          *ChainPhaseGate
 	metrics            *SubnetMetrics
 	settings           GatewaySettings
 	store              *GatewayStore
@@ -57,14 +58,18 @@ type subnetRuntime struct {
 }
 
 type runtimeStatus struct {
-	ID             string `json:"id"`
-	Model          string `json:"model"`
-	Active         bool   `json:"active"`
-	Phase          string `json:"phase,omitempty"`
-	Nonce          uint64 `json:"nonce,omitempty"`
-	Balance        uint64 `json:"balance,omitempty"`
-	ActiveRequests int64  `json:"active_requests"`
-	ReservedTokens int64  `json:"reserved_tokens"`
+	ID                   string `json:"id"`
+	Model                string `json:"model"`
+	Active               bool   `json:"active"`
+	Phase                string `json:"phase,omitempty"`
+	Nonce                uint64 `json:"nonce,omitempty"`
+	Balance              uint64 `json:"balance,omitempty"`
+	ActiveRequests       int64  `json:"active_requests"`
+	ReservedTokens       int64  `json:"reserved_tokens"`
+	ChainPhase           string `json:"chain_phase,omitempty"`
+	ConfirmationPoCPhase string `json:"confirmation_poc_phase,omitempty"`
+	RequestsBlocked      bool   `json:"requests_blocked"`
+	BlockReason          string `json:"block_reason,omitempty"`
 }
 
 var (
@@ -176,6 +181,13 @@ func (rt *subnetRuntime) snapshot() runtimeStatus {
 		status.Nonce = rt.proxy.session.Nonce()
 		status.Balance = st.Balance
 	}
+	if rt.proxy != nil && rt.proxy.phaseGate != nil {
+		snapshot := rt.proxy.phaseGate.Snapshot()
+		status.ChainPhase = snapshot.EpochPhase
+		status.ConfirmationPoCPhase = snapshot.ConfirmationPoCPhase
+		status.RequestsBlocked = snapshot.RequestsBlocked
+		status.BlockReason = snapshot.BlockReason
+	}
 	return status
 }
 
@@ -212,11 +224,23 @@ func NewManagedGateway(runtimes []*subnetRuntime, limiter *GatewayLimiter, setti
 	g.settings = settings
 	g.baseStorageDir = baseStorageDir
 	g.store = store
+	g.phaseGate = NewChainPhaseGate(settings.PublicAPI, 0)
+	if g.phaseGate != nil {
+		for _, rt := range g.runtimeOrder {
+			if rt != nil && rt.proxy != nil {
+				rt.proxy.phaseGate = g.phaseGate
+			}
+		}
+		g.phaseGate.Start()
+	}
 	return g
 }
 
 func (g *Gateway) Close() error {
 	var firstErr error
+	if g.phaseGate != nil {
+		g.phaseGate.Stop()
+	}
 	for _, rt := range g.runtimeOrder {
 		if err := rt.close(); err != nil && firstErr == nil {
 			firstErr = err
@@ -462,6 +486,10 @@ func gatewayStatusCodeForError(err error) int {
 	if isParticipantRateLimitError(err) {
 		return http.StatusTooManyRequests
 	}
+	var admissionErr *RequestAdmissionError
+	if errors.As(err, &admissionErr) {
+		return http.StatusServiceUnavailable
+	}
 	var upstreamErr *transport.UpstreamStatusError
 	if errors.As(err, &upstreamErr) && isParticipantThrottleStatus(upstreamErr.StatusCode) {
 		return http.StatusTooManyRequests
@@ -598,6 +626,7 @@ type adminSubnetRequest struct {
 
 type adminSettingsRequest struct {
 	ChainREST               *string `json:"chain_rest,omitempty"`
+	PublicAPI               *string `json:"public_api,omitempty"`
 	DefaultModel            *string `json:"default_model,omitempty"`
 	MaxConcurrentRequests   *int64  `json:"max_concurrent_requests,omitempty"`
 	MaxInputTokensInFlight  *int64  `json:"max_input_tokens_in_flight,omitempty"`
@@ -676,6 +705,9 @@ func (g *Gateway) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
 		if req.ChainREST != nil {
 			settings.ChainREST = strings.TrimSpace(*req.ChainREST)
 		}
+		if req.PublicAPI != nil {
+			settings.PublicAPI = strings.TrimSpace(*req.PublicAPI)
+		}
 		if req.DefaultModel != nil {
 			settings.DefaultModel = strings.TrimSpace(*req.DefaultModel)
 		}
@@ -694,6 +726,18 @@ func (g *Gateway) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		g.settings = settings
+		if g.phaseGate != nil {
+			g.phaseGate.Stop()
+		}
+		g.phaseGate = NewChainPhaseGate(settings.PublicAPI, 0)
+		for _, rt := range g.runtimeOrder {
+			if rt != nil && rt.proxy != nil {
+				rt.proxy.phaseGate = g.phaseGate
+			}
+		}
+		if g.phaseGate != nil {
+			g.phaseGate.Start()
+		}
 		g.limiter.UpdateLimits(settings.MaxConcurrentRequests, settings.MaxInputTokensInFlight)
 		DefaultRequestMaxTokens = settings.DefaultRequestMaxTokens
 		g.mu.Unlock()

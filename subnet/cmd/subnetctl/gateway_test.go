@@ -106,7 +106,7 @@ func TestGatewayChooseRuntimeSkipsInactiveSubnet(t *testing.T) {
 
 func TestGatewayChooseRuntimeSkipsParticipantLimitedSubnet(t *testing.T) {
 	limiter := NewParticipantRequestLimiter(1, 10)
-	require.NoError(t, limiter.AllowRequest("shared-host", "/sessions/12/chat/completions"))
+	limiter.ObserveResult("shared-host", "/sessions/12/chat/completions", http.StatusServiceUnavailable)
 
 	limited := &subnetRuntime{id: "6", model: "m", participantKeys: []string{"shared-host"}}
 	available := &subnetRuntime{id: "12", model: "m", participantKeys: []string{"fresh-host"}}
@@ -120,7 +120,7 @@ func TestGatewayChooseRuntimeSkipsParticipantLimitedSubnet(t *testing.T) {
 
 func TestGatewayChooseRuntimeFailsWhenAllSubnetsParticipantLimited(t *testing.T) {
 	limiter := NewParticipantRequestLimiter(1, 10)
-	require.NoError(t, limiter.AllowRequest("shared-host", "/sessions/12/chat/completions"))
+	limiter.ObserveResult("shared-host", "/sessions/12/chat/completions", http.StatusServiceUnavailable)
 
 	a := &subnetRuntime{id: "6", model: "m", participantKeys: []string{"shared-host"}}
 	b := &subnetRuntime{id: "12", model: "m", participantKeys: []string{"shared-host"}}
@@ -165,7 +165,7 @@ func TestGatewayExplicitChatRouteRejectsParticipantLimitedSubnet(t *testing.T) {
 	}
 	g := NewGateway([]*subnetRuntime{rt}, NewGatewayLimiter(0, 0), "m")
 	limiter := NewParticipantRequestLimiter(1, 10)
-	require.NoError(t, limiter.AllowRequest("shared-host", "/sessions/12/chat/completions"))
+	limiter.ObserveResult("shared-host", "/sessions/12/chat/completions", http.StatusTooManyRequests)
 	g.participantLimiter = limiter
 
 	req := httptest.NewRequest(http.MethodPost, "/subnet/12/v1/chat/completions",
@@ -189,24 +189,108 @@ func TestGatewayLimiterEnforcesConcurrentAndTokenLimits(t *testing.T) {
 	require.ErrorContains(t, tokenLimiter.Acquire(6), "too many input tokens in flight")
 }
 
-func TestParticipantRequestLimiterRecoversCapacity(t *testing.T) {
+func TestParticipantRequestLimiterUntrackedHostAlwaysAllowed(t *testing.T) {
 	limiter := NewParticipantRequestLimiter(1, 10)
 	now := time.Now()
 
 	require.True(t, limiter.allow("shared-host", now))
+	require.True(t, limiter.allow("shared-host", now))
+	require.True(t, limiter.allow("shared-host", now))
+}
+
+func TestParticipantRequestLimiterRecoversAfterThrottle(t *testing.T) {
+	limiter := NewParticipantRequestLimiter(1, 10)
+	limiter.ObserveResult("shared-host", "/sessions/12/chat/completions", http.StatusServiceUnavailable)
+
+	now := time.Now()
 	require.False(t, limiter.allow("shared-host", now))
 	require.True(t, limiter.allow("shared-host", now.Add(6*time.Second)))
 }
 
 func TestParticipantRequestLimiterMarksParticipantExhaustedOn503(t *testing.T) {
 	limiter := NewParticipantRequestLimiter(2, 10)
-	require.NoError(t, limiter.AllowRequest("shared-host", "/sessions/12/chat/completions"))
-	require.NoError(t, limiter.AllowRequest("shared-host", "/sessions/12/chat/completions"))
-
 	limiter.ObserveResult("shared-host", "/sessions/12/chat/completions", http.StatusServiceUnavailable)
 
 	require.Equal(t, 1, limiter.ExhaustedCount())
+	require.Equal(t, 1, limiter.TrackedCount())
 	require.Error(t, limiter.CanAcceptEscrow([]string{"shared-host"}))
+}
+
+func TestParticipantRequestLimiterExpiresOnFullRecovery(t *testing.T) {
+	limiter := NewParticipantRequestLimiter(10, 10)
+	limiter.ObserveResult("shared-host", "/sessions/12/chat/completions", http.StatusServiceUnavailable)
+
+	require.Equal(t, 1, limiter.TrackedCount())
+	require.Equal(t, 1, limiter.ExhaustedCount())
+
+	now := time.Now().Add(61 * time.Second)
+	require.True(t, limiter.allow("shared-host", now))
+	require.Equal(t, 0, limiter.TrackedCount())
+}
+
+func TestParticipantRequestLimiterPersistsThrottleState(t *testing.T) {
+	store, err := NewGatewayStore(filepath.Join(t.TempDir(), "gateway.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { store.Close() })
+
+	limiter := NewParticipantRequestLimiter(10, 10)
+	limiter.SetStore(store)
+	limiter.ObserveResult("shared-host", "/sessions/12/chat/completions", http.StatusServiceUnavailable)
+
+	rows, err := store.LoadParticipantThrottles()
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Equal(t, "shared-host", rows[0].Key)
+	require.Equal(t, float64(0), rows[0].Tokens)
+	require.Equal(t, http.StatusServiceUnavailable, rows[0].Status)
+}
+
+func TestParticipantRequestLimiterLoadStateRecoversTokens(t *testing.T) {
+	limiter := NewParticipantRequestLimiter(10, 60)
+	pastRefill := time.Now().Add(-5 * time.Second)
+	limiter.LoadState("shared-host", 0, pastRefill)
+
+	require.Equal(t, 1, limiter.TrackedCount())
+	require.NoError(t, limiter.AllowRequest("shared-host", "/sessions/12/chat/completions"))
+}
+
+func TestParticipantRequestLimiterLoadStateDeletesFullyRecovered(t *testing.T) {
+	store, err := NewGatewayStore(filepath.Join(t.TempDir(), "gateway.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { store.Close() })
+
+	require.NoError(t, store.SaveParticipantThrottle("shared-host", 0, time.Now().Add(-time.Hour), 503))
+
+	limiter := NewParticipantRequestLimiter(10, 10)
+	limiter.SetStore(store)
+	limiter.LoadState("shared-host", 0, time.Now().Add(-time.Hour))
+
+	require.Equal(t, 0, limiter.TrackedCount())
+
+	rows, err := store.LoadParticipantThrottles()
+	require.NoError(t, err)
+	require.Len(t, rows, 0)
+}
+
+func TestParticipantRequestLimiterDeletesOnExpiry(t *testing.T) {
+	store, err := NewGatewayStore(filepath.Join(t.TempDir(), "gateway.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { store.Close() })
+
+	limiter := NewParticipantRequestLimiter(10, 10)
+	limiter.SetStore(store)
+	limiter.ObserveResult("shared-host", "/sessions/12/chat/completions", http.StatusServiceUnavailable)
+
+	rows, err := store.LoadParticipantThrottles()
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+
+	now := time.Now().Add(61 * time.Second)
+	require.True(t, limiter.allow("shared-host", now))
+
+	rows, err = store.LoadParticipantThrottles()
+	require.NoError(t, err)
+	require.Len(t, rows, 0)
 }
 
 func TestNormalizeChatRequestDefaultsAndCapsMaxTokens(t *testing.T) {
@@ -247,6 +331,7 @@ func TestAdminSettingsUpdatesLimiterAndDefaultTokens(t *testing.T) {
 	})
 	require.NoError(t, store.Initialize(GatewaySettings{
 		ChainREST:               "http://node:1317",
+		PublicAPI:               "http://api:9000",
 		DefaultModel:            "Qwen/Test",
 		DefaultRequestMaxTokens: 1000,
 		MaxConcurrentRequests:   2,
@@ -262,6 +347,7 @@ func TestAdminSettingsUpdatesLimiterAndDefaultTokens(t *testing.T) {
 	limiter := NewGatewayLimiter(2, 200)
 	g := NewManagedGateway(nil, limiter, GatewaySettings{
 		ChainREST:               "http://node:1317",
+		PublicAPI:               "http://api:9000",
 		DefaultModel:            "Qwen/Test",
 		DefaultRequestMaxTokens: 1000,
 		MaxConcurrentRequests:   2,
@@ -269,7 +355,7 @@ func TestAdminSettingsUpdatesLimiterAndDefaultTokens(t *testing.T) {
 	}, t.TempDir(), store)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/admin/settings",
-		strings.NewReader(`{"chain_rest":"http://node:2317","default_model":"Qwen/Qwen3-235B-A22B-Instruct-2507-FP8","max_concurrent_requests":7,"max_input_tokens_in_flight":700,"default_request_max_tokens":7777}`))
+		strings.NewReader(`{"chain_rest":"http://node:2317","public_api":"http://api:9900","default_model":"Qwen/Qwen3-235B-A22B-Instruct-2507-FP8","max_concurrent_requests":7,"max_input_tokens_in_flight":700,"default_request_max_tokens":7777}`))
 	rec := httptest.NewRecorder()
 	g.handleAdminSettings(rec, req)
 
@@ -284,6 +370,7 @@ func TestAdminSettingsUpdatesLimiterAndDefaultTokens(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "http://node:2317", state.Settings.ChainREST)
+	require.Equal(t, "http://api:9900", state.Settings.PublicAPI)
 	require.Equal(t, "Qwen/Qwen3-235B-A22B-Instruct-2507-FP8", state.Settings.DefaultModel)
 	require.EqualValues(t, 7777, state.Settings.DefaultRequestMaxTokens)
 	require.EqualValues(t, 7, state.Settings.MaxConcurrentRequests)
@@ -327,7 +414,7 @@ func TestGatewayMetricsEndpointExposedAndUpdated(t *testing.T) {
 
 func TestGatewayMetricsCollectorIncludesParticipantLimiterState(t *testing.T) {
 	limiter := NewParticipantRequestLimiter(1, 10)
-	require.NoError(t, limiter.AllowRequest("shared-host", "/sessions/12/chat/completions"))
+	limiter.ObserveResult("shared-host", "/sessions/12/chat/completions", http.StatusServiceUnavailable)
 
 	rt := &subnetRuntime{
 		id:              "12",
@@ -344,6 +431,7 @@ func TestGatewayMetricsCollectorIncludesParticipantLimiterState(t *testing.T) {
 	families, err := registry.Gather()
 	require.NoError(t, err)
 	requireMetricGaugeValue(t, families, "subnet_gateway_participants_exhausted", nil, 1)
+	requireMetricGaugeValue(t, families, "subnet_gateway_participants_tracked", nil, 1)
 	requireMetricGaugeValue(t, families, "subnet_gateway_escrow_participant_limited", map[string]string{"subnet_id": "12", "model": "Qwen/Test"}, 1)
 	requireMetricGaugeValue(t, families, "subnet_gateway_escrow_blocked_participants", map[string]string{"subnet_id": "12", "model": "Qwen/Test"}, 1)
 }

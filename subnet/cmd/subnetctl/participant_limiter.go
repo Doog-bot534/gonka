@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -12,7 +13,6 @@ import (
 const (
 	defaultParticipantRequestBurst             = 600
 	defaultParticipantRequestRecoveryPerMinute = 10
-	maxParticipantLimiterEntries               = 10_000
 )
 
 var sharedParticipantRequestLimiter = NewParticipantRequestLimiter(
@@ -45,12 +45,25 @@ func (e *EscrowParticipantRateLimitError) Error() string {
 	)
 }
 
+// ParticipantThrottleStore is the persistence interface for reactive throttle state.
+type ParticipantThrottleStore interface {
+	SaveParticipantThrottle(key string, tokens float64, lastRefillAt time.Time, status int) error
+	DeleteParticipantThrottle(key string) error
+}
+
+// ParticipantRequestLimiter is a reactive, per-host rate limiter.
+//
+// Hosts are not tracked until they return their first 429 or 503. After that,
+// the host enters a token-bucket cooldown: tokens start at 0 and recover at
+// recoveryPerSecond. Each allowed request consumes one token. When tokens
+// recover to the full burst value the host is removed from tracking (expired).
 type ParticipantRequestLimiter struct {
 	mu                sync.Mutex
 	burst             float64
 	recoveryPerSecond float64
 	participants      map[string]*participantRequestState
 	metrics           *SubnetMetrics
+	store             ParticipantThrottleStore
 }
 
 type participantRequestState struct {
@@ -72,6 +85,42 @@ func NewParticipantRequestLimiter(burst int, recoveryPerMinute int) *Participant
 	}
 }
 
+// LoadState restores a previously throttled participant from persistent storage.
+// Time-based recovery since lastRefill is applied. If the participant has fully
+// recovered (tokens >= burst), the record is deleted from the store instead.
+func (l *ParticipantRequestLimiter) LoadState(key string, tokens float64, lastRefill time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := time.Now()
+	elapsed := now.Sub(lastRefill).Seconds()
+	if elapsed > 0 {
+		tokens += elapsed * l.recoveryPerSecond
+	}
+	if tokens >= l.burst {
+		if l.store != nil {
+			if err := l.store.DeleteParticipantThrottle(key); err != nil {
+				log.Printf("participant_throttle_cleanup_failed participant_key=%s error=%v", key, err)
+			}
+		}
+		log.Printf("participant_limit_recovered_on_load participant_key=%s", key)
+		return
+	}
+	l.participants[key] = &participantRequestState{
+		tokens:     tokens,
+		lastRefill: now,
+	}
+	log.Printf("participant_limit_loaded participant_key=%s tokens=%.1f", key, tokens)
+}
+
+func (l *ParticipantRequestLimiter) SetStore(store ParticipantThrottleStore) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.store = store
+}
+
+// AllowRequest checks whether a request to this participant is allowed.
+// Participants that have never been throttled (no state) are always allowed.
 func (l *ParticipantRequestLimiter) AllowRequest(participantKey, _ string) error {
 	if participantKey == "" {
 		return nil
@@ -82,6 +131,7 @@ func (l *ParticipantRequestLimiter) AllowRequest(participantKey, _ string) error
 	if l.metrics != nil {
 		l.metrics.RecordParticipantLimitRejection("transport_request")
 	}
+	log.Printf("participant_limit_rejected participant_key=%s", participantKey)
 	return &ParticipantRateLimitError{ParticipantKey: participantKey}
 }
 
@@ -89,7 +139,20 @@ func (l *ParticipantRequestLimiter) allow(participantKey string, now time.Time) 
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	state := l.stateLocked(participantKey, now)
+	state, tracked := l.participants[participantKey]
+	if !tracked {
+		return true
+	}
+
+	l.refillLocked(state, now)
+
+	if state.tokens >= l.burst {
+		delete(l.participants, participantKey)
+		l.persistDeleteLocked(participantKey)
+		log.Printf("participant_limit_expired participant_key=%s", participantKey)
+		return true
+	}
+
 	if state.tokens < 1 {
 		return false
 	}
@@ -119,6 +182,15 @@ func (l *ParticipantRequestLimiter) ObserveResult(participantKey, path string, s
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.forceExhaustLocked(participantKey, time.Now())
+
+	log.Printf("participant_limit_activated participant_key=%s status=%d path_kind=%s",
+		participantKey, statusCode, participantPathKind(path))
+
+	if l.store != nil {
+		if err := l.store.SaveParticipantThrottle(participantKey, 0, time.Now(), statusCode); err != nil {
+			log.Printf("participant_throttle_persist_failed participant_key=%s error=%v", participantKey, err)
+		}
+	}
 }
 
 func (l *ParticipantRequestLimiter) SetMetrics(metrics *SubnetMetrics) {
@@ -145,7 +217,11 @@ func (l *ParticipantRequestLimiter) BlockedParticipants(participantKeys []string
 			continue
 		}
 		seen[key] = struct{}{}
-		state := l.stateLocked(key, now)
+		state, tracked := l.participants[key]
+		if !tracked {
+			continue
+		}
+		l.refillLocked(state, now)
 		if state.tokens < 1 {
 			blocked = append(blocked, key)
 		}
@@ -154,19 +230,7 @@ func (l *ParticipantRequestLimiter) BlockedParticipants(participantKeys []string
 	return blocked
 }
 
-func (l *ParticipantRequestLimiter) stateLocked(participantKey string, now time.Time) *participantRequestState {
-	if len(l.participants) > maxParticipantLimiterEntries {
-		clear(l.participants)
-	}
-	state, ok := l.participants[participantKey]
-	if !ok {
-		state = &participantRequestState{
-			tokens:     l.burst,
-			lastRefill: now,
-		}
-		l.participants[participantKey] = state
-		return state
-	}
+func (l *ParticipantRequestLimiter) refillLocked(state *participantRequestState, now time.Time) {
 	elapsed := now.Sub(state.lastRefill).Seconds()
 	if elapsed > 0 {
 		state.tokens += elapsed * l.recoveryPerSecond
@@ -175,27 +239,47 @@ func (l *ParticipantRequestLimiter) stateLocked(participantKey string, now time.
 		}
 		state.lastRefill = now
 	}
-	return state
 }
 
 func (l *ParticipantRequestLimiter) forceExhaustLocked(participantKey string, now time.Time) {
-	state := l.stateLocked(participantKey, now)
+	state, ok := l.participants[participantKey]
+	if !ok {
+		state = &participantRequestState{}
+		l.participants[participantKey] = state
+	}
 	state.tokens = 0
 	state.lastRefill = now
 }
 
+func (l *ParticipantRequestLimiter) persistDeleteLocked(key string) {
+	if l.store != nil {
+		if err := l.store.DeleteParticipantThrottle(key); err != nil {
+			log.Printf("participant_throttle_cleanup_failed participant_key=%s error=%v", key, err)
+		}
+	}
+}
+
+// ExhaustedCount returns the number of currently blocked (tokens < 1) participants.
 func (l *ParticipantRequestLimiter) ExhaustedCount() int {
 	now := time.Now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	count := 0
-	for key := range l.participants {
-		if l.stateLocked(key, now).tokens < 1 {
+	for _, state := range l.participants {
+		l.refillLocked(state, now)
+		if state.tokens < 1 {
 			count++
 		}
 	}
 	return count
+}
+
+// TrackedCount returns the number of participants currently in reactive tracking.
+func (l *ParticipantRequestLimiter) TrackedCount() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return len(l.participants)
 }
 
 func isParticipantThrottleStatus(statusCode int) bool {

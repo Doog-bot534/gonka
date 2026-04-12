@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -32,6 +34,7 @@ type Proxy struct {
 	model      string
 	redundancy *Redundancy
 	perf       *PerfTracker
+	phaseGate  *ChainPhaseGate
 }
 
 type chatRequest struct {
@@ -104,6 +107,11 @@ func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if err := p.admissionError(); err != nil {
+		logRequestStage(ctx, "proxy_request_blocked", "escrow", p.escrowID, "error", err)
+		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), gatewayStatusCodeForError(err))
+		return
+	}
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -154,11 +162,15 @@ func (p *Proxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 // If runInference errors before any streaming data arrives, the proxy
 // can still return a proper HTTP error status.
 type deferredWriter struct {
+	ctx     context.Context
 	w       http.ResponseWriter
 	started bool
 }
 
 func (d *deferredWriter) Write(p []byte) (int, error) {
+	if err := d.ctx.Err(); err != nil {
+		return 0, err
+	}
 	if !d.started {
 		d.w.Header().Set("Content-Type", "text/event-stream")
 		d.w.Header().Set("Cache-Control", "no-cache")
@@ -170,16 +182,23 @@ func (d *deferredWriter) Write(p []byte) (int, error) {
 }
 
 func (d *deferredWriter) Flush() {
+	if d.ctx.Err() != nil {
+		return
+	}
 	if f, ok := d.w.(http.Flusher); ok {
 		f.Flush()
 	}
 }
 
 func (p *Proxy) handleStreaming(w http.ResponseWriter, r *http.Request, params user.InferenceParams) {
-	dw := &deferredWriter{w: w}
+	dw := &deferredWriter{ctx: r.Context(), w: w}
 
 	err := p.redundancy.RunInference(r.Context(), params, dw)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			logRequestStage(r.Context(), "proxy_stream_terminated", "escrow", p.escrowID, "error", err)
+			return
+		}
 		logRequestStage(r.Context(), "proxy_stream_failed", "escrow", p.escrowID, "error", err)
 		statusCode := gatewayStatusCodeForError(err)
 		if !dw.started {
@@ -265,10 +284,14 @@ func (p *Proxy) handleFinalize(w http.ResponseWriter, r *http.Request) {
 }
 
 type statusResponse struct {
-	EscrowID string `json:"escrow_id"`
-	Nonce    uint64 `json:"nonce"`
-	Phase    string `json:"phase"`
-	Balance  uint64 `json:"balance"`
+	EscrowID             string `json:"escrow_id"`
+	Nonce                uint64 `json:"nonce"`
+	Phase                string `json:"phase"`
+	Balance              uint64 `json:"balance"`
+	ChainPhase           string `json:"chain_phase,omitempty"`
+	ConfirmationPoCPhase string `json:"confirmation_poc_phase,omitempty"`
+	RequestsBlocked      bool   `json:"requests_blocked"`
+	BlockReason          string `json:"block_reason,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -375,10 +398,25 @@ func (p *Proxy) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	st := p.sm.SnapshotState()
-	writeJSON(w, statusResponse{
+	status := statusResponse{
 		EscrowID: p.escrowID,
 		Nonce:    p.session.Nonce(),
 		Phase:    phaseStr,
 		Balance:  st.Balance,
-	})
+	}
+	if p.phaseGate != nil {
+		snapshot := p.phaseGate.Snapshot()
+		status.ChainPhase = snapshot.EpochPhase
+		status.ConfirmationPoCPhase = snapshot.ConfirmationPoCPhase
+		status.RequestsBlocked = snapshot.RequestsBlocked
+		status.BlockReason = snapshot.BlockReason
+	}
+	writeJSON(w, status)
+}
+
+func (p *Proxy) admissionError() error {
+	if p == nil || p.phaseGate == nil {
+		return nil
+	}
+	return p.phaseGate.AdmissionError()
 }

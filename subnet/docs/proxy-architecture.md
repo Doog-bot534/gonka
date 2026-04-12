@@ -185,14 +185,19 @@ Important relationships:
 
 ### `ParticipantRequestLimiter`
 
-`ParticipantRequestLimiter` is a shared process-wide limiter keyed by participant identity, usually derived from host IP / URL hostname.
+`ParticipantRequestLimiter` is a shared process-wide **reactive** limiter keyed by participant identity, usually derived from host IP / URL hostname.
 
 It is responsible for:
 
-- maintaining a token-bucket budget per participant
-- preventing new transport requests when a participant is near the nginx limit
-- marking a participant exhausted when upstream returns `429` or `503`
-- letting `Gateway` reject escrows whose participant set is unsafe
+- quarantining a host after its first upstream `429` or `503` (reactive activation)
+- applying token-bucket recovery for quarantined hosts (burst + recovery-per-minute)
+- expiring tracking when a host fully recovers to its burst budget
+- persisting throttle state to `gateway.db` so it survives reboots
+- letting `Gateway` reject escrows whose participant set includes a quarantined host
+
+Hosts that have never returned `429` or `503` are **not tracked** and are never rate-limited. Tracking only begins on the first throttle response. When a tracked host's tokens recover to the full burst value, the host is removed from tracking and its persistent record is deleted.
+
+On startup, persisted throttle state is loaded and time-based recovery is applied. Hosts that have fully recovered during downtime are automatically cleaned up.
 
 It is intentionally **outside** any one runtime, because the same participant can appear:
 
@@ -354,7 +359,7 @@ You can reason about speculative logic without understanding multi-escrow routin
 They influence the same request outcome, but they solve different problems:
 
 - speculation = latency / resiliency
-- participant limiter = upstream capacity safety
+- participant limiter = reactive upstream capacity safety (only after observed 429/503)
 
 ### `HostConnectionTracker` vs business logic
 

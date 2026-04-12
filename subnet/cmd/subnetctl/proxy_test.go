@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,12 +27,86 @@ import (
 
 // --- Existing tests ---
 
+type panicAfterCancelWriter struct {
+	ctx     context.Context
+	header  http.Header
+	writes  int
+	flushes int
+}
+
+func (w *panicAfterCancelWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = make(http.Header)
+	}
+	return w.header
+}
+
+func (w *panicAfterCancelWriter) WriteHeader(_ int) {}
+
+func (w *panicAfterCancelWriter) Write(p []byte) (int, error) {
+	if w.ctx.Err() != nil {
+		panic("write after cancel")
+	}
+	w.writes++
+	return len(p), nil
+}
+
+func (w *panicAfterCancelWriter) Flush() {
+	if w.ctx.Err() != nil {
+		panic("flush after cancel")
+	}
+	w.flushes++
+}
+
 func TestStreamReset_WrittenOnReconnect(t *testing.T) {
 	rec := httptest.NewRecorder()
 	writeStreamReset(rec)
 
 	body := rec.Body.String()
 	require.Contains(t, body, `data: {"subnet_stream_reset":true}`)
+}
+
+func TestDeferredWriterSkipsWriteAfterContextCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	w := &panicAfterCancelWriter{ctx: ctx}
+	dw := &deferredWriter{ctx: ctx, w: w}
+
+	cancel()
+
+	n, err := dw.Write([]byte("data: chunk\n\n"))
+	require.ErrorIs(t, err, context.Canceled)
+	require.Zero(t, n)
+	require.Zero(t, w.writes)
+
+	dw.Flush()
+	require.Zero(t, w.flushes)
+}
+
+func TestRaceWriterSkipsWinnerWriteAfterContextCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	w := &panicAfterCancelWriter{ctx: ctx}
+	dw := &deferredWriter{ctx: ctx, w: w}
+	rg := newRaceGroup(ctx, ctx, "escrow-proxy", dw)
+	inf := &inflight{
+		hostID:       "host-1",
+		escrowID:     "escrow-proxy",
+		nonce:        1,
+		done:         make(chan struct{}),
+		receiptCh:    make(chan struct{}),
+		firstTokenCh: make(chan struct{}),
+	}
+	rw := &raceWriter{group: rg, nonce: 1, inf: inf}
+
+	cancel()
+	rg.setWinner(1)
+
+	n, err := rw.Write([]byte("data: chunk\n\n"))
+	require.ErrorIs(t, err, context.Canceled)
+	require.Zero(t, n)
+	require.Zero(t, w.writes)
+
+	rw.Flush()
+	require.Zero(t, w.flushes)
 }
 
 func TestHasMsgFinish(t *testing.T) {
@@ -73,6 +148,22 @@ type verifierClient struct {
 	signer  *signing.Secp256k1Signer
 	group   []types.SlotAssignment
 	slotIdx int
+}
+
+type delayedResultClient struct {
+	response  *host.HostResponse
+	releaseCh chan struct{}
+	sendCalls atomic.Int32
+}
+
+func (c *delayedResultClient) Send(ctx context.Context, _ host.HostRequest, _ io.Writer, _ func()) (*host.HostResponse, error) {
+	c.sendCalls.Add(1)
+	select {
+	case <-c.releaseCh:
+		return c.response, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func (c *verifierClient) VerifyTimeout(_ context.Context, inferenceID uint64, reason types.TimeoutReason, _ *host.InferencePayload, _ []types.Diff) (bool, []byte, uint32, error) {
@@ -194,6 +285,46 @@ func setupTestProxy(t *testing.T, numHosts int, engines []subnet.InferenceEngine
 	}
 }
 
+func setupTestProxyWithClients(t *testing.T, clients []user.HostClient) *testProxyEnv {
+	t.Helper()
+	numHosts := len(clients)
+	hostSigners := make([]*signing.Secp256k1Signer, numHosts)
+	for i := range hostSigners {
+		hostSigners[i] = testutil.MustGenerateKey(t)
+	}
+	userKey := testutil.MustGenerateKey(t)
+	group := testutil.MakeGroup(hostSigners)
+	config := types.SessionConfig{
+		RefusalTimeout:   1,
+		ExecutionTimeout: 1,
+		TokenPrice:       1,
+		VoteThreshold:    uint32(numHosts) / 2,
+	}
+	verifier := signing.NewSecp256k1Verifier()
+	userSM := state.NewStateMachine("escrow-proxy", config, group, 1_000_000, userKey.Address(), verifier)
+	session, err := user.NewSession(userSM, userKey, "escrow-proxy", group, clients, verifier)
+	require.NoError(t, err)
+
+	perf := NewPerfTracker(nil)
+	redundancy := NewRedundancy(session, perf, numHosts)
+
+	p := &Proxy{
+		session:    session,
+		sm:         userSM,
+		escrowID:   "escrow-proxy",
+		model:      "llama",
+		redundancy: redundancy,
+		perf:       perf,
+	}
+
+	return &testProxyEnv{
+		proxy:   p,
+		session: session,
+		sm:      userSM,
+		group:   group,
+	}
+}
+
 func defaultParams() user.InferenceParams {
 	return user.InferenceParams{
 		Model:       "llama",
@@ -218,6 +349,115 @@ func TestRunInference_HappyPath(t *testing.T) {
 	st := env.sm.SnapshotState()
 	_, ok := st.Inferences[1]
 	require.True(t, ok, "inference 1 should exist")
+}
+
+func TestRunInference_CancelStillSettlesStartedAttempt(t *testing.T) {
+	releaseCh := make(chan struct{})
+	client := &delayedResultClient{
+		releaseCh: releaseCh,
+		response: &host.HostResponse{
+			Nonce: 1,
+			Mempool: []*types.SubnetTx{
+				{
+					Tx: &types.SubnetTx_FinishInference{
+						FinishInference: &types.MsgFinishInference{InferenceId: 1},
+					},
+				},
+			},
+		},
+	}
+	env := setupTestProxyWithClients(t, []user.HostClient{client})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		var buf bytes.Buffer
+		errCh <- env.proxy.redundancy.RunInference(ctx, defaultParams(), &buf)
+	}()
+
+	require.Eventually(t, func() bool {
+		return client.sendCalls.Load() == 1
+	}, time.Second, 10*time.Millisecond)
+
+	cancel()
+
+	select {
+	case err := <-errCh:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("RunInference did not return after request cancellation")
+	}
+
+	close(releaseCh)
+
+	require.Eventually(t, func() bool {
+		return env.session.IsNonceFinished(1)
+	}, time.Second, 10*time.Millisecond)
+}
+
+func TestProxyHandleChatCompletionsRejectsWhenConfirmationPoCActive(t *testing.T) {
+	env := setupTestProxy(t, 3, nil, true)
+	env.proxy.phaseGate = &ChainPhaseGate{}
+	env.proxy.phaseGate.storeSnapshot(ChainPhaseSnapshot{
+		EpochPhase:           epochPhaseInference,
+		ConfirmationPoCPhase: confirmationPoCGeneration,
+		RequestsBlocked:      true,
+		BlockReason:          "confirmation_poc",
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		bytes.NewBufferString(`{"messages":[{"role":"user","content":"hello"}]}`))
+	rec := httptest.NewRecorder()
+
+	env.proxy.handleChatCompletions(rec, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	require.Contains(t, rec.Body.String(), "confirmation PoC generation")
+	require.EqualValues(t, 0, env.proxy.session.Nonce())
+}
+
+func TestProxyHandleChatCompletionsRejectsWhenRegularPoCActive(t *testing.T) {
+	env := setupTestProxy(t, 3, nil, true)
+	env.proxy.phaseGate = &ChainPhaseGate{}
+	env.proxy.phaseGate.storeSnapshot(ChainPhaseSnapshot{
+		EpochPhase:      epochPhasePoCGenerate,
+		RequestsBlocked: true,
+		BlockReason:     "poc",
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		bytes.NewBufferString(`{"messages":[{"role":"user","content":"hello"}]}`))
+	rec := httptest.NewRecorder()
+
+	env.proxy.handleChatCompletions(rec, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	require.Contains(t, rec.Body.String(), "PoC generation")
+	require.EqualValues(t, 0, env.proxy.session.Nonce())
+}
+
+func TestProxyStatusIncludesChainPhaseSnapshot(t *testing.T) {
+	env := setupTestProxy(t, 3, nil, true)
+	env.proxy.phaseGate = &ChainPhaseGate{}
+	env.proxy.phaseGate.storeSnapshot(ChainPhaseSnapshot{
+		EpochPhase:           epochPhasePoCValidate,
+		ConfirmationPoCPhase: confirmationPoCValidation,
+		RequestsBlocked:      true,
+		BlockReason:          "confirmation_poc",
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	rec := httptest.NewRecorder()
+
+	env.proxy.handleStatus(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var status statusResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &status))
+	require.Equal(t, epochPhasePoCValidate, status.ChainPhase)
+	require.Equal(t, confirmationPoCValidation, status.ConfirmationPoCPhase)
+	require.True(t, status.RequestsBlocked)
+	require.Equal(t, "confirmation_poc", status.BlockReason)
 }
 
 func TestRunInference_SpeculativeOnKill(t *testing.T) {

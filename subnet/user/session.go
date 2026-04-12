@@ -662,6 +662,14 @@ func (s *Session) TimeoutVerifiers() map[int]TimeoutVerifier {
 // timeout verifiers or other operations that need direct host access.
 func (s *Session) Clients() []HostClient { return s.clients }
 
+// HostLabel returns the short validator address for the given host index.
+func (s *Session) HostLabel(hostIdx int) string {
+	if hostIdx < 0 || hostIdx >= len(s.group) {
+		return fmt.Sprintf("%d", hostIdx)
+	}
+	return shortAddress(s.group[hostIdx].ValidatorAddress)
+}
+
 // SetParticipantKeys overrides the per-slot participant identifiers used by
 // higher-level admission control. Keys should align with the session group.
 func (s *Session) SetParticipantKeys(keys []string) {
@@ -718,7 +726,7 @@ func (s *Session) HandleTimeout(ctx context.Context, nonce uint64, sendTime time
 		confirmedAt = o.confirmedAt
 	}
 	hostIdx := int(nonce % uint64(len(s.group)))
-	hostID := shortAddress(s.group[hostIdx].ValidatorAddress)
+	hostID := s.HostLabel(hostIdx)
 	s.mu.Unlock()
 
 	logFields := func(extra ...any) []any {
@@ -878,15 +886,21 @@ func (s *Session) CollectTimeoutVotes(
 		verifierAddr string
 	}
 
+	logFields := func(hostAddr string, extra ...any) []any {
+		base := []any{
+			"escrow", s.escrowID,
+			"nonce", inferenceID,
+			"reason", timeoutReasonLogLabel(reason),
+		}
+		if hostAddr != "" {
+			base = append(base, "host", shortAddress(hostAddr))
+		}
+		return append(base, extra...)
+	}
+
 	results := make(chan voteResult, len(deduped))
 	for _, av := range deduped {
-		logging.Info("timeout vote requested",
-			"subsystem", "session",
-			"escrow_id", s.escrowID,
-			"inference_id", inferenceID,
-			"reason", timeoutReasonLogLabel(reason),
-			"verifier_host_idx", av.idx,
-			"verifier_addr", av.verifierAddr)
+		logging.Stage(ctx, "timeout_vote_requested", logFields(av.verifierAddr)...)
 		go func(av addrVerifier) {
 			accept, sig, voterSlot, err := av.verifier.VerifyTimeout(ctx, inferenceID, reason, payload, diffs)
 			if err != nil {
@@ -919,17 +933,15 @@ func (s *Session) CollectTimeoutVotes(
 		res := <-results
 		if res.err != nil {
 			errors++
-			logging.Info("timeout vote result",
-				"subsystem", "session",
-				"escrow_id", s.escrowID,
-				"inference_id", inferenceID,
-				"reason", timeoutReasonLogLabel(reason),
-				"verifier_host_idx", res.verifierIdx,
-				"verifier_addr", res.verifierAddr,
-				"outcome", "error",
-				"running_weight", accWeight,
-				"threshold", voteThreshold,
-				"error", res.err)
+			logging.Stage(ctx, "timeout_vote_result",
+				logFields(
+					res.verifierAddr,
+					"outcome", "error",
+					"running_weight", accWeight,
+					"threshold", voteThreshold,
+					"error", res.err,
+				)...,
+			)
 			logging.Debug("timeout vote error",
 				"subsystem", "session", "inference_id", inferenceID, "error", res.err)
 			continue // skip failed hosts
@@ -939,48 +951,44 @@ func (s *Session) CollectTimeoutVotes(
 			voterAddr := s.sm.SlotAddress(res.vote.VoterSlot)
 			weight := s.sm.AddressSlotCount(voterAddr)
 			accWeight += weight
-			logging.Info("timeout vote result",
-				"subsystem", "session",
-				"escrow_id", s.escrowID,
-				"inference_id", inferenceID,
-				"reason", timeoutReasonLogLabel(reason),
-				"verifier_host_idx", res.verifierIdx,
-				"verifier_addr", res.verifierAddr,
-				"outcome", "accept",
-				"voter_slot", res.vote.VoterSlot,
-				"voter_addr", voterAddr,
-				"weight", weight,
-				"running_weight", accWeight,
-				"threshold", voteThreshold)
+			logging.Stage(ctx, "timeout_vote_result",
+				logFields(
+					res.verifierAddr,
+					"outcome", "accept",
+					"voter_slot", res.vote.VoterSlot,
+					"voter", shortAddress(voterAddr),
+					"weight", weight,
+					"running_weight", accWeight,
+					"threshold", voteThreshold,
+				)...,
+			)
 		} else {
 			rejects++
-			logging.Info("timeout vote result",
-				"subsystem", "session",
-				"escrow_id", s.escrowID,
-				"inference_id", inferenceID,
-				"reason", timeoutReasonLogLabel(reason),
-				"verifier_host_idx", res.verifierIdx,
-				"verifier_addr", res.verifierAddr,
-				"outcome", "reject",
-				"running_weight", accWeight,
-				"threshold", voteThreshold)
+			logging.Stage(ctx, "timeout_vote_result",
+				logFields(
+					res.verifierAddr,
+					"outcome", "reject",
+					"running_weight", accWeight,
+					"threshold", voteThreshold,
+				)...,
+			)
 		}
 		if accWeight > voteThreshold {
 			break
 		}
 	}
-	logging.Info("timeout vote tally",
-		"subsystem", "session",
-		"escrow_id", s.escrowID,
-		"inference_id", inferenceID,
-		"reason", timeoutReasonLogLabel(reason),
-		"accept", len(votes),
-		"weight", accWeight,
-		"reject", rejects,
-		"errors", errors,
-		"threshold", voteThreshold,
-		"verifiers", expected,
-		"sufficient", accWeight > voteThreshold)
+	logging.Stage(ctx, "timeout_vote_tally",
+		logFields(
+			"",
+			"accept", len(votes),
+			"weight", accWeight,
+			"reject", rejects,
+			"errors", errors,
+			"threshold", voteThreshold,
+			"verifiers", expected,
+			"sufficient", accWeight > voteThreshold,
+		)...,
+	)
 	logging.Debug("timeout vote collection",
 		"subsystem", "session", "inference_id", inferenceID,
 		"accept", len(votes), "weight", accWeight,

@@ -18,6 +18,7 @@ func TestGatewayStoreInitializeAndLoadState(t *testing.T) {
 
 	settings := GatewaySettings{
 		ChainREST:               "http://node:1317",
+		PublicAPI:               "http://api:9000",
 		DefaultModel:            "Qwen/Test",
 		DefaultRequestMaxTokens: 1234,
 		MaxConcurrentRequests:   5,
@@ -71,6 +72,7 @@ func TestGatewayStoreUpdateSettings(t *testing.T) {
 
 	require.NoError(t, store.Initialize(GatewaySettings{
 		ChainREST:               "http://node:1317",
+		PublicAPI:               "http://api:9000",
 		DefaultModel:            "Qwen/Test",
 		DefaultRequestMaxTokens: 1000,
 		MaxConcurrentRequests:   2,
@@ -79,6 +81,7 @@ func TestGatewayStoreUpdateSettings(t *testing.T) {
 
 	require.NoError(t, store.UpdateSettings(GatewaySettings{
 		ChainREST:               "http://node:1317",
+		PublicAPI:               "http://api:9000",
 		DefaultModel:            "Qwen/Test",
 		DefaultRequestMaxTokens: 2000,
 		MaxConcurrentRequests:   5,

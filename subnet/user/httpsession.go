@@ -45,10 +45,6 @@ func NewHTTPSession(cfg HTTPSessionConfig) (*Session, *state.StateMachine, error
 
 	config := types.SessionConfigWithPrice(len(group), escrow.TokenPrice)
 
-	sm := state.NewStateMachine(cfg.EscrowID, config, group, escrow.Amount, escrow.CreatorAddress, verifier,
-		state.WithWarmKeyResolver(cfg.Bridge.VerifyWarmKey),
-	)
-
 	clients := make([]HostClient, len(group))
 	participantKeys := make([]string, len(group))
 	clientCache := make(map[string]*transport.HTTPClient)
@@ -112,6 +108,10 @@ func NewHTTPSession(cfg HTTPSessionConfig) (*Session, *state.StateMachine, error
 			return nil, nil, fmt.Errorf("create storage session: %w", createErr)
 		}
 	}
+
+	sm := state.NewStateMachine(cfg.EscrowID, config, group, escrow.Amount, escrow.CreatorAddress, verifier,
+		state.WithWarmKeyResolver(cfg.Bridge.VerifyWarmKey),
+	)
 
 	session, err := NewSession(sm, signer, cfg.EscrowID, group, clients, verifier, opts...)
 	if err != nil {
