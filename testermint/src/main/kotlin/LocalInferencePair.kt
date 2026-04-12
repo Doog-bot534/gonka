@@ -64,6 +64,7 @@ fun getLocalInferencePairs(config: ApplicationConfig): List<LocalInferencePair> 
     val nodes: List<Container> =
         containers.filter { it.image == config.nodeImageName || it.image == config.genesisNodeImage }
     val apis = containers.filter { it.image == config.apiImageName }
+    val proxies = containers.filter { it.names.any { name -> name.endsWith("-proxy") } }
     val mocks = containers.filter { it.image == config.mockImageName }
     var foundPairs = 0
     if (nodes.size != apis.size) {
@@ -89,6 +90,8 @@ fun getLocalInferencePairs(config: ApplicationConfig): List<LocalInferencePair> 
         val apiContainer: Container = apis.find { it.names.any { it == "$name-api" } } ?: throw InvalidClusterException(
             "Unable to find API container for $name"
         )
+        val proxyContainer: Container = proxies.find { it.names.any { it == "$name-proxy" } }
+            ?: return@mapNotNull null // Pair not fully up yet, skip
         // Find primary mock server
         val mockContainer: Container? = mocks.find { it.names.any { it == "$name-mock-server" } }
 
@@ -105,9 +108,12 @@ fun getLocalInferencePairs(config: ApplicationConfig): List<LocalInferencePair> 
         val dapiLogs = attachDockerLogs(dockerClient, name, "dapi", apiContainer.id)
 
         val portMap = apiContainer.ports.associateBy { it.privatePort }
-        Logger.info("Container ports: $portMap")
+        val proxyPortMap = proxyContainer.ports.associateBy { it.privatePort }
+        Logger.info("API container ports: $portMap")
+        Logger.info("Proxy container ports: $proxyPortMap")
+
         val apiUrls = mapOf(
-            SERVER_TYPE_PUBLIC to getUrlForPrivatePort(portMap, 9000),
+            SERVER_TYPE_PUBLIC to getUrlForPrivatePort(proxyPortMap, 80),
             SERVER_TYPE_ML to getUrlForPrivatePort(portMap, 9100),
             SERVER_TYPE_ADMIN to getUrlForPrivatePort(portMap, 9200)
         )
@@ -733,10 +739,20 @@ data class LocalInferencePair(
 
     data class DevshardProxyHandle(val escrowId: Long, val port: Int, val proxyUrl: String)
 
-    fun startDevshardProxy(escrowId: Long, keyName: String? = null, port: Int = 18080 + escrowId.toInt()): DevshardProxyHandle =
+    fun startDevshardProxy(
+        escrowId: Long,
+        keyName: String? = null,
+        port: Int = 18080 + escrowId.toInt(),
+        routePrefix: String? = null,
+    ): DevshardProxyHandle =
         wrapLog("startDevshardProxy", true) {
             val privateKey = (if (keyName != null) node.getPrivateKey(keyName) else node.getColdPrivateKey()).trim()
             val stderrFile = "/tmp/devshardctl-proxy-${escrowId}.log"
+            // routePrefix selects which HTTP path prefix devshardctl uses
+            // when reaching hosts. Default empty -> /v1/devshard (legacy
+            // dapi-served path). Set to /devshard/<version> to hit a
+            // versioned devshardd binary running behind versiond.
+            val routePrefixEnv = if (routePrefix != null) " DEVSHARD_ROUTE_PREFIX='$routePrefix'" else ""
             val startCommand = listOf(
                 "sh", "-c",
                 "DEVSHARD_PRIVATE_KEY='$privateKey'" +
@@ -744,6 +760,7 @@ data class LocalInferencePair(
                     " DEVSHARD_CHAIN_REST=http://\$NODE_HOST:1317" +
                     " DEVSHARD_PORT=$port" +
                     " DEVSHARD_STORAGE_PATH=/tmp/devshardctl-proxy-${escrowId}.db" +
+                    routePrefixEnv +
                     " nohup devshardctl >$stderrFile 2>&1 &" +
                     " echo \$!"
             )
@@ -877,6 +894,10 @@ data class ApplicationConfig(
     val execName: String = "$stateDirName/cosmovisor/current/bin/$appName",
     val additionalDockerFilesByKeyName: Map<String, List<String>> = emptyMap(),
     val nodeConfigFileByKeyName: Map<String, String> = emptyMap(),
+    // Extra env vars passed to docker compose for every pair. Used by tests
+    // that need to enable optional features (e.g. running devshardd under
+    // versiond) without polluting the JVM-wide environment.
+    val additionalEnvVars: Map<String, String> = emptyMap(),
 ) {
     val mountDir: String
         get() = "./$chainId/$pairName:/root/$stateDirName"

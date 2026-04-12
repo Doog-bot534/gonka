@@ -1,4 +1,4 @@
-.PHONY: release decentralized-api-release inference-chain-release tmkms-release proxy-release proxy-ssl-release bridge-release versiond-release check-docker build-testermint run-blockchain-tests test-blockchain local-build api-local-build node-local-build api-test node-test mock-server-build-docker proxy-build-docker proxy-ssl-build-docker bridge-build-docker run-bls-tests devshardctl-build versiond-build-docker testapp-server-build-docker
+.PHONY: release decentralized-api-release inference-chain-release tmkms-release proxy-release proxy-ssl-release bridge-release versiond-release check-docker build-testermint run-blockchain-tests test-blockchain local-build api-local-build node-local-build api-test node-test mock-server-build-docker proxy-build-docker proxy-ssl-build-docker bridge-build-docker run-bls-tests devshardctl-build devshardd-local-build versiond-build-docker testapp-server-build-docker
 
 VERSION ?= $(shell git describe --always)
 TAG_NAME := "release/v$(VERSION)"
@@ -111,6 +111,19 @@ api-local-build:
 devshardctl-build:
 	@echo "Building devshardctl..."
 	@cd devshard && go build -o ../build/devshardctl ./cmd/devshardctl/
+
+devshardd-local-build:
+	@echo "Building devshardd (musl-static via docker)..."
+	@mkdir -p build
+	@DOCKER_BUILDKIT=1 docker build --target builder \
+		--build-arg BLST_PORTABLE=1 \
+		-f decentralized-api/Dockerfile . \
+		-t devshardd-builder:latest -q >/dev/null
+	@CID=$$(docker create devshardd-builder:latest) && \
+		docker cp $$CID:/app/decentralized-api/build/devshardd build/devshardd && \
+		docker rm $$CID >/dev/null
+	@chmod +x build/devshardd
+	@echo "Built build/devshardd ($$(file build/devshardd | grep -o 'statically linked\|dynamically linked'))"
 
 node-local-build:
 	@echo "Building inference-chain locally..."

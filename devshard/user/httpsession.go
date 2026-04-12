@@ -19,6 +19,7 @@ type HTTPSessionConfig struct {
 	Bridge         bridge.MainnetBridge
 	StoragePath    string                          // optional: path to SQLite DB for session persistence
 	StreamCallback func(nonce uint64, line string) // optional: receives raw SSE data lines during inference
+	RoutePrefix    string                          // optional: HTTP path prefix used to reach hosts; default /v1/devshard (for dapi-served sessions). Versioned binaries served by versiond use /devshard/<version>.
 }
 
 // NewHTTPSession creates a user Session wired with HTTP clients to real dapi hosts.
@@ -62,9 +63,14 @@ func NewHTTPSession(cfg HTTPSessionConfig) (*Session, *state.StateMachine, error
 			return nil, nil, fmt.Errorf("get host info for %s: %w", slot.ValidatorAddress, err)
 		}
 		var clientCfgs []transport.ClientConfig
-		if cfg.StreamCallback != nil {
+		if cfg.StreamCallback != nil || cfg.RoutePrefix != "" {
 			cc := transport.DefaultClientConfig()
-			cc.StreamCallback = cfg.StreamCallback
+			if cfg.StreamCallback != nil {
+				cc.StreamCallback = cfg.StreamCallback
+			}
+			if cfg.RoutePrefix != "" {
+				cc.RoutePrefix = cfg.RoutePrefix
+			}
 			clientCfgs = append(clientCfgs, cc)
 		}
 		c := transport.NewHTTPClient(info.URL, cfg.EscrowID, signer, clientCfgs...)

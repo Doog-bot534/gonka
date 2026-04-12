@@ -35,6 +35,12 @@ func getTransport(baseURL string) *http.Transport {
 	return actual.(*http.Transport)
 }
 
+// DefaultRoutePrefix is the legacy URL prefix dapi mounts the in-process
+// HostManager under. Devshard sessions running against dapi see this path.
+// Versioned devshard binaries served by versiond live under
+// /devshard/<version>/ instead -- callers override RoutePrefix accordingly.
+const DefaultRoutePrefix = "/v1/devshard"
+
 // ClientConfig holds per-endpoint timeout settings.
 type ClientConfig struct {
 	InferenceTimeout time.Duration          // /chat/completions, default 20m
@@ -42,6 +48,7 @@ type ClientConfig struct {
 	VerifyTimeout    time.Duration          // verify-timeout, default 3m
 	QueryTimeout     time.Duration          // diffs, mempool GETs, default 30s
 	StreamCallback   func(nonce uint64, line string) // if set, receives raw SSE data lines during inference
+	RoutePrefix      string                 // path prefix for all session routes; default /v1/devshard
 }
 
 func DefaultClientConfig() ClientConfig {
@@ -50,16 +57,18 @@ func DefaultClientConfig() ClientConfig {
 		GossipTimeout:    10 * time.Second,
 		VerifyTimeout:    3 * time.Minute,
 		QueryTimeout:     30 * time.Second,
+		RoutePrefix:      DefaultRoutePrefix,
 	}
 }
 
 // HTTPClient implements user.HostClient over HTTP.
 type HTTPClient struct {
-	baseURL  string
-	escrowID string
-	signer   signing.Signer
-	http     *http.Client
-	config   ClientConfig
+	baseURL     string
+	routePrefix string
+	escrowID    string
+	signer      signing.Signer
+	http        *http.Client
+	config      ClientConfig
 }
 
 // NewHTTPClient creates an HTTP client for the devshard transport layer.
@@ -69,10 +78,14 @@ func NewHTTPClient(baseURL, escrowID string, signer signing.Signer, cfgs ...Clie
 	if len(cfgs) > 0 {
 		cfg = cfgs[0]
 	}
+	if cfg.RoutePrefix == "" {
+		cfg.RoutePrefix = DefaultRoutePrefix
+	}
 	return &HTTPClient{
-		baseURL:  baseURL,
-		escrowID: escrowID,
-		signer:   signer,
+		baseURL:     baseURL,
+		routePrefix: cfg.RoutePrefix,
+		escrowID:    escrowID,
+		signer:      signer,
 		http: &http.Client{
 			Transport: getTransport(baseURL),
 		},
@@ -103,7 +116,7 @@ func (c *HTTPClient) post(ctx context.Context, path string, timeout time.Duratio
 func (c *HTTPClient) get(ctx context.Context, path string, timeout time.Duration, resp any) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	url := fmt.Sprintf("%s/v1/devshard%s", c.baseURL, path)
+	url := fmt.Sprintf("%s%s%s", c.baseURL, c.routePrefix, path)
 	body, err := c.doGet(ctx, url)
 	if err != nil {
 		return err
@@ -350,7 +363,7 @@ func (c *HTTPClient) GetMempool(ctx context.Context) ([]*types.DevshardTx, error
 // doPostRaw sends a signed POST request and returns the raw http.Response.
 // Caller is responsible for closing resp.Body.
 func (c *HTTPClient) doPostRaw(ctx context.Context, path string, body []byte) (*http.Response, error) {
-	url := c.baseURL + "/v1/devshard" + path
+	url := c.baseURL + c.routePrefix + path
 
 	ts := time.Now().Unix()
 	sig, err := SignRequest(c.signer, c.escrowID, body, ts)

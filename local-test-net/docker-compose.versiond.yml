@@ -10,8 +10,32 @@ services:
       VERSIOND_POLL_INTERVAL: "5s"
       VERSIOND_BIN_DIR: /opt/versiond/bin
       VERSIOND_DATA_DIR: /opt/versiond/data
-      VERSIOND_BINARY_NAME: testapp
+      # Default binary is testapp (VersiondTests). DevshardStandaloneTests
+      # exports VERSIOND_BINARY_NAME=devshardd, VERSIOND_FORCE=dev,
+      # VERSIOND_OVERRIDE_dev=/opt/overrides/devshardd before bringing up
+      # the cluster, switching this versiond to run the locally-built
+      # devshardd binary instead.
+      VERSIOND_BINARY_NAME: ${VERSIOND_BINARY_NAME:-testapp}
+      VERSIOND_FORCE: ${VERSIOND_FORCE:-}
+      VERSIOND_OVERRIDE_dev: ${VERSIOND_OVERRIDE_dev:-}
       NODE_MANAGER_ADDR: ${NODE_MANAGER_ADDR:-${KEY_NAME}-api:9400}
+      # Inherited by child binaries (devshardd reads these). Same env
+      # surface dapi's init-docker.sh uses.
+      KEY_NAME: ${KEY_NAME}
+      NODE_HOST: ${KEY_NAME}-node
+      KEYRING_BACKEND: ${KEYRING_BACKEND:-file}
+      KEYRING_PASSWORD: ${KEYRING_PASSWORD:-}
+      KEYRING_DIR: ${KEYRING_DIR:-/root/.inference}
+    volumes:
+      # Locally-built devshardd binary, served as version "dev" via the
+      # VERSIOND_OVERRIDE_dev mechanism. Always mounted; inert if
+      # VERSIOND_FORCE is empty (versiond never references it).
+      # Path is relative to --project-directory (repo root), not the
+      # compose file location.
+      - ./build/devshardd:/opt/overrides/devshardd:ro
+      # Same keyring dapi uses, read-only. Devshardd signs devshard
+      # protocol messages with the same identity dapi registered on chain.
+      - ./prod-local/${KEY_NAME}:/root/.inference:ro
     ports:
       - "${VERSIOND_PORT:-7080}:8080"
     networks:

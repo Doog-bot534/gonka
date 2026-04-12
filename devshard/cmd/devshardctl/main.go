@@ -104,12 +104,18 @@ func main() {
 	registry := newStreamRegistry()
 
 	br := bridge.NewRESTBridge(crest)
+	// DEVSHARD_ROUTE_PREFIX selects which HTTP path prefix to use when
+	// reaching devshard hosts. Default empty -> transport falls back to
+	// /v1/devshard (legacy dapi-served path). Set to /devshard/<version> to
+	// hit a versioned devshardd binary running behind versiond.
+	routePrefix := os.Getenv("DEVSHARD_ROUTE_PREFIX")
 	cfg := user.HTTPSessionConfig{
 		PrivateKeyHex:  keyHex,
 		EscrowID:       eid,
 		Bridge:         br,
 		StoragePath:    sp,
 		StreamCallback: registry.callback,
+		RoutePrefix:    routePrefix,
 	}
 
 	session, sm, err := user.NewHTTPSession(cfg)

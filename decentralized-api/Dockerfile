@@ -75,6 +75,17 @@ RUN --mount=type=cache,id=go-build-cache3,target=/root/.cache/go-build \
     cd /app/devshard && \
     CGO_ENABLED=0 go build -o ./build/devshardctl ./cmd/devshardctl/
 
+# Build devshardd (standalone host binary for versiond).
+# Must use CGO_ENABLED=1 + muslc tags (same as dapi) because blst requires CGO.
+# The binary is NOT included in the final api image — it ships via versiond.
+RUN --mount=type=cache,id=go-build-cache3,target=/root/.cache/go-build \
+    --mount=type=cache,id=go-mod-cache3,target=/go/pkg/mod \
+    if [ "$BLST_PORTABLE" = "1" ]; then export CGO_CFLAGS="$CGO_CFLAGS -D__BLST_PORTABLE__"; fi; \
+    CGO_ENABLED=1 CC=gcc \
+    go build -mod=readonly -tags muslc \
+    -ldflags "$LDFLAGS" \
+    -o ./build/devshardd ./cmd/devshardd
+
 RUN mkdir /build_output
 ################################################################################
 # Binary Exporter stage (for --output optimization)
