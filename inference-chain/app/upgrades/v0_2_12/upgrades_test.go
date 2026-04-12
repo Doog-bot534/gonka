@@ -140,6 +140,11 @@ func TestMigrateParams(t *testing.T) {
 	defaults := inferencetypes.DefaultDelegationParams()
 	require.Equal(t, defaults.DeployWindow, got.DelegationParams.DeployWindow)
 	require.Equal(t, defaults.VMin, got.DelegationParams.VMin)
+	require.Equal(t, defaults.WThreshold, got.DelegationParams.WThreshold)
+	require.Equal(t, defaults.CapFactor, got.DelegationParams.CapFactor)
+	require.Equal(t, defaults.DelegationShare, got.DelegationParams.DelegationShare)
+	require.Equal(t, defaults.RefusalPenalty, got.DelegationParams.RefusalPenalty)
+	require.Equal(t, defaults.NoParticipationPenalty, got.DelegationParams.NoParticipationPenalty)
 
 	// Idempotency: a second run must not duplicate models or alter values.
 	require.NoError(t, migrateParams(ctx, k))

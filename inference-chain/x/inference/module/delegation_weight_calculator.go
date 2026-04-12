@@ -238,13 +238,13 @@ func (wc *DelegationWeightCalculator) ResolveGroupParticipation(modelID string) 
 }
 
 // ComputeGroupCap returns the maximum consensus weight this group can contribute.
-// Returns -1 (uncapped) for initial groups or when cap_factor is zero.
+// Returns -1 (uncapped) only for the initial model exemption.
 func (wc *DelegationWeightCalculator) ComputeGroupCap(modelID string) int64 {
 	g, ok := wc.Groups[modelID]
 	if !ok {
 		return 0
 	}
-	if g.IsInitialGroup || wc.Params.CapFactor.IsZero() {
+	if g.IsInitialGroup {
 		return -1 // uncapped
 	}
 	// cap = CapFactor * sum(member's consensus weight from other eligible groups)

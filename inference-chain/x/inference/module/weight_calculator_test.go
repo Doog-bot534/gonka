@@ -456,7 +456,7 @@ func TestComputeGroupCap_TwoGroups_CapLimitsNonInitial(t *testing.T) {
 	require.Equal(t, int64(200), wc.ComputeGroupCap("model-b"))
 }
 
-func TestComputeGroupCap_CapFactorZero_Uncapped(t *testing.T) {
+func TestComputeGroupCap_CapFactorZero_FullyCapped(t *testing.T) {
 	wc := &DelegationWeightCalculator{
 		Groups: map[string]*GroupData{
 			"model-a": {
@@ -469,7 +469,7 @@ func TestComputeGroupCap_CapFactorZero_Uncapped(t *testing.T) {
 		ConsensusWeights: map[string]int64{"alice": 100},
 		Params:           WeightParams{CapFactor: mathsdk.LegacyZeroDec()},
 	}
-	require.Equal(t, int64(-1), wc.ComputeGroupCap("model-a"))
+	require.Equal(t, int64(0), wc.ComputeGroupCap("model-a"))
 }
 
 func TestComputeGroupCap_MemberOnlyInCappedGroup_ZeroCap(t *testing.T) {

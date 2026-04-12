@@ -102,6 +102,34 @@ func TestAccumulateDelegationPenalties_DelegateTransfer(t *testing.T) {
 	require.Equal(t, int64(600), participants[1].Weight)
 }
 
+func TestAccumulateDelegationPenalties_MissingRecipientDoesNotBurnTransfer(t *testing.T) {
+	participants := []*types.ActiveParticipant{
+		{Index: "alice", Weight: 1000},
+	}
+	dwc := &DelegationWeightCalculator{
+		Delegations: map[string]map[string]string{
+			"model1": {"alice": "bob"},
+		},
+	}
+	modes := map[string]map[string]ParticipationMode{
+		"model1": {
+			"alice": ModeDelegate,
+			"bob":   ModeDirect,
+		},
+	}
+	params := DelegationAdjustmentParams{
+		RefusalPenalty:         mathsdk.LegacyZeroDec(),
+		NoParticipationPenalty: mathsdk.LegacyZeroDec(),
+		DelegationShare:        mathsdk.LegacyMustNewDecFromStr("0.1"),
+	}
+
+	applyDelegationPenalties(participants, dwc, []string{"model1"}, modes, params, 1, nil)
+
+	// bob is absent from the active participant set, so delegation_share
+	// must be skipped rather than burned.
+	require.Equal(t, int64(1000), participants[0].Weight)
+}
+
 func TestAccumulateDelegationPenalties_TransferClampedByPenalty(t *testing.T) {
 	// When penalties reduce weight below the transfer delta, the recipient
 	// should only receive what remains -- not the full original-weight-based delta.

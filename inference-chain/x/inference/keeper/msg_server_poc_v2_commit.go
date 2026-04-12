@@ -36,6 +36,12 @@ func (k msgServer) PoCV2StoreCommit(goCtx context.Context, msg *types.MsgPoCV2St
 		return nil, sdkerrors.Wrap(types.ErrNotSupported, "V2 disabled when poc_v2_enabled=false")
 	}
 
+	// Participant access gating: blocklisted accounts cannot submit PoC artifacts.
+	if k.IsPoCParticipantBlocked(ctx, msg.Creator) {
+		k.LogError(PocFailureTag+"[PoCV2StoreCommit] participant is blocked from PoC", types.PoC, "participant", msg.Creator)
+		return nil, sdkerrors.Wrap(types.ErrParticipantBlocked, msg.Creator)
+	}
+
 	if len(msg.Entries) == 0 {
 		return nil, sdkerrors.Wrap(types.ErrIllegalState, "entries must not be empty")
 	}
@@ -144,6 +150,12 @@ func (k msgServer) MLNodeWeightDistribution(goCtx context.Context, msg *types.Ms
 
 	if !params.PocParams.PocV2Enabled {
 		return nil, sdkerrors.Wrap(types.ErrNotSupported, "V2 disabled when poc_v2_enabled=false")
+	}
+
+	// Participant access gating: blocklisted accounts cannot submit PoC artifacts.
+	if k.IsPoCParticipantBlocked(ctx, msg.Creator) {
+		k.LogError(PocFailureTag+"[MLNodeWeightDistribution] participant is blocked from PoC", types.PoC, "participant", msg.Creator)
+		return nil, sdkerrors.Wrap(types.ErrParticipantBlocked, msg.Creator)
 	}
 
 	if len(msg.Entries) == 0 {

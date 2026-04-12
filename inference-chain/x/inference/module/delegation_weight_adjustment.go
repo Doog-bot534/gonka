@@ -99,6 +99,10 @@ func (pa *PenaltyAccumulator) Apply(participants []*types.ActiveParticipant) {
 		if from == nil {
 			continue
 		}
+		to := weightIndex[t.to]
+		if to == nil {
+			continue
+		}
 		delta := t.rate.MulInt64(pa.originalWeight[t.from]).TruncateInt64()
 		if delta > from.Weight {
 			delta = from.Weight
@@ -107,9 +111,7 @@ func (pa *PenaltyAccumulator) Apply(participants []*types.ActiveParticipant) {
 			delta = 0
 		}
 		from.Weight -= delta
-		if to := weightIndex[t.to]; to != nil {
-			to.Weight += delta
-		}
+		to.Weight += delta
 	}
 }
 

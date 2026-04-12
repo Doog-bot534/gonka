@@ -158,8 +158,11 @@ func migrateParams(ctx context.Context, k keeper.Keeper) error {
 	}
 
 	if params.DelegationParams == nil {
-		params.DelegationParams = types.DefaultDelegationParams()
-		k.LogInfo("initialized DelegationParams with defaults", types.Upgrades)
+		defaults := types.DefaultDelegationParams()
+		params.DelegationParams = defaults
+		k.LogInfo("initialized DelegationParams with defaults", types.Upgrades,
+			"deploy_window", defaults.DeployWindow,
+			"v_min", defaults.VMin)
 	}
 	if poc != nil && params.DelegationParams.InitialModelId == "" {
 		params.DelegationParams.InitialModelId = poc.ModelId

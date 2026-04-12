@@ -367,12 +367,12 @@ func (p *SubnetEscrowParams) Validate() error {
 func DefaultDelegationParams() *DelegationParams {
 	return &DelegationParams{
 		DeployWindow:           1,
-		RefusalPenalty:         DecimalFromFloat(0),
-		NoParticipationPenalty: DecimalFromFloat(0),
-		DelegationShare:        DecimalFromFloat(0),
-		WThreshold:             DecimalFromFloat(0),
-		VMin:                   0,
-		CapFactor:              DecimalFromFloat(0),
+		RefusalPenalty:         DecimalFromFloat(0.1),
+		NoParticipationPenalty: DecimalFromFloat(0.25),
+		DelegationShare:        DecimalFromFloat(0.1),
+		WThreshold:             DecimalFromFloat(0.3),
+		VMin:                   3,
+		CapFactor:              DecimalFromFloat(1),
 		InitialModelId:         "",
 	}
 }
