@@ -53,3 +53,15 @@ services:
       - "${TESTAPP_SERVER_PORT:-7090}:8080"
     networks:
       - chain-public
+
+  devshardd-artifact-server:
+    container_name: ${KEY_NAME}-devshardd-artifact-server
+    image: python:3.12-alpine
+    working_dir: /srv/files
+    command: ["python3", "-m", "http.server", "8080"]
+    volumes:
+      # Test code prepares devshardd.zip and devshardd.zip.sha256 before the
+      # cluster boots so genesis can seed the final archive hash.
+      - ./build/devshardd-artifacts:/srv/files:ro
+    networks:
+      - chain-public

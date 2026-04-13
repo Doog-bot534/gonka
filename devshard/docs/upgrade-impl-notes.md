@@ -73,16 +73,83 @@ go build -ldflags "-X decentralized-api/cmd/devshardd.Version=$VERSION" \
   -o build/devshardd ./cmd/devshardd
 ```
 
+The binary can already carry a release version at build time. The current build
+wiring passes `DEVSHARD_VERSION` into
+`decentralized-api/cmd/devshardd.Version`, so a local or release build can
+stamp `devshardd` and `devshardctl` with the same version string.
+
+What is not implemented yet is container-default activation. Today versiond
+only runs a local `devshardd` binary when the operator explicitly sets both
+`VERSIOND_FORCE=<name>` and `VERSIOND_OVERRIDE_<name>=/path/to/devshardd`.
+
 ### Test shape
 
 Both flows are covered on purpose:
 
 - `DevshardTests.kt` verifies the legacy `/v1/devshard` path
 - `DevshardStandaloneTests.kt` verifies the standalone
-  `/devshard/<version>` path through proxy and versiond
+  `/devshard/<version>` path through proxy and versiond in two different modes
 
-The standalone test setup uses `VERSIOND_FORCE=dev` together with
-`VERSIOND_OVERRIDE_dev` to run the locally built binary.
+The override-driven tests use `VERSIOND_FORCE=dev` together with
+`VERSIOND_OVERRIDE_dev` to run the locally built binary and exercise full
+devshard session flows through versiond.
+
+The state-driven startup test does not set `VERSIOND_FORCE` and does not set
+any `VERSIOND_OVERRIDE_*` for the tested version. Instead it:
+
+- prepares a deterministic `devshardd.zip` plus `devshardd.zip.sha256` on the
+  host before the cluster boots
+- seeds that exact `(name, binary URL, sha256)` tuple into
+  `devshard_escrow_params.approved_versions` at genesis
+- waits for dapi `/versions` to expose that state
+- verifies that versiond downloads the archive and records `install.json`
+
+The artifact server stays local to the test environment. Its job is only to
+serve already-prepared files over HTTP. It no longer builds the zip at
+container startup, because the startup-seeded test needs the final archive
+sha256 before `initCluster()` runs.
+
+### Bundled binary as the container default
+
+If we want a versiond image that already contains one pre-built `devshardd`,
+the simplest temporary rule is:
+
+- keep the operator contract exactly as it is today:
+  `VERSIOND_FORCE` and `VERSIOND_OVERRIDE_<name>`
+- let the image optionally carry one bundled binary plus fixed metadata such as
+  `VERSIOND_BUNDLED_VERSION` and `VERSIOND_BUNDLED_BINARY`
+- set `VERSIOND_BINARY_NAME=devshardd` in that bundled image so versiond looks
+  for the correct executable name by default
+- during versiond config load, treat that bundled binary as the default
+  override for that version only when the operator did not already provide
+  explicit env vars
+- if the operator sets `VERSIOND_FORCE` explicitly, that replaces the container
+  default
+- if the operator sets `VERSIOND_OVERRIDE_<bundled>` explicitly, that replaces
+  the bundled binary path
+
+That makes the bundled case behave like an automatic
+`VERSIOND_FORCE=<bundled>` plus
+`VERSIOND_OVERRIDE_<bundled>=<bundled path>`, without introducing a second
+runtime model.
+
+### Recommended release shapes
+
+To keep releases simple, support two image shapes from the same code path:
+
+- plain `versiond`: current behavior, no bundled `devshardd`
+- bundled `versiond`: same image plus one pre-built `devshardd` for its default
+  release version, with `VERSIOND_BINARY_NAME=devshardd` as the image default
+
+The repo already knows how to build a version-stamped `devshardd`. The missing
+piece is only how to copy that binary into the versiond image and expose it as
+the default override.
+
+One practical note: the current `versioned/Dockerfile` builds from the
+`versioned/` directory only, so it cannot include `decentralized-api/` build
+artifacts today. The clean temporary fix is to build the bundled image from the
+repo root, reuse the existing `decentralized-api` builder flow, and pass
+`DEVSHARD_VERSION=<name>` once.
 
 ## Explicit non-goals for this release
 

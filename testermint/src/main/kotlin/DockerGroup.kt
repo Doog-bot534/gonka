@@ -433,11 +433,15 @@ fun getRepoRoot(): String {
     // gonka-2) can run tests without renaming their directory.
     System.getenv("GONKA_REPO_ROOT")?.takeIf { it.isNotBlank() }?.let { return it }
 
-    val currentDir = Path.of("").toAbsolutePath()
+    val currentDir = Path.of("").toAbsolutePath().normalize()
     return generateSequence(currentDir) { it.parent }
-        .firstOrNull { it.fileName?.toString() == "gonka" }
+        .firstOrNull { candidate ->
+            Files.isDirectory(candidate.resolve("testermint")) &&
+                Files.isDirectory(candidate.resolve("local-test-net")) &&
+                Files.isDirectory(candidate.resolve("versioned"))
+        }
         ?.toString()
-        ?: throw IllegalStateException("Repository root 'gonka' not found (set GONKA_REPO_ROOT to override)")
+        ?: throw IllegalStateException("Repository root not found from $currentDir (set GONKA_REPO_ROOT to override)")
 }
 
 fun initializeCluster(joinCount: Int = 0, config: ApplicationConfig, currentCluster: LocalCluster?): List<DockerGroup> {

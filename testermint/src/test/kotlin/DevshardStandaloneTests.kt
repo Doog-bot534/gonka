@@ -1,5 +1,6 @@
 import com.productscience.*
 import com.productscience.data.*
+import com.github.kittinunf.fuel.Fuel
 import kotlin.test.assertNotNull
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
@@ -7,9 +8,18 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.tinylog.kotlin.Logger
+import java.io.InputStream
+import java.io.OutputStream
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardOpenOption
+import java.security.MessageDigest
 import java.time.Duration
 import java.util.concurrent.Executors
-import kotlin.test.assertNotNull
+import java.util.zip.CRC32
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 /**
  * Mirror of DevshardTests but routed through versiond -> devshardd instead of
@@ -27,12 +37,22 @@ import kotlin.test.assertNotNull
  *    /sessions/:id/...
  *  - DAPI's in-process HostManager is still mounted on /v1/devshard for the
  *    legacy path; the new test does not exercise it.
+ *  - This file also contains a startup-seeded state-driven test for the normal
+ *    `approved_versions -> /versions -> versiond download` path without local
+ *    overrides for the tested version.
  */
 class DevshardStandaloneTests : TestermintTest() {
+    private data class PreparedDevsharddArtifact(
+        val approvedVersion: DevshardApprovedVersion,
+    ) {
+        val routePrefix: String
+            get() = "/devshard/${approvedVersion.name}"
+    }
+
     // The default join count is 2 -> three pairs total (genesis, join1, join2).
     // Every pair gets the versiond compose extension so each runs its own
     // devshardd child managed by its own ${KEY_NAME}-versiond container.
-    private val standaloneVersiondFiles = listOf(GENESIS_KEY_NAME, "join1", "join2")
+    private val versiondComposeFilesByPairName = listOf(GENESIS_KEY_NAME, "join1", "join2")
         .associateWith { listOf("docker-compose.versiond.yml") }
 
     // Switches the test cluster from "default" to "devshardd via versiond":
@@ -42,39 +62,49 @@ class DevshardStandaloneTests : TestermintTest() {
     //    not in the chain's approved_versions list
     //  - VERSIOND_SERVICE_NAME enables the proxy's /devshard/ -> versiond
     //    upstream block
-    private val standaloneEnv = mapOf(
+    private val overrideVersiondEnv = mapOf(
         "VERSIOND_BINARY_NAME" to "devshardd",
         "VERSIOND_OVERRIDE_dev" to "/opt/overrides/devshardd",
         "VERSIOND_FORCE" to "dev",
         "VERSIOND_SERVICE_NAME" to "versiond",
     )
 
-    private val devshardRoutePrefix = "/devshard/dev"
-
-    private val standaloneConfig = inferenceConfig.copy(
-        genesisSpec = inferenceConfig.genesisSpec?.merge(devshardNoRestrictionsSpec) ?: devshardNoRestrictionsSpec,
-        additionalDockerFilesByKeyName = standaloneVersiondFiles,
-        additionalEnvVars = standaloneEnv,
+    private val stateDrivenVersiondEnv = mapOf(
+        "VERSIOND_BINARY_NAME" to "devshardd",
+        "VERSIOND_SERVICE_NAME" to "versiond",
     )
 
-    private val standaloneLongEpochConfig = inferenceConfig.copy(
+    private val overrideRoutePrefix = "/devshard/dev"
+    private val releaseStyleVersionName = "v0.2.11"
+    private val devsharddArtifactDockerUrl =
+        "http://${GENESIS_KEY_NAME}-devshardd-artifact-server:8080/devshardd.zip"
+    private val devsharddArtifactShaUrl = "$devsharddArtifactDockerUrl.sha256"
+    private val repoRoot: Path by lazy { resolveRepoRoot() }
+    private val devsharddHostBinary: Path
+        get() = repoRoot.resolve("build").resolve("devshardd")
+    private val devsharddArtifactDir: Path
+        get() = repoRoot.resolve("build").resolve("devshardd-artifacts")
+    private val devsharddArtifactZip = devsharddArtifactDir.resolve("devshardd.zip")
+    private val devsharddArtifactSha = devsharddArtifactDir.resolve("devshardd.zip.sha256")
+
+    private val overrideConfig = versiondConfig(
+        genesisSpec = mergedGenesisSpec(devshardNoRestrictionsSpec),
+        env = overrideVersiondEnv,
+    )
+
+    private val overrideLongEpochConfig = versiondConfig(
         genesisSpec = createSpec(epochLength = 40, epochShift = 10).merge(devshardNoRestrictionsSpec),
-        additionalDockerFilesByKeyName = standaloneVersiondFiles,
-        additionalEnvVars = standaloneEnv,
+        env = overrideVersiondEnv,
     )
 
-    private val standaloneAlwaysValidateConfig = inferenceConfig.copy(
-        genesisSpec = inferenceConfig.genesisSpec
-            ?.merge(devshardNoRestrictionsSpec)
-            ?.merge(devshardAlwaysValidateSpec)
-            ?: devshardNoRestrictionsSpec.merge(devshardAlwaysValidateSpec),
-        additionalDockerFilesByKeyName = standaloneVersiondFiles,
-        additionalEnvVars = standaloneEnv,
+    private val overrideAlwaysValidateConfig = versiondConfig(
+        genesisSpec = mergedGenesisSpec(devshardNoRestrictionsSpec, devshardAlwaysValidateSpec),
+        env = overrideVersiondEnv,
     )
 
     @Test
     fun `create devshard escrow and query it`() {
-        val (cluster, genesis) = initCluster(config = standaloneConfig, reboot = true)
+        val (_, genesis) = initCluster(config = overrideConfig, reboot = true)
         genesis.waitForNextEpoch()
 
         val creator = genesis.node.getColdAddress()
@@ -100,8 +130,77 @@ class DevshardStandaloneTests : TestermintTest() {
     }
 
     @Test
+    fun `state-approved devshardd seeded at startup is downloaded without overrides`() {
+        assertNoVersiondOverrides(stateDrivenVersiondEnv)
+
+        val preparedArtifact = prepareReleaseStyleDevsharddArtifact()
+        val (cluster, genesis) = initCluster(
+            config = stateDrivenConfig(preparedArtifact.approvedVersion),
+            reboot = true,
+        )
+        genesis.waitForNextEpoch()
+
+        logSection("Waiting for devshardd artifact server readiness")
+        val servedSha256 = waitForDevsharddArtifactSha(genesis)
+        assertThat(servedSha256).isEqualTo(preparedArtifact.approvedVersion.sha256)
+
+        logSection("Verifying chain params contain ${preparedArtifact.approvedVersion.name} at startup")
+        val approvedVersions = genesis.getParams().devshardEscrowParams?.approvedVersions ?: emptyList()
+        val approvedVersion = approvedVersions.single { it.name == preparedArtifact.approvedVersion.name }
+        assertThat(approvedVersion.binary).isEqualTo(preparedArtifact.approvedVersion.binary)
+        assertThat(approvedVersion.sha256).isEqualTo(preparedArtifact.approvedVersion.sha256)
+
+        logSection("Waiting for dapi /versions to expose ${preparedArtifact.approvedVersion.name}")
+        waitUntil("dapi serves ${preparedArtifact.approvedVersion.name}", timeoutSeconds = 60) {
+            getDapiVersions(genesis).any { it["name"] == preparedArtifact.approvedVersion.name }
+        }
+        val dapiVersion = getDapiVersions(genesis).single { it["name"] == preparedArtifact.approvedVersion.name }
+        assertThat(dapiVersion["binary"]).isEqualTo(preparedArtifact.approvedVersion.binary)
+        assertThat(dapiVersion["sha256"]).isEqualTo(preparedArtifact.approvedVersion.sha256)
+
+        logSection("Waiting for every pair to download ${preparedArtifact.approvedVersion.name}")
+        waitUntil("downloaded binary and install metadata exist on every pair", timeoutSeconds = 120) {
+            cluster.allPairs.all { pair ->
+                pair.versiondBinaryExists(preparedArtifact.approvedVersion.name, "devshardd") &&
+                    pair.readVersiondInstallMetadata(preparedArtifact.approvedVersion.name)?.archiveSha256 ==
+                    preparedArtifact.approvedVersion.sha256
+            }
+        }
+        cluster.allPairs.forEach { pair ->
+            assertThat(pair.versiondBinaryExists(preparedArtifact.approvedVersion.name, "devshardd"))
+                .withFailMessage(
+                    "Expected ${pair.name} versiond to download " +
+                        pair.versiondBinaryPath(preparedArtifact.approvedVersion.name, "devshardd")
+                )
+                .isTrue()
+            val installMetadata = assertNotNull(pair.readVersiondInstallMetadata(preparedArtifact.approvedVersion.name))
+            assertThat(installMetadata.archiveSha256).isEqualTo(preparedArtifact.approvedVersion.sha256)
+            assertThat(installMetadata.binarySha256).isNotBlank()
+        }
+
+        logSection("Waiting for another versiond poll cycle to confirm stability")
+        Thread.sleep(Duration.ofSeconds(7).toMillis())
+        cluster.allPairs.forEach { pair ->
+            val stableLogs = pair.readVersiondLogs(tail = 800)
+            assertThat(stableLogs)
+                .withFailMessage("Expected ${pair.name} versiond logs to stay stable after download.\n$stableLogs")
+                .doesNotContain("hash mismatch on running version")
+                .doesNotContain("installed archive hash mismatch")
+                .doesNotContain("installed binary hash mismatch")
+        }
+
+        logSection("Verifying versioned health route through proxy")
+        waitUntil("proxy serves ${preparedArtifact.routePrefix}/healthz", timeoutSeconds = 90) {
+            runCatching {
+                getVersionedHealth(genesis, preparedArtifact.approvedVersion.name) == "ok"
+            }.getOrDefault(false)
+        }
+        assertThat(getVersionedHealth(genesis, preparedArtifact.approvedVersion.name)).isEqualTo("ok")
+    }
+
+    @Test
     fun `devshard inference e2e with settlement via devshardd`() {
-        val (cluster, genesis) = initCluster(config = standaloneConfig, reboot = true)
+        val (cluster, genesis) = initCluster(config = overrideConfig, reboot = true)
         genesis.waitForNextEpoch()
 
         cluster.stubDevshardChatResponse()
@@ -117,7 +216,7 @@ class DevshardStandaloneTests : TestermintTest() {
         val handle = genesis.startDevshardProxy(
             escrowId = escrowId,
             keyName = user.keyName,
-            routePrefix = devshardRoutePrefix,
+            routePrefix = overrideRoutePrefix,
         )
 
         try {
@@ -136,7 +235,7 @@ class DevshardStandaloneTests : TestermintTest() {
 
     @Test
     fun `devshard streaming inference e2e with settlement via devshardd`() {
-        val (cluster, genesis) = initCluster(config = standaloneConfig, reboot = true)
+        val (cluster, genesis) = initCluster(config = overrideConfig, reboot = true)
         genesis.waitForNextEpoch()
 
         cluster.stubDevshardChatResponse(content = "hello from stream", streamDelay = Duration.ofMillis(50))
@@ -152,7 +251,7 @@ class DevshardStandaloneTests : TestermintTest() {
         val handle = genesis.startDevshardProxy(
             escrowId = escrowId,
             keyName = user.keyName,
-            routePrefix = devshardRoutePrefix,
+            routePrefix = overrideRoutePrefix,
         )
 
         try {
@@ -185,7 +284,7 @@ class DevshardStandaloneTests : TestermintTest() {
     @Test
     fun `parallel devshard sessions with isolated settlement via devshardd`() {
         val sessionCount = 6
-        val (cluster, genesis) = initCluster(config = standaloneLongEpochConfig, reboot = true)
+        val (cluster, genesis) = initCluster(config = overrideLongEpochConfig, reboot = true)
         genesis.waitForNextEpoch()
 
         cluster.stubDevshardChatResponse()
@@ -215,7 +314,7 @@ class DevshardStandaloneTests : TestermintTest() {
             genesis.startDevshardProxy(
                 escrowId = session.escrowId,
                 keyName = session.keyName,
-                routePrefix = devshardRoutePrefix,
+                routePrefix = overrideRoutePrefix,
             )
         }
 
@@ -274,7 +373,7 @@ class DevshardStandaloneTests : TestermintTest() {
 
     @Test
     fun `invalid inference is challenged via devshardd`() {
-        val (cluster, genesis) = initCluster(config = standaloneAlwaysValidateConfig, reboot = true)
+        val (cluster, genesis) = initCluster(config = overrideAlwaysValidateConfig, reboot = true)
         genesis.waitForNextEpoch()
 
         cluster.allPairs.forEach { pair ->
@@ -298,7 +397,7 @@ class DevshardStandaloneTests : TestermintTest() {
         val handle = genesis.startDevshardProxy(
             escrowId = escrowId,
             keyName = user.keyName,
-            routePrefix = devshardRoutePrefix,
+            routePrefix = overrideRoutePrefix,
         )
 
         try {
@@ -336,5 +435,186 @@ class DevshardStandaloneTests : TestermintTest() {
         } finally {
             genesis.stopDevshardProxy(escrowId)
         }
+    }
+
+    private fun versiondConfig(
+        genesisSpec: Spec<AppState>,
+        env: Map<String, String>,
+    ): ApplicationConfig = inferenceConfig.copy(
+        genesisSpec = genesisSpec,
+        additionalDockerFilesByKeyName = versiondComposeFilesByPairName,
+        additionalEnvVars = env,
+    )
+
+    private fun mergedGenesisSpec(vararg specs: Spec<AppState>): Spec<AppState> {
+        val base = inferenceConfig.genesisSpec ?: spec<AppState> {}
+        return specs.fold(base) { current, extra -> current.merge(extra) }
+    }
+
+    private fun stateDrivenConfig(approvedVersion: DevshardApprovedVersion): ApplicationConfig = versiondConfig(
+        genesisSpec = mergedGenesisSpec(
+            devshardNoRestrictionsSpec,
+            approvedVersionsSpec(listOf(approvedVersion)),
+        ),
+        env = stateDrivenVersiondEnv,
+    )
+
+    private fun approvedVersionsSpec(
+        versions: List<DevshardApprovedVersion>
+    ): Spec<AppState> = spec {
+        this[AppState::inference] = spec<InferenceState> {
+            this[InferenceState::params] = spec<InferenceParams> {
+                this[InferenceParams::devshardEscrowParams] = spec<DevshardEscrowParams> {
+                    this[DevshardEscrowParams::approvedVersions] = versions
+                }
+            }
+        }
+    }
+
+    private fun assertNoVersiondOverrides(env: Map<String, String>) {
+        assertThat(env).doesNotContainKey("VERSIOND_FORCE")
+        assertThat(env.keys.none { it.startsWith("VERSIOND_OVERRIDE_") }).isTrue()
+    }
+
+    private fun prepareReleaseStyleDevsharddArtifact(
+        versionName: String = releaseStyleVersionName,
+    ): PreparedDevsharddArtifact {
+        check(Files.isRegularFile(devsharddHostBinary)) {
+            "Missing devshardd binary at $devsharddHostBinary. Build it before running this test."
+        }
+
+        Files.createDirectories(devsharddArtifactDir)
+
+        writeDeterministicZip(
+            sourceBinary = devsharddHostBinary,
+            targetZip = devsharddArtifactZip,
+            binaryName = "devshardd",
+        )
+        val archiveSha256 = sha256Hex(devsharddArtifactZip)
+        Files.writeString(devsharddArtifactSha, archiveSha256)
+
+        Logger.info("Prepared devshardd release artifact: version=$versionName sha256=$archiveSha256")
+
+        return PreparedDevsharddArtifact(
+            approvedVersion = DevshardApprovedVersion(
+                name = versionName,
+                binary = devsharddArtifactDockerUrl,
+                sha256 = archiveSha256,
+            )
+        )
+    }
+
+    private fun waitForDevsharddArtifactSha(genesis: LocalInferencePair): String {
+        var sha256: String? = null
+        waitUntil("devshardd artifact server", timeoutSeconds = 120) {
+            try {
+                sha256 = genesis.curlFromApiNetwork(devsharddArtifactShaUrl).takeIf { it.isNotBlank() }
+                sha256 != null
+            } catch (e: Exception) {
+                Logger.debug("devshardd artifact server not ready: ${e.message}")
+                false
+            }
+        }
+        return requireNotNull(sha256) { "devshardd artifact server did not become ready" }
+    }
+
+    private fun writeDeterministicZip(sourceBinary: Path, targetZip: Path, binaryName: String) {
+        val binaryMetadata = hashAndCrc32(sourceBinary)
+        Files.newOutputStream(
+            targetZip,
+            StandardOpenOption.CREATE,
+            StandardOpenOption.TRUNCATE_EXISTING,
+            StandardOpenOption.WRITE,
+        ).buffered().use { output ->
+            ZipOutputStream(output).use { zip ->
+            val entry = ZipEntry(binaryName).apply {
+                method = ZipEntry.STORED
+                time = 946684800000L // 2000-01-01T00:00:00Z
+                size = binaryMetadata.size
+                compressedSize = binaryMetadata.size
+                crc = binaryMetadata.crc32
+            }
+            zip.putNextEntry(entry)
+                Files.newInputStream(sourceBinary).buffered().use { input ->
+                    input.copyTo(zip)
+                }
+            zip.closeEntry()
+        }
+        }
+    }
+
+    private data class StreamHashMetadata(
+        val size: Long,
+        val crc32: Long,
+        val sha256: String,
+    )
+
+    private fun hashAndCrc32(path: Path): StreamHashMetadata {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val crc32 = CRC32()
+        var size = 0L
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        Files.newInputStream(path).buffered().use { input ->
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+                crc32.update(buffer, 0, read)
+                size += read.toLong()
+            }
+        }
+        return StreamHashMetadata(
+            size = size,
+            crc32 = crc32.value,
+            sha256 = digest.digest().joinToString("") { "%02x".format(it) },
+        )
+    }
+
+    private fun sha256Hex(path: Path): String = hashAndCrc32(path).sha256
+
+    private fun resolveRepoRoot(): Path {
+        val cwd = Path.of("").toAbsolutePath().normalize()
+        return generateSequence(cwd) { it.parent }
+            .firstOrNull { candidate ->
+                Files.isDirectory(candidate.resolve("testermint")) &&
+                    Files.isDirectory(candidate.resolve("local-test-net")) &&
+                    Files.isDirectory(candidate.resolve("versioned"))
+            }
+            ?: error("Repository root not found from $cwd")
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun getDapiVersions(genesis: LocalInferencePair): List<Map<String, Any>> {
+        return try {
+            val mlUrl = genesis.api.urls[SERVER_TYPE_ML] ?: return emptyList()
+            val (_, _, result) = Fuel.get("$mlUrl/versions")
+                .timeoutRead(5000)
+                .responseString()
+            val body = result.get()
+            val parsed = cosmosJson.fromJson(body, Map::class.java)
+            (parsed["versions"] as? List<Map<String, Any>>) ?: emptyList()
+        } catch (e: Exception) {
+            Logger.warn("Failed to query dapi /versions: ${e.message}")
+            emptyList()
+        }
+    }
+
+    private fun getVersionedHealth(genesis: LocalInferencePair, versionName: String): String {
+        val (_, response, result) = Fuel.get("${genesis.api.getPublicUrl()}/devshard/$versionName/healthz")
+            .timeoutRead(10000)
+            .responseString()
+        assertThat(response.statusCode)
+            .withFailMessage("GET /devshard/$versionName/healthz returned ${response.statusCode}: ${result}")
+            .isEqualTo(200)
+        return result.get().trim()
+    }
+
+    private fun waitUntil(description: String, timeoutSeconds: Int, condition: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + timeoutSeconds * 1000L
+        while (System.currentTimeMillis() < deadline) {
+            if (condition()) return
+            Thread.sleep(2000)
+        }
+        error("Timed out waiting for: $description (${timeoutSeconds}s)")
     }
 }

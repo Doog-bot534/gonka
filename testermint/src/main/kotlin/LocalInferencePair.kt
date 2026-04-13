@@ -1,6 +1,7 @@
 package com.productscience
 
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import com.github.dockerjava.api.DockerClient
 import com.github.dockerjava.api.model.*
 import com.github.dockerjava.core.DockerClientBuilder
@@ -12,6 +13,7 @@ import java.io.File
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 val nameExtractor = "(.+)-node".toRegex()
 
@@ -203,6 +205,13 @@ private fun DockerClient.executeCommand(
 
 private val attachedContainers = ConcurrentHashMap<String, LogOutput>()
 
+data class VersiondInstallMetadata(
+    @SerializedName("archive_sha256")
+    val archiveSha256: String,
+    @SerializedName("binary_sha256")
+    val binarySha256: String,
+)
+
 fun attachDockerLogs(
     dockerClient: DockerClient,
     name: String,
@@ -263,6 +272,75 @@ data class LocalInferencePair(
         DockerClientBuilder.getInstance().build().use { dockerClient ->
             dockerClient.stopContainerCmd(apiContainer.id).exec()
         }
+    }
+
+    private fun siblingContainerId(serviceName: String): String {
+        val cleanName = name.trimStart('/')
+        val expectedNames = setOf("$cleanName-$serviceName", "/$cleanName-$serviceName")
+        DockerClientBuilder.getInstance().build().use { dockerClient ->
+            return dockerClient.listContainersCmd()
+                .withShowAll(true)
+                .exec()
+                .find { container -> container.names.any { it in expectedNames } }
+                ?.id
+                ?: error("Container not found for $cleanName service=$serviceName")
+        }
+    }
+
+    fun execInVersiond(args: List<String>, stdin: String? = null): List<String> = wrapLog("execInVersiond", false) {
+        DockerExecutor(siblingContainerId("versiond"), config).exec(args, stdin)
+    }
+
+    fun curlFromApiNetwork(url: String): String = wrapLog("curlFromApiNetwork", false) {
+        api.executor.exec(listOf("sh", "-c", "curl -sf '$url'"), null).joinToString("").trim()
+    }
+
+    fun versiondBinaryPath(versionName: String, binaryName: String = "devshardd"): String =
+        "/opt/versiond/bin/$versionName/$binaryName"
+
+    fun versiondInstallMetadataPath(versionName: String): String =
+        "/opt/versiond/bin/$versionName/install.json"
+
+    fun versiondBinaryExists(versionName: String, binaryName: String = "devshardd"): Boolean =
+        try {
+            execInVersiond(
+                listOf("sh", "-c", "test -x '${versiondBinaryPath(versionName, binaryName)}' && echo OK"),
+                null,
+            ).any { it.contains("OK") }
+        } catch (_: Exception) {
+            false
+        }
+
+    fun readVersiondInstallMetadata(versionName: String): VersiondInstallMetadata? =
+        try {
+            val installPath = versiondInstallMetadataPath(versionName)
+            val json = execInVersiond(
+                listOf("sh", "-c", "test -f '$installPath' && cat '$installPath'"),
+                null,
+            ).joinToString("").trim()
+            json.takeIf { it.isNotBlank() }?.let {
+                cosmosJson.fromJson(it, VersiondInstallMetadata::class.java)
+            }
+        } catch (_: Exception) {
+            null
+        }
+
+    fun readVersiondLogs(tail: Int = 200): String = wrapLog("readVersiondLogs", false) {
+        val output = ExecCaptureOutput()
+        val containerId = siblingContainerId("versiond")
+        DockerClientBuilder.getInstance().build().use { dockerClient ->
+            val command = dockerClient.logContainerCmd(containerId)
+                .withStdOut(true)
+                .withStdErr(true)
+                .withTimestamps(false)
+            if (tail > 0) {
+                command.withTail(tail)
+            }
+            val callback = command.exec(output)
+            callback.awaitCompletion(10, TimeUnit.SECONDS)
+            callback.close()
+        }
+        output.output.joinToString("")
     }
 
     fun setPocWeight(weight: Long, node: InferenceNode? = null) {

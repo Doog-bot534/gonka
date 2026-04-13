@@ -29,8 +29,9 @@ The intended steady-state flow is:
 governance proposal -> params.approved_versions -> dapi GET /versions -> versiond polls, downloads, runs
 ```
 
-WARN: this is the target flow, not the first temporary release. The current
-release does not yet ship governance-driven `approved_versions`.
+The first temporary release now implements the `approved_versions -> /versions
+-> versiond download` path. The remaining WARN blocks below call out the parts
+that are still future work beyond that first release.
 
 `DevshardEscrowParams.approved_versions` is the governance-controlled list of
 allowed binaries. Each entry carries:
@@ -118,7 +119,6 @@ compatibility. versiond does not manage it.
 The first release does not implement the full target state. In particular, the
 following items are architectural intent, not current behavior:
 
-- governance-driven `approved_versions`
 - chain-side enforcement that only approved versions can settle
 - off-chain session binding to a recorded binary version
 - a self-contained devshard host binary built entirely from the `devshard/`
