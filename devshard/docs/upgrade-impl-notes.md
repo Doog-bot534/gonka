@@ -14,7 +14,8 @@ The first versioned release is intentionally small:
   `proxy -> versiond -> devshardd`
 - `devshardd` is a temporary standalone host binary built out of the
   `decentralized-api/` module
-- `devshardctl` chooses the path by setting the route prefix
+- `devshardctl` defaults to its release version path and can still override the
+  route prefix for tests or local debugging
 
 The main goal of this release is to prove that the standalone host process can
 run behind versiond while the legacy dapi path continues to work unchanged.

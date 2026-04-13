@@ -8,14 +8,12 @@ import (
 	"net/http"
 	"time"
 
-	"decentralized-api/completionapi"
 	internaldevshard "decentralized-api/internal/devshard"
 	"decentralized-api/payloadstorage"
 
 	"devshard"
 	mlnodeclient "devshard/mlnode"
 	mlnodegen "devshard/mlnode/gen"
-	devshardserver "devshard/server"
 )
 
 // devshardEngine implements devshard.InferenceEngine for the standalone
@@ -47,17 +45,19 @@ func newDevshardEngine(
 // The only change is node acquisition (gRPC instead of broker) and the retry
 // policy, which rotates excluded node IDs on transport errors.
 func (e *devshardEngine) Execute(ctx context.Context, req devshard.ExecuteRequest) (*devshard.ExecuteResult, error) {
-	seed := int32(req.InferenceID)
-	inferenceID := fmt.Sprintf("devshard-%s-%d", req.EscrowID, req.InferenceID)
+	return internaldevshard.ExecuteInferenceWithExecutor(
+		ctx,
+		req,
+		e.payloadStore,
+		0,
+		e.executeMLRequest,
+	)
+}
 
-	modified, err := completionapi.ModifyRequestBody(req.Prompt, seed)
-	if err != nil {
-		return nil, fmt.Errorf("modify request body: %w", err)
-	}
-
-	resp, err := e.doWithLockedNode(ctx, req.Model, func(endpoint string) (*http.Response, error) {
+func (e *devshardEngine) executeMLRequest(ctx context.Context, model string, body []byte) (*http.Response, error) {
+	resp, err := e.doWithLockedNode(ctx, model, func(endpoint string) (*http.Response, error) {
 		url := endpoint + "/v1/chat/completions"
-		httpReq, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(modified.NewBody))
+		httpReq, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 		if reqErr != nil {
 			return nil, reqErr
 		}
@@ -67,32 +67,7 @@ func (e *devshardEngine) Execute(ctx context.Context, req devshard.ExecuteReques
 	if err != nil {
 		return nil, fmt.Errorf("execute inference: %w", err)
 	}
-	defer resp.Body.Close()
-
-	processed, err := internaldevshard.ProcessExecutionHTTPResponse(req, resp, inferenceID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Persist the ORIGINAL canonicalized prompt (not the modified one with
-	// seed) so validators can re-hash the same bytes the user signed.
-	promptPayload, err := devshard.CanonicalizeJSON(req.Prompt)
-	if err != nil {
-		return nil, fmt.Errorf("canonicalize prompt: %w", err)
-	}
-
-	// Epoch bucket is always 0 for devshardd. Validators running in other
-	// devshardd instances look up with epoch 0 as well, so payloads match.
-	if err := e.payloadStore.Store(ctx, devshardserver.PayloadKey(req.EscrowID, req.InferenceID), 0, promptPayload, processed.ResponseBody); err != nil {
-		return nil, fmt.Errorf("store payloads: %w", err)
-	}
-
-	return &devshard.ExecuteResult{
-		ResponseHash: processed.ResponseHash,
-		InputTokens:  processed.InputTokens,
-		OutputTokens: processed.OutputTokens,
-		ResponseBody: processed.ResponseBody,
-	}, nil
+	return resp, nil
 }
 
 // doWithLockedNode mirrors broker.DoWithLockedNodeHTTPRetry but against the

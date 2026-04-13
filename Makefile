@@ -1,6 +1,7 @@
 .PHONY: release decentralized-api-release inference-chain-release tmkms-release proxy-release proxy-ssl-release bridge-release versiond-release check-docker build-testermint run-blockchain-tests test-blockchain local-build api-local-build node-local-build api-test node-test mock-server-build-docker proxy-build-docker proxy-ssl-build-docker bridge-build-docker run-bls-tests devshardctl-build devshardd-local-build versiond-build-docker testapp-server-build-docker
 
 VERSION ?= $(shell git describe --always)
+DEVSHARD_VERSION ?= dev
 TAG_NAME := "release/v$(VERSION)"
 USE_REGISTRY_CACHE ?= 0
 ifeq ($(USE_REGISTRY_CACHE),1)
@@ -110,13 +111,14 @@ api-local-build:
 
 devshardctl-build:
 	@echo "Building devshardctl..."
-	@cd devshard && go build -o ../build/devshardctl ./cmd/devshardctl/
+	@cd devshard && go build -ldflags "-X main.Version=$(DEVSHARD_VERSION)" -o ../build/devshardctl ./cmd/devshardctl/
 
 devshardd-local-build:
 	@echo "Building devshardd (musl-static via docker)..."
 	@mkdir -p build
 	@DOCKER_BUILDKIT=1 docker build --target builder \
 		--build-arg BLST_PORTABLE=1 \
+		--build-arg DEVSHARD_VERSION=$(DEVSHARD_VERSION) \
 		-f decentralized-api/Dockerfile . \
 		-t devshardd-builder:latest -q >/dev/null
 	@CID=$$(docker create devshardd-builder:latest) && \

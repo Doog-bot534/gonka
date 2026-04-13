@@ -42,6 +42,10 @@ type SlotSignatureJSON struct {
 	Signature string `json:"signature"`
 }
 
+// Version is the devshardctl release version. Set via ldflags
+// -X main.Version=... . Defaults to "dev" for local builds without an override.
+var Version = "dev"
+
 func main() {
 	fs := flag.NewFlagSet("devshardctl", flag.ExitOnError)
 	escrowID := fs.String("escrow-id", "", "escrow ID (required, or DEVSHARD_ESCROW_ID env)")
@@ -106,17 +110,16 @@ func main() {
 
 	br := bridge.NewRESTBridge(crest)
 	// DEVSHARD_ROUTE_PREFIX selects which HTTP path prefix to use when
-	// reaching devshard hosts. Default empty -> devshard.LegacyRoutePrefix.
-	// Set to devshard.VersionedRoutePrefix(version) to hit a versioned
-	// devshardd binary running behind versiond.
-	routePrefix := os.Getenv("DEVSHARD_ROUTE_PREFIX")
+	// reaching devshard hosts. Default empty -> the embedded build-time
+	// versioned route. Set it explicitly for tests or local debugging.
+	routePrefix := devshardpkg.ResolveVersionedRoutePrefix(Version, os.Getenv("DEVSHARD_ROUTE_PREFIX"))
 	cfg := user.HTTPSessionConfig{
 		PrivateKeyHex:  keyHex,
 		EscrowID:       eid,
 		Bridge:         br,
 		StoragePath:    sp,
 		StreamCallback: registry.callback,
-		RoutePrefix:    devshardpkg.NormalizeRoutePrefix(routePrefix),
+		RoutePrefix:    routePrefix,
 	}
 
 	session, sm, err := user.NewHTTPSession(cfg)

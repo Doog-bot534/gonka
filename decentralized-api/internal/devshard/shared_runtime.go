@@ -7,13 +7,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"decentralized-api/completionapi"
-	validationpkg "decentralized-api/internal/validation"
 	"decentralized-api/internal/server/public"
+	validationpkg "decentralized-api/internal/validation"
 	"decentralized-api/logging"
+	"decentralized-api/payloadstorage"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/productscience/inference/cmd/inferenced/cmd"
@@ -22,7 +24,101 @@ import (
 
 	devshardpkg "devshard"
 	"devshard/bridge"
+	devshardserver "devshard/server"
 )
+
+type MLRequestExecutor func(ctx context.Context, model string, body []byte) (*http.Response, error)
+
+func ExecuteInferenceWithExecutor(
+	ctx context.Context,
+	req devshardpkg.ExecuteRequest,
+	payloadStore payloadstorage.PayloadStorage,
+	payloadEpoch uint64,
+	execute MLRequestExecutor,
+) (*devshardpkg.ExecuteResult, error) {
+	seed := int32(req.InferenceID)
+	inferenceID := fmt.Sprintf("devshard-%s-%d", req.EscrowID, req.InferenceID)
+
+	modified, err := completionapi.ModifyRequestBody(req.Prompt, seed)
+	if err != nil {
+		return nil, fmt.Errorf("modify request body: %w", err)
+	}
+
+	resp, err := execute(ctx, req.Model, modified.NewBody)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	processed, err := ProcessExecutionHTTPResponse(req, resp, inferenceID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Store the canonicalized ORIGINAL prompt (not the modified one with seed).
+	promptPayload, err := devshardpkg.CanonicalizeJSON(req.Prompt)
+	if err != nil {
+		return nil, fmt.Errorf("canonicalize prompt: %w", err)
+	}
+
+	if err := payloadStore.Store(
+		ctx,
+		devshardserver.PayloadKey(req.EscrowID, req.InferenceID),
+		payloadEpoch,
+		promptPayload,
+		processed.ResponseBody,
+	); err != nil {
+		return nil, fmt.Errorf("store payloads: %w", err)
+	}
+
+	return &devshardpkg.ExecuteResult{
+		ResponseHash: processed.ResponseHash,
+		InputTokens:  processed.InputTokens,
+		OutputTokens: processed.OutputTokens,
+		ResponseBody: processed.ResponseBody,
+	}, nil
+}
+
+func ValidateInferenceWithExecutor(
+	ctx context.Context,
+	req devshardpkg.ValidateRequest,
+	httpClient *http.Client,
+	br bridge.MainnetBridge,
+	recorder PayloadAuthClient,
+	payloadEpoch uint64,
+	requestPath string,
+	execute MLRequestExecutor,
+	logPrefix string,
+) (*devshardpkg.ValidateResult, error) {
+	inferenceID := strconv.FormatUint(req.InferenceID, 10)
+
+	promptPayload, responsePayload, err := FetchPayloadsFromExecutor(
+		ctx,
+		httpClient,
+		br,
+		recorder,
+		req,
+		inferenceID,
+		payloadEpoch,
+		requestPath,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("fetch payloads from executor: %w", err)
+	}
+
+	validationBody, err := BuildValidationBody(promptPayload, responsePayload, req.InferenceID)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := execute(ctx, req.Model, validationBody)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	return EvaluateValidationResponse(resp, req, inferenceID, logPrefix, responsePayload)
+}
 
 type ProcessedExecutionResponse struct {
 	ResponseHash []byte

@@ -748,11 +748,10 @@ data class LocalInferencePair(
         wrapLog("startDevshardProxy", true) {
             val privateKey = (if (keyName != null) node.getPrivateKey(keyName) else node.getColdPrivateKey()).trim()
             val stderrFile = "/tmp/devshardctl-proxy-${escrowId}.log"
-            // routePrefix selects which HTTP path prefix devshardctl uses
-            // when reaching hosts. Default empty -> /v1/devshard (legacy
-            // dapi-served path). Set to /devshard/<version> to hit a
-            // versioned devshardd binary running behind versiond.
-            val routePrefixEnv = if (routePrefix != null) " DEVSHARD_ROUTE_PREFIX='$routePrefix'" else ""
+            // Tests pin the route prefix explicitly so they are not coupled to
+            // devshardctl's release-default routing choice.
+            val effectiveRoutePrefix = routePrefix ?: "/v1/devshard"
+            val routePrefixEnv = " DEVSHARD_ROUTE_PREFIX='$effectiveRoutePrefix'"
             val startCommand = listOf(
                 "sh", "-c",
                 "DEVSHARD_PRIVATE_KEY='$privateKey'" +

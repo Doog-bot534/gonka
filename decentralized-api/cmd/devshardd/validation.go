@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	internaldevshard "decentralized-api/internal/devshard"
 
@@ -44,24 +43,23 @@ func newDevshardValidator(
 }
 
 func (v *devshardValidator) Validate(ctx context.Context, req devshardpkg.ValidateRequest) (*devshardpkg.ValidateResult, error) {
-	inferenceID := strconv.FormatUint(req.InferenceID, 10)
-	// devshardd pins the epoch bucket to 0. The executor stored under 0; we
-	// must look up under 0 too.
-	epochID := uint64(0)
+	return internaldevshard.ValidateInferenceWithExecutor(
+		ctx,
+		req,
+		v.httpClient,
+		v.bridge,
+		v.recorder,
+		0,
+		devshardpkg.VersionedSessionPayloadPath(Version, req.EscrowID),
+		v.executeMLRequest,
+		"devshardd",
+	)
+}
 
-	promptPayload, responsePayload, err := v.fetchPayloadsFromExecutor(ctx, req, inferenceID, epochID)
-	if err != nil {
-		return nil, fmt.Errorf("fetch payloads from executor: %w", err)
-	}
-
-	validationBody, err := internaldevshard.BuildValidationBody(promptPayload, responsePayload, req.InferenceID)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := v.engine.doWithLockedNode(ctx, req.Model, func(endpoint string) (*http.Response, error) {
+func (v *devshardValidator) executeMLRequest(ctx context.Context, model string, body []byte) (*http.Response, error) {
+	resp, err := v.engine.doWithLockedNode(ctx, model, func(endpoint string) (*http.Response, error) {
 		url := endpoint + "/v1/chat/completions"
-		httpReq, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(validationBody))
+		httpReq, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 		if reqErr != nil {
 			return nil, reqErr
 		}
@@ -71,30 +69,7 @@ func (v *devshardValidator) Validate(ctx context.Context, req devshardpkg.Valida
 	if err != nil {
 		return nil, fmt.Errorf("validate inference: %w", err)
 	}
-	defer resp.Body.Close()
-
-	return internaldevshard.EvaluateValidationResponse(resp, req, inferenceID, "devshardd", responsePayload)
-}
-
-// fetchPayloadsFromExecutor hits the executor host's /payloads endpoint
-// through the bridge-decorated URL (which, in tests, routes through versiond
-// to the executor's devshardd).
-func (v *devshardValidator) fetchPayloadsFromExecutor(
-	ctx context.Context,
-	req devshardpkg.ValidateRequest,
-	inferenceID string,
-	epochID uint64,
-) ([]byte, []byte, error) {
-	return internaldevshard.FetchPayloadsFromExecutor(
-		ctx,
-		v.httpClient,
-		v.bridge,
-		v.recorder,
-		req,
-		inferenceID,
-		epochID,
-		devshardpkg.VersionedSessionPayloadPath(Version, req.EscrowID),
-	)
+	return resp, nil
 }
 
 // Compile-time check.

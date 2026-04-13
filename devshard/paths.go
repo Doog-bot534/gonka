@@ -18,6 +18,13 @@ func NormalizeRoutePrefix(routePrefix string) string {
 	return routePrefix
 }
 
+func ResolveVersionedRoutePrefix(version, routePrefix string) string {
+	if routePrefix != "" {
+		return routePrefix
+	}
+	return VersionedRoutePrefix(version)
+}
+
 func SessionPayloadPath(routePrefix, escrowID string) string {
 	normalized := strings.TrimPrefix(NormalizeRoutePrefix(routePrefix), "/")
 	return fmt.Sprintf("%s/sessions/%s/payloads", normalized, escrowID)

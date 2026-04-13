@@ -8,6 +8,15 @@ func TestNormalizeRoutePrefixDefaultsToLegacy(t *testing.T) {
 	}
 }
 
+func TestResolveVersionedRoutePrefix(t *testing.T) {
+	if got := ResolveVersionedRoutePrefix("v1", ""); got != VersionedRoutePrefix("v1") {
+		t.Fatalf("ResolveVersionedRoutePrefix(\"v1\", \"\") = %q, want %q", got, VersionedRoutePrefix("v1"))
+	}
+	if got := ResolveVersionedRoutePrefix("v1", LegacyRoutePrefix); got != LegacyRoutePrefix {
+		t.Fatalf("ResolveVersionedRoutePrefix override = %q, want %q", got, LegacyRoutePrefix)
+	}
+}
+
 func TestSessionPayloadPath(t *testing.T) {
 	tests := []struct {
 		name        string

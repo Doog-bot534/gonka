@@ -8,7 +8,6 @@ import (
 
 	"decentralized-api/broker"
 	"decentralized-api/chainphase"
-	"decentralized-api/completionapi"
 	"decentralized-api/payloadstorage"
 
 	"devshard"
@@ -41,18 +40,20 @@ func NewEngineAdapter(
 }
 
 func (e *EngineAdapter) Execute(ctx context.Context, req devshard.ExecuteRequest) (*devshard.ExecuteResult, error) {
-	seed := int32(req.InferenceID)
-	inferenceId := fmt.Sprintf("devshard-%s-%d", req.EscrowID, req.InferenceID)
+	return ExecuteInferenceWithExecutor(
+		ctx,
+		req,
+		e.payloadStore,
+		currentEpochID(e.phaseTracker),
+		e.executeMLRequest,
+	)
+}
 
-	modified, err := completionapi.ModifyRequestBody(req.Prompt, seed)
-	if err != nil {
-		return nil, fmt.Errorf("modify request body: %w", err)
-	}
-
-	resp, err := broker.DoWithLockedNodeHTTPRetry(e.broker, req.Model, nil, 3,
+func (e *EngineAdapter) executeMLRequest(ctx context.Context, model string, body []byte) (*http.Response, error) {
+	resp, err := broker.DoWithLockedNodeHTTPRetry(e.broker, model, nil, 3,
 		func(node *broker.Node) (*http.Response, *broker.ActionError) {
 			url := node.InferenceUrlWithVersion(e.nodeVersion) + "/v1/chat/completions"
-			httpReq, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(modified.NewBody))
+			httpReq, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 			if reqErr != nil {
 				return nil, broker.NewApplicationActionError(reqErr)
 			}
@@ -67,31 +68,7 @@ func (e *EngineAdapter) Execute(ctx context.Context, req devshard.ExecuteRequest
 	if err != nil {
 		return nil, fmt.Errorf("broker execute: %w", err)
 	}
-	defer resp.Body.Close()
-
-	processed, err := ProcessExecutionHTTPResponse(req, resp, inferenceId)
-	if err != nil {
-		return nil, err
-	}
-
-	// Store the canonicalized ORIGINAL prompt (not the modified one with seed).
-	promptPayload, err := devshard.CanonicalizeJSON(req.Prompt)
-	if err != nil {
-		return nil, fmt.Errorf("canonicalize prompt: %w", err)
-	}
-
-	storageKey := devshardserver.PayloadKey(req.EscrowID, req.InferenceID)
-	epochID := currentEpochID(e.phaseTracker)
-	if err := e.payloadStore.Store(ctx, storageKey, epochID, promptPayload, processed.ResponseBody); err != nil {
-		return nil, fmt.Errorf("store payloads: %w", err)
-	}
-
-	return &devshard.ExecuteResult{
-		ResponseHash: processed.ResponseHash,
-		InputTokens:  processed.InputTokens,
-		OutputTokens: processed.OutputTokens,
-		ResponseBody: processed.ResponseBody,
-	}, nil
+	return resp, nil
 }
 
 // DevshardPayloadKey creates a namespaced storage key for devshard payloads.
