@@ -237,6 +237,7 @@ class DevshardStandaloneTests : TestermintTest() {
     fun `devshard streaming inference e2e with settlement via devshardd`() {
         val (cluster, genesis) = initCluster(config = overrideConfig, reboot = true)
         genesis.waitForNextEpoch()
+        waitForOverrideVersionedHealth(genesis)
 
         cluster.stubDevshardChatResponse(content = "hello from stream", streamDelay = Duration.ofMillis(50))
 
@@ -607,6 +608,12 @@ class DevshardStandaloneTests : TestermintTest() {
             .withFailMessage("GET /devshard/$versionName/healthz returned ${response.statusCode}: ${result}")
             .isEqualTo(200)
         return result.get().trim()
+    }
+
+    private fun waitForOverrideVersionedHealth(genesis: LocalInferencePair, versionName: String = "dev") {
+        waitUntil("proxy serves /devshard/$versionName/healthz", timeoutSeconds = 90) {
+            runCatching { getVersionedHealth(genesis, versionName) == "ok" }.getOrDefault(false)
+        }
     }
 
     private fun waitUntil(description: String, timeoutSeconds: Int, condition: () -> Boolean) {

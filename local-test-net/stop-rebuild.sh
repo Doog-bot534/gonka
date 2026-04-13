@@ -12,4 +12,4 @@ make -C ../. build-docker
 # child via the VERSIOND_OVERRIDE_<name> mechanism. The docker-compose.versiond.yml
 # bind-mounts ../build/devshardd into the versiond container, so this file
 # must exist on the host before any test that uses that compose file.
-make -C ../. devshardd-local-build
+make -C ../. devshardd-build

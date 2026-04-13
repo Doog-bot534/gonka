@@ -880,9 +880,13 @@ data class LocalInferencePair(
 
     fun sendChatCompletion(proxyUrl: String, model: String, prompt: String, stream: Boolean = false): String {
         val body = """{"model":"$model","messages":[{"role":"user","content":"$prompt"}],"max_tokens":100,"stream":$stream}"""
+        val maxTimeSeconds = if (stream) 55 else 30
         val result = api.executor.exec(listOf(
             "sh", "-c",
-            "curl -sf -X POST $proxyUrl/v1/chat/completions -H 'Content-Type: application/json' -d '${body.replace("'", "'\\''")}'"
+            "curl --silent --show-error --fail --connect-timeout 5 --max-time $maxTimeSeconds " +
+                "-X POST $proxyUrl/v1/chat/completions " +
+                "-H 'Content-Type: application/json' " +
+                "-d '${body.replace("'", "'\\''")}'"
         ), null)
         return result.joinToString("")
     }

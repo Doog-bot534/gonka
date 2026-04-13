@@ -158,6 +158,7 @@ jobs:
           GENESIS_OVERRIDES_FILE: "inference-chain/test_genesis_overrides.json"
         run: |
           make build-docker
+          make devshardd-build
           echo "=== Images immediately after build ==="
           docker images | head -20
 
@@ -179,6 +180,13 @@ jobs:
         with:
           name: docker-images
           path: docker-images/
+          retention-days: 1
+
+      - name: Upload devshardd Host Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: devshardd-host-binary
+          path: build/devshardd
           retention-days: 1
 
       - name: Make Upgrade Build
@@ -224,6 +232,12 @@ jobs:
           name: docker-images
           path: docker-images/
 
+      - name: Download devshardd Host Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: devshardd-host-binary
+          path: build/
+
       - name: Load Docker Images
         run: |
           gunzip docker-images/*.tar.gz || true
@@ -234,6 +248,10 @@ jobs:
           sudo docker load -i docker-images/versiond.tar || true
           sudo docker load -i docker-images/testapp-server.tar || true
           rm -rf docker-images/
+
+      - name: Prepare devshardd Host Binary
+        run: |
+          chmod +x build/devshardd
 
       - name: Install Make
         run: |
