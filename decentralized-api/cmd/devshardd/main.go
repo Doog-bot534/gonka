@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"log"
@@ -40,6 +41,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec"
 	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 
 	mlnodeclient "devshard/mlnode"
 	devshardstorage "devshard/storage"
@@ -171,10 +173,12 @@ func loadNodeConfigFromEnv() apiconfig.ChainNodeConfig {
 }
 
 // buildApiAccount constructs an apiconfig.ApiAccount for devshardd using the
-// signer key's own pubkey as the "account" key. This is simpler than dapi's
-// NewApiAccount (which takes a separate base64-encoded ACCOUNT_PUBKEY env
-// var): devshardd only ever signs as one identity, so SignerAccount and
-// AccountKey are the same key.
+// same split identity model as dapi:
+//   - ACCOUNT_PUBKEY is the cold participant account recorded on chain
+//   - KEY_NAME selects the signing key used by the process (warm key on joins)
+//
+// If ACCOUNT_PUBKEY is unset we fall back to the signer pubkey. That keeps the
+// genesis test path working, where signer and account are the same key.
 func buildApiAccount(ignite *igniteclient.Client, keyName string) (apiconfig.ApiAccount, error) {
 	if keyName == "" {
 		return apiconfig.ApiAccount{}, fmt.Errorf("KEY_NAME is required")
@@ -183,12 +187,22 @@ func buildApiAccount(ignite *igniteclient.Client, keyName string) (apiconfig.Api
 	if err != nil {
 		return apiconfig.ApiAccount{}, fmt.Errorf("get signer %q: %w", keyName, err)
 	}
-	pubKey, err := signer.Record.GetPubKey()
+	signerPubKey, err := signer.Record.GetPubKey()
 	if err != nil {
 		return apiconfig.ApiAccount{}, fmt.Errorf("signer pubkey: %w", err)
 	}
+
+	accountKey := signerPubKey
+	if accountPubKeyBase64 := os.Getenv("ACCOUNT_PUBKEY"); accountPubKeyBase64 != "" {
+		pubKeyBytes, decodeErr := base64.StdEncoding.DecodeString(accountPubKeyBase64)
+		if decodeErr != nil {
+			return apiconfig.ApiAccount{}, fmt.Errorf("decode ACCOUNT_PUBKEY: %w", decodeErr)
+		}
+		accountKey = &secp256k1.PubKey{Key: pubKeyBytes}
+	}
+
 	return apiconfig.ApiAccount{
-		AccountKey:    pubKey,
+		AccountKey:    accountKey,
 		SignerAccount: &signer,
 		AddressPrefix: "gonka",
 	}, nil

@@ -191,7 +191,7 @@ data class ApplicationCLI(
     private fun getWarmAccountIfNeeded() {
         if (warmAccountKey == null) {
             val keys = getKeys()
-            val warmAccountName = config.pairName.trimStart('/') + "_WARM"
+            val warmAccountName = config.pairName.trimStart('/') + "-WARM"
             warmAccountKey = (keys.firstOrNull { it.name == warmAccountName }
                 ?: keys.firstOrNull { it.type == "local" && !it.name.startsWith("POOL") }
                 ?: keys.first())

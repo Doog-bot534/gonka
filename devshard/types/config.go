@@ -5,13 +5,13 @@ package types
 // by config mismatches (e.g. different ValidationRate values).
 func DefaultSessionConfig(groupSize int) SessionConfig {
 	return SessionConfig{
-		RefusalTimeout:   60,
-		ExecutionTimeout: 1200,
-		TokenPrice:       1,
-		CreateDevshardFee:  10_000,
-		FeePerNonce:      1_000,
-		VoteThreshold:    uint32(groupSize) / 2,
-		ValidationRate:   5000,
+		RefusalTimeout:    60,
+		ExecutionTimeout:  1200,
+		TokenPrice:        1,
+		CreateDevshardFee: 10_000,
+		FeePerNonce:       1_000,
+		VoteThreshold:     uint32(groupSize) / 2,
+		ValidationRate:    5000,
 	}
 }
 

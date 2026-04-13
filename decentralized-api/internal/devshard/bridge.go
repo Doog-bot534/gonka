@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"decentralized-api/cosmosclient"
-
 	"devshard/bridge"
 
 	"github.com/productscience/inference/x/inference/types"
@@ -15,10 +13,10 @@ import (
 
 // ChainBridge implements bridge.MainnetBridge via gRPC through CosmosMessageClient.
 type ChainBridge struct {
-	client cosmosclient.CosmosMessageClient
+	client InferenceQueryClientProvider
 }
 
-func NewChainBridge(client cosmosclient.CosmosMessageClient) *ChainBridge {
+func NewChainBridge(client InferenceQueryClientProvider) *ChainBridge {
 	return &ChainBridge{client: client}
 }
 

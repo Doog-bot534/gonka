@@ -3,20 +3,19 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"decentralized-api/completionapi"
-	"decentralized-api/internal/server/public"
+	internaldevshard "decentralized-api/internal/devshard"
 	"decentralized-api/payloadstorage"
 
 	"devshard"
 	mlnodeclient "devshard/mlnode"
 	mlnodegen "devshard/mlnode/gen"
+	devshardserver "devshard/server"
 )
 
 // devshardEngine implements devshard.InferenceEngine for the standalone
@@ -70,42 +69,9 @@ func (e *devshardEngine) Execute(ctx context.Context, req devshard.ExecuteReques
 	}
 	defer resp.Body.Close()
 
-	processor := completionapi.NewExecutorResponseProcessor(inferenceID)
-
-	contentType := resp.Header.Get("Content-Type")
-	isSSE := strings.HasPrefix(contentType, "text/event-stream")
-
-	if req.ResponseWriter != nil && isSSE {
-		public.ProxyResponse(resp, req.ResponseWriter, true, processor, inferenceID)
-	} else {
-		if err := completionapi.ProcessHTTPResponse(resp, processor); err != nil {
-			return nil, fmt.Errorf("process response: %w", err)
-		}
-	}
-
-	completionResp, err := processor.GetResponse()
+	processed, err := internaldevshard.ProcessExecutionHTTPResponse(req, resp, inferenceID)
 	if err != nil {
-		return nil, fmt.Errorf("get completion response: %w", err)
-	}
-
-	bodyBytes, err := completionResp.GetBodyBytes()
-	if err != nil {
-		return nil, fmt.Errorf("get body bytes: %w", err)
-	}
-
-	// Non-streaming response with an SSE client connection: frame as a single
-	// SSE data event. Same as the dapi adapter.
-	if req.ResponseWriter != nil && !isSSE {
-		fmt.Fprintf(req.ResponseWriter, "data: %s\n\ndata: [DONE]\n\n", bodyBytes)
-		if f, ok := req.ResponseWriter.(http.Flusher); ok {
-			f.Flush()
-		}
-	}
-
-	hash := sha256.Sum256(bodyBytes)
-	usage, err := completionResp.GetUsage()
-	if err != nil {
-		return nil, fmt.Errorf("get usage: %w", err)
+		return nil, err
 	}
 
 	// Persist the ORIGINAL canonicalized prompt (not the modified one with
@@ -117,15 +83,15 @@ func (e *devshardEngine) Execute(ctx context.Context, req devshard.ExecuteReques
 
 	// Epoch bucket is always 0 for devshardd. Validators running in other
 	// devshardd instances look up with epoch 0 as well, so payloads match.
-	if err := e.payloadStore.Store(ctx, payloadKey(req.EscrowID, req.InferenceID), 0, promptPayload, bodyBytes); err != nil {
+	if err := e.payloadStore.Store(ctx, devshardserver.PayloadKey(req.EscrowID, req.InferenceID), 0, promptPayload, processed.ResponseBody); err != nil {
 		return nil, fmt.Errorf("store payloads: %w", err)
 	}
 
 	return &devshard.ExecuteResult{
-		ResponseHash: hash[:],
-		InputTokens:  usage.PromptTokens,
-		OutputTokens: usage.CompletionTokens,
-		ResponseBody: bodyBytes,
+		ResponseHash: processed.ResponseHash,
+		InputTokens:  processed.InputTokens,
+		OutputTokens: processed.OutputTokens,
+		ResponseBody: processed.ResponseBody,
 	}, nil
 }
 

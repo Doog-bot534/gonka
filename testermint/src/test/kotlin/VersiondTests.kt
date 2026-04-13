@@ -21,7 +21,6 @@ import java.util.concurrent.TimeUnit
 @Timeout(value = 10, unit = TimeUnit.MINUTES)
 class VersiondTests : TestermintTest() {
 
-    private val versiondUrl = "http://localhost:$VERSIOND_HOST_PORT"
     private val testappServerUrl = "http://localhost:$TESTAPP_SERVER_HOST_PORT"
     private val dapiMlUrl = "http://localhost:$DAPI_ML_HOST_PORT"
     private val testappBinaryDockerUrl = "http://${GENESIS_KEY_NAME}-testapp-server:8080/testapp.zip"
@@ -44,9 +43,6 @@ class VersiondTests : TestermintTest() {
         logSection("Waiting for testapp-server readiness")
         testappSha256 = waitForTestappServer()
         Logger.info("testapp zip sha256: $testappSha256")
-
-        logSection("Waiting for versiond readiness")
-        waitForVersiondHealthz()
     }
 
     @AfterAll
@@ -72,11 +68,6 @@ class VersiondTests : TestermintTest() {
             .withFailMessage("Expected dapi /versions to return empty list")
             .isEmpty()
 
-        logSection("Verifying versiond has no running versions")
-        val health = getVersiondHealth()
-        assertThat(health)
-            .withFailMessage("Expected versiond /healthz to report no running versions")
-            .isEmpty()
     }
 
     @Test
@@ -109,15 +100,8 @@ class VersiondTests : TestermintTest() {
             getDapiVersions().any { it["name"] == versionName }
         }
 
-        logSection("Waiting for versiond to download and start $versionName")
-        waitUntil("versiond starts $versionName", timeoutSeconds = 90) {
-            getVersiondHealth().any {
-                it["name"] == versionName && it["status"] == "running"
-            }
-        }
-
         logSection("Verifying proxy routing through versiond")
-        val response = getVersiondProxy(versionName)
+        val response = waitForVersionedProxy(versionName)
         assertThat(response["prefix"])
             .withFailMessage("Expected testapp to report prefix=$versionName, got ${response["prefix"]}")
             .isEqualTo(versionName)
@@ -128,12 +112,6 @@ class VersiondTests : TestermintTest() {
     @Order(3)
     fun `subnet binary can talk to nodemanager grpc service`() {
         val versionName = "v0.2.11"
-
-        logSection("Verifying $versionName is running before nodemanager test")
-        val health = getVersiondHealth()
-        assertThat(health.any { it["name"] == versionName && it["status"] == "running" })
-            .withFailMessage("Expected $versionName to be running")
-            .isTrue()
 
         logSection("Calling /nodemanager-test through versiond proxy")
         val response = getNodeManagerTest(versionName)
@@ -189,18 +167,12 @@ class VersiondTests : TestermintTest() {
         assertThat(versions).hasSize(2)
         assertThat(versions.map { it.name }).containsExactlyInAnyOrder(v1, v2)
 
-        logSection("Waiting for versiond to start $v2")
-        waitUntil("versiond starts $v2", timeoutSeconds = 90) {
-            val health = getVersiondHealth()
-            health.any { it["name"] == v2 && it["status"] == "running" }
-        }
-
         logSection("Verifying $v1 still routes")
-        val resp1 = getVersiondProxy(v1)
+        val resp1 = waitForVersionedProxy(v1)
         assertThat(resp1["prefix"]).isEqualTo(v1)
 
         logSection("Verifying $v2 routes")
-        val resp2 = getVersiondProxy(v2)
+        val resp2 = waitForVersionedProxy(v2)
         assertThat(resp2["prefix"]).isEqualTo(v2)
 
         logHighlight("Both $v1 and $v2 route correctly through versiond")
@@ -243,22 +215,6 @@ class VersiondTests : TestermintTest() {
         return sha256
     }
 
-    private fun waitForVersiondHealthz() {
-        val deadline = System.currentTimeMillis() + 120_000
-        while (System.currentTimeMillis() < deadline) {
-            try {
-                val (_, response, _) = Fuel.get("$versiondUrl/healthz")
-                    .timeoutRead(5000)
-                    .responseString()
-                if (response.statusCode == 200) return
-            } catch (e: Exception) {
-                Logger.debug("versiond not ready: ${e.message}")
-            }
-            Thread.sleep(2000)
-        }
-        error("versiond /healthz did not become ready within 120s")
-    }
-
     @Suppress("UNCHECKED_CAST")
     private fun getDapiVersions(): List<Map<String, Any>> {
         return try {
@@ -275,38 +231,40 @@ class VersiondTests : TestermintTest() {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun getVersiondHealth(): List<Map<String, Any>> {
-        return try {
-            val (_, _, result) = Fuel.get("$versiondUrl/healthz")
-                .timeoutRead(5000)
-                .responseString()
-            cosmosJson.fromJson(result.get(), List::class.java) as? List<Map<String, Any>> ?: emptyList()
-        } catch (e: Exception) {
-            Logger.warn("Failed to query versiond /healthz: ${e.message}")
-            emptyList()
-        }
-    }
-
-    @Suppress("UNCHECKED_CAST")
     private fun getNodeManagerTest(versionName: String): Map<String, String> {
-        val (_, response, result) = Fuel.get("$versiondUrl/$versionName/nodemanager-test")
+        val (_, response, result) = Fuel.get("${genesis.api.getPublicUrl()}/devshard/$versionName/nodemanager-test")
             .timeoutRead(15_000)
             .responseString()
         assertThat(response.statusCode)
-            .withFailMessage("GET /$versionName/nodemanager-test returned ${response.statusCode}: ${result}")
+            .withFailMessage("GET /devshard/$versionName/nodemanager-test returned ${response.statusCode}: ${result}")
             .isEqualTo(200)
         return cosmosJson.fromJson(result.get(), Map::class.java) as Map<String, String>
     }
 
     @Suppress("UNCHECKED_CAST")
     private fun getVersiondProxy(versionName: String): Map<String, Any> {
-        val (_, response, result) = Fuel.get("$versiondUrl/$versionName/")
+        val (_, response, result) = Fuel.get("${genesis.api.getPublicUrl()}/devshard/$versionName/")
             .timeoutRead(10_000)
             .responseString()
         assertThat(response.statusCode)
-            .withFailMessage("GET /$versionName/ returned ${response.statusCode}: ${result}")
+            .withFailMessage("GET /devshard/$versionName/ returned ${response.statusCode}: ${result}")
             .isEqualTo(200)
         return cosmosJson.fromJson(result.get(), Map::class.java) as Map<String, Any>
+    }
+
+    private fun waitForVersionedProxy(versionName: String): Map<String, Any> {
+        var lastError: Exception? = null
+        waitUntil("proxy routes $versionName", timeoutSeconds = 90) {
+            try {
+                getVersiondProxy(versionName)
+                true
+            } catch (e: Exception) {
+                lastError = e
+                Logger.debug("proxy route for $versionName not ready: ${e.message}")
+                false
+            }
+        }
+        return getVersiondProxy(versionName)
     }
 
     private fun waitUntil(description: String, timeoutSeconds: Int, condition: () -> Boolean) {
@@ -319,7 +277,6 @@ class VersiondTests : TestermintTest() {
     }
 
     companion object {
-        const val VERSIOND_HOST_PORT = 7080
         const val TESTAPP_SERVER_HOST_PORT = 7090
         const val DAPI_ML_HOST_PORT = 9001
     }

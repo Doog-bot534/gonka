@@ -1,68 +1,129 @@
 # Devshard Upgrades
 
-Devshard binaries version independently of mainnet. No cosmovisor, no coordinated upgrades.
+This document is the target architecture. It describes where the system should
+end up, not only what is implemented in the first temporary release.
 
-## Flow
+The temporary implementation is tracked separately in
+`devshard/docs/upgrade-impl-notes.md`.
+
+## Goal
+
+Devshard binaries version independently of mainnet. No cosmovisor. No
+coordinated full-node upgrade every time the devshard runtime changes.
+
+The stable client contract is path-based:
+
+```
+/v1/devshard/*        -> legacy path, served directly by dapi
+/devshard/<version>/* -> versioned path, served by versiond-managed binaries
+```
+
+The legacy path stays available for backward compatibility while the versioned
+path becomes the normal way to run newer devshard releases.
+
+## Target flow
+
+The intended steady-state flow is:
 
 ```
 governance proposal -> params.approved_versions -> dapi GET /versions -> versiond polls, downloads, runs
 ```
 
-`DevshardEscrowParams.approved_versions` is a governance-controlled list. Each entry has a name, a binary URL, and a sha256. Updates go through `MsgUpdateParams`.
+WARN: this is the target flow, not the first temporary release. The current
+release does not yet ship governance-driven `approved_versions`.
 
-sha256 is the sole identity for a binary -- the URL is a download hint only. Two governance proposals that point at different mirrors but carry the same hash cause zero restarts. A proposal that reuses a name but changes the hash replaces the binary with a zero-downtime swap: versiond downloads the new binary first, then stops the old process.
+`DevshardEscrowParams.approved_versions` is the governance-controlled list of
+allowed binaries. Each entry carries:
 
-Cached binaries are re-hashed on every versiond startup, so a tampered file on disk is detected before routing traffic to it.
+- version name
+- download URL
+- sha256
+
+sha256 is the real identity. The URL is only a download hint. If two proposals
+point at different mirrors but the same hash, operators do not restart
+anything. If the name stays the same but the hash changes, versiond downloads
+the new binary first and then swaps over.
+
+Versiond re-hashes cached binaries on startup so a tampered file on disk is
+detected before any traffic is routed to it.
 
 ## Multiple versions per host
 
-Every host runs every approved version concurrently. If `approved_versions = [v1, v2, v3]`, each host has three devshard child processes running side by side under versiond, reachable via three different URL prefixes. Hosts do not pick and choose -- it is all approved versions or nothing.
+In the target design, every host runs every approved version concurrently. If
+`approved_versions = [v1, v2, v3]`, a host runs three child processes side by
+side under versiond and exposes them under three different URL prefixes.
 
-## Version binding
+Hosts do not pick subsets. Governance defines the active set globally.
 
-Escrow creation is version-agnostic. `MsgCreateDevshardEscrow` takes no version.
+WARN: concurrent multi-version hosting is target behavior. The temporary
+release only needs the standalone path to work for the version currently being
+tested or forced locally.
 
-The user picks a version by choosing the URL path at session start:
+## Version selection and binding
+
+Escrow creation stays version-agnostic. `MsgCreateDevshardEscrow` does not take
+a version.
+
+The user chooses a version by selecting the HTTP path at session start:
 
 ```
-/v1/devshard/*          -> dapi, in-process (pre-versiond, unchanged)
-/devshard/<version>/*   -> versiond -> devshard binary for <version>
+/v1/devshard/*        -> dapi, in-process
+/devshard/<version>/* -> versiond -> devshard binary for <version>
 ```
 
-The first request routes to one version's binary. That host writes its build-time version into off-chain state. Every subsequent diff asserts the same version -- a host whose binary version does not match state refuses to sign. A session that tries to drift across versions cannot collect 2/3+ signatures and cannot settle.
+The target safety model is that the first request binds the session to one
+binary version off-chain. Every later diff must continue with that same
+version. A host running the wrong binary refuses to sign, so a version-mixing
+session cannot gather the threshold needed to settle.
 
-`/v1/devshard/*` is the legacy path served directly by dapi and is not managed by versiond. From v2 onward, all versioned traffic goes through `/devshard/<version>/*`.
+WARN: off-chain session binding to a recorded binary version is not implemented
+in the temporary release yet.
 
 ## Deprecation
 
-Governance removes a version from `approved_versions`.
+In the target design, governance removes a version from `approved_versions`.
 
-Settlement is user-driven: `MsgSettleDevshardEscrow` is submitted by the user, who has the active stake in recovering unused escrow. Hosts can settle only if the user has disappeared past a timeout. So during the voting period, users are the ones expected to close out in-flight sessions on the version being removed.
+Settlement is still user-driven. The user is the party with the strongest
+incentive to recover unused escrow, so in-flight sessions should be settled by
+the user during the voting window before a deprecated version is finally
+disabled.
 
-Once the proposal passes, the chain rejects `MsgSettleDevshardEscrow` for that version, and versiond stops the binary on its next poll. Any session still open at that point loses the escrow. The chain cannot block new sessions on a deprecated version at create time because creation carries no version -- enforcement is at settle, and nowhere earlier.
+Because escrow creation carries no version, deprecation enforcement can only
+happen later in the flow. The intended enforcement point is settlement, not
+escrow creation.
+
+WARN: governance-driven deprecation and settlement-time version enforcement are
+still future work.
 
 ## Operator overrides
 
-Host operators can override individual versions without waiting on governance:
+Operators need an escape hatch for hotfixes and local testing:
 
-- `VERSIOND_OVERRIDE_<name>=/path/to/binary` -- replace the downloaded binary for `<name>` with a local file. versiond still checks sha256 and still restarts on changes; it just uses the local file instead of the URL. Useful for hotfixes and local debugging.
-- `VERSIOND_FORCE=v4-rc1` -- run a version not in `approved_versions`. Requires a matching `VERSIOND_OVERRIDE_...`. Useful for testing a release candidate before governance votes it in.
-
-Neither mechanism affects consensus. A forced or overridden version that is not in `approved_versions` cannot settle to mainnet, so any session that uses it is off-chain only.
+- `VERSIOND_OVERRIDE_<name>=/path/to/binary` replaces the downloaded binary for
+  `<name>` with a local file. versiond still checks sha256 and still restarts
+  on changes.
+- `VERSIOND_FORCE=<name>` runs a version that is not in
+  `approved_versions`. This is for local validation and release-candidate
+  testing, not for the steady-state governance flow.
 
 ## What versiond manages
 
-Only the devshard binary. dapi is untouched by versiond. `devshardctl` is a user-side CLI, shipped per release for client compatibility, not managed by versiond.
+Only the devshard binary. dapi is not managed by versiond.
 
-## WARN: temporary build arrangement
+`devshardctl` is a client-side CLI shipped alongside each release for protocol
+compatibility. versiond does not manage it.
 
-Target end-state: a devshard binary in the `devshard/` Go module with zero dapi dependency. The first versioned release does not ship that.
+## Temporary first release
 
-Instead, the first release builds the devshard binary out of `decentralized-api/`, reusing dapi's ML engine, validation, bridge, signer, and host manager directly. Rewriting these into `devshard/` is follow-up work.
+The first release does not implement the full target state. In particular, the
+following items are architectural intent, not current behavior:
 
-Operator impact:
-- Large binary (full dapi dependency closure).
-- Runs as its own process under versiond, independent from dapi at runtime.
-- Governance flow, versiond, routing, settlement protocol: unchanged.
+- governance-driven `approved_versions`
+- chain-side enforcement that only approved versions can settle
+- off-chain session binding to a recorded binary version
+- a self-contained devshard host binary built entirely from the `devshard/`
+  module
 
-The later migration to a self-contained `devshard/` binary is transparent to clients, governance, and versiond.
+The first release instead uses a temporary standalone binary built out of
+`decentralized-api/` and served through versiond. That temporary shape is an
+implementation shortcut, not the intended long-term architecture.

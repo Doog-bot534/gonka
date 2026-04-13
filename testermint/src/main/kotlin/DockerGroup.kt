@@ -240,6 +240,7 @@ data class DockerGroup(
     private fun getCommonEnvMap(useSnapshots: Boolean): Map<String, String> {
         return buildMap {
             put("KEY_NAME", coldKeyName)
+            put("VERSIOND_SIGNER_KEY_NAME", if (isGenesis) coldKeyName else warmKeyName)
             // Per-pair keyring backend. Genesis api creates its key inside the
             // container with `test` backend (init-docker.sh CREATE_KEY=true).
             // Joins create with `file` backend externally via createColdKey.

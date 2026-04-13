@@ -12,47 +12,22 @@ import java.util.concurrent.Executors
 import kotlin.test.assertNotNull
 
 class DevshardTests : TestermintTest() {
-    private val noRestrictionsSpec = spec<AppState> {
-        this[AppState::restrictions] = spec<RestrictionsState> {
-            this[RestrictionsState::params] = spec<RestrictionsParams> {
-                this[RestrictionsParams::restrictionEndBlock] = 0L
-                this[RestrictionsParams::emergencyTransferExemptions] = emptyList<EmergencyTransferExemption>()
-                this[RestrictionsParams::exemptionUsageTracking] = emptyList<ExemptionUsageEntry>()
-            }
-        }
-    }
-
-    private val alwaysValidateSpec = spec<AppState> {
-        this[AppState::inference] = spec<InferenceState> {
-            this[InferenceState::params] = spec<InferenceParams> {
-                this[InferenceParams::validationParams] = spec<ValidationParams> {
-                    this[ValidationParams::minValidationAverage] = Decimal.fromDouble(100.0)
-                    this[ValidationParams::maxValidationAverage] = Decimal.fromDouble(100.0)
-                    this[ValidationParams::downtimeHThreshold] = Decimal.fromDouble(100.0)
-                }
-                this[InferenceParams::bandwidthLimitsParams] = spec<BandwidthLimitsParams> {
-                    this[BandwidthLimitsParams::minimumConcurrentInvalidations] = 100L
-                }
-            }
-        }
-    }
-
     private val noRestrictionsConfig = inferenceConfig.copy(
-        genesisSpec = inferenceConfig.genesisSpec?.merge(noRestrictionsSpec) ?: noRestrictionsSpec
+        genesisSpec = inferenceConfig.genesisSpec?.merge(devshardNoRestrictionsSpec) ?: devshardNoRestrictionsSpec
     )
 
     private val noRestrictionsLongEpochConfig = inferenceConfig.copy(
         genesisSpec = createSpec(
             epochLength = 40,
             epochShift = 10
-        ).merge(noRestrictionsSpec)
+        ).merge(devshardNoRestrictionsSpec)
     )
 
     private val noRestrictionsAlwaysValidateConfig = inferenceConfig.copy(
         genesisSpec = inferenceConfig.genesisSpec
-            ?.merge(noRestrictionsSpec)
-            ?.merge(alwaysValidateSpec)
-            ?: noRestrictionsSpec.merge(alwaysValidateSpec)
+            ?.merge(devshardNoRestrictionsSpec)
+            ?.merge(devshardAlwaysValidateSpec)
+            ?: devshardNoRestrictionsSpec.merge(devshardAlwaysValidateSpec)
     )
 
     @Test
@@ -89,89 +64,29 @@ class DevshardTests : TestermintTest() {
         val (cluster, genesis) = initCluster(config = noRestrictionsConfig, reboot = true)
         genesis.waitForNextEpoch()
 
-        cluster.allPairs.forEach { pair ->
-            pair.mock?.setInferenceResponse(
-                """{"id":"test","object":"chat.completion","created":0,"model":"$defaultModel","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}"""
-            )
-        }
+        cluster.stubDevshardChatResponse()
 
-        logSection("Creating separate user account")
-        val userKeyName = "devshard-proxy-user"
-        val userKey = genesis.node.createKey(userKeyName)
-        val userAddress = userKey.address
-        val fundAmount = 10_000_000_000L
-        val transferResp = genesis.submitTransaction(
-            listOf("bank", "send", genesis.node.getColdAddress(), userAddress, "${fundAmount}${genesis.config.denom}")
-        )
-        assertThat(transferResp.code).isEqualTo(0)
+        val user = genesis.createFundedDevshardUser("devshard-proxy-user")
 
         genesis.waitForNextInferenceWindow()
 
-        logSection("Creating devshard escrow from user account")
         val escrowAmount = 7_000_000_000L
-        val txResp = genesis.createDevshardEscrow(escrowAmount, from = userKeyName)
-        assertThat(txResp.code).isEqualTo(0)
+        val escrowId = genesis.createDevshardEscrowForUser(escrowAmount, user.keyName)
 
         logSection("Starting devshard proxy")
-        val handle = genesis.startDevshardProxy(escrowId = 1, keyName = userKeyName)
+        val handle = genesis.startDevshardProxy(escrowId = escrowId, keyName = user.keyName)
 
         try {
+            genesis.waitForDevshardProxyWarmup()
             logSection("Sending chat completions via proxy")
             for (i in 0 until 20) {
                 val response = genesis.sendChatCompletion(handle.proxyUrl, defaultModel, "test prompt $i")
                 assertThat(response).isNotEmpty()
             }
 
-            logSection("Finalizing via proxy")
-            val statusBeforeFinalization = genesis.getDevshardProxyStatus(handle.proxyUrl)
-            val result = genesis.finalizeDevshardProxy(handle.proxyUrl)
-
-            logSection("Verifying settlement data")
-            assertThat(result.parsed.escrowId).isEqualTo("1")
-            assertThat(result.parsed.nonce).isGreaterThan(0)
-            assertThat(result.parsed.hostStats).isNotEmpty()
-            assertThat(result.parsed.signatures).isNotEmpty()
-
-            // Verify the fees.
-            // Note: no fees are charged for finalization nonces,
-            // so we calculate the expected fees based on the latest nonce _before_ finalization began.
-            val activeNonces = statusBeforeFinalization.nonce
-            val expectedFees = statusBeforeFinalization.config.createDevshardFee + (statusBeforeFinalization.config.feePerNonce * activeNonces)
-            assertThat(result.parsed.nonce).isGreaterThanOrEqualTo(activeNonces)
-            assertThat(result.parsed.fees).isEqualTo(expectedFees)
-
-            val totalCompletedValidations = result.parsed.hostStats.sumOf { it.completedValidations }
-            assertThat(totalCompletedValidations).isGreaterThan(0)
-
-            val totalCost = result.parsed.hostStats.sumOf { it.cost }
-
-            // Hosts should receive the total cost for their inferences + fees paid by the user.
-            val totalPayout = totalCost + result.parsed.fees
-
-            // Refund: the user should get back any remaining balance after inference costs + fees.
-            val expectedRemainder = escrowAmount - totalPayout
-
-            logSection("Submitting settlement from user account")
-            val settleResp = genesis.settleDevshardEscrow(result.rawJson, from = userKeyName)
-            assertThat(settleResp.code).isEqualTo(0)
-
-            val settleEvent = assertNotNull(settleResp.events.firstOrNull { it.type == "devshard_escrow_settled" })
-            assertThat(settleEvent.attributes.firstOrNull { it.key == "total_payout" }?.value)
-                .isEqualTo(totalPayout.toString())
-            assertThat(settleEvent.attributes.firstOrNull { it.key == "fees" }?.value)
-                .isEqualTo(result.parsed.fees.toString())
-            assertThat(settleEvent.attributes.firstOrNull { it.key == "remainder" }?.value)
-                .isEqualTo(expectedRemainder.toString())
-
-            logSection("Verifying escrow settled")
-            val escrow = genesis.node.queryDevshardEscrow(1)
-            assertThat(escrow.escrow!!.settled).isTrue()
-
-            logSection("Verifying user got refund")
-            val balanceAfter = genesis.getBalance(userAddress)
-            assertThat(balanceAfter).isEqualTo(fundAmount - totalPayout)
+            genesis.assertDevshardSettlement(handle, escrowId, user, escrowAmount, requireCompletedValidations = false)
         } finally {
-            genesis.stopDevshardProxy(1)
+            genesis.stopDevshardProxy(escrowId)
         }
     }
 
@@ -180,34 +95,20 @@ class DevshardTests : TestermintTest() {
         val (cluster, genesis) = initCluster(config = noRestrictionsConfig, reboot = true)
         genesis.waitForNextEpoch()
 
-        cluster.allPairs.forEach { pair ->
-            pair.mock?.setInferenceResponse(
-                """{"id":"test","object":"chat.completion","created":0,"model":"$defaultModel","choices":[{"index":0,"message":{"role":"assistant","content":"hello from stream"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}""",
-                streamDelay = Duration.ofMillis(50)
-            )
-        }
+        cluster.stubDevshardChatResponse(content = "hello from stream", streamDelay = Duration.ofMillis(50))
 
-        logSection("Creating separate user account")
-        val userKeyName = "devshard-proxy-stream-user"
-        val userKey = genesis.node.createKey(userKeyName)
-        val userAddress = userKey.address
-        val fundAmount = 10_000_000_000L
-        val transferResp = genesis.submitTransaction(
-            listOf("bank", "send", genesis.node.getColdAddress(), userAddress, "${fundAmount}${genesis.config.denom}")
-        )
-        assertThat(transferResp.code).isEqualTo(0)
+        val user = genesis.createFundedDevshardUser("devshard-proxy-stream-user")
 
         genesis.waitForNextInferenceWindow()
 
-        logSection("Creating devshard escrow from user account")
         val escrowAmount = 7_000_000_000L
-        val txResp = genesis.createDevshardEscrow(escrowAmount, from = userKeyName)
-        assertThat(txResp.code).isEqualTo(0)
+        val escrowId = genesis.createDevshardEscrowForUser(escrowAmount, user.keyName)
 
         logSection("Starting devshard proxy")
-        val handle = genesis.startDevshardProxy(escrowId = 1, keyName = userKeyName)
+        val handle = genesis.startDevshardProxy(escrowId = escrowId, keyName = user.keyName)
 
         try {
+            genesis.waitForDevshardProxyWarmup()
             logSection("Sending streaming chat completions via proxy")
             val numInferences = 20L
             for (i in 0 until numInferences) {
@@ -216,22 +117,7 @@ class DevshardTests : TestermintTest() {
                 assertThat(response).contains("data:")
             }
 
-            logSection("Finalizing via proxy")
-            val result = genesis.finalizeDevshardProxy(handle.proxyUrl)
-
-            logSection("Verifying settlement data")
-            assertThat(result.parsed.escrowId).isEqualTo("1")
-            assertThat(result.parsed.nonce).isGreaterThan(0)
-            assertThat(result.parsed.hostStats).isNotEmpty()
-            assertThat(result.parsed.signatures).isNotEmpty()
-
-            logSection("Submitting settlement from user account")
-            val settleResp = genesis.settleDevshardEscrow(result.rawJson, from = userKeyName)
-            assertThat(settleResp.code).isEqualTo(0)
-
-            logSection("Verifying escrow settled")
-            val escrow = genesis.node.queryDevshardEscrow(1)
-            assertThat(escrow.escrow!!.settled).isTrue()
+            genesis.assertDevshardSettlement(handle, escrowId, user, escrowAmount, requireCompletedValidations = false)
 
             logSection("Verifying inference statuses")
             for (inferenceId in 1..numInferences) {
@@ -244,7 +130,7 @@ class DevshardTests : TestermintTest() {
                 assertThat(inference.status).isEqualTo(DevshardInferenceStatus.FINISHED)
             }
         } finally {
-            genesis.stopDevshardProxy(1)
+            genesis.stopDevshardProxy(escrowId)
         }
     }
 
@@ -254,11 +140,7 @@ class DevshardTests : TestermintTest() {
         val (cluster, genesis) = initCluster(config = noRestrictionsLongEpochConfig, reboot = true)
         genesis.waitForNextEpoch()
 
-        cluster.allPairs.forEach { pair ->
-            pair.mock?.setInferenceResponse(
-                """{"id":"test","object":"chat.completion","created":0,"model":"$defaultModel","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}"""
-            )
-        }
+        cluster.stubDevshardChatResponse()
 
         data class UserInfo(val keyName: String, val address: String)
         data class SessionSetup(val keyName: String, val address: String, val escrowId: Long)
@@ -267,14 +149,8 @@ class DevshardTests : TestermintTest() {
         val escrowAmount = 7_000_000_000L
 
         val users = (0 until sessionCount).map { i ->
-            logSection("Creating and funding user $i")
-            val keyName = "devshard-proxy-parallel-$i"
-            val key = genesis.node.createKey(keyName)
-            val transferResp = genesis.submitTransaction(
-                listOf("bank", "send", genesis.node.getColdAddress(), key.address, "${fundAmount}${genesis.config.denom}")
-            )
-            assertThat(transferResp.code).withFailMessage("Failed to fund user $i").isEqualTo(0)
-            UserInfo(keyName, key.address)
+            val user = genesis.createFundedDevshardUser("devshard-proxy-parallel-$i", fundAmount)
+            UserInfo(user.keyName, user.address)
         }
 
         genesis.waitForNextEpoch()
@@ -282,11 +158,8 @@ class DevshardTests : TestermintTest() {
 
         val sessions = users.mapIndexed { i, user ->
             logSection("Creating escrow for user $i")
-            val txResp = genesis.createDevshardEscrow(escrowAmount, from = user.keyName)
-            assertThat(txResp.code).withFailMessage("Failed to create escrow for user $i").isEqualTo(0)
-            val escrowId = txResp.getEscrowId()
-            assertThat(escrowId).withFailMessage("No escrow_id in tx events for user $i").isNotNull()
-            SessionSetup(user.keyName, user.address, escrowId!!)
+            val escrowId = genesis.createDevshardEscrowForUser(escrowAmount, user.keyName)
+            SessionSetup(user.keyName, user.address, escrowId)
         }
 
         logSection("Starting $sessionCount devshard proxies")
@@ -295,6 +168,7 @@ class DevshardTests : TestermintTest() {
         }
 
         try {
+            genesis.waitForDevshardProxyWarmup()
             logSection("Running $sessionCount proxy sessions in parallel")
             val dispatcher = Executors.newFixedThreadPool(sessionCount).asCoroutineDispatcher()
             runBlocking(dispatcher) {
@@ -370,39 +244,27 @@ class DevshardTests : TestermintTest() {
         genesis.waitForNextEpoch()
 
         cluster.allPairs.forEach { pair ->
-            pair.mock?.setInferenceResponse(
-                defaultInferenceResponseObject,
+            pair.mock?.stubDevshardResponseForAllSegments(
+                response = defaultInferenceResponseObject,
                 streamDelay = Duration.ofMillis(50),
-                segment = "",
             )
         }
-        cluster.allPairs.last().mock?.setInferenceResponse(
-            defaultInferenceResponseObject.withMissingLogit(),
-            segment = "",
+        cluster.allPairs.last().mock?.stubDevshardResponseForAllSegments(
+            response = defaultInferenceResponseObject.withMissingLogit(),
         )
 
-        logSection("Creating separate user account")
-        val userKeyName = "devshard-proxy-stream-user"
-        val userKey = genesis.node.createKey(userKeyName)
-        val userAddress = userKey.address
-        val fundAmount = 10_000_000_000L
-        val transferResp = genesis.submitTransaction(
-            listOf("bank", "send", genesis.node.getColdAddress(), userAddress, "${fundAmount}${genesis.config.denom}")
-        )
-        assertThat(transferResp.code).isEqualTo(0)
+        val user = genesis.createFundedDevshardUser("devshard-proxy-stream-user")
 
         genesis.waitForNextInferenceWindow()
 
-        logSection("Creating devshard escrow from user account")
         val escrowAmount = 7_000_000_000L
-        val txResp = genesis.createDevshardEscrow(escrowAmount, from = userKeyName)
-        assertThat(txResp.code).isEqualTo(0)
+        val escrowId = genesis.createDevshardEscrowForUser(escrowAmount, user.keyName)
 
         logSection("Starting devshard proxy")
-        val escrowId = 1L
-        val handle = genesis.startDevshardProxy(escrowId, keyName = userKeyName)
+        val handle = genesis.startDevshardProxy(escrowId, keyName = user.keyName)
 
         try {
+            genesis.waitForDevshardProxyWarmup()
             logSection("Sending streaming chat completions via proxy")
             val numInferences = 20L
             for (i in 0 until numInferences) {
@@ -410,6 +272,7 @@ class DevshardTests : TestermintTest() {
                 assertThat(response).isNotEmpty()
             }
 
+            genesis.waitForDevshardPreFinalize()
             logSection("Finalizing via proxy")
             val result = genesis.finalizeDevshardProxy(handle.proxyUrl)
 
@@ -420,7 +283,7 @@ class DevshardTests : TestermintTest() {
             assertThat(result.parsed.signatures).isNotEmpty()
 
             logSection("Submitting settlement from user account")
-            val settleResp = genesis.settleDevshardEscrow(result.rawJson, from = userKeyName)
+            val settleResp = genesis.settleDevshardEscrow(result.rawJson, from = user.keyName)
             assertThat(settleResp.code).isEqualTo(0)
 
             logSection("Verifying escrow settled")
@@ -428,21 +291,7 @@ class DevshardTests : TestermintTest() {
             assertThat(escrow.escrow!!.settled).isTrue()
 
             logSection("Verifying inference status")
-            val inferenceId = 1L
-            val maxTries = 10
-            val inference = (0 until numInferences).firstNotNullOf {
-                val inference = cosmosJson.fromJson(
-                    genesis.getDevshardInferenceState(handle.proxyUrl, it),
-                    DevshardInferencePayload::class.java,
-                )
-                inference?.status?.let { status ->
-                    if (status == DevshardInferenceStatus.CHALLENGED) {
-                        inference
-                    } else {
-                        null
-                    }
-                }
-            }
+            val inference = assertNotNull(genesis.findChallengedDevshardInference(handle, numInferences))
             logSection("Inference: $inference")
             assertThat(inference.status).isEqualTo(DevshardInferenceStatus.CHALLENGED)
             assertThat(inference.votesInvalid).isNotZero()

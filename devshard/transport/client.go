@@ -15,6 +15,7 @@ import (
 
 	json "github.com/goccy/go-json"
 
+	devshardpkg "devshard"
 	"devshard/host"
 	"devshard/signing"
 	"devshard/types"
@@ -36,19 +37,17 @@ func getTransport(baseURL string) *http.Transport {
 }
 
 // DefaultRoutePrefix is the legacy URL prefix dapi mounts the in-process
-// HostManager under. Devshard sessions running against dapi see this path.
-// Versioned devshard binaries served by versiond live under
-// /devshard/<version>/ instead -- callers override RoutePrefix accordingly.
-const DefaultRoutePrefix = "/v1/devshard"
+// HostManager under. Versioned binaries use devshard.VersionedRoutePrefix(...).
+const DefaultRoutePrefix = devshardpkg.LegacyRoutePrefix
 
 // ClientConfig holds per-endpoint timeout settings.
 type ClientConfig struct {
-	InferenceTimeout time.Duration          // /chat/completions, default 20m
-	GossipTimeout    time.Duration          // gossip/nonce, gossip/txs, default 10s
-	VerifyTimeout    time.Duration          // verify-timeout, default 3m
-	QueryTimeout     time.Duration          // diffs, mempool GETs, default 30s
+	InferenceTimeout time.Duration                   // /chat/completions, default 20m
+	GossipTimeout    time.Duration                   // gossip/nonce, gossip/txs, default 10s
+	VerifyTimeout    time.Duration                   // verify-timeout, default 3m
+	QueryTimeout     time.Duration                   // diffs, mempool GETs, default 30s
 	StreamCallback   func(nonce uint64, line string) // if set, receives raw SSE data lines during inference
-	RoutePrefix      string                 // path prefix for all session routes; default /v1/devshard
+	RoutePrefix      string                          // path prefix for all session routes; default /v1/devshard
 }
 
 func DefaultClientConfig() ClientConfig {
@@ -78,9 +77,7 @@ func NewHTTPClient(baseURL, escrowID string, signer signing.Signer, cfgs ...Clie
 	if len(cfgs) > 0 {
 		cfg = cfgs[0]
 	}
-	if cfg.RoutePrefix == "" {
-		cfg.RoutePrefix = DefaultRoutePrefix
-	}
+	cfg.RoutePrefix = devshardpkg.NormalizeRoutePrefix(cfg.RoutePrefix)
 	return &HTTPClient{
 		baseURL:     baseURL,
 		routePrefix: cfg.RoutePrefix,

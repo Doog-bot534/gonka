@@ -3,18 +3,16 @@ package devshard
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"decentralized-api/broker"
 	"decentralized-api/chainphase"
 	"decentralized-api/completionapi"
-	"decentralized-api/internal/server/public"
 	"decentralized-api/payloadstorage"
 
 	"devshard"
+	devshardserver "devshard/server"
 )
 
 // EngineAdapter implements devshard.InferenceEngine by delegating to broker and completionapi.
@@ -71,48 +69,9 @@ func (e *EngineAdapter) Execute(ctx context.Context, req devshard.ExecuteRequest
 	}
 	defer resp.Body.Close()
 
-	processor := completionapi.NewExecutorResponseProcessor(inferenceId)
-
-	contentType := resp.Header.Get("Content-Type")
-	isSSE := strings.HasPrefix(contentType, "text/event-stream")
-
-	if req.ResponseWriter != nil && isSSE {
-		// Streaming ML response: proxy SSE events directly to the client.
-		// ProxyResponse writes each SSE line with proper framing (data: prefix).
-		public.ProxyResponse(resp, req.ResponseWriter, true, processor, inferenceId)
-	} else {
-		// Non-streaming ML response or no client connection.
-		// Process body via processor only (no proxy to client yet).
-		if err := completionapi.ProcessHTTPResponse(resp, processor); err != nil {
-			return nil, fmt.Errorf("process response: %w", err)
-		}
-	}
-
-	completionResp, err := processor.GetResponse()
+	processed, err := ProcessExecutionHTTPResponse(req, resp, inferenceId)
 	if err != nil {
-		return nil, fmt.Errorf("get completion response: %w", err)
-	}
-
-	bodyBytes, err := completionResp.GetBodyBytes()
-	if err != nil {
-		return nil, fmt.Errorf("get body bytes: %w", err)
-	}
-
-	// For non-streaming ML responses with a ResponseWriter (SSE transport),
-	// write the JSON body as a proper SSE data event. ProxyResponse/proxyJsonResponse
-	// would write raw bytes without SSE framing, corrupting the stream.
-	if req.ResponseWriter != nil && !isSSE {
-		fmt.Fprintf(req.ResponseWriter, "data: %s\n\ndata: [DONE]\n\n", bodyBytes)
-		if f, ok := req.ResponseWriter.(http.Flusher); ok {
-			f.Flush()
-		}
-	}
-
-	hash := sha256.Sum256(bodyBytes)
-
-	usage, err := completionResp.GetUsage()
-	if err != nil {
-		return nil, fmt.Errorf("get usage: %w", err)
+		return nil, err
 	}
 
 	// Store the canonicalized ORIGINAL prompt (not the modified one with seed).
@@ -121,24 +80,24 @@ func (e *EngineAdapter) Execute(ctx context.Context, req devshard.ExecuteRequest
 		return nil, fmt.Errorf("canonicalize prompt: %w", err)
 	}
 
-	storageKey := DevshardPayloadKey(req.EscrowID, req.InferenceID)
+	storageKey := devshardserver.PayloadKey(req.EscrowID, req.InferenceID)
 	epochID := currentEpochID(e.phaseTracker)
-	if err := e.payloadStore.Store(ctx, storageKey, epochID, promptPayload, bodyBytes); err != nil {
+	if err := e.payloadStore.Store(ctx, storageKey, epochID, promptPayload, processed.ResponseBody); err != nil {
 		return nil, fmt.Errorf("store payloads: %w", err)
 	}
 
 	return &devshard.ExecuteResult{
-		ResponseHash: hash[:],
-		InputTokens:  usage.PromptTokens,
-		OutputTokens: usage.CompletionTokens,
-		ResponseBody: bodyBytes,
+		ResponseHash: processed.ResponseHash,
+		InputTokens:  processed.InputTokens,
+		OutputTokens: processed.OutputTokens,
+		ResponseBody: processed.ResponseBody,
 	}, nil
 }
 
 // DevshardPayloadKey creates a namespaced storage key for devshard payloads.
 // Format: "devshard:<escrowID>:<inferenceID>" to prevent cross-session collisions.
 func DevshardPayloadKey(escrowID string, inferenceID uint64) string {
-	return fmt.Sprintf("devshard:%s:%d", escrowID, inferenceID)
+	return devshardserver.PayloadKey(escrowID, inferenceID)
 }
 
 // Compile-time check.

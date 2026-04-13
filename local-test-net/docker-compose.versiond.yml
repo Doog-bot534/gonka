@@ -21,7 +21,8 @@ services:
       NODE_MANAGER_ADDR: ${NODE_MANAGER_ADDR:-${KEY_NAME}-api:9400}
       # Inherited by child binaries (devshardd reads these). Same env
       # surface dapi's init-docker.sh uses.
-      KEY_NAME: ${KEY_NAME}
+      KEY_NAME: ${VERSIOND_SIGNER_KEY_NAME}
+      ACCOUNT_PUBKEY: ${ACCOUNT_PUBKEY:-}
       NODE_HOST: ${KEY_NAME}-node
       KEYRING_BACKEND: ${KEYRING_BACKEND:-file}
       KEYRING_PASSWORD: ${KEYRING_PASSWORD:-}
@@ -36,10 +37,11 @@ services:
       # Same keyring dapi uses, read-only. Devshardd signs devshard
       # protocol messages with the same identity dapi registered on chain.
       - ./prod-local/${KEY_NAME}:/root/.inference:ro
-    ports:
-      - "${VERSIOND_PORT:-7080}:8080"
     networks:
       - chain-public
+    dns:
+      - 172.25.0.10
+      - 127.0.0.11
 
   testapp-server:
     container_name: ${KEY_NAME}-testapp-server

@@ -1,61 +1,120 @@
 # Devshard Upgrade -- Implementation Notes
 
-Scope: the first versioned release, where the devshard binary is built out of `decentralized-api/` as a temporary shortcut. The long-term rewrite into the `devshard/` module is not covered here.
+Scope: the first versioned release only.
 
-## Version binding
+This document is about the temporary implementation we actually ship now. The
+long-term architecture stays in `devshard/docs/upgrade.md`.
 
-`MsgCreateDevshardEscrow` and `DevshardEscrow` unchanged -- no version field.
+## Current implementation contract
 
-The binary embeds its version via ldflags `-X`. On first interaction with an escrow, the host writes that version to `EscrowState.boundVersion`. Every `ApplyLocal` asserts the binary's version matches state; mismatch means the host refuses to sign. `boundVersion` contributes to the state hash, so 2/3+ signatures implicitly attest to it.
+The first versioned release is intentionally small:
 
-Each version ships its own `devshardctl`.
+- `/v1/devshard/*` remains the legacy path served directly by dapi
+- `/devshard/<version>/*` is the new path served through
+  `proxy -> versiond -> devshardd`
+- `devshardd` is a temporary standalone host binary built out of the
+  `decentralized-api/` module
+- `devshardctl` chooses the path by setting the route prefix
 
-## Settlement rejection
+The main goal of this release is to prove that the standalone host process can
+run behind versiond while the legacy dapi path continues to work unchanged.
 
-`MsgSettleDevshardEscrow` gets a `version` field. At settle, the chain rejects if `version` is empty or not in the current `approved_versions`. Because `boundVersion` is part of `state_root` and state_root is signed by 2/3+ hosts, any attempt to mis-declare the version at settle time fails signature verification.
+Version isolation is strict:
 
-Rollout: land the field as optional with a warning first, then flip to hard-reject in the upgrade handler of the same release so old clients get one window to upgrade.
+- `/devshard/<version>/*` hosts must talk to other `/devshard/<version>/*`
+  hosts
+- `/v1/devshard/*` hosts must talk only to `/v1/devshard/*` hosts
+- the temporary release should not add cross-prefix fallback between those two
+  families
 
-## Proxy
+## What is implemented now
 
-Add a `/devshard/` location in `proxy/nginx.unified.conf.template` pointing at a `versiond_backend` upstream. Clone streaming config from `/api/`. Location ordering must keep `/v1/devshard/` matching dapi directly, not versiond.
+### Proxy and routing
 
-## Devshardd binary
+The proxy exposes two parallel routes:
 
-`devshard/` is a separate Go module and cannot import `decentralized-api/internal/...`. To reuse dapi's adapters without a rewrite, the binary lives at `decentralized-api/cmd/devshardd/`.
+```text
+/v1/devshard/*        -> dapi legacy HostManager
+/devshard/<version>/* -> versiond-managed devshardd
+```
 
-Wiring:
-- `cosmosclient` -- chain reads and writes
-- `internaldevshard.NewChainBridge(recorder)` for the bridge (or `devshard/bridge.NewRESTBridge`, equivalent; both stub the action methods)
-- `internaldevshard.NewSignerFromKeyring(keyring, uid)`
-- `devshard/storage.NewSQLite(path)` -- tentative, see Storage below
-- `internaldevshard.NewEngineAdapter(...)` and `NewValidationAdapter(...)`
-- `internaldevshard.NewHostManager(...)` with `RecoverSessions()` on startup and `Register(echoGroup)` for routes
-- echo server on `--port`
+Location ordering matters. `/v1/devshard/*` must continue to hit dapi
+directly. `/devshard/*` is reserved for versiond-routed standalone binaries.
 
-Dropped from dapi's `main()`: admin server, model manager, PoC commit worker, event dispatcher, block queue, config sync, node manager gRPC server.
+### Temporary standalone binary
+
+The standalone host binary lives at `decentralized-api/cmd/devshardd/`.
+
+It is a thin bootstrap around shared devshard runtime code:
+
+- query-only chain access
+- devshard signer loaded from the existing keyring
+- mainnet bridge backed by chain queries
+- NodeManager gRPC client for ML node acquisition
+- shared devshard host/session HTTP runtime
+- sqlite session storage under versiond's data dir
+
+Dropped from dapi's `main()`:
+
+- admin server
+- model manager
+- PoC worker
+- event dispatcher
+- block queue
+- config sync
+- NodeManager gRPC server
+- NATS / tx pipeline
 
 Build:
-```
+
+```bash
 go build -ldflags "-X decentralized-api/cmd/devshardd.Version=$VERSION" \
   -o build/devshardd ./cmd/devshardd
 ```
 
-Validate before shipping that `devshardd`'s `main()` does not transitively pull in dapi's init-time side effects (dispatcher, modelmanager, adminserver). Expected binary size 60-100 MB.
+### Test shape
 
-## Storage
+Both flows are covered on purpose:
 
-Decide whether sqlite stays available at all. Multiple devshardd instances cannot share a sqlite file, and sqlite does not scale horizontally, so postgres is the only viable backend for real host deployments.
+- `DevshardTests.kt` verifies the legacy `/v1/devshard` path
+- `DevshardStandaloneTests.kt` verifies the standalone
+  `/devshard/<version>` path through proxy and versiond
 
-A postgres adapter is required. Implements the existing `storage.Storage` interface at `devshard/storage/interface.go` -- no new interface surface.
+The standalone test setup uses `VERSIOND_FORCE=dev` together with
+`VERSIOND_OVERRIDE_dev` to run the locally built binary.
 
-Pruning is required and does not exist today. Settled sessions accumulate diffs, signatures, and meta rows forever. Add a retention mechanism that drops rows for `status=settled` sessions past a window, run from a background goroutine. Retention policy (window size, guarantees) is a separate decision.
+## Explicit non-goals for this release
 
-## Other required changes
+The following items are not part of the temporary implementation:
 
-Not skipped by the shortcut:
+- chain-side `approved_versions` enforcement
+- `MsgSettleDevshardEscrow.version`
+- off-chain `boundVersion` tracking in session state
+- settlement rejection based on the binary version
+- operator workflow for governance-driven version deprecation
+- moving the standalone binary fully into the `devshard/` module
+- replacing sqlite with postgres
+- session pruning / retention background jobs
 
-- `MsgSettleDevshardEscrow.version` plus approved-versions check at settle (see Settlement rejection).
-- `EscrowState.boundVersion` plus first-interaction record, per-apply assertion, and state-hash inclusion (see Version binding).
-- nginx `/devshard/` location (see Proxy).
-- Rate limiting on transport GET endpoints. `HostManager.Register` at `decentralized-api/internal/devshard/manager.go:243` currently does not pass `transport.WithRateLimit(...)`, so the unauthenticated GETs (`/diffs`, `/mempool`, `/signatures`, `/payloads`) are unthrottled. This is a live bug in the dapi path today, not only a gap for the new binary.
+Those may still make sense later, but they should not shape the temporary code
+path now.
+
+## Code ownership
+
+The temporary release should still move reusable code toward `devshard/`.
+
+Current direction:
+
+- keep dapi-only bootstrap and deployment wiring inside `decentralized-api/`
+- move reusable devshard HTTP/session runtime into `devshard/`
+- keep both legacy dapi and standalone devshardd using the same shared
+  runtime underneath
+
+## Known follow-up items
+
+- Rate limiting on transport GET endpoints is still worth fixing for both
+  paths.
+- sqlite is acceptable for the temporary release but not the final host
+  deployment story.
+- once the standalone runtime settles, the remaining bootstrap code can move
+  from `decentralized-api/cmd/devshardd/` into the `devshard/` module.

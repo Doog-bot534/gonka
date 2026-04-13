@@ -14,7 +14,6 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"decentralized-api/cosmosclient"
 	"decentralized-api/internal/validation"
 	"decentralized-api/logging"
 	"decentralized-api/payloadstorage"
@@ -28,6 +27,7 @@ import (
 	devshardpkg "devshard"
 	"devshard/bridge"
 	"devshard/host"
+	devshardserver "devshard/server"
 	"devshard/signing"
 	"devshard/state"
 	"devshard/storage"
@@ -48,7 +48,7 @@ type HostManager struct {
 	validator    devshardpkg.ValidationEngine
 	bridge       bridge.MainnetBridge
 	payloadStore payloadstorage.PayloadStorage
-	recorder     cosmosclient.CosmosMessageClient
+	recorder     PayloadAuthClient
 }
 
 func NewHostManager(
@@ -58,7 +58,7 @@ func NewHostManager(
 	validator devshardpkg.ValidationEngine,
 	br bridge.MainnetBridge,
 	payloadStore payloadstorage.PayloadStorage,
-	recorder cosmosclient.CosmosMessageClient,
+	recorder PayloadAuthClient,
 ) *HostManager {
 	return &HostManager{
 		sessions:     make(map[string]*transport.Server),
@@ -76,6 +76,11 @@ func NewHostManager(
 // Close releases the underlying storage resources.
 func (m *HostManager) Close() error {
 	return m.store.Close()
+}
+
+// SessionServer resolves or creates the per-escrow transport server.
+func (m *HostManager) SessionServer(escrowID string) (*transport.Server, error) {
+	return m.getOrCreate(escrowID)
 }
 
 func (m *HostManager) getOrCreate(escrowID string) (*transport.Server, error) {
@@ -241,28 +246,20 @@ func (m *HostManager) recoverSession(escrowID string) error {
 
 // Register mounts devshard session routes on the given echo group.
 func (m *HostManager) Register(g *echo.Group) {
-	g.POST("/sessions/:id/chat/completions", m.withAuth(func(srv *transport.Server) echo.HandlerFunc { return srv.HandleInference }))
-	g.POST("/sessions/:id/verify-timeout", m.withAuth(func(srv *transport.Server) echo.HandlerFunc { return srv.HandleVerifyTimeout }))
-	g.POST("/sessions/:id/challenge-receipt", m.withAuth(func(srv *transport.Server) echo.HandlerFunc { return srv.HandleChallengeReceipt }))
-	g.POST("/sessions/:id/gossip/nonce", m.withAuth(func(srv *transport.Server) echo.HandlerFunc { return srv.HandleGossipNonce }))
-	g.POST("/sessions/:id/gossip/txs", m.withAuth(func(srv *transport.Server) echo.HandlerFunc { return srv.HandleGossipTxs }))
-	g.GET("/sessions/:id/diffs", m.withoutAuth(func(srv *transport.Server) echo.HandlerFunc { return srv.HandleGetDiffs }))
-	g.GET("/sessions/:id/mempool", m.withoutAuth(func(srv *transport.Server) echo.HandlerFunc { return srv.HandleGetMempool }))
-	g.GET("/sessions/:id/signatures", m.withoutAuth(func(srv *transport.Server) echo.HandlerFunc { return srv.HandleGetSignatures }))
-	g.GET("/sessions/:id/payloads", m.handleGetPayloads)
+	devshardserver.RegisterLazySessionRoutes(g, m, m)
 }
 
-// handleGetPayloads serves payloads to validators for devshard validation.
+// HandlePayloads serves payloads to validators for devshard validation.
 // Authenticates that the requester is a member of the session group (or a warm key
 // for a group member), then returns signed payloads.
-func (m *HostManager) handleGetPayloads(c echo.Context) error {
-	escrowID := c.Param("id")
+func (m *HostManager) HandlePayloads(c echo.Context, srv *transport.Server) error {
+	escrowID := srv.Host().EscrowID()
 	inferenceID := c.QueryParam("inference_id")
 	if inferenceID == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "inference_id required")
 	}
 
-	epochID, err := m.authenticatePayloadRequest(c, escrowID)
+	epochID, err := m.authenticatePayloadRequest(c, srv.Host().Group())
 	if err != nil {
 		return err
 	}
@@ -292,7 +289,7 @@ func (m *HostManager) handleGetPayloads(c echo.Context) error {
 
 // authenticatePayloadRequest validates headers, timestamp, group membership,
 // and signature for a payload retrieval request. Returns the parsed epochID.
-func (m *HostManager) authenticatePayloadRequest(c echo.Context, escrowID string) (uint64, error) {
+func (m *HostManager) authenticatePayloadRequest(c echo.Context, group []types.SlotAssignment) (uint64, error) {
 	validatorAddress := c.Request().Header.Get(utils.XValidatorAddressHeader)
 	timestampStr := c.Request().Header.Get(utils.XTimestampHeader)
 	epochIDStr := c.Request().Header.Get(utils.XEpochIdHeader)
@@ -334,13 +331,6 @@ func (m *HostManager) authenticatePayloadRequest(c echo.Context, escrowID string
 		return 0, echo.NewHTTPError(http.StatusBadRequest, "request timestamp in the future")
 	}
 
-	// Get session and verify group membership
-	srv, err := m.getOrCreate(escrowID)
-	if err != nil {
-		return 0, echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-	}
-
-	group := srv.Host().Group()
 	granterAddress, err := m.findGranterInGroup(validatorAddress, group)
 	if err != nil {
 		return 0, echo.NewHTTPError(http.StatusUnauthorized, "not a group member")
@@ -432,7 +422,7 @@ func (m *HostManager) retrievePayloadsWithAdjacentEpochs(ctx context.Context, es
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("invalid inference_id %q: %w", inferenceID, err)
 	}
-	storageKey := DevshardPayloadKey(escrowID, parsedID)
+	storageKey := devshardserver.PayloadKey(escrowID, parsedID)
 	prompt, response, err := m.payloadStore.Retrieve(ctx, storageKey, epochID)
 	if err == nil {
 		return prompt, response, epochID, nil
@@ -487,22 +477,3 @@ func (m *HostManager) signPayloadResponse(inferenceID string, promptPayload, res
 	return calculations.Sign(accountSigner, components, calculations.Developer)
 }
 
-func (m *HostManager) withAuth(pick func(*transport.Server) echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		srv, err := m.getOrCreate(c.Param("id"))
-		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-		}
-		return srv.AuthMiddleware(pick(srv))(c)
-	}
-}
-
-func (m *HostManager) withoutAuth(pick func(*transport.Server) echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		srv, err := m.getOrCreate(c.Param("id"))
-		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-		}
-		return pick(srv)(c)
-	}
-}

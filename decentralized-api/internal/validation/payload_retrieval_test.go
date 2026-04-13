@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"decentralized-api/payloadstorage"
+	devshardpkg "devshard"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,9 +13,16 @@ import (
 
 func TestBuildPayloadRequestURL_DevshardPath(t *testing.T) {
 	// Test with devshard session-specific path
-	url, err := BuildPayloadRequestURL("https://executor.example.com", "v1/devshard/sessions/escrow-123/payloads", "456")
+	url, err := BuildPayloadRequestURL("https://executor.example.com", devshardpkg.LegacySessionPayloadPath("escrow-123"), "456")
 	require.NoError(t, err)
-	assert.Contains(t, url, "v1/devshard/sessions/escrow-123/payloads")
+	assert.Contains(t, url, devshardpkg.LegacySessionPayloadPath("escrow-123"))
+	assert.Contains(t, url, "inference_id=456")
+}
+
+func TestBuildPayloadRequestURL_VersionedDevshardPath(t *testing.T) {
+	url, err := BuildPayloadRequestURL("https://executor.example.com", devshardpkg.VersionedSessionPayloadPath("v1", "escrow-123"), "456")
+	require.NoError(t, err)
+	assert.Contains(t, url, devshardpkg.VersionedSessionPayloadPath("v1", "escrow-123"))
 	assert.Contains(t, url, "inference_id=456")
 }
 
@@ -133,4 +141,3 @@ func TestBuildPayloadRequestURL(t *testing.T) {
 		})
 	}
 }
-

@@ -19,7 +19,7 @@ type HTTPSessionConfig struct {
 	Bridge         bridge.MainnetBridge
 	StoragePath    string                          // optional: path to SQLite DB for session persistence
 	StreamCallback func(nonce uint64, line string) // optional: receives raw SSE data lines during inference
-	RoutePrefix    string                          // optional: HTTP path prefix used to reach hosts; default /v1/devshard (for dapi-served sessions). Versioned binaries served by versiond use /devshard/<version>.
+	RoutePrefix    string                          // optional: HTTP path prefix used to reach hosts; default devshard.LegacyRoutePrefix. Versioned binaries use devshard.VersionedRoutePrefix(...).
 }
 
 // NewHTTPSession creates a user Session wired with HTTP clients to real dapi hosts.
