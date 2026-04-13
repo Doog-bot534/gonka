@@ -328,6 +328,17 @@ func (wc *DelegationWeightCalculator) ComputeConsensusWeights(eligibleModels []s
 // collateral, and power capping).
 //
 // Returns map[participant_address]voting_power. Only DIRECT members get entries.
+//
+// Direct membership is read from g.Members (authoritative) rather than from
+// the modes map. The modes map is built by ResolveGroupParticipation, which
+// skips participants with zero prior-epoch consensus weight — a fresh direct
+// member who only earned weight this epoch would therefore be absent from
+// modes. Reading modes[m] for such an absent key returns the zero value of
+// ParticipationMode, which happens to equal ModeDirect (because the iota
+// starts at zero). Relying on that coincidence is fragile: any future enum
+// change that shifts ModeDirect away from zero would silently strip fresh
+// members of their voting power. Build a local memberSet from g.Members and
+// check membership explicitly everywhere below.
 func (wc *DelegationWeightCalculator) ComputeGroupVotingPowers(
 	modelID string,
 	modes map[string]ParticipationMode,
@@ -338,22 +349,27 @@ func (wc *DelegationWeightCalculator) ComputeGroupVotingPowers(
 		return nil
 	}
 
-	// Start with DIRECT members' own final weight
-	votingPower := make(map[string]int64)
+	// Every entry in g.Members is DIRECT by construction: g.Members is the
+	// set of participants that committed PoC work for this model in the
+	// current epoch. Seed each member's voting power from their final
+	// post-adjustment weight.
+	memberSet := make(map[string]bool, len(g.Members))
+	votingPower := make(map[string]int64, len(g.Members))
 	for _, m := range g.Members {
-		if modes[m] == ModeDirect {
-			votingPower[m] = finalWeights[m]
-		}
+		memberSet[m] = true
+		votingPower[m] = finalWeights[m]
 	}
 
-	// Add delegated weight
+	// Add delegated weight. A delegator contributes only if
+	// ResolveGroupParticipation explicitly resolved it to DELEGATE for this
+	// model, and the target must be an actual direct member of the group.
 	delegations := wc.Delegations[modelID]
 	for _, delegator := range sortedKeys(delegations) {
-		target := delegations[delegator]
 		if modes[delegator] != ModeDelegate {
 			continue
 		}
-		if modes[target] == ModeDirect {
+		target := delegations[delegator]
+		if memberSet[target] {
 			votingPower[target] += finalWeights[delegator]
 		}
 	}

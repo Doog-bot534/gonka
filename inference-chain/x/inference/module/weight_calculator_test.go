@@ -714,6 +714,72 @@ func TestComputeGroupVotingPowers_MultipleDelegatorsToSameTarget(t *testing.T) {
 	require.Len(t, vp, 1) // only direct members get entries
 }
 
+// TestComputeGroupVotingPowers_FreshMemberWithNoModesEntry asserts that a
+// direct member who is absent from the modes map (e.g. earned weight only
+// this epoch so ResolveGroupParticipation skipped them) still receives
+// voting power from their final weight. Membership is read from g.Members,
+// not inferred from modes[m] == ModeDirect.
+//
+// Regression for OX-7 / RC-3: previously this worked only by accident
+// because ModeDirect is the zero value of the ParticipationMode enum, so
+// the missing map key returned ModeDirect when read. Any future enum
+// change that shifted ModeDirect away from zero would silently strip
+// fresh members of voting power. This test pins the explicit behavior.
+func TestComputeGroupVotingPowers_FreshMemberWithNoModesEntry(t *testing.T) {
+	wc := &DelegationWeightCalculator{
+		Groups: map[string]*GroupData{
+			"model-a": {
+				Members:        []string{"fresh"},
+				ConsensusKoeff: mathsdk.LegacyOneDec(),
+			},
+		},
+	}
+	// modes is intentionally empty: fresh had no prior-epoch consensus
+	// weight, so ResolveGroupParticipation produced no entry for it.
+	modes := map[string]ParticipationMode{}
+	finalWeights := map[string]int64{"fresh": 42}
+
+	vp := wc.ComputeGroupVotingPowers("model-a", modes, finalWeights)
+	require.Equal(t, int64(42), vp["fresh"])
+	require.Len(t, vp, 1)
+}
+
+// TestComputeGroupVotingPowers_DelegationToNonMemberTargetIgnored asserts
+// that a delegation pointing at a non-member is dropped rather than
+// creating a spurious map entry. This exercises the explicit memberSet
+// check for the delegation target in ComputeGroupVotingPowers.
+func TestComputeGroupVotingPowers_DelegationToNonMemberTargetIgnored(t *testing.T) {
+	wc := &DelegationWeightCalculator{
+		Groups: map[string]*GroupData{
+			"model-a": {
+				Members:        []string{"member"},
+				ConsensusKoeff: mathsdk.LegacyOneDec(),
+			},
+		},
+		Delegations: map[string]map[string]string{
+			"model-a": {
+				"delegator": "non-member",
+			},
+		},
+	}
+	modes := map[string]ParticipationMode{
+		"member":    ModeDirect,
+		"delegator": ModeDelegate,
+	}
+	finalWeights := map[string]int64{
+		"member":    100,
+		"delegator": 500,
+	}
+
+	vp := wc.ComputeGroupVotingPowers("model-a", modes, finalWeights)
+	// member keeps its own 100, delegator's 500 is discarded because the
+	// target is not in g.Members.
+	require.Equal(t, int64(100), vp["member"])
+	require.Len(t, vp, 1)
+	_, hasNonMember := vp["non-member"]
+	require.False(t, hasNonMember)
+}
+
 func TestResolveGroupParticipation_DelegationToZeroWeightTarget_ModeNone(t *testing.T) {
 	wc := &DelegationWeightCalculator{
 		Groups: map[string]*GroupData{
