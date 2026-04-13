@@ -1,14 +1,6 @@
 # syntax=docker/dockerfile:1.4
 ################################################################################
-<<<<<<< HEAD
-<<<<<<< HEAD
-FROM ghcr.io/gonka-ai/vllm:v0.9.1-poc-v2-post6-blackwell-sm120 AS base
-=======
-FROM ghcr.io/product-science/vllm:v0.15.1-alpha1 AS base
->>>>>>> origin/upgrade-v0.2.12
-=======
 FROM ghcr.io/product-science/vllm:v0.15.1-alpha3 AS base
->>>>>>> origin/upgrade-v0.2.12
 
 RUN --mount=type=cache,target=/var/lib/apt/lists \
     --mount=type=cache,target=/root/.cache/pip \
