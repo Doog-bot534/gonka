@@ -89,6 +89,28 @@ What is not implemented yet is container-default activation. Today versiond
 only runs a local `devshardd` binary when the operator explicitly sets both
 `VERSIOND_FORCE=<name>` and `VERSIOND_OVERRIDE_<name>=/path/to/devshardd`.
 
+### Join deployment
+
+`deploy/join/docker-compose.yml` is the single join entrypoint.
+
+The join proxy enables the versioned route by setting
+`VERSIOND_SERVICE_NAME=versiond`, so `/devshard/<version>/*` goes through
+`proxy -> versiond -> devshardd` in the same stack.
+
+The versiond service passes the child env that `devshardd` already expects:
+`VERSIOND_BINARY_NAME=devshardd`, `NODE_MANAGER_ADDR=api:9400`,
+`NODE_HOST=node`, `KEY_NAME`, `ACCOUNT_PUBKEY`, and `KEYRING_*`.
+
+Warm-key access stays on the existing file keyring. The join stack mounts
+`.inference` into versiond at `/root/.inference:ro`, so the devshardd child
+can sign with the same join identity without giving versiond write access to
+key material.
+
+Versiond-managed runtime state is persisted on the host under `./devshards`:
+
+- `./devshards/bin -> /opt/versiond/bin`
+- `./devshards/data -> /opt/versiond/data`
+
 ### Test shape
 
 Both flows are covered on purpose:

@@ -128,3 +128,9 @@ following items are architectural intent, not current behavior:
 The first release instead uses a temporary standalone binary built out of
 `decentralized-api/` and served through versiond. That temporary shape is an
 implementation shortcut, not the intended long-term architecture.
+
+Current join deployment keeps that temporary path in one compose file:
+`deploy/join/docker-compose.yml`. The versiond service sits behind proxy,
+mounts the existing `.inference` keyring read-only for signing, and persists
+its runtime state under `./devshards`. This is deployment wiring for the first
+release, not a change to the target architecture.
