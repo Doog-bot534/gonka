@@ -68,8 +68,8 @@
           "delegation_share": { "value": "0", "exponent": 0 },
           "w_threshold": { "value": "0", "exponent": 0 },
           "v_min": "0",
-          "cap_factor": { "value": "0", "exponent": 0 },
-          "initial_model_id": ""
+          "cap_factor": { "value": "1", "exponent": 0 },
+          "initial_model_id": "Qwen/Qwen2.5-7B-Instruct"
         }
       },
       "genesis_only_params": {
