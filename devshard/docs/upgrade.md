@@ -8,8 +8,8 @@ The temporary implementation is tracked separately in
 
 ## Goal
 
-Devshard binaries version independently of mainnet. No cosmovisor. No
-coordinated full-node upgrade every time the devshard runtime changes.
+Devshard binaries version independently of mainnet. Changing the devshard
+runtime should not require cosmovisor or a coordinated full-node upgrade.
 
 The stable client contract is path-based:
 
