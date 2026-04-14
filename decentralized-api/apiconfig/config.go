@@ -92,7 +92,7 @@ type ChainNodeConfig struct {
 	// config.env — the DAPI picks up the on-chain default automatically when
 	// cosmovisor restarts it with the new binary.
 	//
-	// See HOST_ONBOARDING.md §1.5 and §6 for details.
+	// See docs/host_onboarding.md §1.5 and §6 for details.
 	MinGasPriceNgonka int64 `koanf:"min_gas_price_ngonka" json:"min_gas_price_ngonka"`
 }
 

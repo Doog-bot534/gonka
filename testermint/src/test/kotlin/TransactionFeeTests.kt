@@ -155,6 +155,6 @@ class TransactionFeeTests : TestermintTest() {
     // payment from the unfunded warm key to the funded cold account.
     //
     // The DAPI feegrant routing is covered by unit tests; the end-to-end
-    // flow is documented in HOST_ONBOARDING.md and validated manually on
+    // flow is documented in docs/host_onboarding.md and validated manually on
     // testnet before mainnet activation.
 }
