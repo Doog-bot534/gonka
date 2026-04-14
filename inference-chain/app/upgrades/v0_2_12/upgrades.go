@@ -99,6 +99,23 @@ func CreateUpgradeHandler(
 // key can pay tx fees from the cold account's balance via x/feegrant.
 //
 // Idempotent: if an allowance already exists for the pair, it is skipped.
+//
+// Scale and cost on mainnet:
+//
+//   - The upper bound on work is proportional to the number of authz grants
+//     in state, not the number of participants. Each participant has on the
+//     order of ~20 ML ops authz grants (one per msg type in
+//     InferenceOperationKeyPerms), so at ~100 mainnet hosts we expect ~2,000
+//     authz grant entries to iterate.
+//   - We filter inside the callback to only the `MsgStartInference` grant
+//     per pair, yielding ~100 feegrant allowances to create (one per host).
+//   - Creating a BasicAllowance is a single KV store write plus an account
+//     lookup — negligible compared to the rest of the upgrade handler.
+//
+// In practice this migration completes in well under a second on any
+// reasonable mainnet-sized network. If this ever becomes a hot spot (e.g.
+// the network grows to tens of thousands of hosts), convert it to a
+// streaming two-pass approach instead of accumulating pairs in memory.
 func migrateFeegrantsForFees(
 	ctx context.Context,
 	authzKeeper authzkeeper.Keeper,

@@ -213,25 +213,25 @@ func TestNetworkDutyBypass_MsgExec_FailsClosedWithNilKeeper(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestIsNetworkDutyRecursive_MsgExec_FailsClosed(t *testing.T) {
-	// Direct test of isNetworkDutyRecursive with MsgExec
+func TestIsNetworkDuty_MsgExec_FailsClosed(t *testing.T) {
+	// Direct test of isNetworkDuty with MsgExec
 	execMsg := &authztypes.MsgExec{Grantee: "cosmos1test"}
 
 	// nil keeper: fail closed
-	require.False(t, isNetworkDutyRecursive(execMsg, nil),
+	require.False(t, isNetworkDuty(execMsg, nil),
 		"MsgExec should fail closed with nil keeper")
 }
 
-func TestIsNetworkDutyRecursive_NonExecNonExempt(t *testing.T) {
+func TestIsNetworkDuty_NonExecNonExempt(t *testing.T) {
 	// Non-MsgExec, non-exempt message
-	require.False(t, isNetworkDutyRecursive(&banktypes.MsgSend{}, nil))
-	require.False(t, isNetworkDutyRecursive(&inferencetypes.MsgClaimRewards{}, nil))
+	require.False(t, isNetworkDuty(&banktypes.MsgSend{}, nil))
+	require.False(t, isNetworkDuty(&inferencetypes.MsgClaimRewards{}, nil))
 }
 
-func TestIsNetworkDutyRecursive_ExemptDirectMessage(t *testing.T) {
+func TestIsNetworkDuty_ExemptDirectMessage(t *testing.T) {
 	// Direct exempt message (not wrapped in MsgExec)
-	require.True(t, isNetworkDutyRecursive(&inferencetypes.MsgValidation{}, nil))
-	require.True(t, isNetworkDutyRecursive(&blstypes.MsgSubmitDealerPart{}, nil))
+	require.True(t, isNetworkDuty(&inferencetypes.MsgValidation{}, nil))
+	require.True(t, isNetworkDuty(&blstypes.MsgSubmitDealerPart{}, nil))
 }
 
 // --- GonkaFeeChecker tests ---

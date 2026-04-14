@@ -104,20 +104,24 @@ func updateKeyringIfNeeded(client *cosmosclient.Client, keyringDir string, confi
 }
 
 // queryChainMinGasPrice queries the inference module params for
-// FeeParams.MinGasPriceNgonka. Returns 0 if the chain has no FeeParams set
-// (pre-upgrade chain) or if the query fails. Callers should fall back to
-// a safe default (0 or the config value) on failure.
-func queryChainMinGasPrice(ctx context.Context, cc *cosmosclient.Client) int64 {
+// FeeParams.MinGasPriceNgonka. Distinguishes three cases via its return:
+//   - (N, nil)         : chain returned a non-nil FeeParams, use N
+//   - (0, nil)         : chain returned nil FeeParams (pre-upgrade chain), use 0
+//   - (0, non-nil err) : query failed — caller must decide how to handle
+//
+// A query failure is NOT silently treated as "zero fees" because that can
+// produce txs that get rejected on chain. Callers should either abort
+// startup or fall back to a previously-known value explicitly.
+func queryChainMinGasPrice(ctx context.Context, cc *cosmosclient.Client) (int64, error) {
 	queryClient := types.NewQueryClient(cc.Context())
 	resp, err := queryClient.Params(ctx, &types.QueryParamsRequest{})
 	if err != nil {
-		log.Printf("Could not query chain FeeParams, defaulting to 0: %s", err)
-		return 0
+		return 0, fmt.Errorf("query chain FeeParams: %w", err)
 	}
 	if resp == nil || resp.Params.FeeParams == nil {
-		return 0
+		return 0, nil
 	}
-	return int64(resp.Params.FeeParams.MinGasPriceNgonka)
+	return int64(resp.Params.FeeParams.MinGasPriceNgonka), nil
 }
 
 func NewInferenceCosmosClient(ctx context.Context, addressPrefix string, config *apiconfig.ConfigManager) (*InferenceCosmosClient, error) {
@@ -156,9 +160,16 @@ func NewInferenceCosmosClient(ctx context.Context, addressPrefix string, config 
 	//   * If the config explicitly sets min_gas_price_ngonka, honor it (allows
 	//     hosts to pay more than the minimum if they want faster inclusion).
 	//   * Otherwise use the on-chain FeeParams.MinGasPriceNgonka.
-	//   * If FeeParams is nil (pre-upgrade chain), default to 0.
+	//   * If FeeParams is nil (pre-upgrade chain), use 0.
+	//   * If the query itself FAILS, abort startup rather than defaulting to 0,
+	//     because a silent default would produce rejected transactions.
 	if nodeConfig.GetMinGasPriceNgonka() == 0 {
-		chainGasPrice := queryChainMinGasPrice(ctx, &cosmoclient)
+		chainGasPrice, queryErr := queryChainMinGasPrice(ctx, &cosmoclient)
+		if queryErr != nil {
+			return nil, fmt.Errorf("failed to query chain for FeeParams.MinGasPriceNgonka at startup "+
+				"(required for automatic DAPI gas price configuration): %w. "+
+				"Either fix the chain connectivity or set DAPI_CHAIN_NODE__MIN_GAS_PRICE_NGONKA explicitly in config.env", queryErr)
+		}
 		if chainGasPrice > 0 {
 			effectiveGasPrice = chainGasPrice
 			log.Printf("Using on-chain FeeParams.MinGasPriceNgonka = %d (config value was 0)", effectiveGasPrice)
@@ -177,6 +188,8 @@ func NewInferenceCosmosClient(ctx context.Context, addressPrefix string, config 
 			if err != nil {
 				return nil, fmt.Errorf("error recreating cosmos client with chain gas price: %w", err)
 			}
+		} else {
+			log.Printf("Chain returned nil FeeParams; DAPI will send zero-fee transactions (pre-upgrade chain).")
 		}
 	}
 	err = updateKeyringIfNeeded(&cosmoclient, keyringDir, config)

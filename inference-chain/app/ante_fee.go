@@ -50,7 +50,7 @@ func (d NetworkDutyFeeBypassDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, si
 	// Check if ALL messages are fee-exempt network duties.
 	allExempt := true
 	for _, msg := range msgs {
-		if !isNetworkDutyRecursive(msg, d.InferenceKeeper) {
+		if !isNetworkDuty(msg, d.InferenceKeeper) {
 			allExempt = false
 			break
 		}
@@ -82,10 +82,12 @@ func (d NetworkDutyFeeBypassDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, si
 	return next(ctx, tx, simulate)
 }
 
-// isNetworkDutyRecursive checks if a message is a fee-exempt network duty,
-// recursively unpacking x/authz MsgExec wrappers. Fails closed: if any inner
-// message is not exempt, returns false.
-func isNetworkDutyRecursive(msg sdk.Msg, ik *inferencemodulekeeper.Keeper) bool {
+// isNetworkDuty checks if a message is a fee-exempt network duty. It unwraps
+// x/authz MsgExec exactly one level (the DAPI's normal use case), then calls
+// isExemptMessageType on the inner messages. Nested MsgExec wrappers are not
+// allowed — they fail closed. Real-world use has no need for nested MsgExec
+// and allowing arbitrary recursion is unnecessary complexity.
+func isNetworkDuty(msg sdk.Msg, ik *inferencemodulekeeper.Keeper) bool {
 	if execMsg, ok := msg.(*authztypes.MsgExec); ok {
 		if ik == nil {
 			return false // fail closed
@@ -95,7 +97,12 @@ func isNetworkDutyRecursive(msg sdk.Msg, ik *inferencemodulekeeper.Keeper) bool 
 			if err := ik.Codec().UnpackAny(innerMsg, &unwrapped); err != nil {
 				return false // fail closed on unpack error
 			}
-			if !isNetworkDutyRecursive(unwrapped, ik) {
+			// One level only: if the inner message is another MsgExec,
+			// fail closed instead of recursing.
+			if _, isNestedExec := unwrapped.(*authztypes.MsgExec); isNestedExec {
+				return false
+			}
+			if !isExemptMessageType(unwrapped) {
 				return false
 			}
 		}
@@ -186,7 +193,12 @@ func GonkaFeeChecker(inferenceKeeper *inferencemodulekeeper.Keeper) ante.TxFeeCh
 		requiredAmount := math.NewIntFromUint64(gas).Mul(math.NewIntFromUint64(minGasPriceNgonka))
 		requiredFee := sdk.NewCoin("ngonka", requiredAmount)
 
-		if !feeCoins.IsAnyGTE(sdk.NewCoins(requiredFee)) {
+		// Check the ngonka amount specifically — sdk.Coins.IsAnyGTE compares
+		// amounts across all denoms, so a payment in some other denom could
+		// satisfy an ngonka fee requirement. We only accept fees denominated
+		// in ngonka, so we compare the ngonka amount directly.
+		paidNgonka := feeCoins.AmountOf("ngonka")
+		if paidNgonka.LT(requiredFee.Amount) {
 			return nil, 0, errorsmod.Wrapf(sdkerrors.ErrInsufficientFee,
 				"insufficient fee: got %s, required at least %s (gas=%d, min_gas_price=%dngonka)",
 				feeCoins, requiredFee, gas, minGasPriceNgonka)

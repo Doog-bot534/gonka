@@ -211,8 +211,14 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 		},
 		NetworkDutyFeeBypassDecorator{
 			InferenceKeeper: options.InferenceKeeper,
-			GasCap:          10_000_000, // cap for fee-exempt duty txs (must cover batch transactions)
-			Priority:        500_000,    // ensure zero-fee duty txs aren't starved
+			// Cap for fee-exempt duty transactions. Must accommodate the
+			// DAPI's batched transactions (BatchGasLimit = 10M in tx_manager)
+			// plus headroom for future batch-size growth. 20M is 2x current
+			// batch size, giving room for larger PoC validation V2 batches
+			// without bumping against the cap. Raise if you see legitimate
+			// duty transactions rejected with "gas N exceeds cap 20000000".
+			GasCap:   20_000_000,
+			Priority: 500_000, // ensure zero-fee duty txs aren't starved
 		},
 		ante.NewDeductFeeDecorator(options.AccountKeeper, options.BankKeeper, options.FeegrantKeeper, GonkaFeeChecker(options.InferenceKeeper)),
 		// Run mempool filters AFTER fee deduction (so invalid txs pay fees), but BEFORE signature verification (to avoid crypto work).
