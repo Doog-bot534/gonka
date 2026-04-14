@@ -170,6 +170,14 @@ func TestVerifyDevshardSettlement_WrongSettler(t *testing.T) {
 	require.Contains(t, err.Error(), "not the escrow creator")
 }
 
+func TestVerifyDevshardSettlement_VersionTooLong(t *testing.T) {
+	escrow := types.DevshardEscrow{Id: 1, Creator: "gonka1creator"}
+	msg := &types.MsgSettleDevshardEscrow{Settler: "gonka1creator", EscrowId: 1, Version: string(make([]byte, 129))}
+	err := keeper.VerifyDevshardSettlement(escrow, msg, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "version exceeds maximum length")
+}
+
 func TestVerifyDevshardSettlement_InsufficientQuorum(t *testing.T) {
 	sdk.GetConfig().SetBech32PrefixForAccount("gonka", "gonka")
 
