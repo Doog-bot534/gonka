@@ -27,7 +27,7 @@ type Config struct {
 	BandwidthParams          BandwidthParamsCache     `koanf:"bandwidth_params" json:"bandwidth_params"`
 	PoCParams                PoCParamsCache           `koanf:"poc_params" json:"poc_params"`
 	TransferAgentAccessCache TransferAgentAccessCache `koanf:"-" json:"-"` // not persisted, synced from chain
-	SubnetVersionsCache      SubnetVersionsCache      `koanf:"-" json:"-"` // not persisted, synced from chain
+	DevshardVersionsCache      DevshardVersionsCache      `koanf:"-" json:"-"` // not persisted, synced from chain
 }
 
 type NatsServerConfig struct {
@@ -211,7 +211,6 @@ type BandwidthParamsCache struct {
 	KbPerOutputToken          float64 `koanf:"kb_per_output_token" json:"kb_per_output_token"`
 	MaxInferencesPerBlock     uint64  `koanf:"max_inferences_per_block" json:"max_inferences_per_block"`
 }
-
 type PoCModelConfigCache struct {
 	ModelId string `koanf:"model_id" json:"model_id"`
 	SeqLen  int64  `koanf:"seq_len" json:"seq_len"`
@@ -251,13 +250,13 @@ func (p PoCParamsCache) GetModelConfig(modelID string) (PoCModelConfigCache, boo
 	return PoCModelConfigCache{}, false
 }
 
-// SubnetVersionsCache holds approved subnet versions synced from chain params.
-type SubnetVersionsCache struct {
-	Versions []SubnetVersion `json:"versions"`
+// DevshardVersionsCache holds approved devshard versions synced from chain params.
+type DevshardVersionsCache struct {
+	Versions []DevshardVersion `json:"versions"`
 }
 
-// SubnetVersion describes a single approved subnet binary.
-type SubnetVersion struct {
+// DevshardVersion describes a single approved devshard binary.
+type DevshardVersion struct {
 	Name   string `json:"name"`
 	Binary string `json:"binary"`
 	SHA256 string `json:"sha256"`

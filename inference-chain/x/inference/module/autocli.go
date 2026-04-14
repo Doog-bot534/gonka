@@ -283,9 +283,9 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "epoch_index"}},
 				},
 				{
-					RpcMethod:      "SubnetEscrow",
-					Use:            "show-subnet-escrow [id]",
-					Short:          "Query a subnet escrow by ID",
+					RpcMethod:      "DevshardEscrow",
+					Use:            "show-devshard-escrow [id]",
+					Short:          "Query a devshard escrow by ID",
 					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "id"}},
 				},
 				{
@@ -410,13 +410,13 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "amount"}, {ProtoField: "destination_address"}, {ProtoField: "chain_id"}},
 				},
 				{
-					RpcMethod:      "CreateSubnetEscrow",
-					Use:            "create-subnet-escrow [amount] [model-id]",
-					Short:          "Create a subnet escrow",
+					RpcMethod:      "CreateDevshardEscrow",
+					Use:            "create-devshard-escrow [amount] [model-id]",
+					Short:          "Create a devshard escrow",
 					PositionalArgs: []*autocliv1.PositionalArgDescriptor{{ProtoField: "amount"}, {ProtoField: "model_id"}},
 				},
 				{
-					RpcMethod: "SettleSubnetEscrow",
+					RpcMethod: "SettleDevshardEscrow",
 					Skip:      true,
 				},
 				{

@@ -119,8 +119,8 @@ var MessagePermissions = map[reflect.Type][]Permission{
 	reflect.TypeOf((*types.MsgFinishInference)(nil)): {ActiveParticipantPermission, PreviousActiveParticipantPermission},
 	reflect.TypeOf((*types.MsgValidation)(nil)):      {ActiveParticipantPermission, PreviousActiveParticipantPermission},
 
-	reflect.TypeOf((*types.MsgCreateSubnetEscrow)(nil)): {EscrowAllowListPermission},
-	reflect.TypeOf((*types.MsgSettleSubnetEscrow)(nil)): {EscrowAllowListPermission},
+	reflect.TypeOf((*types.MsgCreateDevshardEscrow)(nil)): {EscrowAllowListPermission},
+	reflect.TypeOf((*types.MsgSettleDevshardEscrow)(nil)): {EscrowAllowListPermission},
 
 	reflect.TypeOf((*types.MsgSetPoCDelegation)(nil)):    {ParticipantPermission},
 	reflect.TypeOf((*types.MsgRefusePoCDelegation)(nil)): {ParticipantPermission},
