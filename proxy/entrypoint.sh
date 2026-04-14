@@ -27,22 +27,26 @@ export FINAL_EXPLORER_SERVICE="${KEY_NAME_PREFIX}${EXPLORER_SERVICE_NAME}"
 export FINAL_PROXY_SSL_SERVICE="${KEY_NAME_PREFIX}${PROXY_SSL_SERVICE_NAME}"
 
 
-# Real IP Configuration (Access Control List for "Trusted Proxies")
-# Default: Private Ranges (RFC1918) - User should override if using Public LB/Cloudflare
-export PROXY_REAL_IP_FROM=${PROXY_REAL_IP_FROM:-"10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"}
+# Real IP Configuration (Access Control List for trusted proxy hops)
+# Secure-by-default: disabled unless PROXY_REAL_IP_FROM is explicitly configured.
+export PROXY_REAL_IP_FROM=${PROXY_REAL_IP_FROM:-""}
 export PROXY_REAL_IP_HEADER=${PROXY_REAL_IP_HEADER:-"X-Forwarded-For"}
+export PROXY_REAL_IP_RECURSIVE=${PROXY_REAL_IP_RECURSIVE:-"off"}
 REAL_IP_CONFIG=""
 
-# Loop through space-separated CIDRs and generate directives
-for ip in $PROXY_REAL_IP_FROM; do
-    REAL_IP_CONFIG="${REAL_IP_CONFIG}
+if [ -n "$PROXY_REAL_IP_FROM" ]; then
+    # Loop through space-separated CIDRs/IPs and generate directives
+    for ip in $PROXY_REAL_IP_FROM; do
+        REAL_IP_CONFIG="${REAL_IP_CONFIG}
         set_real_ip_from ${ip};"
-done
+    done
 
-# Add header configuration
-REAL_IP_CONFIG="${REAL_IP_CONFIG}
-        real_ip_header ${PROXY_REAL_IP_HEADER:-X-Forwarded-For};
-        real_ip_recursive on;"
+    REAL_IP_CONFIG="${REAL_IP_CONFIG}
+        real_ip_header ${PROXY_REAL_IP_HEADER};
+        real_ip_recursive ${PROXY_REAL_IP_RECURSIVE};"
+else
+    REAL_IP_CONFIG="# real_ip disabled (PROXY_REAL_IP_FROM is empty)"
+fi
 
 export REAL_IP_CONFIG
 
