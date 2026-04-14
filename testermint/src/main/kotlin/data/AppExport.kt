@@ -70,8 +70,19 @@ data class InferenceParams(
     val confirmationPocParams: ConfirmationPoCParams? = null,
     @SerializedName("transfer_agent_access_params")
     val transferAgentAccessParams: TransferAgentAccessParams? = null,
-    @SerializedName("subnet_escrow_params")
-    val subnetEscrowParams: SubnetEscrowParams? = null,
+    @SerializedName("devshard_escrow_params")
+    val devshardEscrowParams: DevshardEscrowParams? = null,
+    @SerializedName("fee_params")
+    val feeParams: FeeParamsData? = null,
+)
+
+data class FeeParamsData(
+    @SerializedName("min_gas_price_ngonka")
+    val minGasPriceNgonka: Long = 0,
+    @SerializedName("base_validation_gas")
+    val baseValidationGas: Long = 0,
+    @SerializedName("gas_per_poc_count")
+    val gasPerPocCount: Long = 0,
 )
 
 data class TokenomicsParams(
@@ -243,13 +254,13 @@ data class TransferAgentAccessParams(
     val allowedTransferAddresses: List<String> = emptyList(),
 )
 
-data class SubnetApprovedVersion(
+data class DevshardApprovedVersion(
     val name: String,
     val binary: String,
     val sha256: String,
 )
 
-data class SubnetEscrowParams(
+data class DevshardEscrowParams(
     @SerializedName("min_amount")
     val minAmount: Long,
     @SerializedName("max_amount")
@@ -263,7 +274,7 @@ data class SubnetEscrowParams(
     @SerializedName("token_price")
     val tokenPrice: Long,
     @SerializedName("approved_versions")
-    val approvedVersions: List<SubnetApprovedVersion>? = emptyList(),
+    val approvedVersions: List<DevshardApprovedVersion>? = emptyList(),
 )
 
 data class PocParams(

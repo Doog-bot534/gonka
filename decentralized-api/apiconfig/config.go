@@ -24,7 +24,7 @@ type Config struct {
 	ValidationParams         ValidationParamsCache    `koanf:"validation_params" json:"validation_params"`
 	BandwidthParams          BandwidthParamsCache     `koanf:"bandwidth_params" json:"bandwidth_params"`
 	TransferAgentAccessCache TransferAgentAccessCache `koanf:"-" json:"-"` // not persisted, synced from chain
-	SubnetVersionsCache      SubnetVersionsCache      `koanf:"-" json:"-"` // not persisted, synced from chain
+	DevshardVersionsCache      DevshardVersionsCache      `koanf:"-" json:"-"` // not persisted, synced from chain
 }
 
 type NatsServerConfig struct {
@@ -79,6 +79,36 @@ type ChainNodeConfig struct {
 	KeyringBackend   string `koanf:"keyring_backend" json:"keyring_backend"`
 	KeyringDir       string `koanf:"keyring_dir" json:"keyring_dir"`
 	KeyringPassword  string `json:"-"`
+	// MinGasPriceNgonka is the gas price in ngonka used for transaction fee calculation.
+	//
+	// When set to a non-zero value, the DAPI uses it as-is (this is an override
+	// for hosts who want to pay more than the on-chain minimum, e.g. for faster
+	// inclusion under load).
+	//
+	// When unset (zero), the DAPI auto-discovers the correct value at startup
+	// by querying the chain for FeeParams.MinGasPriceNgonka (see
+	// NewInferenceCosmosClient in cosmosclient/cosmosclient.go). This means
+	// hosts upgrading from v0.2.11 to v0.2.12 do not need to update their
+	// config.env — the DAPI picks up the on-chain default automatically when
+	// cosmovisor restarts it with the new binary.
+	//
+	// See docs/host_onboarding.md §1.5 and §6 for details.
+	MinGasPriceNgonka int64 `koanf:"min_gas_price_ngonka" json:"min_gas_price_ngonka"`
+}
+
+// DefaultMinGasPriceNgonka is the gas price used when the config field is unset
+// AND the chain query in NewInferenceCosmosClient does not return a non-zero
+// value (e.g., chain has FeeParams nil, or the query failed). Zero means no
+// fees are attached to transactions, matching pre-v0.2.12 behavior on chains
+// without fee enforcement.
+const DefaultMinGasPriceNgonka int64 = 0
+
+// GetMinGasPriceNgonka returns the configured gas price (zero if unset).
+// Callers must handle the zero case by querying the chain directly — this
+// accessor does not perform that query. See queryChainMinGasPrice in
+// cosmosclient/cosmosclient.go.
+func (c ChainNodeConfig) GetMinGasPriceNgonka() int64 {
+	return c.MinGasPriceNgonka
 }
 
 type MLNodeKeyConfig struct {
@@ -179,13 +209,13 @@ type BandwidthParamsCache struct {
 	MaxInferencesPerBlock     uint64  `koanf:"max_inferences_per_block" json:"max_inferences_per_block"`
 }
 
-// SubnetVersionsCache holds approved subnet versions synced from chain params.
-type SubnetVersionsCache struct {
-	Versions []SubnetVersion `json:"versions"`
+// DevshardVersionsCache holds approved devshard versions synced from chain params.
+type DevshardVersionsCache struct {
+	Versions []DevshardVersion `json:"versions"`
 }
 
-// SubnetVersion describes a single approved subnet binary.
-type SubnetVersion struct {
+// DevshardVersion describes a single approved devshard binary.
+type DevshardVersion struct {
 	Name   string `json:"name"`
 	Binary string `json:"binary"`
 	SHA256 string `json:"sha256"`

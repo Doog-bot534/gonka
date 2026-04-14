@@ -191,7 +191,7 @@ data class ApplicationCLI(
     private fun getWarmAccountIfNeeded() {
         if (warmAccountKey == null) {
             val keys = getKeys()
-            val warmAccountName = config.pairName.trimStart('/') + "_WARM"
+            val warmAccountName = config.pairName.trimStart('/') + "-WARM"
             warmAccountKey = (keys.firstOrNull { it.name == warmAccountName }
                 ?: keys.firstOrNull { it.type == "local" && !it.name.startsWith("POOL") }
                 ?: keys.first())
@@ -397,8 +397,8 @@ data class ApplicationCLI(
         execAndParse(listOf("query", "bls", "signing-status", requestId))
     }
 
-    fun querySubnetEscrow(id: Long): SubnetEscrowResponse = wrapLog("querySubnetEscrow", false) {
-        execAndParse(listOf("query", "inference", "show-subnet-escrow", id.toString()))
+    fun queryDevshardEscrow(id: Long): DevshardEscrowResponse = wrapLog("queryDevshardEscrow", false) {
+        execAndParse(listOf("query", "inference", "show-devshard-escrow", id.toString()))
     }
 
     // Reified type parameter to abstract out exec and then json to a particular type
@@ -644,7 +644,14 @@ data class ApplicationCLI(
         return execAndParse(finalArgs, stdIn = passwordInjection)
     }
 
-    private fun getTransactionArgs(from: String) = listOf(
+    fun sendTransactionWithFees(args: List<String>, fees: String, useColdAccount: Boolean = true): TxResponse {
+        val from = if (useColdAccount) this.getColdAccountName() else this.getWarmAccountName()
+        Logger.info("Sending transaction with fees=$fees")
+        val finalArgs = listOf("tx") + args + getTransactionArgsWithFees(from, fees)
+        return execAndParse(finalArgs, stdIn = passwordInjection)
+    }
+
+    private fun getTransactionArgs(from: String): List<String> = listOf(
         "--keyring-backend",
         this.config.keyringBackend,
         "--keyring-dir=/root/${config.stateDirName}",
@@ -659,6 +666,27 @@ data class ApplicationCLI(
         "--from",
         from
     )
+
+    // Returns getTransactionArgs with gas-adjustment replaced by a fixed gas
+    // and a --fees flag added. Used by tests that need to assert specific
+    // fee values (e.g., TransactionFeeTests verifying fee rejection).
+    private fun getTransactionArgsWithFees(from: String, fees: String): List<String> {
+        val base = getTransactionArgs(from).toMutableList()
+        // Remove gas-adjustment pair (we set a fixed gas instead)
+        val gasAdjIdx = base.indexOf("--gas-adjustment")
+        if (gasAdjIdx >= 0) {
+            base.removeAt(gasAdjIdx + 1)
+            base.removeAt(gasAdjIdx)
+        }
+        // Replace --gas value with a smaller fixed value for fee tests
+        val gasIdx = base.indexOf("--gas")
+        if (gasIdx >= 0 && gasIdx + 1 < base.size) {
+            base[gasIdx + 1] = "200000"
+        }
+        // Append the --fees flag
+        base.addAll(listOf("--fees", fees))
+        return base
+    }
 
     fun getTransactionJson(args: List<String>): String {
         val from = this.getColdAccountName()
