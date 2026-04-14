@@ -98,7 +98,11 @@ func (e *devshardEngine) doWithLockedNode(
 			// nodes with IntendedStatus=INFERENCE yet). Sleep before
 			// retrying to give the broker time to process epoch events.
 			lastErr = fmt.Errorf("acquire: %w", err)
-			time.Sleep(2 * time.Second)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(2 * time.Second):
+			}
 			continue
 		}
 
