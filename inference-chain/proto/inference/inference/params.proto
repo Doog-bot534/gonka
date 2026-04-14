@@ -25,6 +25,7 @@ message Params {
   ParticipantAccessParams participant_access_params = 12;
   TransferAgentAccessParams transfer_agent_access_params = 13;
   DevshardEscrowParams devshard_escrow_params = 14;
+  reserved "subnet_escrow_params";
   FeeParams fee_params = 15;
 }
 
