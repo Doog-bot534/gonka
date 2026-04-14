@@ -390,7 +390,7 @@ data class LocalInferencePair(
         )
     }
 
-    fun createDevshardEscrow(amount: Long, modelId: String = defaultModel): TxResponse {
+    fun createDevshardEscrow(amount: Long, modelId: String): TxResponse {
         return this.submitTransaction(
             listOf("inference", "create-devshard-escrow", amount.toString(), modelId)
         )

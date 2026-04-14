@@ -20,7 +20,7 @@ func setupDevshardEscrowTest(t testing.TB) (keeper.Keeper, types.MsgServer, sdk.
 	return k, keeper.NewMsgServerImpl(k), ctx, &mock
 }
 
-const testSubnetModelID = "llama3"
+const testDevshardModelID = "llama3"
 
 func setupEpochGroupForDevshard(ctx sdk.Context, k keeper.Keeper, epochIndex uint64, modelID string, addrs []string) {
 	_ = k.EffectiveEpochIndex.Set(ctx, epochIndex)
@@ -46,7 +46,7 @@ func setupEpochGroupForDevshard(ctx sdk.Context, k keeper.Keeper, epochIndex uin
 	_ = k.EpochGroupDataMap.Set(ctx, collections.Join(epochIndex, modelID), groupData)
 }
 
-func makeSubnetAddrs(start byte, count int) []string {
+func makeDevshardAddrs(start byte, count int) []string {
 	addrs := make([]string, count)
 	for i := 0; i < count; i++ {
 		addr := sdk.AccAddress(make([]byte, 20))
@@ -59,10 +59,10 @@ func makeSubnetAddrs(start byte, count int) []string {
 func TestCreateDevshardEscrow_HappyPath(t *testing.T) {
 	k, ms, ctx, mocks := setupDevshardEscrowTest(t)
 
-	rootAddrs := makeSubnetAddrs(1, 20)
+	rootAddrs := makeDevshardAddrs(1, 20)
 	subgroupAddrs := rootAddrs[:3]
 	setupEpochGroupForDevshard(ctx, k, 5, "", rootAddrs)
-	setupEpochGroupForDevshard(ctx, k, 5, testSubnetModelID, subgroupAddrs)
+	setupEpochGroupForDevshard(ctx, k, 5, testDevshardModelID, subgroupAddrs)
 
 	creator := sdk.AccAddress(make([]byte, 20))
 	creator[0] = 0xFF
@@ -75,7 +75,7 @@ func TestCreateDevshardEscrow_HappyPath(t *testing.T) {
 	resp, err := ms.CreateDevshardEscrow(ctx, &types.MsgCreateDevshardEscrow{
 		Creator: creator.String(),
 		Amount:  amount,
-		ModelId: testSubnetModelID,
+		ModelId: testDevshardModelID,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -87,7 +87,7 @@ func TestCreateDevshardEscrow_HappyPath(t *testing.T) {
 	require.Equal(t, amount, escrow.Amount)
 	require.Len(t, escrow.Slots, keeper.DevshardGroupSize)
 	require.Equal(t, uint64(5), escrow.EpochIndex)
-	require.Equal(t, testSubnetModelID, escrow.ModelId)
+	require.Equal(t, testDevshardModelID, escrow.ModelId)
 	require.False(t, escrow.Settled)
 	for _, slotAddr := range escrow.Slots {
 		require.Contains(t, subgroupAddrs, slotAddr)
@@ -100,7 +100,7 @@ func TestCreateDevshardEscrow_HappyPath(t *testing.T) {
 func TestCreateDevshardEscrow_AmountBelowMin(t *testing.T) {
 	k, ms, ctx, _ := setupDevshardEscrowTest(t)
 
-	setupEpochGroupForDevshard(ctx, k, 5, testSubnetModelID, makeSubnetAddrs(1, 5))
+	setupEpochGroupForDevshard(ctx, k, 5, testDevshardModelID, makeDevshardAddrs(1, 5))
 
 	creator := sdk.AccAddress(make([]byte, 20))
 	creator[0] = 0xFF
@@ -108,7 +108,7 @@ func TestCreateDevshardEscrow_AmountBelowMin(t *testing.T) {
 	_, err := ms.CreateDevshardEscrow(ctx, &types.MsgCreateDevshardEscrow{
 		Creator: creator.String(),
 		Amount:  4_000_000_000,
-		ModelId: testSubnetModelID,
+		ModelId: testDevshardModelID,
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "out of range")
@@ -117,7 +117,7 @@ func TestCreateDevshardEscrow_AmountBelowMin(t *testing.T) {
 func TestCreateDevshardEscrow_AmountAboveMax(t *testing.T) {
 	k, ms, ctx, _ := setupDevshardEscrowTest(t)
 
-	setupEpochGroupForDevshard(ctx, k, 5, testSubnetModelID, makeSubnetAddrs(1, 5))
+	setupEpochGroupForDevshard(ctx, k, 5, testDevshardModelID, makeDevshardAddrs(1, 5))
 
 	creator := sdk.AccAddress(make([]byte, 20))
 	creator[0] = 0xFF
@@ -125,7 +125,7 @@ func TestCreateDevshardEscrow_AmountAboveMax(t *testing.T) {
 	_, err := ms.CreateDevshardEscrow(ctx, &types.MsgCreateDevshardEscrow{
 		Creator: creator.String(),
 		Amount:  11_000_000_000,
-		ModelId: testSubnetModelID,
+		ModelId: testDevshardModelID,
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "out of range")
@@ -134,7 +134,7 @@ func TestCreateDevshardEscrow_AmountAboveMax(t *testing.T) {
 func TestCreateDevshardEscrow_EpochLimitReached(t *testing.T) {
 	k, ms, ctx, _ := setupDevshardEscrowTest(t)
 
-	setupEpochGroupForDevshard(ctx, k, 5, testSubnetModelID, makeSubnetAddrs(1, 5))
+	setupEpochGroupForDevshard(ctx, k, 5, testDevshardModelID, makeDevshardAddrs(1, 5))
 	_ = k.DevshardEscrowEpochCount.Set(ctx, 5, 100)
 
 	creator := sdk.AccAddress(make([]byte, 20))
@@ -143,7 +143,7 @@ func TestCreateDevshardEscrow_EpochLimitReached(t *testing.T) {
 	_, err := ms.CreateDevshardEscrow(ctx, &types.MsgCreateDevshardEscrow{
 		Creator: creator.String(),
 		Amount:  5_000_000_000,
-		ModelId: testSubnetModelID,
+		ModelId: testDevshardModelID,
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "max")
@@ -152,7 +152,7 @@ func TestCreateDevshardEscrow_EpochLimitReached(t *testing.T) {
 func TestCreateDevshardEscrow_InsufficientFunds(t *testing.T) {
 	k, ms, ctx, mocks := setupDevshardEscrowTest(t)
 
-	setupEpochGroupForDevshard(ctx, k, 5, testSubnetModelID, makeSubnetAddrs(1, 5))
+	setupEpochGroupForDevshard(ctx, k, 5, testDevshardModelID, makeDevshardAddrs(1, 5))
 
 	creator := sdk.AccAddress(make([]byte, 20))
 	creator[0] = 0xFF
@@ -164,7 +164,7 @@ func TestCreateDevshardEscrow_InsufficientFunds(t *testing.T) {
 	_, err := ms.CreateDevshardEscrow(ctx, &types.MsgCreateDevshardEscrow{
 		Creator: creator.String(),
 		Amount:  5_000_000_000,
-		ModelId: testSubnetModelID,
+		ModelId: testDevshardModelID,
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to lock funds")
@@ -173,7 +173,7 @@ func TestCreateDevshardEscrow_InsufficientFunds(t *testing.T) {
 func TestCreateDevshardEscrow_CounterOverflow(t *testing.T) {
 	k, ms, ctx, _ := setupDevshardEscrowTest(t)
 
-	setupEpochGroupForDevshard(ctx, k, 5, testSubnetModelID, makeSubnetAddrs(1, 5))
+	setupEpochGroupForDevshard(ctx, k, 5, testDevshardModelID, makeDevshardAddrs(1, 5))
 
 	// Set counter to max uint64
 	err := k.DevshardEscrowCounter.Set(ctx, math.MaxUint64)
@@ -185,7 +185,7 @@ func TestCreateDevshardEscrow_CounterOverflow(t *testing.T) {
 	_, err = ms.CreateDevshardEscrow(ctx, &types.MsgCreateDevshardEscrow{
 		Creator: creator.String(),
 		Amount:  5_000_000_000,
-		ModelId: testSubnetModelID,
+		ModelId: testDevshardModelID,
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "overflow")
@@ -194,7 +194,7 @@ func TestCreateDevshardEscrow_CounterOverflow(t *testing.T) {
 func TestCreateDevshardEscrow_AllowlistBlocks(t *testing.T) {
 	k, ms, ctx, _ := setupDevshardEscrowTest(t)
 
-	setupEpochGroupForDevshard(ctx, k, 5, testSubnetModelID, makeSubnetAddrs(1, 5))
+	setupEpochGroupForDevshard(ctx, k, 5, testDevshardModelID, makeDevshardAddrs(1, 5))
 
 	creator := sdk.AccAddress(make([]byte, 20))
 	creator[0] = 0xFF
@@ -215,7 +215,7 @@ func TestCreateDevshardEscrow_AllowlistBlocks(t *testing.T) {
 	_, err = ms.CreateDevshardEscrow(ctx, &types.MsgCreateDevshardEscrow{
 		Creator: creator.String(),
 		Amount:  7_000_000_000,
-		ModelId: testSubnetModelID,
+		ModelId: testDevshardModelID,
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "address is not allowed to create devshard escrows")
@@ -224,7 +224,7 @@ func TestCreateDevshardEscrow_AllowlistBlocks(t *testing.T) {
 func TestCreateDevshardEscrow_ParamsOverrideDefaults(t *testing.T) {
 	k, ms, ctx, mocks := setupDevshardEscrowTest(t)
 
-	setupEpochGroupForDevshard(ctx, k, 5, testSubnetModelID, makeSubnetAddrs(1, 20))
+	setupEpochGroupForDevshard(ctx, k, 5, testDevshardModelID, makeDevshardAddrs(1, 20))
 
 	creator := sdk.AccAddress(make([]byte, 20))
 	creator[0] = 0xFF
@@ -249,7 +249,7 @@ func TestCreateDevshardEscrow_ParamsOverrideDefaults(t *testing.T) {
 	resp, err := ms.CreateDevshardEscrow(ctx, &types.MsgCreateDevshardEscrow{
 		Creator: creator.String(),
 		Amount:  1_500_000_000,
-		ModelId: testSubnetModelID,
+		ModelId: testDevshardModelID,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
@@ -259,15 +259,15 @@ func TestCreateDevshardEscrow_ParamsOverrideDefaults(t *testing.T) {
 	require.Len(t, escrow.Slots, 8)
 }
 
-func TestCreateSubnetEscrow_ModelIDRequired(t *testing.T) {
-	k, ms, ctx, _ := setupSubnetEscrowTest(t)
+func TestCreateDevshardEscrow_ModelIDRequired(t *testing.T) {
+	k, ms, ctx, _ := setupDevshardEscrowTest(t)
 
-	setupEpochGroupForSubnet(ctx, k, 5, testSubnetModelID, makeSubnetAddrs(1, 5))
+	setupEpochGroupForDevshard(ctx, k, 5, testDevshardModelID, makeDevshardAddrs(1, 5))
 
 	creator := sdk.AccAddress(make([]byte, 20))
 	creator[0] = 0xFF
 
-	_, err := ms.CreateSubnetEscrow(ctx, &types.MsgCreateSubnetEscrow{
+	_, err := ms.CreateDevshardEscrow(ctx, &types.MsgCreateDevshardEscrow{
 		Creator: creator.String(),
 		Amount:  7_000_000_000,
 	})
@@ -275,18 +275,18 @@ func TestCreateSubnetEscrow_ModelIDRequired(t *testing.T) {
 	require.Contains(t, err.Error(), "model_id is required")
 }
 
-func TestCreateSubnetEscrow_ModelGroupMustExist(t *testing.T) {
-	k, ms, ctx, _ := setupSubnetEscrowTest(t)
+func TestCreateDevshardEscrow_ModelGroupMustExist(t *testing.T) {
+	k, ms, ctx, _ := setupDevshardEscrowTest(t)
 
-	setupEpochGroupForSubnet(ctx, k, 5, "", makeSubnetAddrs(1, 20))
+	setupEpochGroupForDevshard(ctx, k, 5, "", makeDevshardAddrs(1, 20))
 
 	creator := sdk.AccAddress(make([]byte, 20))
 	creator[0] = 0xFF
 
-	_, err := ms.CreateSubnetEscrow(ctx, &types.MsgCreateSubnetEscrow{
+	_, err := ms.CreateDevshardEscrow(ctx, &types.MsgCreateDevshardEscrow{
 		Creator: creator.String(),
 		Amount:  7_000_000_000,
-		ModelId: testSubnetModelID,
+		ModelId: testDevshardModelID,
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to get epoch group for model")

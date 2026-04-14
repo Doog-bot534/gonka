@@ -248,7 +248,7 @@ func TestBackfillVotingPower_EdgeCases(t *testing.T) {
 		EpochIndex: 1,
 		ModelId:    modelID,
 		ValidationWeights: []*inferencetypes.ValidationWeight{
-			{MemberAddress: addrZero, Weight: 0},            // weight 0 -> voting_power stays 0
+			{MemberAddress: addrZero, Weight: 0},                      // weight 0 -> voting_power stays 0
 			{MemberAddress: addrPreset, Weight: 50, VotingPower: 777}, // already set -> unchanged
 		},
 	})
@@ -349,7 +349,7 @@ func TestInitNewPruningState(t *testing.T) {
 		PocValidationsPrunedEpoch:        10,
 		InferencePrunedEpoch:             10,
 		EpochGroupValidationsPrunedEpoch: 10,
-		SubnetPrunedEpoch:                10,
+		DevshardPrunedEpoch:              10,
 		// New markers left at 0 to simulate pre-upgrade state.
 	}))
 
@@ -366,7 +366,7 @@ func TestInitNewPruningState(t *testing.T) {
 	require.Equal(t, int64(10), state.PocValidationsPrunedEpoch)
 	require.Equal(t, int64(10), state.InferencePrunedEpoch)
 	require.Equal(t, int64(10), state.EpochGroupValidationsPrunedEpoch)
-	require.Equal(t, int64(10), state.SubnetPrunedEpoch)
+	require.Equal(t, int64(10), state.DevshardPrunedEpoch)
 }
 
 func TestInitNewPruningState_DoesNotLowerMarkers(t *testing.T) {

@@ -235,7 +235,7 @@ func main() {
 	if devshardSigner != nil {
 		devshardBridge := internaldevshard.NewChainBridge(recorder)
 		httpClient := pserver.NewNoRedirectClient(5 * time.Minute)
-		chainParams := &configParamsProvider{cm: config}
+		chainParams := &configParamsProvider{cm: configManager}
 		devshardEngine := internaldevshard.NewEngineAdapter(nodeBroker, configManager.GetCurrentNodeVersion(), payloadStore, chainPhaseTracker, httpClient, chainParams)
 		devshardValidator := internaldevshard.NewValidationAdapter(nodeBroker, configManager.GetCurrentNodeVersion(), chainPhaseTracker, httpClient, devshardBridge, recorder, chainParams)
 		// TODO: move to DevshardConfig when config consolidation happens.
