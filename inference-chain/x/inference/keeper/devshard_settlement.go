@@ -47,6 +47,10 @@ func VerifyDevshardSettlement(escrow types.DevshardEscrow, msg *types.MsgSettleD
 	if msg.Version == "" {
 		return fmt.Errorf("version is required")
 	}
+	const maxVersionLength = 128
+	if len(msg.Version) > maxVersionLength {
+		return fmt.Errorf("version exceeds maximum length of %d", maxVersionLength)
+	}
 
 	// Recompute host_stats_hash
 	hostStatsHash, err := ComputeDevshardHostStatsHash(msg.HostStats)
