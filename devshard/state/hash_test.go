@@ -52,8 +52,9 @@ func TestStateRoot_MerkleStructure(t *testing.T) {
 	}
 	balance := uint64(875)
 	fees := uint64(123)
+	version := "dev"
 
-	root, err := ComputeStateRoot(balance, hostStats, inferences, types.PhaseActive, nil, fees)
+	root, err := ComputeStateRoot(balance, hostStats, inferences, types.PhaseActive, nil, fees, version)
 	require.NoError(t, err)
 
 	// Manually recompute and verify structure.
@@ -68,6 +69,7 @@ func TestStateRoot_MerkleStructure(t *testing.T) {
 	h.Write(hostStatsHash)
 	h.Write(feesBytes)
 	h.Write(restHash)
+	h.Write(ComputeVersionHash(version))
 	h.Write([]byte{uint8(types.PhaseActive)})
 	expected := h.Sum(nil)
 
@@ -95,4 +97,19 @@ func TestStateRoot_SortedKeys(t *testing.T) {
 	root2, err := ComputeStateRoot(1000, stats2, inferences, types.PhaseActive, nil, 0)
 	require.NoError(t, err)
 	require.Equal(t, root1, root2)
+}
+
+func TestComputeStateRoot_DifferentVersion(t *testing.T) {
+	hostStats := map[uint32]*types.HostStats{
+		0: {Cost: 100},
+	}
+	inferences := map[uint64]*types.InferenceRecord{
+		1: {Status: types.StatusFinished, ExecutorSlot: 0, ActualCost: 100},
+	}
+
+	root1, err := ComputeStateRoot(500, hostStats, inferences, types.PhaseActive, nil, 99, "v1")
+	require.NoError(t, err)
+	root2, err := ComputeStateRoot(500, hostStats, inferences, types.PhaseActive, nil, 99, "dev")
+	require.NoError(t, err)
+	require.NotEqual(t, root1, root2)
 }

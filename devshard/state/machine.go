@@ -98,6 +98,13 @@ func WithWarmKeyResolver(r WarmKeyResolver) SMOption {
 	return func(sm *StateMachine) { sm.warmResolver = r }
 }
 
+// WithVersion binds the session to a specific devshard version token.
+func WithVersion(version string) SMOption {
+	return func(sm *StateMachine) {
+		sm.state.Version = types.NormalizeSessionVersion(version)
+	}
+}
+
 func NewStateMachine(
 	escrowID string,
 	config types.SessionConfig,
@@ -140,6 +147,7 @@ func NewStateMachine(
 	sm := &StateMachine{
 		state: &types.EscrowState{
 			EscrowID:      escrowID,
+			Version:       types.LegacySessionVersion,
 			Config:        config,
 			Group:         groupCopy,
 			Balance:       initialBalance,
@@ -163,6 +171,7 @@ func NewStateMachine(
 	logging.Info("NewStateMachine", "subsystem", "state",
 		"escrow_id", escrowID,
 		"group_size", len(group),
+		"version", sm.state.Version,
 		"balance", initialBalance,
 		"create_devshard_fee", config.CreateDevshardFee,
 		"token_price", config.TokenPrice,
@@ -274,7 +283,7 @@ func (sm *StateMachine) ApplyLocalBestEffort(nonce uint64, txs []*types.Devshard
 		}
 	}
 
-	root, err := ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences, sm.state.Phase, sm.state.WarmKeys, sm.state.Fees)
+	root, err := ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences, sm.state.Phase, sm.state.WarmKeys, sm.state.Fees, sm.state.Version)
 	if err != nil {
 		sm.restoreMutable(snap)
 		return nil, nil, fmt.Errorf("compute state root: %w", err)
@@ -357,7 +366,7 @@ func (sm *StateMachine) applyCore(nonce uint64, txs []*types.DevshardTx, postSta
 	}
 
 	// 7. Compute state root.
-	root, err := ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences, sm.state.Phase, sm.state.WarmKeys, sm.state.Fees)
+	root, err := ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences, sm.state.Phase, sm.state.WarmKeys, sm.state.Fees, sm.state.Version)
 	if err != nil {
 		sm.restoreMutable(snap)
 		return nil, fmt.Errorf("compute state root: %w", err)
@@ -490,7 +499,7 @@ func (sm *StateMachine) restoreMutable(snap mutableSnapshot) {
 func (sm *StateMachine) ComputeStateRoot() ([]byte, error) {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
-	return ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences, sm.state.Phase, sm.state.WarmKeys, sm.state.Fees)
+	return ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences, sm.state.Phase, sm.state.WarmKeys, sm.state.Fees, sm.state.Version)
 }
 
 // WarmKeys returns the current warm key bindings (shallow copy).

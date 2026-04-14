@@ -27,6 +27,7 @@ type Storage interface {
 // CreateSessionParams holds all parameters for creating a new session.
 type CreateSessionParams struct {
 	EscrowID       string
+	Version        string
 	CreatorAddr    string
 	Config         types.SessionConfig
 	Group          []types.SlotAssignment
@@ -36,6 +37,7 @@ type CreateSessionParams struct {
 // SessionMeta holds session metadata without live state.
 type SessionMeta struct {
 	EscrowID       string
+	Version        string
 	CreatorAddr    string
 	Config         types.SessionConfig
 	Group          []types.SlotAssignment

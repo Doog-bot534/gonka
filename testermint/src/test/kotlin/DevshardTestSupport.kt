@@ -135,6 +135,7 @@ fun LocalInferencePair.assertDevshardSettlement(
     user: DevshardTestUser,
     escrowAmount: Long,
     requireCompletedValidations: Boolean = true,
+    expectedVersion: String? = null,
 ): LocalInferencePair.DevshardctlResult {
     waitForDevshardPreFinalize()
     logSection("Finalizing via proxy")
@@ -143,6 +144,9 @@ fun LocalInferencePair.assertDevshardSettlement(
 
     logSection("Verifying settlement data")
     assertThat(result.parsed.escrowId).isEqualTo(escrowId.toString())
+    if (expectedVersion != null) {
+        assertThat(result.parsed.version).isEqualTo(expectedVersion)
+    }
     assertThat(result.parsed.nonce).isGreaterThan(0)
     assertThat(result.parsed.hostStats).isNotEmpty()
     assertThat(result.parsed.signatures).isNotEmpty()
@@ -174,6 +178,10 @@ fun LocalInferencePair.assertDevshardSettlement(
         .isEqualTo(result.parsed.fees.toString())
     assertThat(settleEvent.attributes.firstOrNull { it.key == "remainder" }?.value)
         .isEqualTo(expectedRemainder.toString())
+    if (expectedVersion != null) {
+        assertThat(settleEvent.attributes.firstOrNull { it.key == "version" }?.value)
+            .isEqualTo(expectedVersion)
+    }
 
     logSection("Verifying escrow settled")
     val escrow = node.queryDevshardEscrow(escrowId)

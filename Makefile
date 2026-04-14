@@ -114,9 +114,9 @@ devshardctl-build:
 	@cd devshard && go build -ldflags "-X main.Version=$(DEVSHARD_VERSION)" -o ../build/devshardctl ./cmd/devshardctl/
 
 devshardd-build:
-	@echo "Building devshardd (musl-static via docker)..."
+	@echo "Building devshardd..."
 	@mkdir -p build
-	@DOCKER_BUILDKIT=1 docker build --target builder \
+	@DOCKER_BUILDKIT=1 docker build --no-cache --target builder \
 		--build-arg BLST_PORTABLE=1 \
 		--build-arg DEVSHARD_VERSION=$(DEVSHARD_VERSION) \
 		-f decentralized-api/Dockerfile . \

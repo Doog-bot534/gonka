@@ -30,6 +30,8 @@ import (
 	"decentralized-api/internal/validation"
 	"decentralized-api/logging"
 	"decentralized-api/participant"
+	devshardstorage "devshard/storage"
+	devshardtypes "devshard/types"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -37,7 +39,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	devshardstorage "devshard/storage"
 	"time"
 
 	"github.com/productscience/inference/x/inference/types"
@@ -242,7 +243,7 @@ func main() {
 			logging.Error("devshard storage init failed", types.System, "error", storeErr)
 		} else {
 			defer devshardStore.Close()
-			hostManager := internaldevshard.NewHostManager(devshardStore, devshardSigner, devshardEngine, devshardValidator, devshardBridge, payloadStore, recorder)
+			hostManager := internaldevshard.NewHostManager(devshardStore, devshardSigner, devshardEngine, devshardValidator, devshardtypes.LegacySessionVersion, devshardBridge, payloadStore, recorder)
 			if err := hostManager.RecoverSessions(); err != nil {
 				logging.Error("devshard recovery failed", types.System, "error", err)
 			}

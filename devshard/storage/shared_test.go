@@ -29,6 +29,7 @@ func defaultGroup() []types.SlotAssignment {
 func defaultParams() CreateSessionParams {
 	return CreateSessionParams{
 		EscrowID:       "escrow-1",
+		Version:        types.LegacySessionVersion,
 		CreatorAddr:    "creator",
 		Config:         types.SessionConfig{},
 		Group:          defaultGroup(),
@@ -45,6 +46,7 @@ func runCreateSession_GetSessionMeta(t *testing.T, store Storage) {
 	meta, err := store.GetSessionMeta("escrow-1")
 	require.NoError(t, err)
 	require.Equal(t, "escrow-1", meta.EscrowID)
+	require.Equal(t, types.LegacySessionVersion, meta.Version)
 	require.Equal(t, "creator", meta.CreatorAddr)
 	require.Equal(t, uint64(1000), meta.InitialBalance)
 	require.Len(t, meta.Group, 2)
@@ -66,6 +68,7 @@ func runCreateSession_Idempotent(t *testing.T, store Storage) {
 	meta, err := store.GetSessionMeta("escrow-1")
 	require.NoError(t, err)
 	require.Equal(t, "escrow-1", meta.EscrowID)
+	require.Equal(t, types.LegacySessionVersion, meta.Version)
 	require.Equal(t, uint64(1000), meta.InitialBalance)
 }
 

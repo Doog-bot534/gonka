@@ -159,7 +159,7 @@ func TestRecoverSessions_HappyPath(t *testing.T) {
 	engine := stub.NewInferenceEngine()
 	validator := stub.NewValidationEngine()
 
-	mgr := NewHostManager(store, signer, engine, validator, br, nil, nil)
+	mgr := NewHostManager(store, signer, engine, validator, types.LegacySessionVersion, br, nil, nil)
 	err := mgr.RecoverSessions()
 	require.NoError(t, err)
 
@@ -203,7 +203,7 @@ func TestRecoverSessions_Nonce0(t *testing.T) {
 		},
 	}
 
-	mgr := NewHostManager(store, hosts[0], stub.NewInferenceEngine(), stub.NewValidationEngine(), br, nil, nil)
+	mgr := NewHostManager(store, hosts[0], stub.NewInferenceEngine(), stub.NewValidationEngine(), types.LegacySessionVersion, br, nil, nil)
 	err := mgr.RecoverSessions()
 	require.NoError(t, err)
 
@@ -221,12 +221,44 @@ func TestRecoverSessions_Nonce0(t *testing.T) {
 	require.Equal(t, srv, srv2)
 }
 
+func TestCreateSession_BindsConfiguredVersion(t *testing.T) {
+	store := newManagerTestStore(t)
+	hosts := make([]*signing.Secp256k1Signer, 3)
+	for i := range hosts {
+		hosts[i] = mustGenerateKey(t)
+	}
+	user := mustGenerateKey(t)
+	group := makeGroup(hosts)
+	addresses := make([]string, len(group))
+	for i, s := range group {
+		addresses[i] = s.ValidatorAddress
+	}
+
+	br := &mockBridge{
+		escrow: &bridge.EscrowInfo{
+			EscrowID:       "escrow-1",
+			Amount:         100000,
+			CreatorAddress: user.Address(),
+			Slots:          addresses,
+		},
+	}
+
+	const standaloneVersion = "v0.2.11"
+	mgr := NewHostManager(store, hosts[0], stub.NewInferenceEngine(), stub.NewValidationEngine(), standaloneVersion, br, nil, nil)
+	_, err := mgr.getOrCreate("escrow-1")
+	require.NoError(t, err)
+
+	meta, err := store.GetSessionMeta("escrow-1")
+	require.NoError(t, err)
+	require.Equal(t, standaloneVersion, meta.Version)
+}
+
 func TestRecoverSessions_EmptyStore(t *testing.T) {
 	store := newManagerTestStore(t)
 	signer := mustGenerateKey(t)
 	br := &mockBridge{}
 
-	mgr := NewHostManager(store, signer, stub.NewInferenceEngine(), stub.NewValidationEngine(), br, nil, nil)
+	mgr := NewHostManager(store, signer, stub.NewInferenceEngine(), stub.NewValidationEngine(), types.LegacySessionVersion, br, nil, nil)
 	err := mgr.RecoverSessions()
 	require.NoError(t, err)
 
@@ -287,7 +319,7 @@ func TestRecoverSessions_StateRootMismatch(t *testing.T) {
 	}
 
 	signer := mustGenerateKey(t)
-	mgr := NewHostManager(store, signer, stub.NewInferenceEngine(), stub.NewValidationEngine(), br, nil, nil)
+	mgr := NewHostManager(store, signer, stub.NewInferenceEngine(), stub.NewValidationEngine(), types.LegacySessionVersion, br, nil, nil)
 	err = mgr.RecoverSessions()
 	// RecoverSessions logs and skips corrupt sessions, does not return error.
 	require.NoError(t, err)

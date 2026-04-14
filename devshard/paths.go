@@ -3,6 +3,8 @@ package devshard
 import (
 	"fmt"
 	"strings"
+
+	"devshard/types"
 )
 
 const LegacyRoutePrefix = "/v1/devshard"
@@ -23,6 +25,21 @@ func ResolveVersionedRoutePrefix(version, routePrefix string) string {
 		return routePrefix
 	}
 	return VersionedRoutePrefix(version)
+}
+
+func VersionForRoutePrefix(routePrefix string) (string, error) {
+	normalized := NormalizeRoutePrefix(routePrefix)
+	if normalized == LegacyRoutePrefix {
+		return types.LegacySessionVersion, nil
+	}
+
+	trimmed := strings.Trim(normalized, "/")
+	parts := strings.Split(trimmed, "/")
+	if len(parts) == 2 && parts[0] == "devshard" && parts[1] != "" {
+		return parts[1], nil
+	}
+
+	return "", fmt.Errorf("unsupported devshard route prefix %q", routePrefix)
 }
 
 func SessionPayloadPath(routePrefix, escrowID string) string {

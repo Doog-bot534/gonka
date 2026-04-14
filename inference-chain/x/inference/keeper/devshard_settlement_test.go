@@ -20,6 +20,8 @@ import (
 	"github.com/productscience/inference/x/inference/types"
 )
 
+const settlementVersion = "dev"
+
 // cosmosAddressFromDcrdKey derives the Cosmos bech32 address from a dcrd private key.
 func cosmosAddressFromDcrdKey(key *dcrdsecp.PrivateKey) sdk.AccAddress {
 	cosmosPubKey := &secp256k1.PubKey{Key: key.PubKey().SerializeCompressed()}
@@ -70,11 +72,13 @@ func buildSettlementTestData(
 	restHash := sha256.Sum256([]byte("rest_data"))
 	feesBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(feesBytes, fees)
+	versionHash := sha256.Sum256([]byte(settlementVersion))
 
-	rootInput := make([]byte, 0, 73)
+	rootInput := make([]byte, 0, 105)
 	rootInput = append(rootInput, hostStatsHash[:]...)
 	rootInput = append(rootInput, feesBytes...)
 	rootInput = append(rootInput, restHash[:]...)
+	rootInput = append(rootInput, versionHash[:]...)
 	rootInput = append(rootInput, 0x02)
 	stateRoot := sha256.Sum256(rootInput)
 
@@ -100,6 +104,7 @@ func buildSettlementTestData(
 	return &types.MsgSettleDevshardEscrow{
 		Settler:    escrow.Creator,
 		EscrowId:   escrow.Id,
+		Version:    settlementVersion,
 		StateRoot:  stateRoot[:],
 		Nonce:      42,
 		Fees:       fees,
@@ -462,10 +467,15 @@ func TestVerifyDevshardSettlement_WrongPhaseRejected(t *testing.T) {
 	// This simulates an attacker trying to settle a non-finalized session.
 	hostStatsHash, err := keeper.ComputeDevshardHostStatsHash(hostStats)
 	require.NoError(t, err)
+	feesBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(feesBytes, msg.Fees)
+	versionHash := sha256.Sum256([]byte(msg.Version))
 
-	rootInput := make([]byte, 0, 65)
+	rootInput := make([]byte, 0, 105)
 	rootInput = append(rootInput, hostStatsHash...)
+	rootInput = append(rootInput, feesBytes...)
 	rootInput = append(rootInput, msg.RestHash...)
+	rootInput = append(rootInput, versionHash[:]...)
 	rootInput = append(rootInput, 0x00) // Active phase, not Settlement
 	wrongRoot := sha256.Sum256(rootInput)
 

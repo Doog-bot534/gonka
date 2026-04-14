@@ -37,6 +37,7 @@ func copyWarmKeyDelta(src map[uint32]string) map[uint32]string {
 
 type sessionData struct {
 	escrowID      string
+	version       string
 	creatorAddr   string
 	config        types.SessionConfig
 	group         []types.SlotAssignment
@@ -69,6 +70,7 @@ func (m *Memory) CreateSession(params CreateSessionParams) error {
 
 	m.sessions[params.EscrowID] = &sessionData{
 		escrowID:     params.EscrowID,
+		version:      types.NormalizeSessionVersion(params.Version),
 		creatorAddr:  params.CreatorAddr,
 		config:       params.Config,
 		group:        copyGroup(params.Group),
@@ -158,6 +160,7 @@ func (m *Memory) GetSessionMeta(escrowID string) (*SessionMeta, error) {
 
 	meta := &SessionMeta{
 		EscrowID:       s.escrowID,
+		Version:        s.version,
 		CreatorAddr:    s.creatorAddr,
 		Config:         s.config,
 		Group:          copyGroup(s.group),

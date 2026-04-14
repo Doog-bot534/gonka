@@ -303,7 +303,7 @@ data class DockerGroup(
 
             // Test-supplied extras applied last so they override defaults.
             // DevshardStandaloneTests uses this to set VERSIOND_BINARY_NAME,
-            // VERSIOND_FORCE, VERSIOND_OVERRIDE_dev, VERSIOND_SERVICE_NAME.
+            // VERSIOND_FORCE, VERSIOND_OVERRIDE_v0_2_11, VERSIOND_SERVICE_NAME.
             putAll(config.additionalEnvVars)
         }
     }

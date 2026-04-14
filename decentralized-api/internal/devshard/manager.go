@@ -46,6 +46,7 @@ type HostManager struct {
 	verifier     signing.Verifier
 	engine       devshardpkg.InferenceEngine
 	validator    devshardpkg.ValidationEngine
+	boundVersion string
 	bridge       bridge.MainnetBridge
 	payloadStore payloadstorage.PayloadStorage
 	recorder     PayloadAuthClient
@@ -56,6 +57,7 @@ func NewHostManager(
 	signer *signing.Secp256k1Signer,
 	engine devshardpkg.InferenceEngine,
 	validator devshardpkg.ValidationEngine,
+	boundVersion string,
 	br bridge.MainnetBridge,
 	payloadStore payloadstorage.PayloadStorage,
 	recorder PayloadAuthClient,
@@ -67,6 +69,7 @@ func NewHostManager(
 		verifier:     signing.NewSecp256k1Verifier(),
 		engine:       engine,
 		validator:    validator,
+		boundVersion: types.NormalizeSessionVersion(boundVersion),
 		bridge:       br,
 		payloadStore: payloadStore,
 		recorder:     recorder,
@@ -134,6 +137,7 @@ func (m *HostManager) create(escrowID string) (*transport.Server, error) {
 
 	if err := m.store.CreateSession(storage.CreateSessionParams{
 		EscrowID:       escrowID,
+		Version:        m.boundVersion,
 		CreatorAddr:    creatorAddr,
 		Config:         config,
 		Group:          group,
@@ -144,6 +148,7 @@ func (m *HostManager) create(escrowID string) (*transport.Server, error) {
 
 	sm, err := state.NewStateMachine(escrowID, config, group, escrow.Amount, creatorAddr, m.verifier,
 		state.WithWarmKeyResolver(m.bridge.VerifyWarmKey),
+		state.WithVersion(m.boundVersion),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create state machine: %w", err)
@@ -196,10 +201,18 @@ func (m *HostManager) recoverSession(escrowID string) error {
 	if err != nil {
 		return fmt.Errorf("get session meta: %w", err)
 	}
+	if meta.Version != "" && meta.Version != m.boundVersion {
+		return fmt.Errorf("session version mismatch: stored %s, host %s", meta.Version, m.boundVersion)
+	}
+	recoveredVersion := meta.Version
+	if recoveredVersion == "" {
+		recoveredVersion = m.boundVersion
+	}
 	sm, err := state.NewStateMachine(
 		escrowID, meta.Config, meta.Group, meta.InitialBalance,
 		meta.CreatorAddr, m.verifier,
 		state.WithWarmKeyResolver(m.bridge.VerifyWarmKey),
+		state.WithVersion(recoveredVersion),
 	)
 	if err != nil {
 		return fmt.Errorf("create state machine: %w", err)
@@ -476,4 +489,3 @@ func (m *HostManager) signPayloadResponse(inferenceID string, promptPayload, res
 
 	return calculations.Sign(accountSigner, components, calculations.Developer)
 }
-

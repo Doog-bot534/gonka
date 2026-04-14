@@ -8,10 +8,11 @@ import (
 )
 
 // SettlementPayload contains the data needed for on-chain settlement.
-// Mainnet recomputes the state root from HostStats + Fees + RestHash + phase
-// byte; it is not included in the payload.
+// Mainnet recomputes the state root from HostStats + Fees + RestHash +
+// VersionHash + phase byte; it is not included in the payload.
 type SettlementPayload struct {
 	EscrowID string
+	Version  string
 	Nonce    uint64
 	// Fees is the cumulative amount deducted from escrow balance as protocol fees.
 	Fees       uint64
@@ -29,6 +30,7 @@ func BuildSettlement(escrowID string, st types.EscrowState, signatures map[uint3
 
 	return &SettlementPayload{
 		EscrowID:   escrowID,
+		Version:    types.NormalizeSessionVersion(st.Version),
 		Nonce:      nonce,
 		Fees:       st.Fees,
 		RestHash:   restHash,
@@ -51,11 +53,14 @@ func VerifySettlement(
 	}
 
 	// 1. Recompute state root using deterministic settlement root preimage.
+	if payload.Version == "" {
+		return nil, fmt.Errorf("empty version")
+	}
 	hostStatsHash, err := ComputeHostStatsHash(payload.HostStats)
 	if err != nil {
 		return nil, fmt.Errorf("compute host stats hash: %w", err)
 	}
-	stateRoot := ComputeStateRootFromRestHash(hostStatsHash, payload.RestHash, payload.Fees, types.PhaseSettlement)
+	stateRoot := ComputeStateRootFromRestHash(hostStatsHash, payload.RestHash, payload.Fees, types.PhaseSettlement, payload.Version)
 
 	// 2. Build the signed message: proto(StateSignatureContent{state_root, escrow_id, nonce}).
 	sigContent := &types.StateSignatureContent{

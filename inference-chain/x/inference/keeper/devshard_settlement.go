@@ -44,6 +44,9 @@ func VerifyDevshardSettlement(escrow types.DevshardEscrow, msg *types.MsgSettleD
 	if msg.Settler != escrow.Creator {
 		return fmt.Errorf("settler %s is not the escrow creator %s", msg.Settler, escrow.Creator)
 	}
+	if msg.Version == "" {
+		return fmt.Errorf("version is required")
+	}
 
 	// Recompute host_stats_hash
 	hostStatsHash, err := ComputeDevshardHostStatsHash(msg.HostStats)
@@ -51,13 +54,15 @@ func VerifyDevshardSettlement(escrow types.DevshardEscrow, msg *types.MsgSettleD
 		return fmt.Errorf("failed to compute host stats hash: %w", err)
 	}
 
-	// Verify state_root = sha256(host_stats_hash || fees_be || rest_hash || 0x02)
+	// Verify state_root = sha256(host_stats_hash || fees_be || rest_hash || version_hash || 0x02)
 	feesBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(feesBytes, msg.Fees)
-	rootInput := make([]byte, 0, len(hostStatsHash)+len(feesBytes)+len(msg.RestHash)+1)
+	versionHash := sha256.Sum256([]byte(msg.Version))
+	rootInput := make([]byte, 0, len(hostStatsHash)+len(feesBytes)+len(msg.RestHash)+len(versionHash)+1)
 	rootInput = append(rootInput, hostStatsHash...)
 	rootInput = append(rootInput, feesBytes...)
 	rootInput = append(rootInput, msg.RestHash...)
+	rootInput = append(rootInput, versionHash[:]...)
 	rootInput = append(rootInput, DevshardSettlementPhase)
 	expectedRoot := sha256.Sum256(rootInput)
 	if len(msg.StateRoot) != 32 {

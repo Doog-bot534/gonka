@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -61,6 +62,7 @@ func NewSQLite(dbPath string) (*SQLite, error) {
 	schema := `
 	CREATE TABLE IF NOT EXISTS sessions (
 		escrow_id       TEXT PRIMARY KEY,
+		version         TEXT,
 		creator_addr    TEXT NOT NULL,
 		config_json     TEXT NOT NULL,
 		group_json      TEXT NOT NULL,
@@ -96,6 +98,11 @@ func NewSQLite(dbPath string) (*SQLite, error) {
 		readDB.Close()
 		return nil, fmt.Errorf("create schema: %w", err)
 	}
+	if _, err := writeDB.Exec(`ALTER TABLE sessions ADD COLUMN version TEXT`); err != nil && !strings.Contains(err.Error(), "duplicate column name: version") {
+		writeDB.Close()
+		readDB.Close()
+		return nil, fmt.Errorf("add sessions.version column: %w", err)
+	}
 
 	return &SQLite{writeDB: writeDB, readDB: readDB}, nil
 }
@@ -121,9 +128,9 @@ func (s *SQLite) CreateSession(params CreateSessionParams) error {
 	}
 
 	_, err = s.writeDB.Exec(
-		`INSERT OR IGNORE INTO sessions (escrow_id, creator_addr, config_json, group_json, initial_balance)
-		 VALUES (?, ?, ?, ?, ?)`,
-		params.EscrowID, params.CreatorAddr, string(configJSON), string(groupJSON), params.InitialBalance,
+		`INSERT OR IGNORE INTO sessions (escrow_id, version, creator_addr, config_json, group_json, initial_balance)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		params.EscrowID, types.NormalizeSessionVersion(params.Version), params.CreatorAddr, string(configJSON), string(groupJSON), params.InitialBalance,
 	)
 	if err != nil {
 		return fmt.Errorf("insert session: %w", err)
@@ -250,15 +257,16 @@ func (s *SQLite) GetSignatures(escrowID string, nonce uint64) (map[uint32][]byte
 
 func (s *SQLite) GetSessionMeta(escrowID string) (*SessionMeta, error) {
 	row := s.readDB.QueryRow(
-		`SELECT escrow_id, creator_addr, config_json, group_json, initial_balance, latest_nonce, last_finalized, status
+		`SELECT escrow_id, version, creator_addr, config_json, group_json, initial_balance, latest_nonce, last_finalized, status
 		 FROM sessions WHERE escrow_id = ?`,
 		escrowID,
 	)
 
 	var meta SessionMeta
+	var version sql.NullString
 	var configJSON, groupJSON string
 	err := row.Scan(
-		&meta.EscrowID, &meta.CreatorAddr, &configJSON, &groupJSON,
+		&meta.EscrowID, &version, &meta.CreatorAddr, &configJSON, &groupJSON,
 		&meta.InitialBalance, &meta.LatestNonce, &meta.LastFinalized, &meta.Status,
 	)
 	if err != nil {
@@ -273,6 +281,9 @@ func (s *SQLite) GetSessionMeta(escrowID string) (*SessionMeta, error) {
 	}
 	if err := json.Unmarshal([]byte(groupJSON), &meta.Group); err != nil {
 		return nil, fmt.Errorf("unmarshal group: %w", err)
+	}
+	if version.Valid {
+		meta.Version = version.String
 	}
 
 	return &meta, nil

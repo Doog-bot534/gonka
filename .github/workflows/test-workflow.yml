@@ -156,6 +156,7 @@ jobs:
       - name: Make Docker Images
         env:
           GENESIS_OVERRIDES_FILE: "inference-chain/test_genesis_overrides.json"
+          DEVSHARD_VERSION: "v0.2.11"
         run: |
           make build-docker
           make devshardd-build

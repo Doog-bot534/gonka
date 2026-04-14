@@ -511,7 +511,7 @@ func (m *Manager) runChild(ctx context.Context, c *child) {
 			"--data-dir", dataDir,
 			"--port", fmt.Sprintf("%d", c.port),
 		)
-		cmd.Env = append(os.Environ(), fmt.Sprintf("DEVSHARD_LOG_PREFIX=%s", c.version.Name))
+		cmd.Env = childEnv(c.version.Name)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -573,6 +573,13 @@ func (m *Manager) runChild(ctx context.Context, c *child) {
 			backoff = 60 * time.Second
 		}
 	}
+}
+
+func childEnv(version string) []string {
+	return append(
+		os.Environ(),
+		fmt.Sprintf("DEVSHARD_LOG_PREFIX=%s", version),
+	)
 }
 
 // waitForPort polls until a TCP connection succeeds on the given port.

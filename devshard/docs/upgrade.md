@@ -77,8 +77,8 @@ binary version off-chain. Every later diff must continue with that same
 version. A host running the wrong binary refuses to sign, so a version-mixing
 session cannot gather the threshold needed to settle.
 
-WARN: off-chain session binding to a recorded binary version is not implemented
-in the temporary release yet.
+The bound version is recorded in shard state. Use `v1` for the legacy path and
+`<version>` for `/devshard/<version>/*`.
 
 ## Deprecation
 
@@ -93,8 +93,10 @@ Because escrow creation carries no version, deprecation enforcement can only
 happen later in the flow. The intended enforcement point is settlement, not
 escrow creation.
 
-WARN: governance-driven deprecation and settlement-time version enforcement are
-still future work.
+Settlement carries a cleartext `version` field and that same value is part of
+the signed state commitment. Mainnet can read the version directly from the
+settlement message and verify that hosts signed that exact version by
+recomputing the state root with `version_hash = sha256(version_utf8)`.
 
 ## Operator overrides
 
@@ -120,7 +122,6 @@ The first release does not implement the full target state. In particular, the
 following items are architectural intent, not current behavior:
 
 - chain-side enforcement that only approved versions can settle
-- off-chain session binding to a recorded binary version
 - a self-contained devshard host binary built entirely from the `devshard/`
   module
 

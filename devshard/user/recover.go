@@ -20,6 +20,7 @@ func RecoverSession(
 	signer signing.Signer,
 	verifier signing.Verifier,
 	escrowID string,
+	boundVersion string,
 	group []types.SlotAssignment,
 	clients []HostClient,
 	smOpts ...state.SMOption,
@@ -37,11 +38,18 @@ func RecoverSession(
 			return nil, nil, fmt.Errorf("group mismatch at slot %d", i)
 		}
 	}
+	if meta.Version != "" && boundVersion != "" && meta.Version != boundVersion {
+		return nil, nil, fmt.Errorf("session version mismatch: stored %s, requested %s", meta.Version, boundVersion)
+	}
+	recoveredVersion := meta.Version
+	if recoveredVersion == "" {
+		recoveredVersion = types.NormalizeSessionVersion(boundVersion)
+	}
 
 	sm, err := state.NewStateMachine(
 		escrowID, meta.Config, meta.Group, meta.InitialBalance,
 		meta.CreatorAddr, verifier,
-		smOpts...,
+		append(smOpts, state.WithVersion(recoveredVersion))...,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create state machine: %w", err)

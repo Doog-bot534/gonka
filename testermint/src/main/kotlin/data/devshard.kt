@@ -52,6 +52,7 @@ data class DevshardSessionConfig(
 data class DevshardSettlementData(
     @SerializedName("escrow_id")
     val escrowId: String,
+    val version: String,
     @SerializedName("state_root")
     val stateRoot: String,
     val nonce: Long,

@@ -45,11 +45,12 @@ import (
 
 	mlnodeclient "devshard/mlnode"
 	devshardstorage "devshard/storage"
+	devshardtypes "devshard/types"
 )
 
 // Version is the devshardd version. Set via ldflags
-// -X 'decentralized-api/cmd/devshardd.Version=...'. Defaults to "dev" for
-// local builds without an ldflags override.
+// -X main.Version=... . Defaults to "dev" for local builds without an
+// ldflags override.
 var Version = "dev"
 
 func main() {
@@ -58,9 +59,21 @@ func main() {
 	flag.Parse()
 
 	prefix := os.Getenv("DEVSHARD_LOG_PREFIX")
+	runtimeVersion, err := resolveRuntimeVersion(prefix, Version)
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	slog.Info("devshardd starting",
-		"version", Version, "prefix", prefix, "port", *port, "data-dir", *dataDir)
+		"build_version", Version,
+		"selected_version", prefix,
+		"runtime_version", runtimeVersion,
+		"port", *port,
+		"data-dir", *dataDir)
+	if err != nil {
+		slog.Error("devshardd version mismatch",
+			"build_version", Version,
+			"selected_version", prefix,
+			"runtime_version", runtimeVersion)
+		log.Fatalf("resolve runtime version: %v", err)
+	}
 
 	if err := os.MkdirAll(*dataDir, 0o755); err != nil {
 		log.Fatalf("create data dir %s: %v", *dataDir, err)
@@ -120,7 +133,7 @@ func main() {
 	}
 	defer store.Close()
 
-	manager := internaldevshard.NewHostManager(store, signer, engine, validator, br, payloadStore, recorder)
+	manager := internaldevshard.NewHostManager(store, signer, engine, validator, devshardtypes.NormalizeSessionVersion(runtimeVersion), br, payloadStore, recorder)
 	if err := manager.RecoverSessions(); err != nil {
 		slog.Warn("recover sessions failed", "error", err)
 	}
@@ -206,6 +219,22 @@ func buildApiAccount(ignite *igniteclient.Client, keyName string) (apiconfig.Api
 		SignerAccount: &signer,
 		AddressPrefix: "gonka",
 	}, nil
+}
+
+func resolveRuntimeVersion(selectedVersion, buildVersion string) (string, error) {
+	if selectedVersion == "" {
+		if buildVersion == "" {
+			return "", fmt.Errorf("empty build version")
+		}
+		return buildVersion, nil
+	}
+	if buildVersion == "" {
+		return "", fmt.Errorf("selected version %q provided but build version is empty", selectedVersion)
+	}
+	if selectedVersion != buildVersion {
+		return selectedVersion, fmt.Errorf("selected version %q does not match build version %q", selectedVersion, buildVersion)
+	}
+	return selectedVersion, nil
 }
 
 // newIgniteClient builds an ignite cosmosclient.Client with the same options

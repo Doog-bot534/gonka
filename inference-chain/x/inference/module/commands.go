@@ -86,6 +86,7 @@ Note: Chain ID will be auto-detected from the chain if not specified with --chai
 
 type settlementFileJSON struct {
 	EscrowID   string                    `json:"escrow_id"`
+	Version    string                    `json:"version"`
 	StateRoot  string                    `json:"state_root"`
 	Nonce      uint64                    `json:"nonce"`
 	Fees       uint64                    `json:"fees"`
@@ -127,6 +128,9 @@ func SettleDevshardEscrowCmd() *cobra.Command {
 			var sf settlementFileJSON
 			if err := json.Unmarshal(data, &sf); err != nil {
 				return fmt.Errorf("parse settlement JSON: %w", err)
+			}
+			if sf.Version == "" {
+				return fmt.Errorf("settlement JSON missing version")
 			}
 
 			escrowID, err := strconv.ParseUint(sf.EscrowID, 10, 64)
@@ -171,6 +175,7 @@ func SettleDevshardEscrowCmd() *cobra.Command {
 			msg := &types.MsgSettleDevshardEscrow{
 				Settler:    clientCtx.GetFromAddress().String(),
 				EscrowId:   escrowID,
+				Version:    sf.Version,
 				StateRoot:  stateRoot,
 				Nonce:      sf.Nonce,
 				Fees:       sf.Fees,

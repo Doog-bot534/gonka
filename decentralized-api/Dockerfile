@@ -84,7 +84,7 @@ RUN --mount=type=cache,id=go-build-cache3,target=/root/.cache/go-build \
     if [ "$BLST_PORTABLE" = "1" ]; then export CGO_CFLAGS="$CGO_CFLAGS -D__BLST_PORTABLE__"; fi; \
     CGO_ENABLED=1 CC=gcc \
     go build -mod=readonly -tags muslc \
-    -ldflags "$LDFLAGS -X decentralized-api/cmd/devshardd.Version=${DEVSHARD_VERSION}" \
+    -ldflags "$LDFLAGS -X main.Version=${DEVSHARD_VERSION}" \
     -o ./build/devshardd ./cmd/devshardd
 
 RUN mkdir /build_output

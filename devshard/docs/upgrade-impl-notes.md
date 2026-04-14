@@ -69,14 +69,21 @@ Dropped from dapi's `main()`:
 Build:
 
 ```bash
-go build -ldflags "-X decentralized-api/cmd/devshardd.Version=$VERSION" \
+go build -ldflags "-X main.Version=$VERSION" \
   -o build/devshardd ./cmd/devshardd
 ```
 
 The binary can already carry a release version at build time. The current build
-wiring passes `DEVSHARD_VERSION` into
-`decentralized-api/cmd/devshardd.Version`, so a local or release build can
+wiring passes `DEVSHARD_VERSION` into `main.Version`, so a local or release build can
 stamp `devshardd` and `devshardctl` with the same version string.
+
+That same route/binary token is now bound into session state:
+
+- `v1` for the legacy `/v1/devshard/*` path
+- `<version>` for `/devshard/<version>/*`
+
+Settlement sends the cleartext version to mainnet and also includes it in the
+signed state root as `version_hash = sha256(version_utf8)`.
 
 What is not implemented yet is container-default activation. Today versiond
 only runs a local `devshardd` binary when the operator explicitly sets both
@@ -90,8 +97,8 @@ Both flows are covered on purpose:
 - `DevshardStandaloneTests.kt` verifies the standalone
   `/devshard/<version>` path through proxy and versiond in two different modes
 
-The override-driven tests use `VERSIOND_FORCE=dev` together with
-`VERSIOND_OVERRIDE_dev` to run the locally built binary and exercise full
+The override-driven tests use `VERSIOND_FORCE=<version>` together with
+`VERSIOND_OVERRIDE_<version>` to run the locally built binary and exercise full
 devshard session flows through versiond.
 
 The state-driven startup test does not set `VERSIOND_FORCE` and does not set
@@ -156,8 +163,6 @@ repo root, reuse the existing `decentralized-api` builder flow, and pass
 The following items are not part of the temporary implementation:
 
 - chain-side `approved_versions` enforcement
-- `MsgSettleDevshardEscrow.version`
-- off-chain `boundVersion` tracking in session state
 - settlement rejection based on the binary version
 - operator workflow for governance-driven version deprecation
 - moving the standalone binary fully into the `devshard/` module
@@ -166,6 +171,10 @@ The following items are not part of the temporary implementation:
 
 Those may still make sense later, but they should not shape the temporary code
 path now.
+
+The bound-version work is intentionally broader than a docs-only change. It
+touches devshard state hashing, session persistence and recovery, settlement
+JSON, and chain-side verification.
 
 ## Code ownership
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	devshardpkg "devshard"
 	"devshard/bridge"
 	"devshard/signing"
 	"devshard/state"
@@ -31,6 +32,10 @@ func NewHTTPSession(cfg HTTPSessionConfig) (*Session, *state.StateMachine, error
 		return nil, nil, fmt.Errorf("create signer: %w", err)
 	}
 	verifier := signing.NewSecp256k1Verifier()
+	version, err := devshardpkg.VersionForRoutePrefix(cfg.RoutePrefix)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve route version: %w", err)
+	}
 
 	group, err := bridge.BuildGroup(cfg.EscrowID, cfg.Bridge)
 	if err != nil {
@@ -46,6 +51,7 @@ func NewHTTPSession(cfg HTTPSessionConfig) (*Session, *state.StateMachine, error
 
 	sm, err := state.NewStateMachine(cfg.EscrowID, config, group, escrow.Amount, escrow.CreatorAddress, verifier,
 		state.WithWarmKeyResolver(cfg.Bridge.VerifyWarmKey),
+		state.WithVersion(version),
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create state machine: %w", err)
@@ -89,7 +95,7 @@ func NewHTTPSession(cfg HTTPSessionConfig) (*Session, *state.StateMachine, error
 		// Check if there is an existing session to recover from.
 		_, metaErr := sqlStore.GetSessionMeta(cfg.EscrowID)
 		if metaErr == nil {
-			session, recSM, recErr := RecoverSession(sqlStore, signer, verifier, cfg.EscrowID, group, clients,
+			session, recSM, recErr := RecoverSession(sqlStore, signer, verifier, cfg.EscrowID, version, group, clients,
 				state.WithWarmKeyResolver(cfg.Bridge.VerifyWarmKey),
 			)
 			if recErr != nil {
@@ -106,6 +112,7 @@ func NewHTTPSession(cfg HTTPSessionConfig) (*Session, *state.StateMachine, error
 		// First run: create the session row so AppendDiff works later.
 		if createErr := sqlStore.CreateSession(storage.CreateSessionParams{
 			EscrowID:       cfg.EscrowID,
+			Version:        version,
 			CreatorAddr:    escrow.CreatorAddress,
 			Config:         config,
 			Group:          group,

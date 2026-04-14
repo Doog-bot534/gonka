@@ -18,6 +18,23 @@ import (
 	"versioned/internal/oracle"
 )
 
+func TestChildEnvIncludesVersionLogPrefix(t *testing.T) {
+	env := childEnv("v0.2.11")
+	want := map[string]bool{
+		"DEVSHARD_LOG_PREFIX=v0.2.11": false,
+	}
+	for _, entry := range env {
+		if _, ok := want[entry]; ok {
+			want[entry] = true
+		}
+	}
+	for key, present := range want {
+		if !present {
+			t.Fatalf("childEnv missing %q", key)
+		}
+	}
+}
+
 func TestNewManager(t *testing.T) {
 	cfg := config.Config{
 		BinDir:     "/tmp/bin",
