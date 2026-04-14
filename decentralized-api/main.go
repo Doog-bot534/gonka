@@ -235,8 +235,9 @@ func main() {
 	if devshardSigner != nil {
 		devshardBridge := internaldevshard.NewChainBridge(recorder)
 		httpClient := pserver.NewNoRedirectClient(5 * time.Minute)
-		devshardEngine := internaldevshard.NewEngineAdapter(nodeBroker, config.GetCurrentNodeVersion(), payloadStore, chainPhaseTracker, httpClient)
-		devshardValidator := internaldevshard.NewValidationAdapter(nodeBroker, config.GetCurrentNodeVersion(), chainPhaseTracker, httpClient, devshardBridge, recorder)
+		chainParams := &configParamsProvider{cm: config}
+		devshardEngine := internaldevshard.NewEngineAdapter(nodeBroker, config.GetCurrentNodeVersion(), payloadStore, chainPhaseTracker, httpClient, chainParams)
+		devshardValidator := internaldevshard.NewValidationAdapter(nodeBroker, config.GetCurrentNodeVersion(), chainPhaseTracker, httpClient, devshardBridge, recorder, chainParams)
 		// TODO: move to DevshardConfig when config consolidation happens.
 		devshardStore, storeErr := devshardstorage.NewSQLite("/root/.dapi/data/devshard.db")
 		if storeErr != nil {
@@ -333,4 +334,18 @@ func getParams(ctx context.Context, transactionRecorder cosmosclient.InferenceCo
 	}
 	logging.Error("Exhausted all retries to get chain params", types.System, "error", err)
 	return nil, err
+}
+
+// configParamsProvider implements internaldevshard.ChainParamsProvider by
+// reading from dapi's ConfigManager, which syncs chain params every block.
+type configParamsProvider struct {
+	cm *apiconfig.ConfigManager
+}
+
+func (p *configParamsProvider) LogprobsMode() string {
+	mode := p.cm.GetValidationParams().LogprobsMode
+	if mode == "" {
+		return types.DefaultLogprobsMode
+	}
+	return mode
 }

@@ -26,6 +26,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -36,6 +37,7 @@ import (
 
 	igniteclient "github.com/ignite/cli/v28/ignite/pkg/cosmosclient"
 	"github.com/labstack/echo/v4"
+	chaintypes "github.com/productscience/inference/x/inference/types"
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
@@ -123,8 +125,10 @@ func main() {
 
 	httpClient := pserver.NewNoRedirectClient(5 * time.Minute)
 
-	engine := newDevshardEngine(mlClient, payloadStore, httpClient)
-	validator := newDevshardValidator(mlClient, httpClient, br, recorder, engine)
+	chainParams := newChainParamsProvider(ctx, recorder)
+
+	engine := newDevshardEngine(mlClient, payloadStore, httpClient, chainParams)
+	validator := newDevshardValidator(mlClient, httpClient, br, recorder, engine, chainParams)
 
 	storePath := filepath.Join(*dataDir, "devshardd.db")
 	store, err := devshardstorage.NewSQLite(storePath)
@@ -283,6 +287,61 @@ func newIgniteClient(ctx context.Context, nodeConfig apiconfig.ChainNodeConfig) 
 	}
 
 	return &c, nil
+}
+
+// chainParamsProvider implements internaldevshard.ChainParamsProvider for the
+// standalone devshardd binary. It queries chain params on construction and
+// refreshes in the background every 60s so long-lived processes pick up
+// governance changes without a restart.
+type chainParamsProvider struct {
+	mu           sync.Mutex
+	logprobsMode string
+}
+
+func newChainParamsProvider(ctx context.Context, recorder internaldevshard.PayloadAuthClient) *chainParamsProvider {
+	p := &chainParamsProvider{logprobsMode: chaintypes.DefaultLogprobsMode}
+
+	refresh := func() {
+		qc := recorder.NewInferenceQueryClient()
+		resp, err := qc.Params(ctx, &chaintypes.QueryParamsRequest{})
+		if err != nil {
+			slog.Warn("failed to query chain params, keeping current values", "error", err)
+			return
+		}
+		mode := resp.Params.ValidationParams.GetLogprobsMode()
+		if mode == "" {
+			mode = chaintypes.DefaultLogprobsMode
+		}
+		p.mu.Lock()
+		if mode != p.logprobsMode {
+			slog.Info("logprobs_mode updated from chain", "old", p.logprobsMode, "new", mode)
+			p.logprobsMode = mode
+		}
+		p.mu.Unlock()
+	}
+
+	refresh()
+
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				refresh()
+			}
+		}
+	}()
+
+	return p
+}
+
+func (p *chainParamsProvider) LogprobsMode() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.logprobsMode
 }
 
 func envOr(key, fallback string) string {

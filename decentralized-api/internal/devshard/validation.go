@@ -22,6 +22,7 @@ type ValidationAdapter struct {
 	httpClient   *http.Client
 	bridge       bridge.MainnetBridge
 	recorder     PayloadAuthClient
+	chainParams  ChainParamsProvider
 }
 
 func NewValidationAdapter(
@@ -31,6 +32,7 @@ func NewValidationAdapter(
 	httpClient *http.Client,
 	br bridge.MainnetBridge,
 	recorder PayloadAuthClient,
+	chainParams ChainParamsProvider,
 ) *ValidationAdapter {
 	return &ValidationAdapter{
 		broker:       b,
@@ -39,6 +41,7 @@ func NewValidationAdapter(
 		httpClient:   httpClient,
 		bridge:       br,
 		recorder:     recorder,
+		chainParams:  chainParams,
 	}
 }
 
@@ -58,6 +61,7 @@ func (v *ValidationAdapter) Validate(ctx context.Context, req devshard.ValidateR
 		devshard.LegacySessionPayloadPath(req.EscrowID),
 		v.executeMLRequest,
 		"devshard",
+		v.chainParams,
 	)
 }
 

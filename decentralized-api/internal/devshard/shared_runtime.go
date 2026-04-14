@@ -35,11 +35,12 @@ func ExecuteInferenceWithExecutor(
 	payloadStore payloadstorage.PayloadStorage,
 	payloadEpoch uint64,
 	execute MLRequestExecutor,
+	chainParams ChainParamsProvider,
 ) (*devshardpkg.ExecuteResult, error) {
 	seed := int32(req.InferenceID)
 	inferenceID := fmt.Sprintf("devshard-%s-%d", req.EscrowID, req.InferenceID)
 
-	modified, err := completionapi.ModifyRequestBody(req.Prompt, seed)
+	modified, err := completionapi.ModifyRequestBodyWithLogprobsMode(req.Prompt, seed, chainParams.LogprobsMode())
 	if err != nil {
 		return nil, fmt.Errorf("modify request body: %w", err)
 	}
@@ -89,6 +90,7 @@ func ValidateInferenceWithExecutor(
 	requestPath string,
 	execute MLRequestExecutor,
 	logPrefix string,
+	chainParams ChainParamsProvider,
 ) (*devshardpkg.ValidateResult, error) {
 	inferenceID := strconv.FormatUint(req.InferenceID, 10)
 
@@ -106,7 +108,7 @@ func ValidateInferenceWithExecutor(
 		return nil, fmt.Errorf("fetch payloads from executor: %w", err)
 	}
 
-	validationBody, err := BuildValidationBody(promptPayload, responsePayload, req.InferenceID)
+	validationBody, err := BuildValidationBody(promptPayload, responsePayload, req.InferenceID, chainParams)
 	if err != nil {
 		return nil, err
 	}
@@ -180,9 +182,10 @@ func BuildValidationBody(
 	promptPayload []byte,
 	responsePayload []byte,
 	inferenceID uint64,
+	chainParams ChainParamsProvider,
 ) ([]byte, error) {
 	seed := int32(inferenceID)
-	modified, err := completionapi.ModifyRequestBody(promptPayload, seed)
+	modified, err := completionapi.ModifyRequestBodyWithLogprobsMode(promptPayload, seed, chainParams.LogprobsMode())
 	if err != nil {
 		return nil, fmt.Errorf("modify request body for validation: %w", err)
 	}

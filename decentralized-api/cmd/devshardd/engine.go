@@ -24,17 +24,20 @@ type devshardEngine struct {
 	mlClient     *mlnodeclient.Client
 	payloadStore payloadstorage.PayloadStorage
 	httpClient   *http.Client
+	chainParams  internaldevshard.ChainParamsProvider
 }
 
 func newDevshardEngine(
 	mlClient *mlnodeclient.Client,
 	payloadStore payloadstorage.PayloadStorage,
 	httpClient *http.Client,
+	chainParams internaldevshard.ChainParamsProvider,
 ) *devshardEngine {
 	return &devshardEngine{
 		mlClient:     mlClient,
 		payloadStore: payloadStore,
 		httpClient:   httpClient,
+		chainParams:  chainParams,
 	}
 }
 
@@ -51,6 +54,7 @@ func (e *devshardEngine) Execute(ctx context.Context, req devshard.ExecuteReques
 		e.payloadStore,
 		0,
 		e.executeMLRequest,
+		e.chainParams,
 	)
 }
 

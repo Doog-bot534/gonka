@@ -19,11 +19,12 @@ import (
 //   - node acquisition uses NodeManager gRPC (no broker)
 //   - the payload-store epoch is fixed to 0 (devshardd has no phase tracker)
 type devshardValidator struct {
-	mlClient   *mlnodeclient.Client
-	httpClient *http.Client
-	bridge     bridge.MainnetBridge
-	recorder   internaldevshard.PayloadAuthClient
-	engine     *devshardEngine // reused for doWithLockedNode retry loop
+	mlClient    *mlnodeclient.Client
+	httpClient  *http.Client
+	bridge      bridge.MainnetBridge
+	recorder    internaldevshard.PayloadAuthClient
+	engine      *devshardEngine // reused for doWithLockedNode retry loop
+	chainParams internaldevshard.ChainParamsProvider
 }
 
 func newDevshardValidator(
@@ -32,13 +33,15 @@ func newDevshardValidator(
 	br bridge.MainnetBridge,
 	recorder internaldevshard.PayloadAuthClient,
 	engine *devshardEngine,
+	chainParams internaldevshard.ChainParamsProvider,
 ) *devshardValidator {
 	return &devshardValidator{
-		mlClient:   mlClient,
-		httpClient: httpClient,
-		bridge:     br,
-		recorder:   recorder,
-		engine:     engine,
+		mlClient:    mlClient,
+		httpClient:  httpClient,
+		bridge:      br,
+		recorder:    recorder,
+		engine:      engine,
+		chainParams: chainParams,
 	}
 }
 
@@ -53,6 +56,7 @@ func (v *devshardValidator) Validate(ctx context.Context, req devshardpkg.Valida
 		devshardpkg.VersionedSessionPayloadPath(Version, req.EscrowID),
 		v.executeMLRequest,
 		"devshardd",
+		v.chainParams,
 	)
 }
 

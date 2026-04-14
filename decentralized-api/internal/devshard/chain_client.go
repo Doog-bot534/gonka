@@ -19,3 +19,10 @@ type PayloadAuthClient interface {
 	GetSignerAddress() string
 	GetKeyring() *keyring.Keyring
 }
+
+// ChainParamsProvider exposes chain validation parameters needed by the
+// devshard execution and validation paths. Implementations handle caching
+// and default-value fallback; callers can use returned values directly.
+type ChainParamsProvider interface {
+	LogprobsMode() string
+}

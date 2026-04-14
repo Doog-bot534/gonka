@@ -21,6 +21,7 @@ type EngineAdapter struct {
 	payloadStore payloadstorage.PayloadStorage
 	phaseTracker *chainphase.ChainPhaseTracker
 	httpClient   *http.Client
+	chainParams  ChainParamsProvider
 }
 
 func NewEngineAdapter(
@@ -29,6 +30,7 @@ func NewEngineAdapter(
 	ps payloadstorage.PayloadStorage,
 	phaseTracker *chainphase.ChainPhaseTracker,
 	httpClient *http.Client,
+	chainParams ChainParamsProvider,
 ) *EngineAdapter {
 	return &EngineAdapter{
 		broker:       b,
@@ -36,6 +38,7 @@ func NewEngineAdapter(
 		payloadStore: ps,
 		phaseTracker: phaseTracker,
 		httpClient:   httpClient,
+		chainParams:  chainParams,
 	}
 }
 
@@ -46,6 +49,7 @@ func (e *EngineAdapter) Execute(ctx context.Context, req devshard.ExecuteRequest
 		e.payloadStore,
 		currentEpochID(e.phaseTracker),
 		e.executeMLRequest,
+		e.chainParams,
 	)
 }
 
