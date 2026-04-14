@@ -130,10 +130,16 @@ class VLLMRunner(IVLLMRunner):
             env = os.environ.copy()
             env["VLLM_USE_V1"] = "0"
 
+            parent_visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+            if parent_visible:
+                visible_gpu_ids = [gpu.strip() for gpu in parent_visible.split(",") if gpu.strip()]
+            else:
+                visible_gpu_ids = [str(gpu) for gpu in range(total_gpus)]
+
             start_gpu = i * gpus_per_instance
-            if total_gpus > 0:
-                gpu_ids = list(range(start_gpu, start_gpu + gpus_per_instance))
-                env["CUDA_VISIBLE_DEVICES"] = ",".join(str(g) for g in gpu_ids)
+            gpu_ids = visible_gpu_ids[start_gpu:start_gpu + gpus_per_instance]
+            if gpu_ids:
+                env["CUDA_VISIBLE_DEVICES"] = ",".join(gpu_ids)
 
             logger.info("Starting vLLM instance %d on port %d with GPUs %s (sleep: %ds)", i, port, env.get("CUDA_VISIBLE_DEVICES", "all"), sleep_time)
             process = subprocess.Popen(
