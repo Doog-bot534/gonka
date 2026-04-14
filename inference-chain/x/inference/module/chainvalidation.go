@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
-	"sort"
 	"strconv"
+	"strings"
 
 	mathsdk "cosmossdk.io/math"
 	"github.com/productscience/inference/x/inference/calculations"
@@ -435,8 +435,8 @@ func (wc *PoCWeightCalculator) calculateParticipantWeight(key types.PoCParticipa
 		scaledWeight := mathsdk.LegacyNewDec(int64(w.Weight)).Mul(normFactor).TruncateInt64()
 		nodeWeightsSlice = append(nodeWeightsSlice, nodeWeight{nodeId: w.NodeId, weight: scaledWeight})
 	}
-	sort.Slice(nodeWeightsSlice, func(i, j int) bool {
-		return nodeWeightsSlice[i].nodeId < nodeWeightsSlice[j].nodeId
+	slices.SortFunc(nodeWeightsSlice, func(a, b nodeWeight) int {
+		return strings.Compare(a.nodeId, b.nodeId)
 	})
 	wc.Logger.LogInfo("Calculate: Calculating participant raw weight", types.PoC,
 		"participant", key.ParticipantAddress,
@@ -623,8 +623,14 @@ func (am AppModule) GetPreviousEpochMLNodesWithInferenceAllocation(ctx context.C
 		participantsSlice = append(participantsSlice, participant)
 	}
 	// Sort participants by address for consistent order
-	sort.Slice(participantsSlice, func(i, j int) bool {
-		return participantsSlice[i].Index < participantsSlice[j].Index
+	slices.SortFunc(participantsSlice, func(a, b *types.ActiveParticipant) int {
+		if a.Index < b.Index {
+			return -1
+		}
+		if a.Index > b.Index {
+			return 1
+		}
+		return 0
 	})
 
 	return participantsSlice
