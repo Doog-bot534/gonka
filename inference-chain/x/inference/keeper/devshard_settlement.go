@@ -164,7 +164,7 @@ func ComputeDevshardHostStatsHash(hostStats []*types.DevshardSettlementHostStats
 			CompletedValidations: hs.CompletedValidations,
 		}
 	}
-	slices.SortFunc(entries, func(a, b *types.DevshardHostStatsProto) int {
+	slices.SortStableFunc(entries, func(a, b *types.DevshardHostStatsProto) int {
 		return cmp.Compare(a.SlotId, b.SlotId)
 	})
 	mapProto := &types.DevshardHostStatsMapProto{Entries: entries}
