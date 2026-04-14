@@ -72,6 +72,17 @@ data class InferenceParams(
     val transferAgentAccessParams: TransferAgentAccessParams? = null,
     @SerializedName("devshard_escrow_params")
     val devshardEscrowParams: DevshardEscrowParams? = null,
+    @SerializedName("fee_params")
+    val feeParams: FeeParamsData? = null,
+)
+
+data class FeeParamsData(
+    @SerializedName("min_gas_price_ngonka")
+    val minGasPriceNgonka: Long = 0,
+    @SerializedName("base_validation_gas")
+    val baseValidationGas: Long = 0,
+    @SerializedName("gas_per_poc_count")
+    val gasPerPocCount: Long = 0,
 )
 
 data class TokenomicsParams(
