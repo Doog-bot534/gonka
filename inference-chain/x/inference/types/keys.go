@@ -86,10 +86,13 @@ var (
 	// Replacement PoC v2 prefixes with model-aware key codecs.
 	// Introduced in v0.2.12; see Legacy* prefixes 38/39/40 above for the
 	// cleared predecessors.
-	PoCValidationV2Prefix          = collections.NewPrefix(58)
-	PoCV2StoreCommitPrefix         = collections.NewPrefix(59)
-	MLNodeWeightDistributionPrefix = collections.NewPrefix(60)
-	ParamsKey                      = []byte("p_inference")
+	PoCValidationV2Prefix           = collections.NewPrefix(58)
+	PoCV2StoreCommitPrefix          = collections.NewPrefix(59)
+	MLNodeWeightDistributionPrefix  = collections.NewPrefix(60)
+	BridgeMintRefundsPrefix         = collections.NewPrefix(61)
+	BridgeWithdrawalRefundsPrefix   = collections.NewPrefix(62)
+	BridgeWithdrawalTokenRefsPrefix = collections.NewPrefix(63)
+	ParamsKey                       = []byte("p_inference")
 )
 
 func KeyPrefix(p string) []byte {

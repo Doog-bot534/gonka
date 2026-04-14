@@ -157,6 +157,7 @@ message PocParams {
   uint32 validation_slots = 11;  // Number of slots sampled per participant (0 = disabled)
   bool poc_normalization_enabled = 12;  // Enables time-based weight normalization for PoC
   repeated PoCModelConfig models = 13;
+  bool poc_stronger_rng_enabled = 14;  // Switches input generation to concatenated murmur3 with full 256-bit SHA256 seed (prevents 32-bit seed-collision attacks)
 }
 
 message Decimal {

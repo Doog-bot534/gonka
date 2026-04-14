@@ -67,8 +67,10 @@ type MockClient struct {
 	LastInitGenerateV2Req *PoCInitGenerateRequestV2
 	LastGenerateV2Req     *PoCGenerateRequestV2
 	LastModelStatusCheck *Model
-	LastModelDownload    *Model
-	LastModelDelete      *Model
+	LastModelDownload      *Model
+	LastModelDelete        *Model
+	LastInitGenerateV2Req  *PoCInitGenerateRequestV2
+	LastGenerateV2Req      *PoCGenerateRequestV2
 }
 
 // NewMockClient creates a new mock client with default values
