@@ -8873,54 +8873,54 @@ func (x *fastReflection_PoCModelConfig) ProtoMethods() *protoiface.Methods {
 	}
 }
 
-var _ protoreflect.List = (*_PocParams_13_list)(nil)
+var _ protoreflect.List = (*_PocParams_14_list)(nil)
 
-type _PocParams_13_list struct {
+type _PocParams_14_list struct {
 	list *[]*PoCModelConfig
 }
 
-func (x *_PocParams_13_list) Len() int {
+func (x *_PocParams_14_list) Len() int {
 	if x.list == nil {
 		return 0
 	}
 	return len(*x.list)
 }
 
-func (x *_PocParams_13_list) Get(i int) protoreflect.Value {
+func (x *_PocParams_14_list) Get(i int) protoreflect.Value {
 	return protoreflect.ValueOfMessage((*x.list)[i].ProtoReflect())
 }
 
-func (x *_PocParams_13_list) Set(i int, value protoreflect.Value) {
+func (x *_PocParams_14_list) Set(i int, value protoreflect.Value) {
 	valueUnwrapped := value.Message()
 	concreteValue := valueUnwrapped.Interface().(*PoCModelConfig)
 	(*x.list)[i] = concreteValue
 }
 
-func (x *_PocParams_13_list) Append(value protoreflect.Value) {
+func (x *_PocParams_14_list) Append(value protoreflect.Value) {
 	valueUnwrapped := value.Message()
 	concreteValue := valueUnwrapped.Interface().(*PoCModelConfig)
 	*x.list = append(*x.list, concreteValue)
 }
 
-func (x *_PocParams_13_list) AppendMutable() protoreflect.Value {
+func (x *_PocParams_14_list) AppendMutable() protoreflect.Value {
 	v := new(PoCModelConfig)
 	*x.list = append(*x.list, v)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
-func (x *_PocParams_13_list) Truncate(n int) {
+func (x *_PocParams_14_list) Truncate(n int) {
 	for i := n; i < len(*x.list); i++ {
 		(*x.list)[i] = nil
 	}
 	*x.list = (*x.list)[:n]
 }
 
-func (x *_PocParams_13_list) NewElement() protoreflect.Value {
+func (x *_PocParams_14_list) NewElement() protoreflect.Value {
 	v := new(PoCModelConfig)
 	return protoreflect.ValueOfMessage(v.ProtoReflect())
 }
 
-func (x *_PocParams_13_list) IsValid() bool {
+func (x *_PocParams_14_list) IsValid() bool {
 	return x.list != nil
 }
 
@@ -8938,8 +8938,8 @@ var (
 	fd_PocParams_stat_test                        protoreflect.FieldDescriptor
 	fd_PocParams_validation_slots                 protoreflect.FieldDescriptor
 	fd_PocParams_poc_normalization_enabled        protoreflect.FieldDescriptor
-	fd_PocParams_models                           protoreflect.FieldDescriptor
 	fd_PocParams_poc_stronger_rng_enabled         protoreflect.FieldDescriptor
+	fd_PocParams_models                           protoreflect.FieldDescriptor
 )
 
 func init() {
@@ -8957,8 +8957,8 @@ func init() {
 	fd_PocParams_stat_test = md_PocParams.Fields().ByName("stat_test")
 	fd_PocParams_validation_slots = md_PocParams.Fields().ByName("validation_slots")
 	fd_PocParams_poc_normalization_enabled = md_PocParams.Fields().ByName("poc_normalization_enabled")
-	fd_PocParams_models = md_PocParams.Fields().ByName("models")
 	fd_PocParams_poc_stronger_rng_enabled = md_PocParams.Fields().ByName("poc_stronger_rng_enabled")
+	fd_PocParams_models = md_PocParams.Fields().ByName("models")
 }
 
 var _ protoreflect.Message = (*fastReflection_PocParams)(nil)
@@ -9098,15 +9098,15 @@ func (x *fastReflection_PocParams) Range(f func(protoreflect.FieldDescriptor, pr
 			return
 		}
 	}
-	if len(x.Models) != 0 {
-		value := protoreflect.ValueOfList(&_PocParams_13_list{list: &x.Models})
-		if !f(fd_PocParams_models, value) {
-			return
-		}
-	}
 	if x.PocStrongerRngEnabled != false {
 		value := protoreflect.ValueOfBool(x.PocStrongerRngEnabled)
 		if !f(fd_PocParams_poc_stronger_rng_enabled, value) {
+			return
+		}
+	}
+	if len(x.Models) != 0 {
+		value := protoreflect.ValueOfList(&_PocParams_14_list{list: &x.Models})
+		if !f(fd_PocParams_models, value) {
 			return
 		}
 	}
@@ -9149,10 +9149,10 @@ func (x *fastReflection_PocParams) Has(fd protoreflect.FieldDescriptor) bool {
 		return x.ValidationSlots != uint32(0)
 	case "inference.inference.PocParams.poc_normalization_enabled":
 		return x.PocNormalizationEnabled != false
-	case "inference.inference.PocParams.models":
-		return len(x.Models) != 0
 	case "inference.inference.PocParams.poc_stronger_rng_enabled":
 		return x.PocStrongerRngEnabled != false
+	case "inference.inference.PocParams.models":
+		return len(x.Models) != 0
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocParams"))
@@ -9193,10 +9193,10 @@ func (x *fastReflection_PocParams) Clear(fd protoreflect.FieldDescriptor) {
 		x.ValidationSlots = uint32(0)
 	case "inference.inference.PocParams.poc_normalization_enabled":
 		x.PocNormalizationEnabled = false
-	case "inference.inference.PocParams.models":
-		x.Models = nil
 	case "inference.inference.PocParams.poc_stronger_rng_enabled":
 		x.PocStrongerRngEnabled = false
+	case "inference.inference.PocParams.models":
+		x.Models = nil
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocParams"))
@@ -9249,15 +9249,15 @@ func (x *fastReflection_PocParams) Get(descriptor protoreflect.FieldDescriptor) 
 	case "inference.inference.PocParams.poc_normalization_enabled":
 		value := x.PocNormalizationEnabled
 		return protoreflect.ValueOfBool(value)
-	case "inference.inference.PocParams.models":
-		if len(x.Models) == 0 {
-			return protoreflect.ValueOfList(&_PocParams_13_list{})
-		}
-		listValue := &_PocParams_13_list{list: &x.Models}
-		return protoreflect.ValueOfList(listValue)
 	case "inference.inference.PocParams.poc_stronger_rng_enabled":
 		value := x.PocStrongerRngEnabled
 		return protoreflect.ValueOfBool(value)
+	case "inference.inference.PocParams.models":
+		if len(x.Models) == 0 {
+			return protoreflect.ValueOfList(&_PocParams_14_list{})
+		}
+		listValue := &_PocParams_14_list{list: &x.Models}
+		return protoreflect.ValueOfList(listValue)
 	default:
 		if descriptor.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocParams"))
@@ -9302,12 +9302,12 @@ func (x *fastReflection_PocParams) Set(fd protoreflect.FieldDescriptor, value pr
 		x.ValidationSlots = uint32(value.Uint())
 	case "inference.inference.PocParams.poc_normalization_enabled":
 		x.PocNormalizationEnabled = value.Bool()
-	case "inference.inference.PocParams.models":
-		lv := value.List()
-		clv := lv.(*_PocParams_13_list)
-		x.Models = *clv.list
 	case "inference.inference.PocParams.poc_stronger_rng_enabled":
 		x.PocStrongerRngEnabled = value.Bool()
+	case "inference.inference.PocParams.models":
+		lv := value.List()
+		clv := lv.(*_PocParams_14_list)
+		x.Models = *clv.list
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocParams"))
@@ -9347,7 +9347,7 @@ func (x *fastReflection_PocParams) Mutable(fd protoreflect.FieldDescriptor) prot
 		if x.Models == nil {
 			x.Models = []*PoCModelConfig{}
 		}
-		value := &_PocParams_13_list{list: &x.Models}
+		value := &_PocParams_14_list{list: &x.Models}
 		return protoreflect.ValueOfList(value)
 	case "inference.inference.PocParams.default_difficulty":
 		panic(fmt.Errorf("field default_difficulty of message inference.inference.PocParams is not mutable"))
@@ -9409,11 +9409,11 @@ func (x *fastReflection_PocParams) NewField(fd protoreflect.FieldDescriptor) pro
 		return protoreflect.ValueOfUint32(uint32(0))
 	case "inference.inference.PocParams.poc_normalization_enabled":
 		return protoreflect.ValueOfBool(false)
-	case "inference.inference.PocParams.models":
-		list := []*PoCModelConfig{}
-		return protoreflect.ValueOfList(&_PocParams_13_list{list: &list})
 	case "inference.inference.PocParams.poc_stronger_rng_enabled":
 		return protoreflect.ValueOfBool(false)
+	case "inference.inference.PocParams.models":
+		list := []*PoCModelConfig{}
+		return protoreflect.ValueOfList(&_PocParams_14_list{list: &list})
 	default:
 		if fd.IsExtension() {
 			panic(fmt.Errorf("proto3 declared messages do not support extensions: inference.inference.PocParams"))
@@ -9523,14 +9523,14 @@ func (x *fastReflection_PocParams) ProtoMethods() *protoiface.Methods {
 		if x.PocNormalizationEnabled {
 			n += 2
 		}
+		if x.PocStrongerRngEnabled {
+			n += 2
+		}
 		if len(x.Models) > 0 {
 			for _, e := range x.Models {
 				l = options.Size(e)
 				n += 1 + l + runtime.Sov(uint64(l))
 			}
-		}
-		if x.PocStrongerRngEnabled {
-			n += 2
 		}
 		if x.unknownFields != nil {
 			n += len(x.unknownFields)
@@ -9561,16 +9561,6 @@ func (x *fastReflection_PocParams) ProtoMethods() *protoiface.Methods {
 			i -= len(x.unknownFields)
 			copy(dAtA[i:], x.unknownFields)
 		}
-		if x.PocStrongerRngEnabled {
-			i--
-			if x.PocStrongerRngEnabled {
-				dAtA[i] = 1
-			} else {
-				dAtA[i] = 0
-			}
-			i--
-			dAtA[i] = 0x70
-		}
 		if len(x.Models) > 0 {
 			for iNdEx := len(x.Models) - 1; iNdEx >= 0; iNdEx-- {
 				encoded, err := options.Marshal(x.Models[iNdEx])
@@ -9584,8 +9574,18 @@ func (x *fastReflection_PocParams) ProtoMethods() *protoiface.Methods {
 				copy(dAtA[i:], encoded)
 				i = runtime.EncodeVarint(dAtA, i, uint64(len(encoded)))
 				i--
-				dAtA[i] = 0x6a
+				dAtA[i] = 0x72
 			}
+		}
+		if x.PocStrongerRngEnabled {
+			i--
+			if x.PocStrongerRngEnabled {
+				dAtA[i] = 1
+			} else {
+				dAtA[i] = 0
+			}
+			i--
+			dAtA[i] = 0x68
 		}
 		if x.PocNormalizationEnabled {
 			i--
@@ -10036,6 +10036,26 @@ func (x *fastReflection_PocParams) ProtoMethods() *protoiface.Methods {
 				}
 				x.PocNormalizationEnabled = bool(v != 0)
 			case 13:
+				if wireType != 0 {
+					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field PocStrongerRngEnabled", wireType)
+				}
+				var v int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
+					}
+					if iNdEx >= l {
+						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				x.PocStrongerRngEnabled = bool(v != 0)
+			case 14:
 				if wireType != 2 {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field Models", wireType)
 				}
@@ -10069,26 +10089,6 @@ func (x *fastReflection_PocParams) ProtoMethods() *protoiface.Methods {
 					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, err
 				}
 				iNdEx = postIndex
-			case 14:
-				if wireType != 0 {
-					return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, fmt.Errorf("proto: wrong wireType = %d for field PocStrongerRngEnabled", wireType)
-				}
-				var v int
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, runtime.ErrIntOverflow
-					}
-					if iNdEx >= l {
-						return protoiface.UnmarshalOutput{NoUnkeyedLiterals: input.NoUnkeyedLiterals, Flags: input.Flags}, io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					v |= int(b&0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				x.PocStrongerRngEnabled = bool(v != 0)
 			default:
 				iNdEx = preIndex
 				skippy, err := runtime.Skip(dAtA[iNdEx:])
@@ -20464,8 +20464,8 @@ type PocParams struct {
 	StatTest                *PoCStatTestParams `protobuf:"bytes,10,opt,name=stat_test,json=statTest,proto3" json:"stat_test,omitempty"`                                                 // Deprecated: use models[*].stat_test
 	ValidationSlots         uint32             `protobuf:"varint,11,opt,name=validation_slots,json=validationSlots,proto3" json:"validation_slots,omitempty"`                           // Number of slots sampled per participant (0 = disabled)
 	PocNormalizationEnabled bool               `protobuf:"varint,12,opt,name=poc_normalization_enabled,json=pocNormalizationEnabled,proto3" json:"poc_normalization_enabled,omitempty"` // Enables time-based weight normalization for PoC
-	Models                  []*PoCModelConfig  `protobuf:"bytes,13,rep,name=models,proto3" json:"models,omitempty"`
-	PocStrongerRngEnabled   bool               `protobuf:"varint,14,opt,name=poc_stronger_rng_enabled,json=pocStrongerRngEnabled,proto3" json:"poc_stronger_rng_enabled,omitempty"` // Switches input generation to concatenated murmur3 with full 256-bit SHA256 seed (prevents 32-bit seed-collision attacks)
+	PocStrongerRngEnabled   bool               `protobuf:"varint,13,opt,name=poc_stronger_rng_enabled,json=pocStrongerRngEnabled,proto3" json:"poc_stronger_rng_enabled,omitempty"`     // Switches input generation to concatenated murmur3 with full 256-bit SHA256 seed (prevents 32-bit seed-collision attacks)
+	Models                  []*PoCModelConfig  `protobuf:"bytes,14,rep,name=models,proto3" json:"models,omitempty"`
 }
 
 func (x *PocParams) Reset() {
@@ -20577,18 +20577,18 @@ func (x *PocParams) GetPocNormalizationEnabled() bool {
 	return false
 }
 
-func (x *PocParams) GetModels() []*PoCModelConfig {
-	if x != nil {
-		return x.Models
-	}
-	return nil
-}
-
 func (x *PocParams) GetPocStrongerRngEnabled() bool {
 	if x != nil {
 		return x.PocStrongerRngEnabled
 	}
 	return false
+}
+
+func (x *PocParams) GetModels() []*PoCModelConfig {
+	if x != nil {
+		return x.Models
+	}
+	return nil
 }
 
 type Decimal struct {
@@ -22033,14 +22033,14 @@ var file_inference_inference_params_proto_rawDesc = []byte{
 	0x6f, 0x72, 0x6d, 0x61, 0x6c, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x65, 0x6e, 0x61,
 	0x62, 0x6c, 0x65, 0x64, 0x18, 0x0c, 0x20, 0x01, 0x28, 0x08, 0x52, 0x17, 0x70, 0x6f, 0x63, 0x4e,
 	0x6f, 0x72, 0x6d, 0x61, 0x6c, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x45, 0x6e, 0x61, 0x62,
-	0x6c, 0x65, 0x64, 0x12, 0x3b, 0x0a, 0x06, 0x6d, 0x6f, 0x64, 0x65, 0x6c, 0x73, 0x18, 0x0d, 0x20,
-	0x03, 0x28, 0x0b, 0x32, 0x23, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e,
-	0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x50, 0x6f, 0x43, 0x4d, 0x6f, 0x64,
-	0x65, 0x6c, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x52, 0x06, 0x6d, 0x6f, 0x64, 0x65, 0x6c, 0x73,
-	0x12, 0x37, 0x0a, 0x18, 0x70, 0x6f, 0x63, 0x5f, 0x73, 0x74, 0x72, 0x6f, 0x6e, 0x67, 0x65, 0x72,
-	0x5f, 0x72, 0x6e, 0x67, 0x5f, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x18, 0x0e, 0x20, 0x01,
-	0x28, 0x08, 0x52, 0x15, 0x70, 0x6f, 0x63, 0x53, 0x74, 0x72, 0x6f, 0x6e, 0x67, 0x65, 0x72, 0x52,
-	0x6e, 0x67, 0x45, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x3a, 0x04, 0xe8, 0xa0, 0x1f, 0x01, 0x22,
+	0x6c, 0x65, 0x64, 0x12, 0x37, 0x0a, 0x18, 0x70, 0x6f, 0x63, 0x5f, 0x73, 0x74, 0x72, 0x6f, 0x6e,
+	0x67, 0x65, 0x72, 0x5f, 0x72, 0x6e, 0x67, 0x5f, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x18,
+	0x0d, 0x20, 0x01, 0x28, 0x08, 0x52, 0x15, 0x70, 0x6f, 0x63, 0x53, 0x74, 0x72, 0x6f, 0x6e, 0x67,
+	0x65, 0x72, 0x52, 0x6e, 0x67, 0x45, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x12, 0x3b, 0x0a, 0x06,
+	0x6d, 0x6f, 0x64, 0x65, 0x6c, 0x73, 0x18, 0x0e, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x23, 0x2e, 0x69,
+	0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x69, 0x6e, 0x66, 0x65, 0x72, 0x65, 0x6e,
+	0x63, 0x65, 0x2e, 0x50, 0x6f, 0x43, 0x4d, 0x6f, 0x64, 0x65, 0x6c, 0x43, 0x6f, 0x6e, 0x66, 0x69,
+	0x67, 0x52, 0x06, 0x6d, 0x6f, 0x64, 0x65, 0x6c, 0x73, 0x3a, 0x04, 0xe8, 0xa0, 0x1f, 0x01, 0x22,
 	0x41, 0x0a, 0x07, 0x44, 0x65, 0x63, 0x69, 0x6d, 0x61, 0x6c, 0x12, 0x14, 0x0a, 0x05, 0x76, 0x61,
 	0x6c, 0x75, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65,
 	0x12, 0x1a, 0x0a, 0x08, 0x65, 0x78, 0x70, 0x6f, 0x6e, 0x65, 0x6e, 0x74, 0x18, 0x02, 0x20, 0x01,
