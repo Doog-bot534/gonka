@@ -34,6 +34,9 @@ class VersiondTests : TestermintTest() {
         val config = inferenceConfig.copy(
             additionalDockerFilesByKeyName = mapOf(
                 GENESIS_KEY_NAME to listOf("docker-compose.versiond.yml")
+            ),
+            additionalEnvVars = mapOf(
+                "VERSIOND_SERVICE_NAME" to "versiond"
             )
         )
         val (c, g) = initCluster(config = config, reboot = true)
