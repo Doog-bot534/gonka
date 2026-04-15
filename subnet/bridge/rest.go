@@ -101,7 +101,8 @@ func doGet[T any](client *http.Client, rawURL string) (*T, error) {
 // -- query methods --
 
 func (b *RESTBridge) GetEscrow(escrowID string) (*EscrowInfo, error) {
-	u := fmt.Sprintf("%s/productscience/inference/inference/subnet_escrow/%s", b.baseURL, escrowID)
+	// Sanitize escrowID to prevent path traversal (e.g., "../../other/endpoint").
+	u := fmt.Sprintf("%s/productscience/inference/inference/subnet_escrow/%s", b.baseURL, url.PathEscape(escrowID))
 
 	resp, err := doGet[escrowResponse](b.client, u)
 	if err != nil {
@@ -127,7 +128,7 @@ func (b *RESTBridge) GetEscrow(escrowID string) (*EscrowInfo, error) {
 }
 
 func (b *RESTBridge) GetHostInfo(address string) (*HostInfo, error) {
-	u := fmt.Sprintf("%s/productscience/inference/inference/participant/%s", b.baseURL, address)
+	u := fmt.Sprintf("%s/productscience/inference/inference/participant/%s", b.baseURL, url.PathEscape(address))
 
 	resp, err := doGet[participantResponse](b.client, u)
 	if err != nil {
