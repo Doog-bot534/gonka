@@ -96,11 +96,12 @@ func (ms msgServer) payoutClaim(ctx sdk.Context, msg *types.MsgClaimRewards, set
 		} else {
 			ms.LogError("Error paying participant for rewards", types.Claims, "error", err)
 		}
-		ms.finishSettle(ctx, settleAmount)
-		return &types.MsgClaimRewardsResponse{
-			Amount: settleAmount.GetWorkCoins(),
-			Result: "Work paid, but rewards failed.",
-		}, err
+		// Do NOT call finishSettle here. If we delete the settle amount while
+		// returning an error, the tx may be rolled back (reverting escrow payment)
+		// but if the settle record deletion persists, the participant permanently
+		// loses both work and reward coins with no way to retry.
+		// Leave the settle amount intact so the claim can be retried.
+		return nil, fmt.Errorf("reward payment failed, settle amount preserved for retry: %w", err)
 	}
 
 	ms.finishSettle(ctx, settleAmount)
