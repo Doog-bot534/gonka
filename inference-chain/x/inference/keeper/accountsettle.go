@@ -149,6 +149,14 @@ func (k *Keeper) SettleAccounts(ctx context.Context, currentEpochIndex uint64, p
 	// Aggregate MLNodes from model-specific subgroups for preservedWeight calculation
 	participantMLNodes := k.AggregateMLNodesFromModelSubgroups(ctx, currentEpochIndex, data.ValidationWeights)
 
+	preservedSnapshot, snapshotFound, err := k.GetPreservedNodesSnapshot(ctx, int64(data.PocStartBlockHeight))
+	if err != nil {
+		k.LogWarn("Failed to get preserved nodes snapshot for settlement", types.Settle,
+			"epoch", currentEpochIndex, "anchor", data.PocStartBlockHeight, "error", err)
+	} else if snapshotFound {
+		ApplyPreservedSnapshotToModelNodes(participantMLNodes, &preservedSnapshot)
+	}
+
 	// Extract per-model coefficients for cross-model weight aggregation
 	coefficients := modelCoefficients(params.PocParams)
 

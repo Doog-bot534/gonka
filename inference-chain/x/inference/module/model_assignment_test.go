@@ -178,6 +178,90 @@ func TestSetModelsForParticipants_OneModelTwoNodes_Bug(t *testing.T) {
 	assertTimeslotAllocationCount(t, modelGroup.MlNodes, []bool{true, true}, 0)
 }
 
+func TestBuildPreservedNodesSnapshotMatchesAllocationWithoutMutation(t *testing.T) {
+	ctx := context.Background()
+	participantAddress := "gonka1snapshotparticipant000000000000000000000000"
+	modelID := "Qwen/QwQ-32B"
+
+	mockKeeper := &mockKeeperForModelAssigner{
+		governanceModels: []types.Model{
+			{
+				Id:                 modelID,
+				ThroughputPerNonce: 1000,
+				VRam:               32,
+			},
+		},
+		hardwareNodes: map[string]*types.HardwareNodes{
+			participantAddress: {
+				Participant: participantAddress,
+				HardwareNodes: []*types.HardwareNode{
+					{LocalId: "mlnode1", Models: []string{modelID}},
+					{LocalId: "mlnode2", Models: []string{modelID}},
+				},
+			},
+		},
+		epochGroupData: map[string]map[uint64]types.EpochGroupData{
+			modelID: {
+				0: {
+					ValidationWeights: []*types.ValidationWeight{
+						{
+							MemberAddress: participantAddress,
+							MlNodes: []*types.MLNodeInfo{
+								{NodeId: "mlnode1", PocWeight: 29},
+								{NodeId: "mlnode2", PocWeight: 28},
+							},
+						},
+					},
+				},
+			},
+		},
+		settleAmounts: map[string]types.SettleAmount{
+			participantAddress: {
+				Participant: participantAddress,
+				EpochIndex:  0,
+				RewardCoins: 1,
+			},
+		},
+		params: &types.Params{
+			EpochParams: &types.EpochParams{
+				PocSlotAllocation: &types.Decimal{Value: 5, Exponent: -1},
+			},
+		},
+	}
+
+	modelAssigner := NewModelAssigner(mockKeeper, mockLogger{})
+	upcomingEpoch := types.Epoch{Index: 1}
+
+	participants := []*types.ActiveParticipant{
+		{
+			Index:  participantAddress,
+			Models: []string{modelID},
+			MlNodes: []*types.ModelMLNodes{
+				{
+					MlNodes: []*types.MLNodeInfo{
+						{NodeId: "mlnode1", PocWeight: 29},
+						{NodeId: "mlnode2", PocWeight: 28},
+					},
+				},
+			},
+		},
+	}
+
+	modelAssigner.setModelsForParticipants(ctx, participants, upcomingEpoch)
+
+	expectedParticipants := cloneActiveParticipants(participants)
+	modelAssigner.AllocateMLNodesForPoC(ctx, upcomingEpoch, expectedParticipants)
+	expectedSnapshot := snapshotFromAllocatedParticipants(777, expectedParticipants)
+
+	snapshot, err := modelAssigner.BuildPreservedNodesSnapshot(ctx, upcomingEpoch, 777, participants)
+	require.NoError(t, err)
+	require.Equal(t, expectedSnapshot, snapshot)
+
+	modelGroup := participants[0].MlNodes[0]
+	assertTimeslotAllocationCount(t, modelGroup.MlNodes, []bool{true, false}, 2)
+	assertTimeslotAllocationCount(t, modelGroup.MlNodes, []bool{true, true}, 0)
+}
+
 // assertNodeInGroup checks if a node with the given ID exists in the list of nodes.
 func assertNodeInGroup(t *testing.T, nodes []*types.MLNodeInfo, nodeID string) {
 	t.Helper()
@@ -202,6 +286,66 @@ func assertTimeslotAllocationCount(t *testing.T, nodes []*types.MLNodeInfo, allo
 		}
 	}
 	require.Equal(t, expectedCount, count, "Expected %d nodes with timeslot allocation %v, but found %d", expectedCount, allocation, count)
+}
+
+func cloneActiveParticipants(participants []*types.ActiveParticipant) []*types.ActiveParticipant {
+	cloned := make([]*types.ActiveParticipant, 0, len(participants))
+	for _, participant := range participants {
+		copyParticipant := *participant
+		copyParticipant.Models = append([]string(nil), participant.Models...)
+		copyParticipant.MlNodes = make([]*types.ModelMLNodes, 0, len(participant.MlNodes))
+		for _, modelNodes := range participant.MlNodes {
+			if modelNodes == nil {
+				copyParticipant.MlNodes = append(copyParticipant.MlNodes, nil)
+				continue
+			}
+			copyModelNodes := &types.ModelMLNodes{
+				MlNodes: make([]*types.MLNodeInfo, 0, len(modelNodes.MlNodes)),
+			}
+			for _, node := range modelNodes.MlNodes {
+				if node == nil {
+					copyModelNodes.MlNodes = append(copyModelNodes.MlNodes, nil)
+					continue
+				}
+				copyNode := *node
+				copyNode.TimeslotAllocation = append([]bool(nil), node.TimeslotAllocation...)
+				copyModelNodes.MlNodes = append(copyModelNodes.MlNodes, &copyNode)
+			}
+			copyParticipant.MlNodes = append(copyParticipant.MlNodes, copyModelNodes)
+		}
+		cloned = append(cloned, &copyParticipant)
+	}
+	return cloned
+}
+
+func snapshotFromAllocatedParticipants(anchor int64, participants []*types.ActiveParticipant) types.PreservedNodesSnapshot {
+	modelToNodeIDs := make(map[string][]string)
+	for _, participant := range participants {
+		for modelIndex, modelID := range participant.Models {
+			if modelIndex >= len(participant.MlNodes) || participant.MlNodes[modelIndex] == nil {
+				continue
+			}
+			for _, node := range participant.MlNodes[modelIndex].MlNodes {
+				if node != nil && len(node.TimeslotAllocation) > 1 && node.TimeslotAllocation[1] {
+					modelToNodeIDs[modelID] = append(modelToNodeIDs[modelID], node.NodeId)
+				}
+			}
+		}
+	}
+
+	modelIDs := sortedKeys(modelToNodeIDs)
+	modelPreservedNodes := make([]*types.ModelPreservedNodes, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		modelPreservedNodes = append(modelPreservedNodes, &types.ModelPreservedNodes{
+			ModelId:          modelID,
+			PreservedNodeIds: append([]string(nil), modelToNodeIDs[modelID]...),
+		})
+	}
+
+	return types.PreservedNodesSnapshot{
+		EpisodeAnchorHeight: anchor,
+		ModelPreservedNodes: modelPreservedNodes,
+	}
 }
 
 // equalBoolSlice compares two boolean slices for equality.

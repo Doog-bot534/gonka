@@ -198,6 +198,33 @@ func GetPreservedWeight(participant string, epochGroupData *types.EpochGroupData
 	return 0
 }
 
+func ApplyPreservedSnapshotToModelNodes(
+	participantModelNodes map[string]map[string][]*types.MLNodeInfo,
+	preservedSnapshot *types.PreservedNodesSnapshot,
+) {
+	if preservedSnapshot == nil {
+		return
+	}
+
+	for _, modelNodes := range participantModelNodes {
+		for modelId, nodes := range modelNodes {
+			preservedNodeSet := PreservedNodeSetByModel(preservedSnapshot, modelId)
+			for _, mlNode := range nodes {
+				if mlNode == nil {
+					continue
+				}
+				if len(mlNode.TimeslotAllocation) == 0 {
+					mlNode.TimeslotAllocation = []bool{true, false}
+				} else if len(mlNode.TimeslotAllocation) == 1 {
+					mlNode.TimeslotAllocation = append(mlNode.TimeslotAllocation, false)
+				}
+				_, isPreserved := preservedNodeSet[mlNode.NodeId]
+				mlNode.TimeslotAllocation[1] = isPreserved
+			}
+		}
+	}
+}
+
 // CoefficientAdjustedWeight computes sum(coeff_i * sum(PocWeight for model_i)) for nodes
 // matching the filter. Pass nil filter to include all nodes.
 func CoefficientAdjustedWeight(modelNodes map[string][]*types.MLNodeInfo, coefficients map[string]mathsdk.LegacyDec, filter func(*types.MLNodeInfo) bool) int64 {

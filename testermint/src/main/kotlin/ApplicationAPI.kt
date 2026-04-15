@@ -323,6 +323,11 @@ data class ApplicationAPI(
         return get(url, "v1/epochs/latest")
     }
 
+    fun getPreservedNodesSnapshot(anchorHeight: Long): PreservedNodesSnapshotQueryResponse {
+        val url = urlFor(SERVER_TYPE_PUBLIC)
+        return get(url, "productscience/inference/inference/preserved_nodes_snapshot/$anchorHeight")
+    }
+
     // -----------------------
     // Restrictions via Decentralized API
     // -----------------------

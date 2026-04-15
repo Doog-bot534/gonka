@@ -2,7 +2,6 @@ package inference
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"slices"
 	"strconv"
@@ -642,51 +641,9 @@ func (am AppModule) GetPreservedNodesByParticipant(
 	ctx context.Context,
 	epochId uint64,
 ) (map[string]map[string][]*types.MLNodeInfo, error) {
-	participants, found := am.keeper.GetActiveParticipants(ctx, epochId)
-	if !found {
-		am.LogError("GetPreservedNodesByParticipant: Active participants not found",
-			types.PoC, "epochId", epochId)
-		return nil, fmt.Errorf("GetPreservedNodesByParticipant: active participant not found. epochId: %d", epochId)
-	}
-
-	result := make(map[string]map[string][]*types.MLNodeInfo)
-
-	for _, p := range participants.Participants {
-		am.LogInfo("GetPreservedNodesByParticipant: Processing participant", types.PoC,
-			"participantAddress", p.Index, "len(p.MlNodes)", len(p.MlNodes), "models", p.Models)
-
-		modelNodes := make(map[string][]*types.MLNodeInfo)
-		for i, nodeArray := range p.MlNodes {
-			if i >= len(p.Models) || p.Models[i] == "" {
-				continue
-			}
-			modelId := p.Models[i]
-			for _, mlNode := range nodeArray.MlNodes {
-				if len(mlNode.TimeslotAllocation) > 1 && mlNode.TimeslotAllocation[1] { // POC_SLOT = true
-					preservedMLNode := &types.MLNodeInfo{
-						NodeId:             mlNode.NodeId,
-						Throughput:         mlNode.Throughput,
-						PocWeight:          mlNode.PocWeight,
-						TimeslotAllocation: []bool{true, false}, // Reset for new epoch
-					}
-					modelNodes[modelId] = append(modelNodes[modelId], preservedMLNode)
-				}
-			}
-		}
-		if len(modelNodes) > 0 {
-			result[p.Index] = modelNodes
-			totalNodes := 0
-			for _, nodes := range modelNodes {
-				totalNodes += len(nodes)
-			}
-			am.LogInfo("GetPreservedNodesByParticipant: Found preserved MLNodes", types.PoC,
-				"participantAddress", p.Index,
-				"numModels", len(modelNodes),
-				"totalNodes", totalNodes)
-		}
-	}
-
-	return result, nil
+	am.LogInfo("GetPreservedNodesByParticipant: Episode-scoped preserved scheduling does not roll over preserved nodes", types.PoC,
+		"epochId", epochId)
+	return map[string]map[string][]*types.MLNodeInfo{}, nil
 }
 
 func findParticipantByAddress(participants []*types.ActiveParticipant, address string) *types.ActiveParticipant {
@@ -781,7 +738,7 @@ func mergeMLNodeArrays(preservedMLNodes, pocMLNodes []*types.ModelMLNodes) []*ty
 	return []*types.ModelMLNodes{{MlNodes: allNodes}}
 }
 
-// getInferenceServingNodeIds returns a set of node IDs that have POC_SLOT = true in the current epoch
+// getInferenceServingNodeIds returns node IDs preserved for the current episode snapshot.
 func (am AppModule) getInferenceServingNodeIds(ctx context.Context, upcomingEpoch types.Epoch) map[string]bool {
 	inferenceServingNodeIds := make(map[string]bool)
 
@@ -790,22 +747,24 @@ func (am AppModule) getInferenceServingNodeIds(ctx context.Context, upcomingEpoc
 		return inferenceServingNodeIds
 	}
 
-	// Get current epoch group data
-	currentEpochGroup, err := am.keeper.GetCurrentEpochGroup(ctx)
+	preservedSnapshot, found, err := am.keeper.GetPreservedNodesSnapshot(ctx, upcomingEpoch.PocStartBlockHeight)
 	if err != nil {
-		am.LogError("getInferenceServingNodeIds: Unable to get current epoch group", types.PoC, "error", err.Error())
+		am.LogError("getInferenceServingNodeIds: Unable to get preserved nodes snapshot", types.PoC, "error", err.Error())
+		return inferenceServingNodeIds
+	}
+	if !found {
 		return inferenceServingNodeIds
 	}
 
-	// Find all nodes with POC_SLOT = true
-	for _, validationWeight := range currentEpochGroup.GroupData.ValidationWeights {
-		for _, mlNode := range validationWeight.MlNodes {
-			if len(mlNode.TimeslotAllocation) > 1 && mlNode.TimeslotAllocation[1] { // POC_SLOT = true
-				inferenceServingNodeIds[mlNode.NodeId] = true
-				am.LogInfo("getInferenceServingNodeIds: Found inference-serving node", types.PoC,
-					"nodeId", mlNode.NodeId,
-					"participantAddress", validationWeight.MemberAddress)
-			}
+	for _, modelNodes := range preservedSnapshot.ModelPreservedNodes {
+		if modelNodes == nil {
+			continue
+		}
+		for _, nodeID := range modelNodes.PreservedNodeIds {
+			inferenceServingNodeIds[nodeID] = true
+			am.LogInfo("getInferenceServingNodeIds: Found inference-serving node", types.PoC,
+				"nodeId", nodeID,
+				"modelId", modelNodes.ModelId)
 		}
 	}
 

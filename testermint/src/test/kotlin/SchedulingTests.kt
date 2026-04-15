@@ -24,6 +24,18 @@ class SchedulingTests : TestermintTest() {
         
         checkParticipantWeights(genesis.node, genesisParticipantKey) // Should have all participants by now
 
+        genesis.waitForStage(EpochStage.START_OF_POC)
+
+        val regularAnchor = genesis.api.getLatestEpoch().latestEpoch.pocStartBlockHeight
+        val preservedSnapshot = genesis.api.getPreservedNodesSnapshot(regularAnchor)
+        assertThat(preservedSnapshot.found).isTrue()
+        val preservedNodeIds = preservedSnapshot.snapshot
+            ?.modelPreservedNodes
+            ?.flatMap { it.preservedNodeIds }
+            ?.toSet()
+            ?: emptySet()
+        assertThat(preservedNodeIds).isNotEmpty
+
         val allocatedNode = genesis.api.getNodes().let { nodes ->
             assertThat(nodes).hasSize(2)
             nodes.forEach { node ->
@@ -32,26 +44,11 @@ class SchedulingTests : TestermintTest() {
                     assertThat(value.timeslotAllocation).hasSize(2)
                 }
             }
-            nodes.firstNotNullOf { node ->
-                val isAllocatedForInference = node.state.epochMlNodes
-                    ?.firstNotNullOf { (_, x) -> x.timeslotAllocation.getOrNull(1) == true  }
-                    ?: false
-                node.takeIf { isAllocatedForInference }
-            }
+            nodes.first { node -> node.node.id in preservedNodeIds }
         }
-
-        assertThat(allocatedNode).isNotNull
-
-        genesis.waitForStage(EpochStage.START_OF_POC)
 
         genesis.api.getNodes().let { nodes ->
             assertThat(nodes).hasSize(2)
-            nodes.forEach { node ->
-                node.state.epochMlNodes?.forEach { (_, value) ->
-                    assertThat(value.pocWeight).isEqualTo(10)
-                    assertThat(value.timeslotAllocation).hasSize(2)
-                }
-            }
             nodes.forEach { node ->
                 if (node.node.id == allocatedNode.node.id) {
                     assertThat(node.state.currentStatus).isEqualTo("INFERENCE")
@@ -67,30 +64,19 @@ class SchedulingTests : TestermintTest() {
 
         checkParticipantWeights(genesis.node, genesisParticipantKey)
 
-        val allocatedNode2 = genesis.api.getNodes().let { nodes ->
+        genesis.api.getNodes().let { nodes ->
             assertThat(nodes).hasSize(2)
-
             nodes.forEach { node ->
-                node.state.epochMlNodes?.forEach { (key, value) ->
+                node.state.epochMlNodes?.forEach { (_, value) ->
                     assertThat(value.pocWeight).isEqualTo(10)
                     assertThat(value.timeslotAllocation).hasSize(2)
                 }
             }
-
             nodes.forEach { node ->
                 assertThat(node.state.currentStatus).isEqualTo("INFERENCE")
                 assertThat(node.state.intendedStatus).isEqualTo("INFERENCE")
             }
-
-            nodes.firstNotNullOf { node ->
-                val isAllocatedForInference = node.state.epochMlNodes
-                    ?.firstNotNullOf { (_, x) -> x.timeslotAllocation.getOrNull(1) == true  }
-                    ?: false
-                node.takeIf { isAllocatedForInference }
-            }
         }
-
-        assertThat(allocatedNode2).isNotNull
     }
 }
 

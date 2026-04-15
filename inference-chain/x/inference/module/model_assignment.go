@@ -458,10 +458,40 @@ func (ma *ModelAssigner) setModelsForParticipants(ctx context.Context, participa
 func (ma *ModelAssigner) AllocateMLNodesForPoC(ctx context.Context, upcomingEpoch types.Epoch, participants []*types.ActiveParticipant) {
 	ma.LogInfo("Starting ML node allocation for PoC slots", types.Allocation, "flow_context", FlowContext, "sub_flow_context", SubFlowContext, "step", "start", "num_participants", len(participants))
 
+	sortedModelIds, currentEpochData, eligibleNodesData, allocationFraction, err := ma.preparePreservedAllocationState(ctx, upcomingEpoch, participants)
+	if err != nil {
+		ma.LogError("AllocateMLNodesForPoC: Unable to prepare preserved allocation state", types.Allocation, "error", err.Error())
+		return
+	}
+
+	ma.applyPreservedAllocation(sortedModelIds, currentEpochData, eligibleNodesData, allocationFraction)
+}
+
+func (ma *ModelAssigner) BuildPreservedNodesSnapshot(
+	ctx context.Context,
+	upcomingEpoch types.Epoch,
+	episodeAnchorHeight int64,
+	participants []*types.ActiveParticipant,
+) (types.PreservedNodesSnapshot, error) {
+	clonedParticipants := cloneParticipantsForAllocation(participants)
+	sortedModelIds, currentEpochData, eligibleNodesData, allocationFraction, err := ma.preparePreservedAllocationState(ctx, upcomingEpoch, clonedParticipants)
+	if err != nil {
+		return types.PreservedNodesSnapshot{}, err
+	}
+
+	ma.applyPreservedAllocation(sortedModelIds, currentEpochData, eligibleNodesData, allocationFraction)
+
+	return buildPreservedNodesSnapshot(episodeAnchorHeight, clonedParticipants), nil
+}
+
+func (ma *ModelAssigner) preparePreservedAllocationState(
+	ctx context.Context,
+	upcomingEpoch types.Epoch,
+	participants []*types.ActiveParticipant,
+) ([]string, *EpochMLNodeData, *EpochMLNodeData, *types.Decimal, error) {
 	params, err := ma.keeper.GetParams(ctx)
 	if err != nil {
-		ma.LogError("AllocateMLNodesForPoC: Unable to get params", types.Allocation, "error", err.Error())
-		return
+		return nil, nil, nil, nil, err
 	}
 	allocationFraction := params.EpochParams.PocSlotAllocation
 	if allocationFraction == nil || allocationFraction.ToDecimal().IsZero() {
@@ -550,9 +580,80 @@ func (ma *ModelAssigner) AllocateMLNodesForPoC(ctx context.Context, upcomingEpoc
 	eligibleNodesData := ma.filterEligibleMLNodes(upcomingEpoch, previousEpochData, currentEpochData, totalCurrentEpochWeight, coefficients)
 	ma.LogInfo("Filtered eligible nodes for all models", types.Allocation, "flow_context", FlowContext, "sub_flow_context", SubFlowContext, "step", "filter_all_eligible", "num_models", len(eligibleNodesData.Models()))
 
+	return sortedModelIds, currentEpochData, eligibleNodesData, allocationFraction, nil
+}
+
+func (ma *ModelAssigner) applyPreservedAllocation(
+	sortedModelIds []string,
+	currentEpochData *EpochMLNodeData,
+	eligibleNodesData *EpochMLNodeData,
+	allocationFraction *types.Decimal,
+) {
 	for _, modelId := range sortedModelIds {
 		ma.LogInfo("Processing model for PoC allocation", types.Allocation, "flow_context", FlowContext, "sub_flow_context", SubFlowContext, "step", "model_loop_start", "model_id", modelId)
 		ma.allocateMLNodePerPoCForModel(modelId, currentEpochData, eligibleNodesData, allocationFraction)
+	}
+}
+
+func cloneParticipantsForAllocation(participants []*types.ActiveParticipant) []*types.ActiveParticipant {
+	cloned := make([]*types.ActiveParticipant, 0, len(participants))
+	for _, participant := range participants {
+		copyParticipant := *participant
+		copyParticipant.Models = append([]string(nil), participant.Models...)
+		copyParticipant.MlNodes = make([]*types.ModelMLNodes, 0, len(participant.MlNodes))
+		for _, modelNodes := range participant.MlNodes {
+			if modelNodes == nil {
+				copyParticipant.MlNodes = append(copyParticipant.MlNodes, nil)
+				continue
+			}
+			copyModelNodes := &types.ModelMLNodes{
+				MlNodes: make([]*types.MLNodeInfo, 0, len(modelNodes.MlNodes)),
+			}
+			for _, node := range modelNodes.MlNodes {
+				if node == nil {
+					copyModelNodes.MlNodes = append(copyModelNodes.MlNodes, nil)
+					continue
+				}
+				copyNode := *node
+				copyNode.TimeslotAllocation = append([]bool(nil), node.TimeslotAllocation...)
+				copyModelNodes.MlNodes = append(copyModelNodes.MlNodes, &copyNode)
+			}
+			copyParticipant.MlNodes = append(copyParticipant.MlNodes, copyModelNodes)
+		}
+		cloned = append(cloned, &copyParticipant)
+	}
+	return cloned
+}
+
+func buildPreservedNodesSnapshot(anchorHeight int64, participants []*types.ActiveParticipant) types.PreservedNodesSnapshot {
+	modelToNodeIDs := make(map[string][]string)
+	for _, participant := range participants {
+		for modelIndex, modelID := range participant.Models {
+			if modelIndex >= len(participant.MlNodes) || participant.MlNodes[modelIndex] == nil {
+				continue
+			}
+			for _, node := range participant.MlNodes[modelIndex].MlNodes {
+				if node != nil && len(node.TimeslotAllocation) > 1 && node.TimeslotAllocation[1] {
+					modelToNodeIDs[modelID] = append(modelToNodeIDs[modelID], node.NodeId)
+				}
+			}
+		}
+	}
+
+	modelIDs := sortedKeys(modelToNodeIDs)
+	modelPreservedNodes := make([]*types.ModelPreservedNodes, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		preservedNodeIDs := append([]string(nil), modelToNodeIDs[modelID]...)
+		slices.Sort(preservedNodeIDs)
+		modelPreservedNodes = append(modelPreservedNodes, &types.ModelPreservedNodes{
+			ModelId:          modelID,
+			PreservedNodeIds: preservedNodeIDs,
+		})
+	}
+
+	return types.PreservedNodesSnapshot{
+		EpisodeAnchorHeight: anchorHeight,
+		ModelPreservedNodes: modelPreservedNodes,
 	}
 }
 
