@@ -35,8 +35,8 @@ func TransparentErrorHandler(err error, c echo.Context) {
 
 func ExtractError(err error) (int, interface{}) {
 	var (
-		status              = http.StatusInternalServerError
-		message interface{} = err.Error()
+		status  = http.StatusInternalServerError
+		message interface{}
 	)
 
 	var he *echo.HTTPError
@@ -44,7 +44,13 @@ func ExtractError(err error) (int, interface{}) {
 		status = he.Code
 		if he.Message != nil {
 			message = he.Message
+		} else {
+			message = http.StatusText(he.Code)
 		}
+	} else {
+		// Do not expose internal error details to clients.
+		// Raw err.Error() can leak stack traces, internal URLs, and node topology.
+		message = "internal server error"
 	}
 
 	return status, message
