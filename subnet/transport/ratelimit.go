@@ -25,12 +25,14 @@ func DefaultRateLimitConfig() RateLimitConfig {
 type rateLimiter struct {
 	mu       sync.Mutex
 	limiters map[string]*rate.Limiter
+	order    []string // insertion order for LRU-style eviction
 	config   RateLimitConfig
 }
 
 func newRateLimiter(cfg RateLimitConfig) *rateLimiter {
 	return &rateLimiter{
 		limiters: make(map[string]*rate.Limiter),
+		order:    make([]string, 0, maxLimiterEntries),
 		config:   cfg,
 	}
 }
@@ -39,13 +41,22 @@ const maxLimiterEntries = 1000
 
 func (rl *rateLimiter) allow(sender string) bool {
 	rl.mu.Lock()
-	if len(rl.limiters) > maxLimiterEntries {
-		clear(rl.limiters)
+	// Evict oldest entries instead of clearing the entire map.
+	// Bulk clear resets all rate limits simultaneously, giving every
+	// sender a fresh burst window — an attacker can trigger this by
+	// sending from 1000+ distinct addresses.
+	if len(rl.limiters) >= maxLimiterEntries {
+		evictCount := maxLimiterEntries / 4 // evict 25% oldest
+		for i := 0; i < evictCount && i < len(rl.order); i++ {
+			delete(rl.limiters, rl.order[i])
+		}
+		rl.order = rl.order[evictCount:]
 	}
 	lim, ok := rl.limiters[sender]
 	if !ok {
 		lim = rate.NewLimiter(rate.Limit(rl.config.RequestsPerSecond), rl.config.BurstSize)
 		rl.limiters[sender] = lim
+		rl.order = append(rl.order, sender)
 	}
 	rl.mu.Unlock()
 	return lim.Allow()
