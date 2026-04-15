@@ -109,8 +109,7 @@ func (s *Server) Register(g *echo.Group) {
 	g.POST("/sessions/:id/challenge-receipt", s.HandleChallengeReceipt)
 	g.POST("/sessions/:id/gossip/nonce", s.HandleGossipNonce)
 	g.POST("/sessions/:id/gossip/txs", s.HandleGossipTxs)
-	// TODO: GET endpoints are intentionally unauthenticated for now.
-	// Before production, restrict these to group members or add read-only auth.
+	// GET endpoints now require group-member signature auth (sign URL path).
 	g.GET("/sessions/:id/diffs", s.HandleGetDiffs)
 	g.GET("/sessions/:id/mempool", s.HandleGetMempool)
 	g.GET("/sessions/:id/signatures", s.HandleGetSignatures)
@@ -181,11 +180,36 @@ func (s *Server) isGroupMember(addr string) bool {
 
 // authMiddleware reads the body, verifies the signature, checks group membership,
 // and stores the sender address in the echo context.
-// GET requests skip auth intentionally for now.
 func (s *Server) AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		if c.Request().Method == http.MethodGet {
-			// GET endpoints skip auth for now -- see Register comment.
+			// GET endpoints require a valid group member signature in headers.
+			// Without this, anyone can read diffs, mempool, and validator
+			// signatures — leaking session state and aiding targeted attacks.
+			sigHex := c.Request().Header.Get(HeaderSignature)
+			tsStr := c.Request().Header.Get(HeaderTimestamp)
+			if sigHex == "" || tsStr == "" {
+				return echo.NewHTTPError(http.StatusUnauthorized, "missing auth headers")
+			}
+			sig, sigErr := hex.DecodeString(sigHex)
+			if sigErr != nil {
+				return echo.NewHTTPError(http.StatusUnauthorized, "invalid signature hex")
+			}
+			ts, tsErr := strconv.ParseInt(tsStr, 10, 64)
+			if tsErr != nil {
+				return echo.NewHTTPError(http.StatusUnauthorized, "invalid timestamp")
+			}
+			// For GET requests, sign the URL path as the message body.
+			path := []byte(c.Request().URL.Path)
+			now := time.Now().Unix()
+			addr, verifyErr := VerifyRequest(s.verifier, s.host.EscrowID(), path, sig, ts, now)
+			if verifyErr != nil {
+				return echo.NewHTTPError(http.StatusUnauthorized, verifyErr.Error())
+			}
+			if !s.isAllowedSender(addr) {
+				return echo.NewHTTPError(http.StatusForbidden, "sender not in group")
+			}
+			c.Set(contextKeySender, addr)
 			return next(c)
 		}
 
