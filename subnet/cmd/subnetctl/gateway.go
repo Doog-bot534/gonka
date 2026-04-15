@@ -18,15 +18,17 @@ import (
 
 	"subnet/bridge"
 	"subnet/transport"
+	"subnet/types"
 	"subnet/user"
 )
 
 type RuntimeConfig struct {
-	ID            string `json:"id"`
-	PrivateKeyHex string `json:"private_key,omitempty"`
-	PrivateKeyEnv string `json:"private_key_env,omitempty"`
-	Model         string `json:"model,omitempty"`
-	StoragePath   string `json:"storage_path,omitempty"`
+	ID              string `json:"id"`
+	PrivateKeyHex   string `json:"private_key,omitempty"`
+	PrivateKeyEnv   string `json:"private_key_env,omitempty"`
+	Model           string `json:"model,omitempty"`
+	StoragePath     string `json:"storage_path,omitempty"`
+	ProtocolVersion string `json:"protocol_version,omitempty"`
 }
 
 type Gateway struct {
@@ -35,6 +37,7 @@ type Gateway struct {
 	limiter            *GatewayLimiter
 	participantLimiter *ParticipantRequestLimiter
 	phaseGate          *ChainPhaseGate
+	escrowChecker      *EscrowChecker
 	metrics            *SubnetMetrics
 	settings           GatewaySettings
 	store              *GatewayStore
@@ -64,6 +67,7 @@ type runtimeStatus struct {
 	Phase                string `json:"phase,omitempty"`
 	Nonce                uint64 `json:"nonce,omitempty"`
 	Balance              uint64 `json:"balance,omitempty"`
+	ProtocolVersion      string `json:"protocol_version,omitempty"`
 	ActiveRequests       int64  `json:"active_requests"`
 	ReservedTokens       int64  `json:"reserved_tokens"`
 	ChainPhase           string `json:"chain_phase,omitempty"`
@@ -111,6 +115,12 @@ func buildRuntime(cfg RuntimeConfig, chainREST, defaultModel string) (*subnetRun
 	}
 	perf := NewPerfTracker(perfStore)
 
+	pv, pvErr := types.ParseProtocolVersion(cfg.ProtocolVersion)
+	if pvErr != nil {
+		perfStore.Close()
+		return nil, fmt.Errorf("runtime %s: %w", cfg.ID, pvErr)
+	}
+
 	br := bridge.NewRESTBridge(chainREST)
 	session, sm, err := user.NewHTTPSession(user.HTTPSessionConfig{
 		PrivateKeyHex:    keyHex,
@@ -118,6 +128,7 @@ func buildRuntime(cfg RuntimeConfig, chainREST, defaultModel string) (*subnetRun
 		Bridge:           br,
 		StoragePath:      cfg.StoragePath,
 		RequestAdmission: sharedParticipantRequestLimiter,
+		ProtocolVersion:  pv,
 	})
 	if err != nil {
 		perfStore.Close()
@@ -180,6 +191,7 @@ func (rt *subnetRuntime) snapshot() runtimeStatus {
 		st := rt.proxy.sm.SnapshotState()
 		status.Nonce = rt.proxy.session.Nonce()
 		status.Balance = st.Balance
+		status.ProtocolVersion = string(rt.proxy.sm.ProtocolVersion())
 	}
 	if rt.proxy != nil && rt.proxy.phaseGate != nil {
 		snapshot := rt.proxy.phaseGate.Snapshot()
@@ -232,6 +244,14 @@ func NewManagedGateway(runtimes []*subnetRuntime, limiter *GatewayLimiter, setti
 			}
 		}
 		g.phaseGate.Start()
+	}
+	g.escrowChecker = NewEscrowChecker(func() string {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		return g.settings.ChainREST
+	})
+	for _, rt := range g.runtimeOrder {
+		g.attachEscrowChecker(rt)
 	}
 	return g
 }
@@ -309,14 +329,18 @@ func (g *Gateway) handlePooledChat(w http.ResponseWriter, r *http.Request) {
 	}
 	logRequestStage(ctx, "gateway_request_received", "model", firstNonEmpty(model, g.settings.DefaultModel), "input_tokens", inputTokens)
 
-	if err := g.limiter.Acquire(inputTokens); err != nil {
-		g.metrics.RecordLimitRejection(limiterReasonLabel(err))
-		logRequestStage(ctx, "gateway_limiter_rejected", "reason", limiterReasonLabel(err), "input_tokens", inputTokens)
-		http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusTooManyRequests)
-		return
+	if !relaxedPoCBypassActive() {
+		if err := g.limiter.Acquire(inputTokens); err != nil {
+			g.metrics.RecordLimitRejection(limiterReasonLabel(err))
+			logRequestStage(ctx, "gateway_limiter_rejected", "reason", limiterReasonLabel(err), "input_tokens", inputTokens)
+			http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusTooManyRequests)
+			return
+		}
+		defer g.limiter.Release(inputTokens)
+		logRequestStage(ctx, "gateway_limiter_acquired", "input_tokens", inputTokens)
+	} else {
+		logRequestStage(ctx, "gateway_limiter_bypassed_during_poc", "input_tokens", inputTokens, "reason", currentPoCPhaseReason())
 	}
-	defer g.limiter.Release(inputTokens)
-	logRequestStage(ctx, "gateway_limiter_acquired", "input_tokens", inputTokens)
 
 	rt, err := g.reserveRuntimeForModel(model, inputTokens)
 	if err != nil {
@@ -360,14 +384,18 @@ func (g *Gateway) handleSubnet(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusBadRequest)
 			return
 		}
-		if err := g.limiter.Acquire(inputTokens); err != nil {
-			g.metrics.RecordLimitRejection(limiterReasonLabel(err))
-			logRequestStage(ctx, "gateway_subnet_limiter_rejected", "escrow", subnetID, "reason", limiterReasonLabel(err), "input_tokens", inputTokens)
-			http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusTooManyRequests)
-			return
+		if !relaxedPoCBypassActive() {
+			if err := g.limiter.Acquire(inputTokens); err != nil {
+				g.metrics.RecordLimitRejection(limiterReasonLabel(err))
+				logRequestStage(ctx, "gateway_subnet_limiter_rejected", "escrow", subnetID, "reason", limiterReasonLabel(err), "input_tokens", inputTokens)
+				http.Error(w, fmt.Sprintf(`{"error":{"message":%q}}`, err.Error()), http.StatusTooManyRequests)
+				return
+			}
+			defer g.limiter.Release(inputTokens)
+			logRequestStage(ctx, "gateway_subnet_limiter_acquired", "escrow", subnetID, "input_tokens", inputTokens)
+		} else {
+			logRequestStage(ctx, "gateway_subnet_limiter_bypassed_during_poc", "escrow", subnetID, "input_tokens", inputTokens, "reason", currentPoCPhaseReason())
 		}
-		defer g.limiter.Release(inputTokens)
-		logRequestStage(ctx, "gateway_subnet_limiter_acquired", "escrow", subnetID, "input_tokens", inputTokens)
 
 		if err := g.ensureRuntimeAvailable(rt); err != nil {
 			g.metrics.RecordLimitRejection("participant_request_budget")
@@ -477,6 +505,9 @@ func (g *Gateway) releaseRuntime(rt *subnetRuntime, inputTokens int64) {
 
 func (g *Gateway) ensureRuntimeAvailable(rt *subnetRuntime) error {
 	if g == nil || g.participantLimiter == nil || rt == nil {
+		return nil
+	}
+	if relaxedPoCBypassActive() {
 		return nil
 	}
 	return g.participantLimiter.CanAcceptEscrow(rt.participantKeys)
@@ -618,10 +649,12 @@ func defaultStoragePath(baseStorageDir, escrowID string) string {
 }
 
 type adminSubnetRequest struct {
-	ID          string `json:"id"`
-	PrivateKey  string `json:"private_key"`
-	Model       string `json:"model,omitempty"`
-	StoragePath string `json:"storage_path,omitempty"`
+	ID              string `json:"id"`
+	PrivateKey      string `json:"private_key,omitempty"`
+	PrivateKeyEnv   string `json:"private_key_env,omitempty"`
+	Model           string `json:"model,omitempty"`
+	StoragePath     string `json:"storage_path,omitempty"`
+	ProtocolVersion string `json:"protocol_version,omitempty"`
 }
 
 type adminSettingsRequest struct {
@@ -812,24 +845,33 @@ func (g *Gateway) handleAdminAddSubnet(w http.ResponseWriter, r *http.Request) {
 		if strings.TrimSpace(req.PrivateKey) != "" {
 			record.PrivateKeyHex = strings.TrimSpace(req.PrivateKey)
 		}
+		if strings.TrimSpace(req.PrivateKeyEnv) != "" {
+			record.PrivateKeyEnv = strings.TrimSpace(req.PrivateKeyEnv)
+		}
 		if strings.TrimSpace(req.Model) != "" {
 			record.Model = strings.TrimSpace(req.Model)
 		}
 		if strings.TrimSpace(req.StoragePath) != "" {
 			record.StoragePath = strings.TrimSpace(req.StoragePath)
 		}
+		if strings.TrimSpace(req.ProtocolVersion) != "" {
+			record.ProtocolVersion = strings.TrimSpace(req.ProtocolVersion)
+		}
 		record.Active = true
 	} else {
-		if strings.TrimSpace(req.PrivateKey) == "" {
-			http.Error(w, `{"error":{"message":"private_key is required for a new subnet"}}`, http.StatusBadRequest)
+		hasKey := strings.TrimSpace(req.PrivateKey) != "" || strings.TrimSpace(req.PrivateKeyEnv) != ""
+		if !hasKey {
+			http.Error(w, `{"error":{"message":"private_key or private_key_env is required for a new subnet"}}`, http.StatusBadRequest)
 			return
 		}
 		record = GatewaySubnetState{
 			RuntimeConfig: RuntimeConfig{
-				ID:            req.ID,
-				PrivateKeyHex: strings.TrimSpace(req.PrivateKey),
-				Model:         strings.TrimSpace(req.Model),
-				StoragePath:   strings.TrimSpace(req.StoragePath),
+				ID:              req.ID,
+				PrivateKeyHex:   strings.TrimSpace(req.PrivateKey),
+				PrivateKeyEnv:   strings.TrimSpace(req.PrivateKeyEnv),
+				Model:           strings.TrimSpace(req.Model),
+				StoragePath:     strings.TrimSpace(req.StoragePath),
+				ProtocolVersion: strings.TrimSpace(req.ProtocolVersion),
 			},
 			Active: true,
 		}
@@ -874,6 +916,7 @@ func (g *Gateway) handleAdminAddSubnet(w http.ResponseWriter, r *http.Request) {
 	g.runtimes[record.ID] = rt
 	g.runtimeOrder = append(g.runtimeOrder, rt)
 	g.attachMetrics(rt)
+	g.attachEscrowChecker(rt)
 	g.sortRuntimeOrderLocked()
 	writeJSON(w, map[string]any{
 		"id":           record.ID,
@@ -993,6 +1036,37 @@ func (g *Gateway) attachMetrics(rt *subnetRuntime) {
 	}
 	rt.proxy.redundancy.metrics = g.metrics
 	rt.proxy.redundancy.subnetID = rt.id
+}
+
+func (g *Gateway) attachEscrowChecker(rt *subnetRuntime) {
+	if g == nil || g.escrowChecker == nil || rt == nil || rt.proxy == nil || rt.proxy.redundancy == nil {
+		return
+	}
+	escrowID := rt.id
+	rt.proxy.redundancy.onEscrowMissing = func() {
+		go g.escrowChecker.TriggerCheck(escrowID, func() {
+			g.deactivateSubnetByID(escrowID)
+		})
+	}
+}
+
+// deactivateSubnetByID marks a subnet inactive in memory and persists the change.
+// Safe to call from any goroutine.
+func (g *Gateway) deactivateSubnetByID(id string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	rt, ok := g.runtimes[id]
+	if !ok || !rt.active.Load() {
+		return
+	}
+	rt.active.Store(false)
+	if g.store != nil {
+		if err := g.store.SetSubnetActive(id, false); err != nil {
+			log.Printf("escrow checker: persist deactivation for %s: %v", id, err)
+		}
+	}
+	log.Printf("subnet %s deactivated: escrow confirmed missing on chain", id)
 }
 
 func removeSubnetStorage(storagePath, baseStorageDir string) error {

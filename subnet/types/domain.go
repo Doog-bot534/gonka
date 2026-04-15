@@ -1,6 +1,9 @@
 package types
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // SessionPhase represents the phase of a subnet session.
 type SessionPhase uint8
@@ -53,21 +56,45 @@ type HostStats struct {
 	CompletedValidations uint32
 }
 
+// ProtocolVersion identifies the subnet protocol version for compatibility.
+type ProtocolVersion string
+
+const (
+	ProtocolV0211 ProtocolVersion = "0.2.11"
+	ProtocolV0212 ProtocolVersion = "0.2.12"
+)
+
+// ParseProtocolVersion parses a string into a ProtocolVersion.
+// Empty string defaults to ProtocolV0211 for backward compatibility.
+func ParseProtocolVersion(s string) (ProtocolVersion, error) {
+	switch strings.TrimSpace(s) {
+	case "", string(ProtocolV0211):
+		return ProtocolV0211, nil
+	case string(ProtocolV0212):
+		return ProtocolV0212, nil
+	default:
+		return "", fmt.Errorf("unknown protocol version %q", s)
+	}
+}
+
 // SessionConfig holds session-level parameters.
 type SessionConfig struct {
 	RefusalTimeout   int64  // seconds before reason=refused timeout
 	ExecutionTimeout int64  // seconds before reason=execution timeout
-	TokenPrice       uint64 // price per unit (flat per session)
+	TokenPrice       uint64 // price per input / output token (flat per session)
+	CreateSubnetFee  uint64 // one-time fee charged when creating a subnet session (v0.2.12+)
+	FeePerNonce      uint64 // fee charged per applied nonce / diff (v0.2.12+)
 	VoteThreshold    uint32 // minimum accept votes for timeout (total_slots / 2)
 	ValidationRate   uint32 // basis points (10000 = 100%, 1000 = 10%)
 }
 
 // EscrowState is the full state of a subnet session.
 type EscrowState struct {
-	EscrowID    string
-	Config      SessionConfig
-	Group       []SlotAssignment
+	EscrowID      string
+	Config        SessionConfig
+	Group         []SlotAssignment
 	Balance       uint64
+	Fees          uint64 // total fees collected (subnet create + per-nonce), v0.2.12+
 	Phase         SessionPhase
 	FinalizeNonce uint64
 	Inferences    map[uint64]*InferenceRecord

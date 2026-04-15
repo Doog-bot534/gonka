@@ -6,6 +6,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,9 +23,11 @@ const (
 	epochPhasePoCValidate         = "PoCValidate"
 	epochPhasePoCValidateWindDown = "PoCValidateWindDown"
 
-	confirmationPoCInactive   = "CONFIRMATION_POC_INACTIVE"
-	confirmationPoCGeneration = "CONFIRMATION_POC_GENERATION"
-	confirmationPoCValidation = "CONFIRMATION_POC_VALIDATION"
+	confirmationPoCInactive    = "CONFIRMATION_POC_INACTIVE"
+	confirmationPoCGracePeriod = "CONFIRMATION_POC_GRACE_PERIOD"
+	confirmationPoCGeneration  = "CONFIRMATION_POC_GENERATION"
+	confirmationPoCValidation  = "CONFIRMATION_POC_VALIDATION"
+	confirmationPoCCompleted   = "CONFIRMATION_POC_COMPLETED"
 )
 
 type ChainPhaseSnapshot struct {
@@ -39,6 +43,7 @@ type ChainPhaseSnapshot struct {
 
 type ChainPhaseGate struct {
 	endpoint                      string
+	participantsEndpoint          string
 	client                        *http.Client
 	pollInterval                  time.Duration
 	defaultMaxSpeculativeAttempts int
@@ -65,6 +70,28 @@ type chainLatestEpoch struct {
 
 type chainConfirmationPoCEventPayload struct {
 	Phase confirmationPoCPhaseValue `json:"phase"`
+}
+
+type chainCurrentParticipantsResponse struct {
+	ActiveParticipants chainActiveParticipantsGroup `json:"active_participants"`
+}
+
+type chainActiveParticipantsGroup struct {
+	Participants []chainActiveParticipant `json:"participants"`
+}
+
+type chainActiveParticipant struct {
+	Index        string              `json:"index"`
+	InferenceURL string              `json:"inference_url"`
+	MLNodes      []chainModelMLNodes `json:"ml_nodes"`
+}
+
+type chainModelMLNodes struct {
+	MLNodes []chainMLNodeInfo `json:"ml_nodes"`
+}
+
+type chainMLNodeInfo struct {
+	TimeslotAllocation []bool `json:"timeslot_allocation"`
 }
 
 type jsonInt64 int64
@@ -103,10 +130,14 @@ func (p *confirmationPoCPhaseValue) UnmarshalJSON(data []byte) error {
 		switch asInt {
 		case 0:
 			*p = confirmationPoCPhaseValue(confirmationPoCInactive)
+		case 1:
+			*p = confirmationPoCPhaseValue(confirmationPoCGracePeriod)
 		case 2:
 			*p = confirmationPoCPhaseValue(confirmationPoCGeneration)
 		case 3:
 			*p = confirmationPoCPhaseValue(confirmationPoCValidation)
+		case 4:
+			*p = confirmationPoCPhaseValue(confirmationPoCCompleted)
 		default:
 			*p = confirmationPoCPhaseValue(strconv.Itoa(asInt))
 		}
@@ -144,6 +175,7 @@ func NewChainPhaseGate(baseURL string, pollInterval time.Duration) *ChainPhaseGa
 	}
 	return &ChainPhaseGate{
 		endpoint:                      strings.TrimRight(baseURL, "/") + "/v1/epochs/latest",
+		participantsEndpoint:          strings.TrimRight(baseURL, "/") + "/v1/epochs/current/participants",
 		client:                        &http.Client{Timeout: 5 * time.Second},
 		pollInterval:                  pollInterval,
 		defaultMaxSpeculativeAttempts: CurrentMaxSpeculativeAttempts(),
@@ -170,6 +202,7 @@ func (g *ChainPhaseGate) Stop() {
 	}
 	close(g.stopCh)
 	<-g.doneCh
+	setPoCPhaseState(false, "")
 	g.restoreDefaultSpeculativeAttempts()
 }
 
@@ -217,6 +250,7 @@ func (g *ChainPhaseGate) refresh() {
 	if g == nil {
 		return
 	}
+	previous := g.Snapshot()
 	resp, err := g.fetchEpochInfo()
 	if err != nil {
 		g.recordError(err)
@@ -224,7 +258,26 @@ func (g *ChainPhaseGate) refresh() {
 		return
 	}
 	snapshot := deriveChainPhaseSnapshot(resp)
+	active, _ := rawPoCBlockingState(snapshot.EpochPhase, snapshot.ConfirmationPoCPhase)
+	wasActive, _ := rawPoCBlockingState(previous.EpochPhase, previous.ConfirmationPoCPhase)
+	if active && relaxedPoCModeEnabled() && !wasActive {
+		preserved, excludedPairs, preservedErr := g.fetchPreservedParticipantKeys()
+		if preservedErr != nil {
+			g.recordError(preservedErr)
+			g.logPreservedParticipantFetchFailure(snapshot, preservedErr)
+		} else {
+			plainKeys := make([]string, len(preserved))
+			for i, p := range preserved {
+				plainKeys[i] = p.key
+			}
+			setPoCPreservedParticipants(plainKeys)
+			g.logPreservedParticipantsLoaded(snapshot, preserved, excludedPairs)
+		}
+	} else if !active {
+		setPoCPreservedParticipants(nil)
+	}
 	g.applySpeculativeAttemptPolicy(snapshot)
+	g.logSnapshotTransition(previous, snapshot)
 	g.storeSnapshot(snapshot)
 }
 
@@ -247,17 +300,229 @@ func (g *ChainPhaseGate) fetchEpochInfo() (*chainEpochInfoResponse, error) {
 	return &payload, nil
 }
 
+type participantKeyAddr struct {
+	key  string
+	addr string
+}
+
+func (p participantKeyAddr) label() string {
+	short := p.addr
+	if len(short) > 8 {
+		short = short[len(short)-8:]
+	}
+	if short == "" {
+		return p.key
+	}
+	return p.key + "(" + short + ")"
+}
+
+func (g *ChainPhaseGate) fetchPreservedParticipantKeys() ([]participantKeyAddr, []participantKeyAddr, error) {
+	resp, err := g.client.Get(g.participantsEndpoint)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		io.Copy(io.Discard, resp.Body)
+		return nil, nil, fmt.Errorf("current participants status %d", resp.StatusCode)
+	}
+
+	var payload chainCurrentParticipantsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, nil, err
+	}
+
+	var keys, excluded []participantKeyAddr
+	seenPreserved := make(map[string]struct{}, len(payload.ActiveParticipants.Participants))
+	seenExcluded := make(map[string]struct{}, len(payload.ActiveParticipants.Participants))
+	for _, participant := range payload.ActiveParticipants.Participants {
+		key := participantKeyForInferenceURL(participant.InferenceURL)
+		if key == "" {
+			key = strings.TrimSpace(participant.Index)
+		}
+		if key == "" {
+			continue
+		}
+		addr := strings.TrimSpace(participant.Index)
+		if !participantHasPreservedNode(participant) {
+			if _, ok := seenExcluded[key]; ok {
+				continue
+			}
+			seenExcluded[key] = struct{}{}
+			excluded = append(excluded, participantKeyAddr{key: key, addr: addr})
+			continue
+		}
+		if _, ok := seenPreserved[key]; ok {
+			continue
+		}
+		seenPreserved[key] = struct{}{}
+		keys = append(keys, participantKeyAddr{key: key, addr: addr})
+	}
+	return keys, excluded, nil
+}
+
 func (g *ChainPhaseGate) storeSnapshot(snapshot ChainPhaseSnapshot) {
+	active, reason := rawPoCBlockingState(snapshot.EpochPhase, snapshot.ConfirmationPoCPhase)
+	setPoCPhaseState(active, reason)
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.snapshot = snapshot
+}
+
+func (g *ChainPhaseGate) logPreservedParticipantFetchFailure(snapshot ChainPhaseSnapshot, err error) {
+	if g == nil || err == nil {
+		return
+	}
+	log.Printf(
+		"chain phase gate: preserved participant poll failed reason=%s chain_phase=%s confirmation_poc_phase=%s epoch=%d block_height=%d error=%v",
+		snapshot.BlockReason,
+		snapshot.EpochPhase,
+		snapshot.ConfirmationPoCPhase,
+		snapshot.EpochIndex,
+		snapshot.BlockHeight,
+		err,
+	)
+}
+
+func participantKeyAddrLabels(pairs []participantKeyAddr) []string {
+	labels := make([]string, len(pairs))
+	for i, p := range pairs {
+		labels[i] = p.label()
+	}
+	sort.Strings(labels)
+	return labels
+}
+
+func (g *ChainPhaseGate) logPreservedParticipantsLoaded(snapshot ChainPhaseSnapshot, preserved []participantKeyAddr, excluded []participantKeyAddr) {
+	if g == nil {
+		return
+	}
+	excludedLabels := participantKeyAddrLabels(excluded)
+	excludedJoined := strings.Join(excludedLabels, ",")
+	if len(preserved) == 0 {
+		log.Printf(
+			"chain phase gate: preserved participant poll empty reason=%s chain_phase=%s confirmation_poc_phase=%s epoch=%d block_height=%d excluded_count=%d excluded_participants=%s",
+			snapshot.BlockReason,
+			snapshot.EpochPhase,
+			snapshot.ConfirmationPoCPhase,
+			snapshot.EpochIndex,
+			snapshot.BlockHeight,
+			len(excludedLabels),
+			excludedJoined,
+		)
+		return
+	}
+	preservedLabels := participantKeyAddrLabels(preserved)
+	log.Printf(
+		"chain phase gate: preserved participants loaded reason=%s chain_phase=%s confirmation_poc_phase=%s epoch=%d block_height=%d count=%d participants=%s excluded_count=%d excluded_participants=%s",
+		snapshot.BlockReason,
+		snapshot.EpochPhase,
+		snapshot.ConfirmationPoCPhase,
+		snapshot.EpochIndex,
+		snapshot.BlockHeight,
+		len(preservedLabels),
+		strings.Join(preservedLabels, ","),
+		len(excludedLabels),
+		excludedJoined,
+	)
+}
+
+func (g *ChainPhaseGate) logSnapshotTransition(previous, next ChainPhaseSnapshot) {
+	if g == nil {
+		return
+	}
+
+	currentAttempts := CurrentMaxSpeculativeAttempts()
+	previousActive, previousReason := rawPoCBlockingState(previous.EpochPhase, previous.ConfirmationPoCPhase)
+	nextActive, nextReason := rawPoCBlockingState(next.EpochPhase, next.ConfirmationPoCPhase)
+	if !previousActive && nextActive {
+		log.Printf(
+			"chain phase gate: phase active reason=%s chain_phase=%s confirmation_poc_phase=%s epoch=%d block_height=%d requests_blocked=%t max_attempts=%d",
+			nextReason,
+			next.EpochPhase,
+			next.ConfirmationPoCPhase,
+			next.EpochIndex,
+			next.BlockHeight,
+			next.RequestsBlocked,
+			currentAttempts,
+		)
+	}
+	if previousActive && !nextActive {
+		log.Printf(
+			"chain phase gate: phase inactive previous_reason=%s chain_phase=%s confirmation_poc_phase=%s epoch=%d block_height=%d requests_blocked=%t max_attempts=%d",
+			previousReason,
+			next.EpochPhase,
+			next.ConfirmationPoCPhase,
+			next.EpochIndex,
+			next.BlockHeight,
+			next.RequestsBlocked,
+			currentAttempts,
+		)
+	}
+	if previousActive && nextActive &&
+		(previousReason != nextReason ||
+			previous.EpochPhase != next.EpochPhase ||
+			previous.ConfirmationPoCPhase != next.ConfirmationPoCPhase) {
+		log.Printf(
+			"chain phase gate: phase updated reason=%s chain_phase=%s confirmation_poc_phase=%s epoch=%d block_height=%d requests_blocked=%t max_attempts=%d",
+			nextReason,
+			next.EpochPhase,
+			next.ConfirmationPoCPhase,
+			next.EpochIndex,
+			next.BlockHeight,
+			next.RequestsBlocked,
+			currentAttempts,
+		)
+	}
+	if !previous.RequestsBlocked && next.RequestsBlocked {
+		log.Printf(
+			"chain phase gate: blocking new requests reason=%s chain_phase=%s confirmation_poc_phase=%s epoch=%d block_height=%d max_attempts=%d",
+			next.BlockReason,
+			next.EpochPhase,
+			next.ConfirmationPoCPhase,
+			next.EpochIndex,
+			next.BlockHeight,
+			currentAttempts,
+		)
+		return
+	}
+
+	if previous.RequestsBlocked && !next.RequestsBlocked {
+		log.Printf(
+			"chain phase gate: request blocking cleared previous_reason=%s chain_phase=%s confirmation_poc_phase=%s epoch=%d block_height=%d max_attempts=%d",
+			previous.BlockReason,
+			next.EpochPhase,
+			next.ConfirmationPoCPhase,
+			next.EpochIndex,
+			next.BlockHeight,
+			currentAttempts,
+		)
+		return
+	}
+
+	if next.RequestsBlocked &&
+		(previous.BlockReason != next.BlockReason ||
+			previous.EpochPhase != next.EpochPhase ||
+			previous.ConfirmationPoCPhase != next.ConfirmationPoCPhase) {
+		log.Printf(
+			"chain phase gate: blocking mode updated reason=%s chain_phase=%s confirmation_poc_phase=%s epoch=%d block_height=%d max_attempts=%d",
+			next.BlockReason,
+			next.EpochPhase,
+			next.ConfirmationPoCPhase,
+			next.EpochIndex,
+			next.BlockHeight,
+			currentAttempts,
+		)
+	}
 }
 
 func (g *ChainPhaseGate) applySpeculativeAttemptPolicy(snapshot ChainPhaseSnapshot) {
 	if g == nil {
 		return
 	}
-	if snapshot.RequestsBlocked {
+	active, _ := rawPoCBlockingState(snapshot.EpochPhase, snapshot.ConfirmationPoCPhase)
+	if active && !relaxedPoCModeEnabled() {
 		SetMaxSpeculativeAttempts(1)
 		return
 	}
@@ -292,7 +557,9 @@ func deriveChainPhaseSnapshot(resp *chainEpochInfoResponse) ChainPhaseSnapshot {
 	if resp.ActiveConfirmationPoC != nil {
 		snapshot.ConfirmationPoCPhase = string(resp.ActiveConfirmationPoC.Phase)
 	}
-	snapshot.RequestsBlocked, snapshot.BlockReason = shouldBlockRequests(snapshot.EpochPhase, snapshot.ConfirmationPoCPhase)
+	rawBlocked, reason := rawPoCBlockingState(snapshot.EpochPhase, snapshot.ConfirmationPoCPhase)
+	snapshot.BlockReason = reason
+	snapshot.RequestsBlocked = rawBlocked && !relaxedPoCModeEnabled()
 	return snapshot
 }
 
@@ -303,15 +570,46 @@ func deriveEpochPhase(resp *chainEpochInfoResponse) string {
 	return strings.TrimSpace(resp.Phase)
 }
 
-func shouldBlockRequests(epochPhase, confirmationPhase string) (bool, string) {
+func rawPoCBlockingState(epochPhase, confirmationPhase string) (bool, string) {
 	switch epochPhase {
 	case epochPhasePoCGenerate, epochPhasePoCGenerateWindDown, epochPhasePoCValidate, epochPhasePoCValidateWindDown:
 		return true, "poc"
 	}
-	if confirmationPhase == confirmationPoCGeneration || confirmationPhase == confirmationPoCValidation {
+	switch confirmationPhase {
+	case confirmationPoCGracePeriod, confirmationPoCGeneration, confirmationPoCValidation:
 		return true, "confirmation_poc"
 	}
 	return false, ""
+}
+
+func participantHasPreservedNode(participant chainActiveParticipant) bool {
+	for _, modelNodes := range participant.MLNodes {
+		for _, node := range modelNodes.MLNodes {
+			if len(node.TimeslotAllocation) > 1 && node.TimeslotAllocation[1] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func participantKeyForInferenceURL(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err == nil {
+		if host := strings.TrimSpace(parsed.Host); host != "" {
+			return host
+		}
+	}
+	return strings.TrimSpace(raw)
+}
+
+func (g *ChainPhaseGate) PoCActive() bool {
+	if g == nil {
+		return false
+	}
+	snapshot := g.Snapshot()
+	active, _ := rawPoCBlockingState(snapshot.EpochPhase, snapshot.ConfirmationPoCPhase)
+	return active
 }
 
 func humanizePhaseBlockReason(snapshot ChainPhaseSnapshot) string {
@@ -330,6 +628,8 @@ func humanizePhaseBlockReason(snapshot ChainPhaseSnapshot) string {
 	}
 	if snapshot.BlockReason == "confirmation_poc" {
 		switch snapshot.ConfirmationPoCPhase {
+		case confirmationPoCGracePeriod:
+			return "confirmation PoC grace period"
 		case confirmationPoCGeneration:
 			return "confirmation PoC generation"
 		case confirmationPoCValidation:

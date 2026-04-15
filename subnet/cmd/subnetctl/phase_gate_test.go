@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -40,6 +43,69 @@ func TestChainPhaseGateFetchEpochInfoParsesConfirmationPoC(t *testing.T) {
 	require.Equal(t, confirmationPoCValidation, snapshot.ConfirmationPoCPhase)
 	require.True(t, snapshot.RequestsBlocked)
 	require.Equal(t, "confirmation_poc", snapshot.BlockReason)
+}
+
+func TestChainPhaseGateFetchEpochInfoParsesNumericConfirmationPoCGracePeriod(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/epochs/latest", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"block_height":"151",
+			"phase":"Inference",
+			"latest_epoch":{
+				"index":"12",
+				"poc_start_block_height":"100"
+			},
+			"is_confirmation_poc_active":true,
+			"active_confirmation_poc_event":{
+				"phase":1
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	gate := NewChainPhaseGate(server.URL, 0)
+	require.NotNil(t, gate)
+
+	resp, err := gate.fetchEpochInfo()
+	require.NoError(t, err)
+
+	snapshot := deriveChainPhaseSnapshot(resp)
+	require.Equal(t, confirmationPoCGracePeriod, snapshot.ConfirmationPoCPhase)
+	require.True(t, snapshot.RequestsBlocked)
+	require.Equal(t, "confirmation_poc", snapshot.BlockReason)
+	require.Equal(t, "confirmation PoC grace period", humanizePhaseBlockReason(snapshot))
+}
+
+func TestChainPhaseGateFetchEpochInfoParsesNumericConfirmationPoCCompleted(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/epochs/latest", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"block_height":"152",
+			"phase":"Inference",
+			"latest_epoch":{
+				"index":"12",
+				"poc_start_block_height":"100"
+			},
+			"is_confirmation_poc_active":true,
+			"active_confirmation_poc_event":{
+				"phase":4
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	gate := NewChainPhaseGate(server.URL, 0)
+	require.NotNil(t, gate)
+
+	resp, err := gate.fetchEpochInfo()
+	require.NoError(t, err)
+
+	snapshot := deriveChainPhaseSnapshot(resp)
+	require.Equal(t, confirmationPoCCompleted, snapshot.ConfirmationPoCPhase)
+	require.False(t, snapshot.RequestsBlocked)
+	require.Empty(t, snapshot.BlockReason)
 }
 
 func TestChainPhaseGateBlocksDuringRegularPoC(t *testing.T) {
@@ -93,4 +159,197 @@ func TestChainPhaseGateTemporarilyLimitsSpeculativeAttempts(t *testing.T) {
 		RequestsBlocked: false,
 	})
 	require.Equal(t, 4, CurrentMaxSpeculativeAttempts())
+}
+
+func TestChainPhaseGateRelaxedModeAllowsRequestsDuringPoC(t *testing.T) {
+	setPoCModeForTest(t, pocRequestModeRelaxed)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/epochs/latest", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"block_height":"105",
+			"phase":"PoCGenerate",
+			"latest_epoch":{
+				"index":"12",
+				"poc_start_block_height":"100"
+			},
+			"is_confirmation_poc_active":false
+		}`))
+	}))
+	defer server.Close()
+
+	gate := NewChainPhaseGate(server.URL, 0)
+	require.NotNil(t, gate)
+
+	resp, err := gate.fetchEpochInfo()
+	require.NoError(t, err)
+
+	snapshot := deriveChainPhaseSnapshot(resp)
+	require.Equal(t, epochPhasePoCGenerate, snapshot.EpochPhase)
+	require.False(t, snapshot.RequestsBlocked)
+	require.Equal(t, "poc", snapshot.BlockReason)
+}
+
+func TestChainPhaseGateRelaxedModeKeepsSpeculativeAttemptsUnclamped(t *testing.T) {
+	setPoCModeForTest(t, pocRequestModeRelaxed)
+
+	previous := CurrentMaxSpeculativeAttempts()
+	SetMaxSpeculativeAttempts(4)
+	t.Cleanup(func() {
+		SetMaxSpeculativeAttempts(previous)
+	})
+
+	gate := NewChainPhaseGate("http://api:9000", 0)
+	require.NotNil(t, gate)
+	require.Equal(t, 4, gate.defaultMaxSpeculativeAttempts)
+
+	gate.applySpeculativeAttemptPolicy(ChainPhaseSnapshot{
+		EpochPhase:      epochPhasePoCGenerate,
+		RequestsBlocked: false,
+		BlockReason:     "poc",
+	})
+	require.Equal(t, 4, CurrentMaxSpeculativeAttempts())
+}
+
+func TestChainPhaseGateFetchPreservedParticipantKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/epochs/current/participants", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"active_participants": {
+				"participants": [
+					{
+						"index": "participant-a",
+						"inference_url": "http://preserved.example:8080",
+						"ml_nodes": [
+							{"ml_nodes": [{"timeslot_allocation": [true, true]}]}
+						]
+					},
+					{
+						"index": "participant-a-alt-port",
+						"inference_url": "http://preserved.example:8081",
+						"ml_nodes": [
+							{"ml_nodes": [{"timeslot_allocation": [true, true]}]}
+						]
+					},
+					{
+						"index": "participant-b",
+						"inference_url": "http://regular.example:8080",
+						"ml_nodes": [
+							{"ml_nodes": [{"timeslot_allocation": [true, false]}]}
+						]
+					}
+				]
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	gate := NewChainPhaseGate(server.URL, 0)
+	require.NotNil(t, gate)
+
+	keys, excluded, err := gate.fetchPreservedParticipantKeys()
+	require.NoError(t, err)
+	require.Equal(t, []participantKeyAddr{
+		{key: "preserved.example:8080", addr: "participant-a"},
+		{key: "preserved.example:8081", addr: "participant-a-alt-port"},
+	}, keys)
+	require.Equal(t, []participantKeyAddr{
+		{key: "regular.example:8080", addr: "participant-b"},
+	}, excluded)
+}
+
+func TestChainPhaseGateLogsConfirmationPoCTransitionInRelaxedMode(t *testing.T) {
+	setPoCModeForTest(t, pocRequestModeRelaxed)
+
+	var buf bytes.Buffer
+	previousWriter := log.Writer()
+	previousFlags := log.Flags()
+	log.SetOutput(&buf)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(previousWriter)
+		log.SetFlags(previousFlags)
+	})
+
+	gate := NewChainPhaseGate("http://api:9000", 0)
+	require.NotNil(t, gate)
+
+	gate.logSnapshotTransition(ChainPhaseSnapshot{}, ChainPhaseSnapshot{
+		BlockHeight:          150,
+		EpochIndex:           12,
+		EpochPhase:           epochPhaseInference,
+		ConfirmationPoCPhase: confirmationPoCGeneration,
+		RequestsBlocked:      false,
+		BlockReason:          "confirmation_poc",
+	})
+
+	output := buf.String()
+	require.Contains(t, output, "chain phase gate: phase active")
+	require.Contains(t, output, "reason=confirmation_poc")
+	require.Contains(t, output, "confirmation_poc_phase=CONFIRMATION_POC_GENERATION")
+	require.Contains(t, output, "requests_blocked=false")
+	require.NotContains(t, output, "blocking new requests")
+}
+
+func TestChainPhaseGateLogsEmptyPreservedParticipants(t *testing.T) {
+	var buf bytes.Buffer
+	previousWriter := log.Writer()
+	previousFlags := log.Flags()
+	log.SetOutput(&buf)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(previousWriter)
+		log.SetFlags(previousFlags)
+	})
+
+	gate := NewChainPhaseGate("http://api:9000", 0)
+	require.NotNil(t, gate)
+
+	gate.logPreservedParticipantsLoaded(ChainPhaseSnapshot{
+		BlockHeight:          150,
+		EpochIndex:           12,
+		EpochPhase:           epochPhaseInference,
+		ConfirmationPoCPhase: confirmationPoCGeneration,
+		BlockReason:          "confirmation_poc",
+	}, nil, []participantKeyAddr{{key: "cut.example:8080", addr: "addr-cut"}})
+
+	require.Contains(t, buf.String(), "chain phase gate: preserved participant poll empty")
+	require.Contains(t, buf.String(), "excluded_count=1")
+	require.Contains(t, buf.String(), "excluded_participants=cut.example:8080(addr-cut)")
+}
+
+func TestChainPhaseGateLogsLoadedPreservedParticipantsSorted(t *testing.T) {
+	var buf bytes.Buffer
+	previousWriter := log.Writer()
+	previousFlags := log.Flags()
+	log.SetOutput(&buf)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(previousWriter)
+		log.SetFlags(previousFlags)
+	})
+
+	gate := NewChainPhaseGate("http://api:9000", 0)
+	require.NotNil(t, gate)
+
+	gate.logPreservedParticipantsLoaded(ChainPhaseSnapshot{
+		BlockHeight:          150,
+		EpochIndex:           12,
+		EpochPhase:           epochPhaseInference,
+		ConfirmationPoCPhase: confirmationPoCGeneration,
+		BlockReason:          "confirmation_poc",
+	}, []participantKeyAddr{
+		{key: "z.example", addr: "gonka1zzzzzzzz"},
+		{key: "a.example", addr: "gonka1aaaaaaaa"},
+	}, []participantKeyAddr{
+		{key: "y.example", addr: "gonka1yyyyyyyy"},
+		{key: "b.example", addr: "gonka1bbbbbbbb"},
+	})
+
+	output := buf.String()
+	require.Contains(t, output, "chain phase gate: preserved participants loaded")
+	require.True(t, strings.Contains(output, "participants=a.example(aaaaaaaa),z.example(zzzzzzzz)"))
+	require.True(t, strings.Contains(output, "excluded_participants=b.example(bbbbbbbb),y.example(yyyyyyyy)"))
 }

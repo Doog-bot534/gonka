@@ -14,6 +14,7 @@ import (
 type SettlementPayload struct {
 	EscrowID   string
 	Nonce      uint64
+	Fees       uint64 // v0.2.12: total fees collected
 	RestHash   []byte
 	HostStats  map[uint32]*types.HostStats
 	Signatures map[uint32][]byte
@@ -29,6 +30,7 @@ func BuildSettlement(escrowID string, st types.EscrowState, signatures map[uint3
 	return &SettlementPayload{
 		EscrowID:   escrowID,
 		Nonce:      nonce,
+		Fees:       st.Fees,
 		RestHash:   restHash,
 		HostStats:  st.HostStats,
 		Signatures: signatures,

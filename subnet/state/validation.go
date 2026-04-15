@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"math/bits"
 
 	"subnet/types"
 )
@@ -25,6 +26,7 @@ func DeriveSeed(signature []byte) (int64, error) {
 
 // DeterministicFloat generates a deterministic float64 in [0,1) from seed and inferenceID.
 // Uses sha256("%d:%d") -> first 8 bytes -> uint64 / MaxUint64.
+// Used by v0.2.11 protocol; v0.2.12 uses deterministicHash instead.
 func DeterministicFloat(seed int64, inferenceID uint64) float64 {
 	input := fmt.Sprintf("%d:%d", seed, inferenceID)
 	sum := sha256.Sum256([]byte(input))
@@ -32,9 +34,44 @@ func DeterministicFloat(seed int64, inferenceID uint64) float64 {
 	return float64(hashInt) / float64(math.MaxUint64)
 }
 
+// deterministicHash returns a deterministic uint64 from seed and inferenceID.
+// Uses sha256("%d:%d") -> first 8 bytes as big-endian uint64.
+// Used for integer-only consensus logic in v0.2.12 (no float math across architectures).
+func deterministicHash(seed int64, inferenceID uint64) uint64 {
+	input := fmt.Sprintf("%d:%d", seed, inferenceID)
+	sum := sha256.Sum256([]byte(input))
+	return binary.BigEndian.Uint64(sum[:8])
+}
+
+// uint64ProbabilityScale32 returns floor(numerator * 2^32 / denominator), clamped to [0, 2^32].
+// Represents a rational in [0, 1] at 32-bit fixed-point scale without floating-point.
+func uint64ProbabilityScale32(numerator, denominator uint64) uint64 {
+	const maxP = uint64(1) << 32
+	if numerator >= denominator {
+		return maxP
+	}
+	hi, lo := bits.Mul64(numerator, 1<<32)
+	q, _ := bits.Div64(hi, lo, denominator)
+	return q
+}
+
+// uint32CeilScaledSum32 returns ceil(sumScaled / 2^32).
+func uint32CeilScaledSum32(sumScaled uint64) uint32 {
+	const scale = uint64(1) << 32
+	return uint32((sumScaled + scale - 1) >> 32)
+}
+
+// penalizePerInferenceScaled32 returns the per-inference contribution for unrevealed-seed penalty
+// at 32-bit fixed-point scale.
+func penalizePerInferenceScaled32(rateBasisPoints, validatorSlotCount, totalSlotsMinusExecutor uint64) uint64 {
+	return uint64ProbabilityScale32(rateBasisPoints*validatorSlotCount, 10000*totalSlotsMinusExecutor)
+}
+
 // ShouldValidate returns true if this validator should validate the given inference.
 // probability = (rateBasisPoints/10000) * validatorSlotCount / (totalSlots - executorSlotCount)
 // Returns DeterministicFloat(seed, inferenceID) < probability.
+// v0.2.11 uses float64 math; v0.2.12 uses integer-only math.
+// The default (called without version context) uses v0.2.11 for backward compatibility.
 func ShouldValidate(seed int64, inferenceID uint64, validatorSlotCount, executorSlotCount, totalSlots, rateBasisPoints uint32) bool {
 	if totalSlots <= executorSlotCount {
 		return false
@@ -45,4 +82,17 @@ func ShouldValidate(seed int64, inferenceID uint64, validatorSlotCount, executor
 		probability = 1.0
 	}
 	return DeterministicFloat(seed, inferenceID) < probability
+}
+
+// ShouldValidateV0212 uses integer math only (no float64) to avoid
+// architecture-dependent state root splits.
+func ShouldValidateV0212(seed int64, inferenceID uint64, validatorSlotCount, executorSlotCount, totalSlots, rateBasisPoints uint32) bool {
+	if totalSlots <= executorSlotCount {
+		return false
+	}
+	numer := uint64(rateBasisPoints) * uint64(validatorSlotCount)
+	denom := uint64(totalSlots-executorSlotCount) * 10000
+	threshold := uint64ProbabilityScale32(numer, denom)
+	hashInt := deterministicHash(seed, inferenceID)
+	return (hashInt >> 32) < threshold
 }

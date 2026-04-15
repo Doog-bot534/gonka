@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -701,6 +702,19 @@ func (s *Session) ParticipantKeys() []string {
 		keys = append(keys, key)
 	}
 	return keys
+}
+
+// HostParticipantKey returns the participant identifier associated with one host slot.
+func (s *Session) HostParticipantKey(hostIdx int) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if hostIdx < 0 || hostIdx >= len(s.group) {
+		return ""
+	}
+	if hostIdx < len(s.participantKeys) && strings.TrimSpace(s.participantKeys[hostIdx]) != "" {
+		return strings.TrimSpace(s.participantKeys[hostIdx])
+	}
+	return strings.TrimSpace(s.group[hostIdx].ValidatorAddress)
 }
 
 // IsNonceFinished returns true if ProcessResponse observed MsgFinishInference

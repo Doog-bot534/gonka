@@ -87,7 +87,8 @@ type StateMachine struct {
 	addressToSlots     map[string][]uint32 // address -> sorted slot IDs
 	totalSlots         uint32
 
-	warmResolver WarmKeyResolver // optional, nil = no warm key support
+	warmResolver    WarmKeyResolver     // optional, nil = no warm key support
+	protocolVersion types.ProtocolVersion // default: ProtocolV0211
 }
 
 // SMOption configures optional StateMachine behavior.
@@ -96,6 +97,21 @@ type SMOption func(*StateMachine)
 // WithWarmKeyResolver sets a callback for warm key verification.
 func WithWarmKeyResolver(r WarmKeyResolver) SMOption {
 	return func(sm *StateMachine) { sm.warmResolver = r }
+}
+
+// WithProtocolVersion sets the protocol version for state root computation and fee logic.
+func WithProtocolVersion(v types.ProtocolVersion) SMOption {
+	return func(sm *StateMachine) { sm.protocolVersion = v }
+}
+
+// ProtocolVersion returns the protocol version this state machine is using.
+func (sm *StateMachine) ProtocolVersion() types.ProtocolVersion {
+	return sm.protocolVersion
+}
+
+// isV0212 returns true if this state machine uses v0.2.12 protocol.
+func (sm *StateMachine) isV0212() bool {
+	return sm.protocolVersion == types.ProtocolV0212
 }
 
 func NewStateMachine(
@@ -141,24 +157,37 @@ func NewStateMachine(
 			RevealedSeeds: make(map[uint32]int64),
 			WarmKeys:      make(map[uint32]string),
 		},
-		verifier:           verifier,
-		userAddress:        userAddress,
-		slotToAddress:      slotToAddr,
+		verifier:        verifier,
+		userAddress:     userAddress,
+		slotToAddress:   slotToAddr,
 		addressToSlotCount: addrToSlotCount,
-		addressToSlots:     addrToSlots,
-		totalSlots:         uint32(len(group)),
+		addressToSlots:  addrToSlots,
+		totalSlots:      uint32(len(group)),
+		protocolVersion: types.ProtocolV0211,
 	}
 	for _, o := range opts {
 		o(sm)
 	}
 
+	// v0.2.12: charge the one-time subnet creation fee at initialization.
+	if sm.isV0212() && config.CreateSubnetFee > 0 {
+		if sm.state.Balance < config.CreateSubnetFee {
+			logging.Error("create subnet fee exceeds escrow balance", "subsystem", "state",
+				"escrow_id", escrowID, "balance", balance, "fee", config.CreateSubnetFee)
+		} else {
+			sm.state.Balance -= config.CreateSubnetFee
+			sm.state.Fees = config.CreateSubnetFee
+		}
+	}
+
 	logging.Info("NewStateMachine", "subsystem", "state",
 		"escrow_id", escrowID,
 		"group_size", len(group),
-		"balance", balance,
+		"balance", sm.state.Balance,
 		"token_price", config.TokenPrice,
 		"vote_threshold", config.VoteThreshold,
 		"user_address", userAddress,
+		"protocol_version", sm.protocolVersion,
 	)
 
 	return sm
@@ -222,6 +251,8 @@ func (sm *StateMachine) ApplyLocalBestEffort(nonce uint64, txs []*types.SubnetTx
 		return nil, nil, types.ErrMultipleStartMsgs
 	}
 
+	snap := sm.snapshotMutable()
+
 	// All applyTx implementations are check-first-mutate-last:
 	// preconditions are validated before any state mutation, so a
 	// failed tx leaves state unchanged. No per-tx snapshots needed.
@@ -231,6 +262,16 @@ func (sm *StateMachine) ApplyLocalBestEffort(nonce uint64, txs []*types.SubnetTx
 			continue
 		}
 		applied = append(applied, tx)
+	}
+
+	// v0.2.12: charge per-nonce fee during active phase.
+	if sm.isV0212() && sm.state.Phase == types.PhaseActive {
+		if sm.state.Balance < sm.state.Config.FeePerNonce {
+			sm.restoreMutable(snap)
+			return nil, nil, types.ErrInsufficientBalance
+		}
+		sm.state.Balance -= sm.state.Config.FeePerNonce
+		sm.state.Fees += sm.state.Config.FeePerNonce
 	}
 
 	sm.state.LatestNonce = nonce
@@ -248,8 +289,9 @@ func (sm *StateMachine) ApplyLocalBestEffort(nonce uint64, txs []*types.SubnetTx
 		}
 	}
 
-	root, err := ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences, sm.state.Phase, sm.state.WarmKeys)
+	root, err := sm.computeRoot()
 	if err != nil {
+		sm.restoreMutable(snap)
 		return nil, nil, fmt.Errorf("compute state root: %w", err)
 	}
 
@@ -259,6 +301,7 @@ func (sm *StateMachine) ApplyLocalBestEffort(nonce uint64, txs []*types.SubnetTx
 		"group_size", len(sm.state.Group),
 		"host_stats_count", len(sm.state.HostStats),
 		"config_token_price", sm.state.Config.TokenPrice,
+		"config_fee_per_nonce", sm.state.Config.FeePerNonce,
 	)
 	return root, applied, nil
 }
@@ -298,7 +341,17 @@ func (sm *StateMachine) applyCore(nonce uint64, txs []*types.SubnetTx, postState
 		}
 	}
 
-	// 5. Update nonce.
+	// 5. Charge per-nonce fee (v0.2.12, active phase only).
+	if sm.isV0212() && sm.state.Phase == types.PhaseActive {
+		if sm.state.Balance < sm.state.Config.FeePerNonce {
+			sm.restoreMutable(snap)
+			return nil, types.ErrInsufficientBalance
+		}
+		sm.state.Balance -= sm.state.Config.FeePerNonce
+		sm.state.Fees += sm.state.Config.FeePerNonce
+	}
+
+	// 6. Update nonce.
 	sm.state.LatestNonce = nonce
 
 	// Track FinalizeNonce: the nonce at which finalization started.
@@ -318,13 +371,14 @@ func (sm *StateMachine) applyCore(nonce uint64, txs []*types.SubnetTx, postState
 		}
 	}
 
-	// 6. Compute state root.
-	root, err := ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences, sm.state.Phase, sm.state.WarmKeys)
+	// 7. Compute state root.
+	root, err := sm.computeRoot()
 	if err != nil {
+		sm.restoreMutable(snap)
 		return nil, fmt.Errorf("compute state root: %w", err)
 	}
 
-	// 7. Verify post_state_root if present. On mismatch, roll back everything.
+	// 8. Verify post_state_root if present. On mismatch, roll back everything.
 	if len(postStateRoot) > 0 && !bytes.Equal(root, postStateRoot) {
 		logging.Error("state root mismatch diagnostic",
 			"subsystem", "state",
@@ -336,9 +390,11 @@ func (sm *StateMachine) applyCore(nonce uint64, txs []*types.SubnetTx, postState
 			"phase", sm.state.Phase,
 			"warm_keys_count", len(sm.state.WarmKeys),
 			"config_token_price", sm.state.Config.TokenPrice,
+			"config_fee_per_nonce", sm.state.Config.FeePerNonce,
 			"config_vote_threshold", sm.state.Config.VoteThreshold,
 			"config_validation_rate", sm.state.Config.ValidationRate,
 			"escrow_id", sm.state.EscrowID,
+			"protocol_version", sm.protocolVersion,
 		)
 		sm.restoreMutable(snap)
 		return nil, fmt.Errorf("%w: diff %x, computed %x", types.ErrPostStateRootMismatch, postStateRoot, root)
@@ -396,6 +452,7 @@ func (sm *StateMachine) SnapshotState() types.EscrowState {
 // mutableSnapshot holds the mutable fields of EscrowState for rollback.
 type mutableSnapshot struct {
 	Balance       uint64
+	Fees          uint64
 	Phase         types.SessionPhase
 	FinalizeNonce uint64
 	LatestNonce   uint64
@@ -422,6 +479,7 @@ func (sm *StateMachine) snapshotMutable() mutableSnapshot {
 
 	return mutableSnapshot{
 		Balance:       sm.state.Balance,
+		Fees:          sm.state.Fees,
 		Phase:         sm.state.Phase,
 		FinalizeNonce: sm.state.FinalizeNonce,
 		LatestNonce:   sm.state.LatestNonce,
@@ -434,6 +492,7 @@ func (sm *StateMachine) snapshotMutable() mutableSnapshot {
 
 func (sm *StateMachine) restoreMutable(snap mutableSnapshot) {
 	sm.state.Balance = snap.Balance
+	sm.state.Fees = snap.Fees
 	sm.state.Phase = snap.Phase
 	sm.state.FinalizeNonce = snap.FinalizeNonce
 	sm.state.LatestNonce = snap.LatestNonce
@@ -443,11 +502,19 @@ func (sm *StateMachine) restoreMutable(snap mutableSnapshot) {
 	sm.state.WarmKeys = snap.WarmKeys
 }
 
+// computeRoot dispatches to the correct state root function based on protocol version.
+func (sm *StateMachine) computeRoot() ([]byte, error) {
+	if sm.isV0212() {
+		return ComputeStateRootV0212(sm.state.Balance, sm.state.HostStats, sm.state.Inferences, sm.state.Phase, sm.state.WarmKeys, sm.state.Fees)
+	}
+	return ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences, sm.state.Phase, sm.state.WarmKeys)
+}
+
 // ComputeStateRoot returns the current state root without modifying state.
 func (sm *StateMachine) ComputeStateRoot() ([]byte, error) {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
-	return ComputeStateRoot(sm.state.Balance, sm.state.HostStats, sm.state.Inferences, sm.state.Phase, sm.state.WarmKeys)
+	return sm.computeRoot()
 }
 
 // WarmKeys returns the current warm key bindings (shallow copy).
@@ -928,7 +995,7 @@ func (sm *StateMachine) recomputeCompliance() {
 			}
 
 			executorSlotCount := sm.addressToSlotCount[executorAddr]
-			if ShouldValidate(seed, infID, validatorSlotCount, executorSlotCount, sm.totalSlots, sm.state.Config.ValidationRate) {
+			if sm.shouldValidate(seed, infID, validatorSlotCount, executorSlotCount) {
 				requiredValidations++
 				for _, vSlot := range sm.addressToSlots[revealerAddr] {
 					if rec.ValidatedBy.IsSet(vSlot) {
@@ -950,6 +1017,7 @@ func (sm *StateMachine) recomputeCompliance() {
 
 // penalizeUnrevealedSeeds sets RequiredValidations for unrevealed hosts.
 // Mirrors applyRevealSeed with penaltyValidationRate. CompletedValidations stays 0.
+// v0.2.12 uses integer math only (no float64/math.Ceil) to avoid architecture-dependent splits.
 func (sm *StateMachine) penalizeUnrevealedSeeds() {
 	revealedAddrs := make(map[string]bool, len(sm.state.RevealedSeeds))
 	for slot := range sm.state.RevealedSeeds {
@@ -962,37 +1030,70 @@ func (sm *StateMachine) penalizeUnrevealedSeeds() {
 		}
 
 		validatorSlotCount := sm.addressToSlotCount[addr]
-		rate := float64(penaltyValidationRate) / 10000.0
-		var probSum float64
-		for _, infID := range slices.Sorted(maps.Keys(sm.state.Inferences)) {
-			rec := sm.state.Inferences[infID]
-			switch rec.Status {
-			case types.StatusFinished, types.StatusChallenged, types.StatusValidated, types.StatusInvalidated:
-			default:
-				continue
+		var required uint32
+
+		if sm.isV0212() {
+			var probSumScaled uint64
+			for _, infID := range slices.Sorted(maps.Keys(sm.state.Inferences)) {
+				rec := sm.state.Inferences[infID]
+				switch rec.Status {
+				case types.StatusFinished, types.StatusChallenged, types.StatusValidated, types.StatusInvalidated:
+				default:
+					continue
+				}
+				executorAddr := sm.slotToAddress[rec.ExecutorSlot]
+				if executorAddr == addr {
+					continue
+				}
+				executorSlotCount := sm.addressToSlotCount[executorAddr]
+				if sm.totalSlots <= executorSlotCount {
+					continue
+				}
+				denom := uint64(sm.totalSlots - executorSlotCount)
+				probSumScaled += penalizePerInferenceScaled32(uint64(penaltyValidationRate), uint64(validatorSlotCount), denom)
 			}
-			executorAddr := sm.slotToAddress[rec.ExecutorSlot]
-			if executorAddr == addr {
-				continue
+			required = uint32CeilScaledSum32(probSumScaled)
+		} else {
+			rate := float64(penaltyValidationRate) / 10000.0
+			var probSum float64
+			for _, infID := range slices.Sorted(maps.Keys(sm.state.Inferences)) {
+				rec := sm.state.Inferences[infID]
+				switch rec.Status {
+				case types.StatusFinished, types.StatusChallenged, types.StatusValidated, types.StatusInvalidated:
+				default:
+					continue
+				}
+				executorAddr := sm.slotToAddress[rec.ExecutorSlot]
+				if executorAddr == addr {
+					continue
+				}
+				executorSlotCount := sm.addressToSlotCount[executorAddr]
+				if sm.totalSlots <= executorSlotCount {
+					continue
+				}
+				p := rate * float64(validatorSlotCount) / float64(sm.totalSlots-executorSlotCount)
+				if p > 1.0 {
+					p = 1.0
+				}
+				probSum += p
 			}
-			executorSlotCount := sm.addressToSlotCount[executorAddr]
-			if sm.totalSlots <= executorSlotCount {
-				continue
-			}
-			p := rate * float64(validatorSlotCount) / float64(sm.totalSlots-executorSlotCount)
-			if p > 1.0 {
-				p = 1.0
-			}
-			probSum += p
+			required = uint32(math.Ceil(probSum))
 		}
 
-		required := uint32(math.Ceil(probSum))
 		for _, slot := range slots {
 			if hs, ok := sm.state.HostStats[slot]; ok {
 				hs.RequiredValidations = required
 			}
 		}
 	}
+}
+
+// shouldValidate dispatches to the correct validation function based on protocol version.
+func (sm *StateMachine) shouldValidate(seed int64, inferenceID uint64, validatorSlotCount, executorSlotCount uint32) bool {
+	if sm.isV0212() {
+		return ShouldValidateV0212(seed, inferenceID, validatorSlotCount, executorSlotCount, sm.totalSlots, sm.state.Config.ValidationRate)
+	}
+	return ShouldValidate(seed, inferenceID, validatorSlotCount, executorSlotCount, sm.totalSlots, sm.state.Config.ValidationRate)
 }
 
 func (sm *StateMachine) applyFinalizeRound() error {

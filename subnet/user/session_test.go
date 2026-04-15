@@ -57,6 +57,12 @@ func setupSessionWithEngine(t *testing.T, numHosts int, balance uint64, grace ui
 	return session, hosts, user
 }
 
+func TestParticipantRequestKeyPreservesPort(t *testing.T) {
+	require.Equal(t, "preserved.example:8080", participantRequestKey("validator-a", "http://preserved.example:8080"))
+	require.Equal(t, "preserved.example:8081", participantRequestKey("validator-a", "http://preserved.example:8081"))
+	require.Equal(t, "validator-a", participantRequestKey("validator-a", ""))
+}
+
 func TestUser_RoundRobinSelection(t *testing.T) {
 	session, _, _ := setupSession(t, 3, 100000, 10)
 	ctx := context.Background()

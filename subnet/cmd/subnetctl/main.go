@@ -80,6 +80,7 @@ type bootstrapOptions struct {
 var gatewayRuntimeBuilder = buildRuntime
 
 func main() {
+	ConfigurePoCRequestMode(os.Getenv("SUBNET_POC_REQUEST_MODE"))
 	flags := parseCLIFlags()
 	runtimeOpts := mustLoadRuntimeOptions(flags)
 	gatewayStore := mustOpenGatewayStore(runtimeOpts.baseStorageDir)

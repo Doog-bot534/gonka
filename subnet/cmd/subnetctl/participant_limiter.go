@@ -125,6 +125,9 @@ func (l *ParticipantRequestLimiter) AllowRequest(participantKey, _ string) error
 	if participantKey == "" {
 		return nil
 	}
+	if relaxedPoCBypassActive() {
+		return nil
+	}
 	if l.allow(participantKey, time.Now()) {
 		return nil
 	}
@@ -161,6 +164,9 @@ func (l *ParticipantRequestLimiter) allow(participantKey string, now time.Time) 
 }
 
 func (l *ParticipantRequestLimiter) CanAcceptEscrow(participantKeys []string) error {
+	if relaxedPoCBypassActive() {
+		return nil
+	}
 	blocked := l.BlockedParticipants(participantKeys)
 	if len(blocked) == 0 {
 		return nil

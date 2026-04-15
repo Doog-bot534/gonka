@@ -21,6 +21,7 @@ type HTTPSessionConfig struct {
 	Bridge           bridge.MainnetBridge
 	StoragePath      string // optional: path to SQLite DB for session persistence
 	RequestAdmission transport.RequestAdmissionController
+	ProtocolVersion  types.ProtocolVersion // optional: defaults to ProtocolV0211
 }
 
 // NewHTTPSession creates a user Session wired with HTTP clients to real dapi hosts.
@@ -43,7 +44,11 @@ func NewHTTPSession(cfg HTTPSessionConfig) (*Session, *state.StateMachine, error
 		return nil, nil, fmt.Errorf("get escrow: %w", err)
 	}
 
-	config := types.SessionConfigWithPrice(len(group), escrow.TokenPrice)
+	pv := cfg.ProtocolVersion
+	if pv == "" {
+		pv = types.ProtocolV0211
+	}
+	config := types.SessionConfigWithPriceAndVersion(len(group), escrow.TokenPrice, pv)
 
 	clients := make([]HostClient, len(group))
 	participantKeys := make([]string, len(group))
@@ -84,11 +89,13 @@ func NewHTTPSession(cfg HTTPSessionConfig) (*Session, *state.StateMachine, error
 		if metaErr == nil {
 			session, recSM, recErr := RecoverSession(sqlStore, signer, verifier, cfg.EscrowID, group, clients,
 				state.WithWarmKeyResolver(cfg.Bridge.VerifyWarmKey),
+				state.WithProtocolVersion(pv),
 			)
 			if recErr != nil {
 				sqlStore.Close()
 				return nil, nil, fmt.Errorf("recover session: %w", recErr)
 			}
+			session.SetParticipantKeys(participantKeys)
 			return session, recSM, nil
 		}
 		if !errors.Is(metaErr, storage.ErrSessionNotFound) {
@@ -111,6 +118,7 @@ func NewHTTPSession(cfg HTTPSessionConfig) (*Session, *state.StateMachine, error
 
 	sm := state.NewStateMachine(cfg.EscrowID, config, group, escrow.Amount, escrow.CreatorAddress, verifier,
 		state.WithWarmKeyResolver(cfg.Bridge.VerifyWarmKey),
+		state.WithProtocolVersion(pv),
 	)
 
 	session, err := NewSession(sm, signer, cfg.EscrowID, group, clients, verifier, opts...)
@@ -124,7 +132,7 @@ func NewHTTPSession(cfg HTTPSessionConfig) (*Session, *state.StateMachine, error
 
 func participantRequestKey(address, rawURL string) string {
 	if parsed, err := url.Parse(strings.TrimSpace(rawURL)); err == nil {
-		if host := strings.TrimSpace(parsed.Hostname()); host != "" {
+		if host := strings.TrimSpace(parsed.Host); host != "" {
 			return host
 		}
 	}

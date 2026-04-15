@@ -11,6 +11,7 @@ import (
 
 	"subnet/host"
 	"subnet/logging"
+	"subnet/transport"
 	"subnet/user"
 )
 
@@ -49,11 +50,12 @@ type Decision struct {
 // It sits between Proxy and Session: Proxy delegates request execution here,
 // and Redundancy decides whether to use just one nonce or several.
 type Redundancy struct {
-	session   *user.Session
-	perf      *PerfTracker
-	groupSize int
-	subnetID  string
-	metrics   *SubnetMetrics
+	session         *user.Session
+	perf            *PerfTracker
+	groupSize       int
+	subnetID        string
+	metrics         *SubnetMetrics
+	onEscrowMissing func() // called (at most once per request) when a host reports escrow not found
 }
 
 func NewRedundancy(session *user.Session, perf *PerfTracker, groupSize int) *Redundancy {
@@ -92,6 +94,7 @@ type inflight struct {
 	escrowID  string
 	sendTime  time.Time
 	escalated bool
+	probe     bool
 
 	receiptOnce sync.Once
 	receiptTime time.Time
@@ -175,7 +178,9 @@ func (rw *raceWriter) Write(p []byte) (int, error) {
 	})
 	rw.inf.outputChunks.Add(1)
 	rw.inf.lastChunkAt.Store(now.UnixNano())
-	rw.group.setWinner(rw.nonce)
+	if !rw.inf.probe {
+		rw.group.setWinner(rw.nonce)
+	}
 
 	rw.group.mu.Lock()
 	isWinner := rw.group.winner == rw.nonce
@@ -186,8 +191,17 @@ func (rw *raceWriter) Write(p []byte) (int, error) {
 		route := "loser"
 		if isWinner {
 			route = "winner"
+		} else if rw.inf.probe {
+			route = "probe"
 		}
 		logInferenceStage(rw.group.logCtx, rw.inf.escrowID, rw.nonce, "first_token", "host", rw.inf.hostID, "route", route, "winner_nonce", winnerNonce)
+	}
+
+	if rw.inf.probe {
+		rw.inf.suppressedLog.Do(func() {
+			logInferenceStage(rw.group.logCtx, rw.inf.escrowID, rw.nonce, "poc_probe_stream_suppressed", "host", rw.inf.hostID, "winner_nonce", winnerNonce, "poc_reason", currentPoCPhaseReason())
+		})
+		return len(p), nil
 	}
 
 	if isWinner {
@@ -208,6 +222,9 @@ func (rw *raceWriter) Write(p []byte) (int, error) {
 
 func (rw *raceWriter) Flush() {
 	if rw.ctxErr() != nil {
+		return
+	}
+	if rw.inf.probe {
 		return
 	}
 	rw.group.mu.Lock()
@@ -234,29 +251,50 @@ func (e *Redundancy) RunInference(ctx context.Context, params user.InferencePara
 	}
 
 	decision := e.Decide(primary.hostIdx, params.InputLength)
+	maxAttempts := e.maxAttempts()
 	if e.metrics != nil {
 		e.metrics.RecordSpeculativeDecision(decision.Reason)
 	}
-	logInferenceStage(ctx, primary.escrowID, primary.nonce, "decision_made", "host", primary.hostID, "decision", decision.Reason, "delay_ms", decision.Delay.Milliseconds())
+	logInferenceStage(ctx, primary.escrowID, primary.nonce, "decision_made",
+		"host", primary.hostID,
+		"decision", decision.Reason,
+		"delay_ms", decision.Delay.Milliseconds(),
+		"max_attempts", maxAttempts,
+		"group_size", e.groupSize,
+	)
 	race := newRaceGroup(settleCtx, ctx, e.subnetID, w)
 	attempts := []*inflight{primary}
 
 	// Always start the primary.
 	e.startInflight(settleCtx, primary, race)
 
-	if decision.RunSecondary && decision.Delay == 0 && len(attempts) < e.maxAttempts() {
+	if decision.RunSecondary && decision.Delay == 0 && len(attempts) < maxAttempts {
 		logRequestStage(ctx, "secondary_immediate_start", "escrow", e.subnetID, "decision", decision.Reason)
 		primary.escalated = true
 		if secondary := e.startAdditionalInflight(ctx, settleCtx, race, params, "secondary_immediate_start", primary, decision.Reason); secondary != nil {
 			attempts = append(attempts, secondary)
 		}
+	} else if decision.RunSecondary && decision.Delay == 0 {
+		logInferenceStage(ctx, primary.escrowID, primary.nonce, "secondary_immediate_skipped",
+			"host", primary.hostID,
+			"reason", "attempt_limit",
+			"decision", decision.Reason,
+			"current_attempts", len(attempts),
+			"max_attempts", maxAttempts,
+		)
 	}
 
 	return e.awaitRace(ctx, settleCtx, attempts, race, params, decision)
 }
 
 func (e *Redundancy) prepareInflight(params user.InferenceParams) (*inflight, error) {
-	prepared, err := e.session.PrepareInference(params)
+	hostIdx := e.nextHostIdx()
+	probe := e.shouldUseProbeForHost(hostIdx)
+	preparedParams := params
+	if probe {
+		preparedParams = probeParams(params)
+	}
+	prepared, err := e.session.PrepareInference(preparedParams)
 	if err != nil {
 		return nil, fmt.Errorf("prepare: %w", err)
 	}
@@ -266,6 +304,7 @@ func (e *Redundancy) prepareInflight(params user.InferenceParams) (*inflight, er
 		hostID:       e.session.HostLabel(prepared.HostIdx()),
 		nonce:        prepared.Nonce(),
 		escrowID:     e.subnetID,
+		probe:        probe,
 		done:         make(chan struct{}),
 		receiptCh:    make(chan struct{}),
 		firstTokenCh: make(chan struct{}),
@@ -282,6 +321,9 @@ func (e *Redundancy) startInflight(ctx context.Context, inf *inflight, race *rac
 		})
 	}
 	logInferenceStage(ctx, inf.escrowID, inf.nonce, "prepared", "host", inf.hostID)
+	if inf.probe {
+		logInferenceStage(ctx, inf.escrowID, inf.nonce, "poc_probe_prepared", "host", inf.hostID, "max_tokens", pocProbeMaxTokens, "poc_reason", currentPoCPhaseReason())
+	}
 	go e.monitorInflight(ctx, inf, race)
 
 	go func() {
@@ -418,15 +460,24 @@ func (e *Redundancy) awaitRace(streamCtx, settleCtx context.Context, attempts []
 		}
 
 		trigger, hasTrigger := nextEscalationTrigger(attempts, params)
+		maxAttempts := e.maxAttempts()
 		var escalationTimer *time.Timer
 		var escalationC <-chan time.Time
-		if hasTrigger && winner == 0 && len(attempts) < e.maxAttempts() {
+		if hasTrigger && winner == 0 && len(attempts) < maxAttempts {
 			wait := time.Until(trigger.deadline)
 			if wait < 0 {
 				wait = 0
 			}
 			escalationTimer = time.NewTimer(wait)
 			escalationC = escalationTimer.C
+		} else if hasTrigger && winner == 0 {
+			logInferenceStage(settleCtx, trigger.inf.escrowID, trigger.inf.nonce, "escalation_skipped",
+				"host", trigger.inf.hostID,
+				"stage", trigger.stage,
+				"reason", "attempt_limit",
+				"current_attempts", len(attempts),
+				"max_attempts", maxAttempts,
+			)
 		}
 		if allInflightsDone(attempts) && escalationC == nil {
 			if graceTimer != nil {
@@ -439,7 +490,7 @@ func (e *Redundancy) awaitRace(streamCtx, settleCtx context.Context, attempts []
 		case <-doneCh:
 		case <-escalationC:
 			trigger.inf.escalated = true
-			if len(attempts) < e.maxAttempts() {
+			if len(attempts) < maxAttempts {
 				if next := e.startAdditionalInflight(streamCtx, settleCtx, race, params, trigger.stage, trigger.inf, trigger.reason); next != nil {
 					attempts = append(attempts, next)
 					e.watchInflightDone(next, doneCh)
@@ -508,6 +559,14 @@ func nextEscalationTrigger(attempts []*inflight, params user.InferenceParams) (e
 func escalationForInflight(inf *inflight, params user.InferenceParams) (escalationTrigger, bool) {
 	if inf == nil || inf.escalated {
 		return escalationTrigger{}, false
+	}
+	if inf.probe {
+		return escalationTrigger{
+			inf:      inf,
+			deadline: time.Now(),
+			stage:    "poc_probe_immediate_escalation",
+			reason:   "poc_probe",
+		}, true
 	}
 	if inflightDone(inf) {
 		if inflightFinished(inf) {
@@ -707,8 +766,59 @@ func (e *Redundancy) finishRaceOutcome(ctx context.Context, attempts []*inflight
 		winnerIdx = winner.hostIdx
 	}
 
+	var (
+		anySucceeded bool
+		failed       []*inflight
+	)
+	for _, inf := range attempts {
+		ok := e.session.IsNonceFinished(inf.nonce)
+		if !inf.probe {
+			anySucceeded = anySucceeded || ok
+		}
+		logInferenceStage(ctx, inf.escrowID, inf.nonce, "race_completed",
+			"host", inf.hostID,
+			"winner", inf.nonce == winnerNonce,
+			"finished", ok,
+			"responsive", inf.resp != nil && inf.resp.ConfirmedAt > 0,
+			"output_chunks", inf.outputChunks.Load(),
+			"probe", inf.probe,
+		)
+		if !ok {
+			failed = append(failed, inf)
+		}
+	}
+	if !anySucceeded {
+		for _, inf := range failed {
+			if inf.probe {
+				logInferenceStage(ctx, inf.escrowID, inf.nonce, "poc_probe_failed_no_timeout", "host", inf.hostID, "poc_reason", currentPoCPhaseReason())
+				continue
+			}
+			payload := &host.InferencePayload{
+				Prompt:      params.Prompt,
+				Model:       params.Model,
+				InputLength: params.InputLength,
+				MaxTokens:   params.MaxTokens,
+				StartedAt:   params.StartedAt,
+			}
+			result, err := e.session.HandleTimeout(ctx, inf.nonce, inf.sendTime, payload)
+			if result.Reason != "" && e.metrics != nil {
+				e.metrics.RecordInferenceTimeout(result.Reason)
+			}
+			if err != nil {
+				logInferenceStage(ctx, inf.escrowID, inf.nonce, "timeout_failed", "host", inf.hostID, "error", err)
+			}
+		}
+		logRequestStage(ctx, "request_failed", "escrow", e.subnetID, "error", "inference: no non-probe attempt finished")
+		e.logRequestSettled(ctx, 0, decision, "failed")
+		e.checkEscrowMissing(ctx, attempts)
+		return fmt.Errorf("inference: no non-probe attempt finished")
+	}
+
 	var involvement []HostInvolvement
 	for _, inf := range attempts {
+		if inf.probe {
+			continue
+		}
 		e.recordSampleOnce(inf, params)
 		involvement = append(involvement, e.buildInvolvement(inf, winnerNonce))
 	}
@@ -720,25 +830,6 @@ func (e *Redundancy) finishRaceOutcome(ctx context.Context, attempts []*inflight
 		Decision:      decision.Reason,
 		Hosts:         involvement,
 	})
-
-	var (
-		anySucceeded bool
-		failed       []*inflight
-	)
-	for _, inf := range attempts {
-		ok := e.session.IsNonceFinished(inf.nonce)
-		anySucceeded = anySucceeded || ok
-		logInferenceStage(ctx, inf.escrowID, inf.nonce, "race_completed",
-			"host", inf.hostID,
-			"winner", inf.nonce == winnerNonce,
-			"finished", ok,
-			"responsive", inf.resp != nil && inf.resp.ConfirmedAt > 0,
-			"output_chunks", inf.outputChunks.Load(),
-		)
-		if !ok {
-			failed = append(failed, inf)
-		}
-	}
 	if len(failed) > 0 {
 		payload := &host.InferencePayload{
 			Prompt:      params.Prompt,
@@ -752,6 +843,10 @@ func (e *Redundancy) finishRaceOutcome(ctx context.Context, attempts []*inflight
 				bgCtx, _ := ensureRequestLogContext(context.Background())
 				bgCtx = logging.PropagateRequestID(bgCtx, ctx)
 				for _, inf := range failed {
+					if inf.probe {
+						logInferenceStage(bgCtx, inf.escrowID, inf.nonce, "poc_probe_failed_no_timeout", "host", inf.hostID, "poc_reason", currentPoCPhaseReason())
+						continue
+					}
 					result, err := e.session.HandleTimeout(bgCtx, inf.nonce, inf.sendTime, payload)
 					if result.Reason != "" && e.metrics != nil {
 						e.metrics.RecordInferenceTimeout(result.Reason)
@@ -762,19 +857,6 @@ func (e *Redundancy) finishRaceOutcome(ctx context.Context, attempts []*inflight
 				}
 				e.logRequestSettled(bgCtx, winnerNonce, decision, "success")
 			}()
-		} else {
-			for _, inf := range failed {
-				result, err := e.session.HandleTimeout(ctx, inf.nonce, inf.sendTime, payload)
-				if result.Reason != "" && e.metrics != nil {
-					e.metrics.RecordInferenceTimeout(result.Reason)
-				}
-				if err != nil {
-					logInferenceStage(ctx, inf.escrowID, inf.nonce, "timeout_failed", "host", inf.hostID, "error", err)
-				}
-			}
-			logRequestStage(ctx, "request_failed", "escrow", e.subnetID, "error", "inference: no speculative attempt finished")
-			e.logRequestSettled(ctx, 0, decision, "failed")
-			return fmt.Errorf("inference: no speculative attempt finished")
 		}
 	}
 
@@ -782,6 +864,9 @@ func (e *Redundancy) finishRaceOutcome(ctx context.Context, attempts []*inflight
 	if len(failed) == 0 {
 		e.logRequestSettled(ctx, winnerNonce, decision, "success")
 	}
+
+	e.checkEscrowMissing(ctx, attempts)
+
 	return nil
 }
 
@@ -801,6 +886,9 @@ func (e *Redundancy) resolvedWinnerNonce(attempts []*inflight, winnerNonce uint6
 		return winnerNonce
 	}
 	for _, inf := range attempts {
+		if inf.probe {
+			continue
+		}
 		if e.session.IsNonceFinished(inf.nonce) {
 			return inf.nonce
 		}
@@ -851,6 +939,9 @@ func (e *Redundancy) buildInvolvement(inf *inflight, winnerNonce uint64) HostInv
 }
 
 func (e *Redundancy) recordSample(inf *inflight, params user.InferenceParams) {
+	if inf.probe {
+		return
+	}
 	responsive := inf.resp != nil && inf.resp.ConfirmedAt > 0
 	sample := RequestSample{
 		HostIdx:     inf.hostIdx,
@@ -866,5 +957,49 @@ func (e *Redundancy) recordSample(inf *inflight, params user.InferenceParams) {
 	e.perf.Record(sample)
 	if e.metrics != nil {
 		e.metrics.ObserveRequestSample(e.subnetID, sample)
+	}
+}
+
+func (e *Redundancy) nextHostIdx() int {
+	if e == nil || e.groupSize <= 0 {
+		return 0
+	}
+	nextNonce := e.session.Nonce() + 1
+	return int(nextNonce % uint64(e.groupSize))
+}
+
+func (e *Redundancy) shouldUseProbeForHost(hostIdx int) bool {
+	if e == nil || e.session == nil {
+		return false
+	}
+	if !relaxedPoCBypassActive() {
+		return false
+	}
+	if !poCPreservedParticipantsLoaded() {
+		return false
+	}
+	return !isPoCPreservedParticipant(e.session.HostParticipantKey(hostIdx))
+}
+
+func probeParams(params user.InferenceParams) user.InferenceParams {
+	params.Prompt = pocProbePromptBody
+	params.InputLength = uint64(len(pocProbePromptBody))
+	params.MaxTokens = pocProbeMaxTokens
+	return params
+}
+
+// checkEscrowMissing fires onEscrowMissing if any attempt got "escrow not found"
+// from its host. The callback is expected to trigger a verified chain check.
+func (e *Redundancy) checkEscrowMissing(ctx context.Context, attempts []*inflight) {
+	if e.onEscrowMissing == nil {
+		return
+	}
+	for _, inf := range attempts {
+		if inf.err != nil && transport.IsUpstreamEscrowNotFound(inf.err) {
+			logRequestStage(ctx, "escrow_not_found_reported_by_host",
+				"escrow", e.subnetID, "host", inf.hostID, "nonce", inf.nonce)
+			e.onEscrowMissing()
+			return
+		}
 	}
 }

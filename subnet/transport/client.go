@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -82,6 +83,17 @@ func (e *UpstreamStatusError) Error() string {
 		return fmt.Sprintf("http %s: status %d", e.Path, e.StatusCode)
 	}
 	return fmt.Sprintf("http %s: status %d: %s", e.Path, e.StatusCode, e.Body)
+}
+
+// IsUpstreamEscrowNotFound returns true if err is an UpstreamStatusError
+// whose body indicates the host could not find the escrow on chain.
+func IsUpstreamEscrowNotFound(err error) bool {
+	var ue *UpstreamStatusError
+	if !errors.As(err, &ue) {
+		return false
+	}
+	return ue.StatusCode == http.StatusInternalServerError &&
+		strings.Contains(ue.Body, "escrow not found")
 }
 
 func DefaultClientConfig() ClientConfig {

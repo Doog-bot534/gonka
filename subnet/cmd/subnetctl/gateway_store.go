@@ -71,6 +71,10 @@ func NewGatewayStore(path string) (*GatewayStore, error) {
 		db.Close()
 		return nil, fmt.Errorf("migrate gateway store: %w", err)
 	}
+	if err := ensureGatewaySubnetsColumn(db, "protocol_version", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate gateway subnets: %w", err)
+	}
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS participant_throttle_state (
 		participant_key TEXT PRIMARY KEY,
 		tokens REAL NOT NULL DEFAULT 0,
@@ -114,7 +118,7 @@ func (s *GatewayStore) LoadState() (GatewayState, bool, error) {
 	}
 
 	rows, err := s.db.Query(`
-		SELECT id, private_key_hex, private_key_env, model, storage_path, active, created_at, updated_at
+		SELECT id, private_key_hex, private_key_env, model, storage_path, active, created_at, updated_at, protocol_version
 		FROM gateway_subnets
 		ORDER BY id`)
 	if err != nil {
@@ -133,6 +137,7 @@ func (s *GatewayStore) LoadState() (GatewayState, bool, error) {
 			&active,
 			&subnet.CreatedAt,
 			&subnet.UpdatedAt,
+			&subnet.ProtocolVersion,
 		); err != nil {
 			return GatewayState{}, false, fmt.Errorf("scan gateway subnet: %w", err)
 		}
@@ -235,8 +240,8 @@ func (s *GatewayStore) upsertSubnetTx(tx *sql.Tx, subnet GatewaySubnetState, now
 	_ = tx.QueryRow(`SELECT created_at FROM gateway_subnets WHERE id = ?`, subnet.ID).Scan(&createdAt)
 	if _, err := tx.Exec(`
 		INSERT OR REPLACE INTO gateway_subnets (
-			id, private_key_hex, private_key_env, model, storage_path, active, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			id, private_key_hex, private_key_env, model, storage_path, active, created_at, updated_at, protocol_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		strings.TrimSpace(subnet.ID),
 		strings.TrimSpace(subnet.PrivateKeyHex),
 		strings.TrimSpace(subnet.PrivateKeyEnv),
@@ -245,6 +250,7 @@ func (s *GatewayStore) upsertSubnetTx(tx *sql.Tx, subnet GatewaySubnetState, now
 		gatewayBoolToInt(subnet.Active),
 		createdAt,
 		now,
+		strings.TrimSpace(subnet.ProtocolVersion),
 	); err != nil {
 		return fmt.Errorf("upsert gateway subnet %s: %w", subnet.ID, err)
 	}
@@ -358,7 +364,15 @@ func gatewayBoolToInt(v bool) int {
 }
 
 func ensureGatewaySettingsColumn(db *sql.DB, columnName, columnDDL string) error {
-	rows, err := db.Query(`PRAGMA table_info(gateway_settings)`)
+	return ensureColumn(db, "gateway_settings", columnName, columnDDL)
+}
+
+func ensureGatewaySubnetsColumn(db *sql.DB, columnName, columnDDL string) error {
+	return ensureColumn(db, "gateway_subnets", columnName, columnDDL)
+}
+
+func ensureColumn(db *sql.DB, table, columnName, columnDDL string) error {
+	rows, err := db.Query(fmt.Sprintf(`PRAGMA table_info(%s)`, table))
 	if err != nil {
 		return err
 	}
@@ -382,6 +396,6 @@ func ensureGatewaySettingsColumn(db *sql.DB, columnName, columnDDL string) error
 		return err
 	}
 
-	_, err = db.Exec(fmt.Sprintf(`ALTER TABLE gateway_settings ADD COLUMN %s %s`, columnName, columnDDL))
+	_, err = db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, table, columnName, columnDDL))
 	return err
 }

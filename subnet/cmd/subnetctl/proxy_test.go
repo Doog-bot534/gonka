@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -128,17 +129,44 @@ func TestHasMsgFinish(t *testing.T) {
 type killableClient struct {
 	inner  user.HostClient
 	killed atomic.Bool
+	mu     sync.Mutex
+	err    error
+	last   *host.HostRequest
 }
 
 func (c *killableClient) Send(ctx context.Context, req host.HostRequest, stream io.Writer, receiptHandler func()) (*host.HostResponse, error) {
+	c.mu.Lock()
+	reqCopy := req
+	c.last = &reqCopy
+	forcedErr := c.err
+	c.mu.Unlock()
 	if c.killed.Load() {
 		return nil, fmt.Errorf("host killed")
+	}
+	if forcedErr != nil {
+		return nil, forcedErr
 	}
 	return c.inner.Send(ctx, req, stream, receiptHandler)
 }
 
 func (c *killableClient) Kill()   { c.killed.Store(true) }
 func (c *killableClient) Revive() { c.killed.Store(false) }
+
+func (c *killableClient) ForceError(err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.err = err
+}
+
+func (c *killableClient) LastRequest() *host.HostRequest {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.last == nil {
+		return nil
+	}
+	reqCopy := *c.last
+	return &reqCopy
+}
 
 // verifierClient wraps killableClient and implements user.TimeoutVerifier.
 // This allows session.TimeoutVerifiers() to discover it.
@@ -458,6 +486,101 @@ func TestProxyStatusIncludesChainPhaseSnapshot(t *testing.T) {
 	require.Equal(t, confirmationPoCValidation, status.ConfirmationPoCPhase)
 	require.True(t, status.RequestsBlocked)
 	require.Equal(t, "confirmation_poc", status.BlockReason)
+}
+
+func TestRunInference_RelaxedPoCUsesProbeForUnresponsiveHost(t *testing.T) {
+	setPoCModeForTest(t, pocRequestModeRelaxed)
+
+	env := setupTestProxy(t, 2, nil, true)
+	env.proxy.phaseGate = &ChainPhaseGate{}
+	env.proxy.phaseGate.storeSnapshot(ChainPhaseSnapshot{
+		EpochPhase:      epochPhasePoCGenerate,
+		RequestsBlocked: false,
+		BlockReason:     "poc",
+	})
+	setPoCPreservedParticipants([]string{env.session.HostParticipantKey(0)})
+	env.killables[1].ForceError(fmt.Errorf("probe failed"))
+
+	var buf bytes.Buffer
+	err := env.proxy.redundancy.RunInference(context.Background(), defaultParams(), &buf)
+	require.NoError(t, err)
+
+	req := env.killables[1].LastRequest()
+	require.NotNil(t, req)
+	require.NotNil(t, req.Payload)
+	require.EqualValues(t, 1, req.Payload.MaxTokens)
+	require.Equal(t, pocProbePromptBody, req.Payload.Prompt)
+
+	st := env.sm.SnapshotState()
+	require.Contains(t, st.Inferences, uint64(1))
+	require.Contains(t, st.Inferences, uint64(2))
+	require.Equal(t, types.StatusPending, st.Inferences[1].Status)
+	require.True(t, env.session.IsNonceFinished(2))
+}
+
+func TestRunInference_RelaxedPoCImmediatelyEscalatesProbeChainToPreservedHost(t *testing.T) {
+	setPoCModeForTest(t, pocRequestModeRelaxed)
+
+	env := setupTestProxy(t, 3, nil, true)
+	env.proxy.phaseGate = &ChainPhaseGate{}
+	env.proxy.phaseGate.storeSnapshot(ChainPhaseSnapshot{
+		EpochPhase:      epochPhasePoCGenerate,
+		RequestsBlocked: false,
+		BlockReason:     "poc",
+	})
+
+	// Nonce routing for 3 hosts is 1 -> host 1, 2 -> host 2, 3 -> host 0.
+	// Preserve only host 0 so the first two attempts are probes and the third
+	// attempt must escalate immediately to the preserved host.
+	setPoCPreservedParticipants([]string{env.session.HostParticipantKey(0)})
+
+	var buf bytes.Buffer
+	err := env.proxy.redundancy.RunInference(context.Background(), defaultParams(), &buf)
+	require.NoError(t, err)
+
+	require.NotNil(t, env.killables[1].LastRequest(), "first probe attempt should be sent")
+	require.NotNil(t, env.killables[2].LastRequest(), "second probe attempt should be sent immediately")
+	require.NotNil(t, env.killables[0].LastRequest(), "preserved host should be attempted after probe chain escalation")
+
+	st := env.sm.SnapshotState()
+	require.Contains(t, st.Inferences, uint64(1))
+	require.Contains(t, st.Inferences, uint64(2))
+	require.Contains(t, st.Inferences, uint64(3))
+	require.True(t, env.session.IsNonceFinished(3), "preserved host attempt should complete")
+
+	requests := env.proxy.perf.RecentRequests()
+	require.Len(t, requests, 1)
+	require.Len(t, requests[0].Hosts, 1, "probe attempts should not be recorded in request perf stats")
+	require.Equal(t, 0, requests[0].Hosts[0].HostIdx)
+	require.Equal(t, uint64(3), requests[0].Hosts[0].Nonce)
+}
+
+func TestRunInference_RelaxedPoCProbeOnlyRequestsFailAndSkipPerfRecording(t *testing.T) {
+	setPoCModeForTest(t, pocRequestModeRelaxed)
+
+	env := setupTestProxy(t, 2, nil, true)
+	env.proxy.phaseGate = &ChainPhaseGate{}
+	env.proxy.phaseGate.storeSnapshot(ChainPhaseSnapshot{
+		EpochPhase:      epochPhasePoCGenerate,
+		RequestsBlocked: false,
+		BlockReason:     "poc",
+	})
+
+	// Empty preserved set means every host is treated as a probe.
+	setPoCPreservedParticipants([]string{})
+
+	var buf bytes.Buffer
+	err := env.proxy.redundancy.RunInference(context.Background(), defaultParams(), &buf)
+	require.EqualError(t, err, "inference: no non-probe attempt finished")
+
+	st := env.sm.SnapshotState()
+	require.Contains(t, st.Inferences, uint64(1))
+	require.Contains(t, st.Inferences, uint64(2))
+	require.True(t, env.session.IsNonceFinished(1))
+	require.True(t, env.session.IsNonceFinished(2))
+
+	require.Empty(t, env.proxy.perf.RecentRequests(), "probe-only requests should not be recorded in request perf stats")
+	require.Empty(t, env.proxy.perf.AllStats(), "probe-only requests should not produce host perf samples")
 }
 
 func TestRunInference_SpeculativeOnKill(t *testing.T) {

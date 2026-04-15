@@ -445,6 +445,43 @@ func TestGatewayStatusCodeForErrorMapsUpstream503To429(t *testing.T) {
 	require.Equal(t, http.StatusTooManyRequests, code)
 }
 
+func TestParticipantLimiterBypassedDuringRelaxedPoC(t *testing.T) {
+	setPoCModeForTest(t, pocRequestModeRelaxed)
+	setPoCPhaseState(true, "poc")
+
+	limiter := NewParticipantRequestLimiter(1, 10)
+	limiter.ObserveResult("shared-host", "/sessions/12/chat/completions", http.StatusServiceUnavailable)
+
+	require.NoError(t, limiter.AllowRequest("shared-host", "/sessions/12/chat/completions"))
+	require.NoError(t, limiter.CanAcceptEscrow([]string{"shared-host"}))
+}
+
+func TestGatewayLimiterBypassedDuringRelaxedPoC(t *testing.T) {
+	setPoCModeForTest(t, pocRequestModeRelaxed)
+	setPoCPhaseState(true, "poc")
+
+	var forwarded bool
+	rt := &subnetRuntime{
+		id:    "12",
+		model: "Qwen/Test",
+		handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			forwarded = true
+			w.WriteHeader(http.StatusNoContent)
+		}),
+	}
+	rt.active.Store(true)
+
+	g := NewGateway([]*subnetRuntime{rt}, NewGatewayLimiter(1, 1), "Qwen/Test")
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		strings.NewReader(`{"model":"Qwen/Test","messages":[{"role":"user","content":"hello world"}]}`))
+	rec := httptest.NewRecorder()
+
+	g.handlePooledChat(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.True(t, forwarded)
+}
+
 func TestGatewayMetricsCollectorIncludesHostConnectionSnapshots(t *testing.T) {
 	g := NewGateway(nil, NewGatewayLimiter(0, 0), "Qwen/Test")
 	collector := newGatewayMetricsCollectorWithHostConnections(g, fakeHostConnectionSnapshotter{

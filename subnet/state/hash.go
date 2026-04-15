@@ -14,16 +14,17 @@ import (
 
 var deterministicMarshal = proto.MarshalOptions{Deterministic: true}
 
-// ComputeStateRoot computes a flat commitment hash over the session state:
+// ComputeStateRoot computes the v0.2.11 state root (no fees):
 //
-//   state_root = sha256(host_stats_hash || rest_hash || phase_byte)
+//	state_root = sha256(host_stats_hash || rest_hash || phase_byte)
 //
 // where:
-//   host_stats_hash = sha256(proto(sorted host stats))    -- 32 bytes
-//   rest_hash       = sha256(balance_be || inferences_hash || warm_keys_hash) -- 32 bytes
-//   warm_keys_hash  = sha256(sorted slot_id_be || addr_bytes)
-//   inferences_hash = sha256(proto(sorted inference records))
-//   phase_byte      = uint8(phase): 0x00=Active, 0x01=Finalizing, 0x02=Settlement
+//
+//	host_stats_hash = sha256(proto(sorted host stats))    -- 32 bytes
+//	rest_hash       = sha256(balance_be || inferences_hash || warm_keys_hash) -- 32 bytes
+//	warm_keys_hash  = sha256(sorted slot_id_be || addr_bytes)
+//	inferences_hash = sha256(proto(sorted inference records))
+//	phase_byte      = uint8(phase): 0x00=Active, 0x01=Finalizing, 0x02=Settlement
 //
 // All components have fixed, known lengths (32 + 32 + 1), so the
 // concatenation is unambiguous without length prefixes.
@@ -45,6 +46,36 @@ func ComputeStateRoot(balance uint64, hostStats map[uint32]*types.HostStats, inf
 	h.Write(restHash)
 	h.Write([]byte{uint8(phase)})
 	return h.Sum(nil), nil
+}
+
+// ComputeStateRootV0212 computes the v0.2.12 state root (includes fees):
+//
+//	state_root = sha256(host_stats_hash || fees_be || rest_hash || phase_byte)
+func ComputeStateRootV0212(balance uint64, hostStats map[uint32]*types.HostStats, inferences map[uint64]*types.InferenceRecord, phase types.SessionPhase, warmKeys map[uint32]string, fees uint64) ([]byte, error) {
+	hostStatsHash, err := computeHostStatsHash(hostStats)
+	if err != nil {
+		return nil, err
+	}
+	restHash, err := computeRestHash(balance, inferences, warmKeys)
+	if err != nil {
+		return nil, err
+	}
+
+	return ComputeStateRootFromRestHash(hostStatsHash, restHash, fees, phase), nil
+}
+
+// ComputeStateRootFromRestHash computes the v0.2.12 state root when host
+// stats hash and rest hash are already available.
+func ComputeStateRootFromRestHash(hostStatsHash []byte, restHash []byte, fees uint64, phase types.SessionPhase) []byte {
+	feesBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(feesBytes, fees)
+
+	h := sha256.New()
+	h.Write(hostStatsHash)
+	h.Write(feesBytes)
+	h.Write(restHash)
+	h.Write([]byte{uint8(phase)})
+	return h.Sum(nil)
 }
 
 // ComputeHostStatsHash computes sha256(proto(sorted host stats)).
