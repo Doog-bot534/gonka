@@ -2,11 +2,21 @@ package keeper
 
 import (
 	"context"
+	"fmt"
+	"math"
 
 	"cosmossdk.io/store/prefix"
 	"github.com/cosmos/cosmos-sdk/runtime"
 	"github.com/productscience/inference/x/inference/types"
 )
+
+// safeAddUint64 returns a + b, or an error if the addition would overflow.
+func safeAddUint64(a, b uint64, field string) (uint64, error) {
+	if a > math.MaxUint64-b {
+		return 0, fmt.Errorf("tokenomics %s overflow: %d + %d exceeds uint64", field, a, b)
+	}
+	return a + b, nil
+}
 
 // SetTokenomicsData set tokenomicsData in the store
 func (k Keeper) SetTokenomicsData(ctx context.Context, tokenomicsData types.TokenomicsData) error {
@@ -43,10 +53,19 @@ func (k Keeper) AddTokenomicsData(ctx context.Context, tokenomicsData *types.Tok
 	if !found {
 		k.LogError("Tokenomics data not found", types.Tokenomics)
 	}
-	current.TotalBurned = current.TotalBurned + tokenomicsData.TotalBurned
-	current.TotalFees = current.TotalFees + tokenomicsData.TotalFees
-	current.TotalSubsidies = current.TotalSubsidies + tokenomicsData.TotalSubsidies
-	current.TotalRefunded = current.TotalRefunded + tokenomicsData.TotalRefunded
+	var addErr error
+	if current.TotalBurned, addErr = safeAddUint64(current.TotalBurned, tokenomicsData.TotalBurned, "TotalBurned"); addErr != nil {
+		return addErr
+	}
+	if current.TotalFees, addErr = safeAddUint64(current.TotalFees, tokenomicsData.TotalFees, "TotalFees"); addErr != nil {
+		return addErr
+	}
+	if current.TotalSubsidies, addErr = safeAddUint64(current.TotalSubsidies, tokenomicsData.TotalSubsidies, "TotalSubsidies"); addErr != nil {
+		return addErr
+	}
+	if current.TotalRefunded, addErr = safeAddUint64(current.TotalRefunded, tokenomicsData.TotalRefunded, "TotalRefunded"); addErr != nil {
+		return addErr
+	}
 	err := k.SetTokenomicsData(ctx, current)
 	if err != nil {
 		return err
