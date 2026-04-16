@@ -51,7 +51,12 @@ func CheckAndPunishForDowntimeForParticipant(participant types.Participant, rewa
 
 func CheckAndPunishForDowntime(total, missed, reward uint64, p0 *types.Decimal) uint64 {
 	if total == 0 {
-		return reward
+		// A participant with zero total requests did no inference work this epoch.
+		// Returning the full reward here allows validators to collect rewards by
+		// running PoC (to maintain weight) while making their inference endpoint
+		// unreachable — effectively free-riding the network.
+		// Zero the reward: no work done = no inference reward.
+		return 0
 	}
 	passed, err := calculations.MissedStatTest(int(missed), int(total), p0.ToDecimal())
 	if err != nil {
