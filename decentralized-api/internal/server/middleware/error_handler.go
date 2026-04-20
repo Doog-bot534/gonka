@@ -1,10 +1,12 @@
 package middleware
 
 import (
+	"decentralized-api/logging"
 	"errors"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"github.com/productscience/inference/x/inference/types"
 )
 
 // TransparentErrorHandler ensures that errors returned by handlers are propagated
@@ -50,6 +52,9 @@ func ExtractError(err error) (int, interface{}) {
 	} else {
 		// Do not expose internal error details to clients.
 		// Raw err.Error() can leak stack traces, internal URLs, and node topology.
+		// But we must still log the original error server-side so operators can
+		// diagnose problems — otherwise the error is silently swallowed.
+		logging.Error("Unhandled non-HTTPError returned from handler", types.Server, "error", err)
 		message = "internal server error"
 	}
 
