@@ -1,3 +1,7 @@
+// Partial SSRF mitigation: validates hostname resolves to a public IP at check time.
+// TODO(security): does not defend against DNS-rebinding attacks (short-TTL records returning
+// private IPs at dial time after public IP at check time). Closing this requires a pinned-IP
+// custom Dialer in the http.Client — tracked as a follow-up.
 package public
 
 import (
@@ -22,6 +26,7 @@ func init() {
 		"::1/128",        // IPv6 loopback
 		"fc00::/7",       // IPv6 unique local
 		"fe80::/10",      // IPv6 link-local
+		"::ffff:0:0/96",  // IPv4-mapped IPv6 (catches e.g. ::ffff:7f00:1 = 127.0.0.1)
 	} {
 		_, block, _ := net.ParseCIDR(cidr)
 		privateIPBlocks = append(privateIPBlocks, block)
