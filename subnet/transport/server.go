@@ -199,10 +199,15 @@ func (s *Server) AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 			if tsErr != nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid timestamp")
 			}
-			// For GET requests, sign the URL path as the message body.
-			path := []byte(c.Request().URL.Path)
+			// For GET requests, sign the path-plus-query as the message body.
+			// RequestURI() returns "path?query" (or just "path" when no query),
+			// so replaying a valid signature with different query parameters
+			// (e.g. ?from=X&to=Y) inside the timestamp-drift window no longer
+			// verifies. Signing only URL.Path would leave such parameter-
+			// tampering replays undetected.
+			signedPayload := []byte(c.Request().URL.RequestURI())
 			now := time.Now().Unix()
-			addr, verifyErr := VerifyRequest(s.verifier, s.host.EscrowID(), path, sig, ts, now)
+			addr, verifyErr := VerifyRequest(s.verifier, s.host.EscrowID(), signedPayload, sig, ts, now)
 			if verifyErr != nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, verifyErr.Error())
 			}
