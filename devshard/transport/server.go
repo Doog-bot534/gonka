@@ -396,6 +396,13 @@ func (s *Server) HandleVerifyTimeout(c echo.Context) error {
 	}
 
 	// Apply catch-up diffs so the verifier knows about the inference.
+	// Cap the number of diffs to prevent CPU/memory exhaustion from
+	// an arbitrarily large array — each diff triggers signature
+	// verification and state application.
+	const maxCatchUpDiffs = 100
+	if len(req.Diffs) > maxCatchUpDiffs {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("too many catch-up diffs: %d (max %d)", len(req.Diffs), maxCatchUpDiffs))
+	}
 	if len(req.Diffs) > 0 {
 		diffs := make([]types.Diff, 0, len(req.Diffs))
 		for i, dj := range req.Diffs {
